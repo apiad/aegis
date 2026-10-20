@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+"""Rebuild src/aegis/data/models.json from Artificial Analysis.
+
+Run before a release, as ``AA_API_KEY=... uv run scripts/refresh-model-ranking``,
+then read the diff and commit it (know-how/releasing.md). It reads the model
+catalogs of the installed Claude Code and OpenCode, the same ones the Settings
+model pick uses, fetches every language model Artificial Analysis scores (one
+request of the free API's daily allowance), and writes, for each catalog model
+it can map, the Coding and Intelligence Indexes and the list price per million
+tokens, sorted by Coding Index, with today's date. It prints every catalog
+model it could not map: those stay unranked until an alias below covers them.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+import re
+import sys
+import tempfile
+from datetime import date
+from pathlib import Path
+
+import httpx
+
+from aegis.doctor import detect
+
+# The free-tier route: the other language-model routes answer 403 to a free key.
+URL = "https://artificialanalysis.ai/api/v2/language/models/free"
+OUT = Path(__file__).resolve().parents[1] / "src" / "aegis" / "data" / "models.json"
+HARNESSES = ("claude-code", "opencode")
+BINS = {"claude-code": "claude", "opencode": "opencode", "codex": "codex"}
+
+# Catalog id -> Artificial Analysis slug, for names that do not normalize.
+ALIASES: dict[str, str] = {}
+
+
+def normalize(name: str) -> str:
+    """Lowercase, without the provider prefix or a -free suffix, dots and
+    spaces as hyphens."""
+    name = name.lower().rsplit("/", 1)[-1].strip()
+    name = name.removesuffix("-free")
+    return re.sub(r"[.\s]+", "-", name)
+
+
+def slug_for(value: str, resolved: str, known: set[str]) -> str | None:
+    """The Artificial Analysis slug of a catalog model, or None."""
+    for name in (value, resolved):
+        if name in ALIASES:
+            return ALIASES[name]
+    for name in (value, resolved):
+        if name and (slug := normalize(name)) in known:
+            return slug
+    return None
+
+
+def fetch(key: str) -> dict[str, dict]:
+    """Every model the free route lists, following its pages."""
+    out: dict[str, dict] = {}
+    page = 1
+    while True:
+        r = httpx.get(
+            URL, headers={"x-api-key": key}, params={"page": page}, timeout=60
+        )
+        r.raise_for_status()
+        body = r.json()
+        out |= {m["slug"]: m for m in body["data"]}
+        if not (body.get("pagination") or {}).get("has_more"):
+            return out
+        page += 1
+
+
+def entry(m: dict) -> dict:
+    ev = m.get("evaluations") or {}
+    price = m.get("pricing") or {}
+    return {
+        "aa": m["slug"],
+        "coding": ev.get("artificial_analysis_coding_index"),
+        "intelligence": ev.get("artificial_analysis_intelligence_index"),
+        "price_in": price.get("price_1m_input_tokens"),
+        "price_out": price.get("price_1m_output_tokens"),
+    }
+
+
+def main() -> int:
+    key = os.environ.get("AA_API_KEY")
+    if not key:
+        print("AA_API_KEY is not set", file=sys.stderr)
+        return 2
+    with tempfile.TemporaryDirectory() as d:
+        found = asyncio.run(detect(Path(d), BINS, HARNESSES))
+    if broken := [f for f in found if f.error]:
+        for f in broken:
+            print(f"{f.harness}: {f.error}", file=sys.stderr)
+        return 1
+    aa = fetch(key)
+    models: dict[str, dict] = {}
+    unmapped: list[str] = []
+    for f in found:
+        for m in f.models:
+            slug = slug_for(m.value, m.resolved, set(aa))
+            if slug is None:
+                unmapped.append(f"{f.harness} {m.value}")
+            else:
+                models[m.value] = entry(aa[slug])
+    ordered = sorted(
+        models.items(),
+        key=lambda kv: (kv[1]["coding"] is not None, kv[1]["coding"] or 0.0),
+        reverse=True,
+    )
+    data = {
+        "source": "Artificial Analysis",
+        "url": "https://artificialanalysis.ai",
+        "refreshed": date.today().isoformat(),
+        "models": dict(ordered),
+    }
+    OUT.write_text(json.dumps(data, indent=2) + "\n")
+    for u in unmapped:
+        print(f"unmapped: {u}")
+    print(f"{len(models)} models scored, {len(unmapped)} unmapped")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

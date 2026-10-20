@@ -108,21 +108,33 @@ no user-facing doc.
    Anything still sitting under `## [Unreleased]` by hand (entries written
    before fragments landed, #10) is not moved; fold it into the release section
    yourself if it belongs there.
-3. Bump `version` in `pyproject.toml`.
-4. **Bump the `aegis-harness` version line in `uv.lock`** (surgical edit),
+3. Refresh the model scores. With an Artificial Analysis key (a free one is
+   enough; one run spends one request of its daily allowance), on a machine
+   where both Claude Code and OpenCode are installed:
+
+   ```bash
+   AA_API_KEY=... uv run scripts/refresh-model-ranking
+   git diff src/aegis/data/models.json
+   ```
+
+   Read the diff and the `unmapped:` lines it printed. A catalog model that
+   should be ranked and is not needs an entry in the script's `ALIASES`; run
+   it again. Commit the file as `chore(ranking): refresh model scores`.
+4. Bump `version` in `pyproject.toml`.
+5. **Bump the `aegis-harness` version line in `uv.lock`** (surgical edit),
    then verify with `uv sync --inexact --locked --group dev`.
-5. Run the canary on the commit you are about to tag:
+6. Run the canary on the commit you are about to tag:
    `gh workflow run canary.yml --ref main`, then read
    `gh issue list --label canary`. An open canary issue is a harness that
    does not work under this release; fix it or name it in the release notes.
    Run the full gates locally, once, here and not per PR: `make check`,
    `make test-slow` and `make bench`. A red run is a regression; do not
    re-roll it.
-6. Commit `chore(release): vX.Y.Z`, push `main`.
-7. `git tag -a vX.Y.Z -m "Release vX.Y.Z"` and `git push origin vX.Y.Z`.
-8. Watch the run: `gh run watch $(gh run list --workflow=release.yml --limit 1 --json databaseId --jq '.[0].databaseId') --exit-status`.
-9. `gh release create vX.Y.Z --generate-notes --title vX.Y.Z`.
-10. Verify PyPI by **installing it**, not by asking the JSON API:
+7. Commit `chore(release): vX.Y.Z`, push `main`.
+8. `git tag -a vX.Y.Z -m "Release vX.Y.Z"` and `git push origin vX.Y.Z`.
+9. Watch the run: `gh run watch $(gh run list --workflow=release.yml --limit 1 --json databaseId --jq '.[0].databaseId') --exit-status`.
+10. `gh release create vX.Y.Z --generate-notes --title vX.Y.Z`.
+11. Verify PyPI by **installing it**, not by asking the JSON API:
 
     ```bash
     uv venv /tmp/pypi-check -q

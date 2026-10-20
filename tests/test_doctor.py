@@ -257,3 +257,32 @@ async def test_a_model_listed_twice_is_a_warning_and_the_repeat_is_dropped(
     (f,) = at(await run(tmp_path, text, fake_claude, fake_opencode), "agents.p.models")
     assert f.level == "warn"
     assert f.message == "opencode-go/fake-pro is listed twice; the second is ignored"
+
+
+async def test_a_cascade_out_of_ranking_order_warns(
+    tmp_path, fake_claude, fake_opencode, monkeypatch
+):
+    from aegis.ranking import Ranking
+
+    scores = {"opus": {"coding": 41.2}, "sonnet": {"coding": 38.9}}
+    monkeypatch.setattr(
+        "aegis.doctor.ranking", lambda: Ranking.from_dict({"models": scores})
+    )
+    agent = (
+        "  {}: {{harness: claude-code, models: [{}], effort: high, permission: full}}\n"
+    )
+    text = "default_agent: down\nagents:\n" + "".join(
+        agent.format(name, models)
+        for name, models in (
+            ("down", "sonnet, opus"),
+            ("unranked", "haiku, opus"),
+            ("ordered", "opus, sonnet, haiku"),
+        )
+    )
+    found = await run(tmp_path, text, fake_claude, fake_opencode)
+    (f,) = at(found, "agents.down.models")
+    assert f.level == "warn" and f.row == "agents.down"
+    assert f.message == "sonnet (38.9) is above opus (41.2) in the ranking"
+    (f,) = at(found, "agents.unranked.models")
+    assert f.message == "haiku (unranked) is above opus (41.2) in the ranking"
+    assert at(found, "agents.ordered.models") == []
