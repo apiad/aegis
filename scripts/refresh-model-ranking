@@ -33,7 +33,10 @@ HARNESSES = ("claude-code", "opencode")
 BINS = {"claude-code": "claude", "opencode": "opencode", "codex": "codex"}
 
 # Catalog id -> Artificial Analysis slug, for names that do not normalize.
-ALIASES: dict[str, str] = {}
+ALIASES: dict[str, str] = {
+    "claude-haiku-4-5-20251001": "claude-4-5-haiku",
+    "opencode/nemotron-3-ultra-free": "nvidia-nemotron-3-ultra-550b-a55b",
+}
 
 
 def normalize(name: str) -> str:
