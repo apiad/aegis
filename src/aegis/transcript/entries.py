@@ -120,6 +120,14 @@ EMPTY_STANDING: dict = {
 }
 
 NUDGE_HEADER = "> from aegis:nudge · "
+NOTICE_HEADER = "> from aegis:notice · "  # notices.py
+
+
+def split_notices(text: str) -> tuple[str, list[str]]:
+    """The text a notice rode on, and the notice blocks after it, each after a
+    blank line (notices.py). A text that is only a block carries none."""
+    head, *rest = text.split("\n\n" + NOTICE_HEADER)
+    return head, [NOTICE_HEADER + b for b in rest]
 
 
 def _nudged(prev: list[str], text: str) -> list[str]:
@@ -495,8 +503,9 @@ class Fold:
             pid = f"pending:{i}"
             self._pending.append(pid)
             text = str(rec.get("text", ""))
+            head, notices = split_notices(text)
             attached = [_sent_file(f) for f in rec.get("files") or []]
-            if attached:
+            if attached or notices:
                 self._said[pid] = text
             return folded + self._upsert(
                 _entry(
@@ -505,7 +514,7 @@ class Fold:
                     "pending",
                     ts,
                     d.USER_GLYPH,
-                    md=str(rec.get("typed") or "") if attached else text,
+                    md=str(rec.get("typed") or "") if attached else head,
                     detail={"files": attached} if attached else None,
                 )
             )
@@ -976,6 +985,25 @@ class Fold:
             )
         return []
 
+    def _notice_rows(self, id: str, ts: float | None, notices: list[str]) -> list[dict]:
+        """Each notice a prompt or a tool result carried, as an inbox row
+        under it."""
+        ops: list[dict] = []
+        for i, block in enumerate(notices):
+            header = block.splitlines()[0].removeprefix("> from ").strip()
+            ops += self._upsert(
+                _entry(
+                    f"{id}:notice:{i}",
+                    "inbox",
+                    "ok",
+                    ts,
+                    d.COMMS_GLYPH,
+                    title=header,
+                    md=block,
+                )
+            )
+        return ops
+
     # -- what Claude said ----------------------------------------------
     def _event(self, id: str, ts: float | None, ev: Event) -> list[dict]:
         if isinstance(ev, Echo):
@@ -997,19 +1025,20 @@ class Fold:
                 ops += self._remove(pid)
             self._turn_open = True
             self._clock(ts, "work")
-            if ev.text.startswith("> from "):
+            # The notices it carried follow it as their own rows.
+            head, notices = split_notices(ev.text)
+            if head.startswith("> from "):
                 # An inbox message: a monitor wake, a queue result, a handoff.
-                header = ev.text.splitlines()[0].removeprefix("> from ").strip()
-                return ops + self._upsert(
-                    _entry(
-                        id, "inbox", "ok", ts, d.COMMS_GLYPH, title=header, md=ev.text
-                    )
+                header = head.splitlines()[0].removeprefix("> from ").strip()
+                ops += self._upsert(
+                    _entry(id, "inbox", "ok", ts, d.COMMS_GLYPH, title=header, md=head)
                 )
+                return ops + self._notice_rows(id, ts, notices)
             attached = ((carried or {}).get("detail") or {}).get("files")
             if carried is not None and attached:
                 # The person's row shows what they typed and one card; the
                 # path block the agent read stays in the store's text.
-                return ops + self._upsert(
+                ops += self._upsert(
                     _entry(
                         id,
                         "user",
@@ -1020,8 +1049,8 @@ class Fold:
                         detail={"files": attached},
                     )
                 )
-            if typed is not None:
-                return ops + self._upsert(
+            elif typed is not None:
+                ops += self._upsert(
                     _entry(
                         id,
                         "user",
@@ -1029,12 +1058,12 @@ class Fold:
                         ts,
                         d.USER_GLYPH,
                         md=typed,
-                        detail={"tail": ev.text},
+                        detail={"tail": head},
                     )
                 )
-            return ops + self._upsert(
-                _entry(id, "user", "ok", ts, d.USER_GLYPH, md=ev.text)
-            )
+            else:
+                ops += self._upsert(_entry(id, "user", "ok", ts, d.USER_GLYPH, md=head))
+            return ops + self._notice_rows(id, ts, notices)
 
         if isinstance(ev, LocalCommand):
             line = f"/{ev.command} {ev.args}".strip()
@@ -1172,9 +1201,16 @@ class Fold:
             detail: dict[str, Any] = (
                 dict(prev["detail"]) if prev else {"args": "", "steps": 0}
             )
+            # Only aegis's own results carry notices; any other tool's output
+            # (a cat of a file that quotes one) is the tool's.
+            text, notices = (
+                split_notices(ev.text)
+                if name.startswith(d.AEGIS_PREFIX)
+                else (ev.text, [])
+            )
             detail.update(
-                result=d.result_digest(name, ev.text, ev.is_error, pair),
-                tail=d.output_tail(ev.text),
+                result=d.result_digest(name, text, ev.is_error, pair),
+                tail=d.output_tail(text),
             )
             if name == "Read" and not ev.is_error and (nl := d.numbered_lines(ev.text)):
                 detail["file"] = d.file_window(*nl)
@@ -1201,7 +1237,7 @@ class Fold:
                     summary=prev["summary"] if prev else "",
                     detail=detail,
                 )
-            )
+            ) + self._notice_rows(ev.id, ts, notices)
 
         if isinstance(ev, Result):
             secs = (ev.duration_ms or 0) / 1000

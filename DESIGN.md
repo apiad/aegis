@@ -334,6 +334,20 @@ repeats one nor forgets it. A send that carries no nudge re-arms the idle
 nudge and only a plan record re-arms the plan nudge, so a nudge's own turn
 never earns another and nothing loops.
 
+**A notice rides on what a session already receives; it never starts a
+turn.** `Notices` (`notices.py`), built beside `Nudges`, tells every live
+session once per episode that the disk, memory, CPU or quota is short, or
+that a person or an admin's agent announced something. It has two delivery
+points: `Session._send` appends the pending blocks to the next send (never to
+a `/` command), and `OpTool.run` appends them to the next successful aegis
+tool result, unless the call came through `aegis call`, whose output is
+parsed. A notice never goes into the system prompt: a changed
+`--append-system-prompt` would invalidate a resumed session's prompt cache.
+What each session was told is `notices_sent` in its meta, so a restart
+neither repeats a notice nor forgets its clear; the episodes and the one
+asker per kind and owner live in memory. A 30 s loop turns the episodes so a
+notice at critical toasts while nobody is talking to anyone.
+
 **A turn ending is not completion.** Ending a turn is how an agent waits, so a
 queue worker is finished only when its turn has ended with no live monitor, no
 held message and no Claude task still open (`task_started` without its

@@ -164,6 +164,10 @@ class Host:
         node of a live workflow run, workflows.py), or None."""
         return None
 
+    def notice_blocks(self, session: "Session") -> str:
+        """The notices the session has not been told yet (notices.py), or ""."""
+        return ""
+
 
 NO_HOST = Host()
 
@@ -292,6 +296,7 @@ class Session:
         last_exit: dict | None = None,
         restart_continues: int = 0,
         quota_paused: str | None = None,
+        notices_sent: dict[str, str] | None = None,
         tool_calls: int = 0,
         parked_rss: int = 0,
         parked_idle_s: int = 0,
@@ -377,6 +382,10 @@ class Session:
         # until the gate opens and continues it. In the meta, so a restart
         # keeps it paused.
         self.quota_paused = quota_paused
+        # What notices this session was told, kind to level (notices.py),
+        # {"disk": "warn", "announce:<id>": "warn"}. In the meta, so a restart
+        # neither repeats a notice nor forgets a clear.
+        self.notices_sent: dict[str, str] = dict(notices_sent or {})
         # What the cache did (cache.py): tool calls and compactions of the main
         # thread, and the last calls' [cache_read, total_input, at]. In the meta,
         # so the counters survive a restart.
@@ -446,6 +455,7 @@ class Session:
             "last_exit": self.last_exit,
             "restart_continues": self.restart_continues,
             "quota_paused": self.quota_paused,
+            "notices_sent": self.notices_sent,
             "tool_calls": self.tool_calls,
             "parked_rss": self.parked_rss,
             "parked_idle_s": self.parked_idle_s,
@@ -814,6 +824,10 @@ class Session:
         if not self.title and not text.startswith("/"):
             # A slash command names no task; the first prompt does.
             self._set(title=default_title(typed or text))
+        if not text.startswith("/") and (blocks := self._host.notice_blocks(self)):
+            # The record and the harness get the same text, so the fold pairs
+            # them; the fold splits the blocks off into their own rows.
+            text = f"{text}\n\n{blocks}"
         record: dict = {"kind": "send", "text": text}
         if attached:
             record |= {"typed": typed or "", "files": attached}

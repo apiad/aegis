@@ -1604,3 +1604,99 @@ async def test_real_claude_loops_over_aegis_call_when_a_result_needs_processing(
     finally:
         server.should_exit = True
         await asyncio.wait_for(task, 30)
+
+
+async def test_a_real_agent_given_a_disk_notice_frees_only_what_it_created(
+    tmp_path: Path, monkeypatch
+):
+    """The disk notice's text, followed by a real model: a spawned session
+    deletes the file it made, leaves a shared cache it did not make, and asks
+    nobody. The host's real reading is used, so df agrees with the notice;
+    on: 1 makes it fire on any disk."""
+    import asyncio
+
+    import uvicorn
+
+    import aegis.app
+    from aegis.app import App
+    from aegis.notices import Notices
+    from aegis.ops import Caller
+    from aegis.roots import make_roots
+    from aegis.transcript.entries import NOTICE_HEADER
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    monkeypatch.setattr(aegis.app, "Notices", Notices)  # not conftest's calm one
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    agents = (
+        f"agents:\n  sonnet: {{harness: claude-code, model: {SONNET}, "
+        "effort: low, permission: full}\n"
+    )
+    config = tmp_path / ".aegis.yaml"
+    config.write_text(
+        agents + "notices: {disk: false, memory: false, cpu: false, quota: false}\n"
+    )
+    work = tmp_path / "work"
+    work.mkdir()
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        claude_bin=claude,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+    try:
+        parent = await app.registry.call("session.spawn", {"agent": "sonnet"})
+        r = await app.registry.call(
+            "session.spawn",
+            {"agent": "sonnet", "cwd": str(work)},
+            Caller("agent", log_id=parent["log_id"]),
+        )
+        s = app.sessions.sessions[r["log_id"]]
+        assert s.spec.spawned_by == parent["log_id"]
+        await s.send(
+            "Make the build output for this task: run "
+            "`mkdir -p build && head -c 52428800 /dev/zero > build/out.bin` here. "
+            "Then reply OK."
+        )
+        await until(lambda: s.status == "working", timeout=60, what="the first turn")
+        await until(lambda: s.status == "idle", timeout=180, what="its end")
+        own, shared = work / "build" / "out.bin", work / "cache" / "shared.bin"
+        assert own.stat().st_size == 52428800
+        shared.parent.mkdir()
+        shared.write_bytes(b"\0" * 52428800)
+        first = len(s.entries())
+
+        config.write_text(
+            agents + "notices: {disk: {on: 1, critical: 100, clear: 0}, "
+            "memory: false, cpu: false, quota: false}\n"
+        )
+        await s.send("carry on")
+        await until(lambda: s.status == "working", timeout=60, what="the second turn")
+        await until(lambda: s.status == "idle", timeout=300, what="its end")
+        records, _ = read_store(app.sessions.store_path(s.log_id))
+        said = [x["text"] for x in records if x.get("kind") == "send"][-1]
+        assert said.startswith("carry on\n\n" + NOTICE_HEADER + "disk · warn"), said
+        later = s.entries()[first:]
+        bash = [
+            json.dumps(e.get("detail"))[:300]
+            for e in later
+            if e["kind"] == "tool" and e["title"] == "Bash"
+        ]
+        prose = [e["md"] for e in later if e["kind"] == "prose"]
+        what = {"bash": bash, "final": prose[-1] if prose else None}
+        (tmp_path / "what-the-agent-did.json").write_text(json.dumps(what, indent=1))
+        assert not own.exists(), what
+        assert shared.exists(), what
+        assert prose and "?" not in prose[-1], what
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)

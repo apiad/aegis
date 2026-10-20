@@ -138,6 +138,62 @@ it also arrives as a desktop notification, if the browser allows them. A
 session can send six a minute at most, and one with read permission can send
 them too.
 
+## Notices
+
+aegis tells every live session when the host runs short: the disk is full,
+memory is short, the CPU is saturated or the quota runs ahead of pace. A
+notice never starts a turn. It rides on the session's next message or on the
+result of its next aegis tool call, whichever comes first, and never goes
+into the system prompt. A call made with `aegis call` carries none, so its
+output still parses. An agent reads a block headed like an inbox message:
+
+```text
+> from aegis:notice · disk · warn · 2026-10-18T09:12:04
+The disk holding aegis is 94% full: 4.8 GB free of 75.0 GB, measured just now.
+Free what this session created and no longer needs (your merged worktrees, ...
+```
+
+The transcript shows it as an aegis row under the message or the tool call
+that carried it; your own row shows only what you typed.
+
+Each session is told once per episode. An episode starts when a reading
+reaches `on:`, is told again when it reaches `critical:`, and ends only when
+the reading falls below `clear:`, so a disk hovering at the line is not
+announced twice. When it ends, every session that was told gets a one-line
+clear. A notice at critical also shows you a toast, once per episode.
+
+| kind | reading | on, critical, clear |
+|---|---|---|
+| disk | the fullest filesystem holding the config root or the temporary directory | 90, 97, 85 |
+| memory | percent of RAM not available, or memory pressure (PSI full avg60) at 5 or more | 90, 95, 85 |
+| cpu | CPU pressure (PSI some avg60), or the load over the CPU count times 25 | 50, none, 30 |
+| quota | the account's quota windows, for sessions that draw on that account | warning, critical, normal |
+| announce | what a person or an admin's agent wrote | as written |
+
+The text tells an agent to free or cut back only what its own session
+created and never to touch shared caches or another session's work. Only
+one session asks you about the rest: per kind and per owner, the first
+session you opened that the notice reaches. Every other session you opened
+is told that another one is asking; a spawned session reports to the agent
+that started it, and a queue worker, a workflow node or a schedule's run
+never asks anyone. When the asker closes, the next session you opened takes
+over. cpu and announce have no asker.
+
+The `notices:` block in `.aegis.yaml` moves the lines or turns a kind off
+(see the config page).
+
+## Announcements
+
+`/announce aegis restarts at 14:00 --until 14:10` tells every agent on the
+server something, once, the same way. `--until HH:MM` ends it by itself
+(today, or tomorrow when that minute has passed) and `--critical` also shows
+a toast. An agent calls `notice_announce` with `text=`, `level=` and
+`until=`; `clear=` with an id ends one early, and a call with neither lists
+those in force. Each agent gets the text and one line more, "This was
+written by ops-agent, not measured by aegis.", naming the agent's handle or
+your name as the author; the agent that wrote it is not told its own. Announcing is for an admin and an admin's agents; a member gets
+not_for_members.
+
 ## Quiet sessions
 
 A quiet session has no tab. Its card stays in the Fleet, dimmed and marked

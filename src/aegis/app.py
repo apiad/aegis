@@ -80,6 +80,8 @@ from .mcp import PATH as MCP_PATH, Tokens, build_mcp
 from . import refs
 from .monitors import Monitors, iso_now
 from .names import valid_handle
+from .notice_ops import register_notice_ops
+from .notices import Notices
 from .nudges import Nudges
 from . import park
 from .park import Parker, Watchers
@@ -438,6 +440,8 @@ class App:
         self.side_notes = SideNotes(self)
         self.sessions.side_notes = self.side_notes
         self.nudges = Nudges(self.sessions)
+        self.notices = Notices(self)
+        self.sessions.notices = self.notices
         self.watchers = Watchers()
         self.parker = Parker(
             self.sessions, lambda: self.config.current().park, self.watchers
@@ -472,9 +476,12 @@ class App:
         self.push = register_push_ops(self)
         register_journal_ops(self)
         register_help_ops(self)
+        register_notice_ops(self)
         register_schedule_ops(self)
         register_workflow_ops(self)
-        self.mcp_server, self.mcp_app = build_mcp(self.registry, self.tokens)
+        self.mcp_server, self.mcp_app = build_mcp(
+            self.registry, self.tokens, self.sessions
+        )
 
     def who(self, caller: Caller) -> Principal:
         """The principal a caller acts as. An agent acts as its session's
@@ -642,6 +649,7 @@ class App:
         self.host.start()
         self.net.start()
         self.nudges.start()
+        self.notices.start()
         self.parker.start()
         self.links.boot()
         # Last: its first snapshot must hold every session the boot loaded,
@@ -692,6 +700,7 @@ class App:
         await self.links.shutdown()
         await self.parker.stop()
         await self.nudges.stop()
+        await self.notices.stop()
         await self.quota.stop()
         await self.host.stop()
         await self.net.stop()
@@ -919,6 +928,10 @@ class App:
             return await self._spawn_line(
                 commands.parse_spawn(arg), caller, s, untested
             )
+        if name == "announce":
+            text, level, until = commands.parse_announce(arg)
+            params = {"text": text, "level": level, "until": until}
+            return await self.registry.call("notice.announce", params, caller)
         if name == "archive":
             await reg.close(s.log_id)
             return None
@@ -1241,6 +1254,10 @@ class App:
                     spec,
                     spawned_from=f"{p.spawned_from.handle}@{p.spawned_from.server}",
                 )
+            elif caller.link is not None:
+                # A person's /spawn on the far side: its questions would reach
+                # someone on another server, so it is never a notice's asker.
+                spec = dataclasses.replace(spec, spawned_from=f"person@{caller.link}")
             # An agent cannot hand a session more power than it has itself.
             if parent is not None and PERMISSION_ORDER.index(
                 spec.permission

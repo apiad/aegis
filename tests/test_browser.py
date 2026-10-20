@@ -113,10 +113,13 @@ class Server:
             self.output += "".join(self.lines)
 
 
-CONFIG = (
+AGENTS = (
     "default_agent: opus\nagents:\n  opus: {harness: claude-code, model: opus, effort: high, permission: full}\n"
     "  deepseek: {provider: opencode, model: opencode-go/fake-pro, effort: high, permission: full}\n"
 )
+# `aegis serve` reads the machine running the tests: on a loaded host every
+# session would be told about it, so no notice fires unless a test asks.
+CONFIG = "notices: {disk: false, memory: false, cpu: false, quota: false}\n" + AGENTS
 
 
 @pytest.fixture
@@ -961,6 +964,32 @@ def test_a_monitor_shows_in_the_sidebar_and_its_wake_arrives_as_an_inbox_row(
     flag.touch()
     page.wait_for_selector(".row.inbox .from >> text=monitor:", timeout=10000)
     page.wait_for_selector("#s-mon-sec[hidden]", state="attached")
+    assert page.errors == []
+
+
+@pytest.fixture
+def notice_server(tmp_path: Path, fake_claude: str, fake_opencode: str):
+    # A disk line of 1% fires on any host, and a critical of 100% never toasts.
+    (tmp_path / ".aegis.yaml").write_text(
+        AGENTS + "notices: {disk: {on: 1, critical: 100, clear: 0}, memory: false,"
+        " cpu: false, quota: false}\n"
+    )
+    s = Server(tmp_path, fake_claude, fake_opencode).start()
+    yield s
+    s.stop()
+
+
+def test_a_notice_is_an_inbox_row_under_what_the_person_typed(notice_server, page):
+    page.goto(notice_server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "add the retry")
+    page.wait_for_selector(".row.inbox .from >> text=aegis:notice · disk")
+    assert page.text_content(".row.user .md").strip() == "add the retry"
+    follows = page.evaluate(
+        "document.querySelector('.row.user').compareDocumentPosition("
+        "document.querySelector('.row.inbox')) & Node.DOCUMENT_POSITION_FOLLOWING"
+    )
+    assert follows
     assert page.errors == []
 
 

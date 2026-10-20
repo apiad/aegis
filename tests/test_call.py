@@ -9,7 +9,10 @@ import sys
 
 import pytest
 
-from .test_agents import CONFIG, World, turn
+from aegis.transcript.entries import NOTICE_HEADER
+
+from .test_agents import CONFIG, World, mcp, turn
+from .test_notices import NOTICED
 
 AEGIS = f"{sys.executable} -m aegis"
 
@@ -88,3 +91,20 @@ async def test_tools_lists_the_agent_tools_and_shows_one_schema(world, tmp_path)
     assert names == {op.tool_name for op in world.app.registry.agent_ops()}
     rc, out, _ = await sh(s, tmp_path, f"{AEGIS} tools plan_update")
     assert rc == 0 and '"items"' in out
+
+
+@pytest.fixture
+async def noticed(tmp_path, fake_claude):
+    (tmp_path / ".aegis.yaml").write_text(NOTICED)
+    w = await World(tmp_path, fake_claude).start()
+    yield w
+    await w.stop()
+
+
+async def test_aegis_call_output_carries_no_notice(noticed, tmp_path):
+    s = await noticed.spawn()
+    rc, out, _ = await sh(s, tmp_path, f"{AEGIS} call session_list")
+    assert rc == 0 and NOTICE_HEADER not in out
+    json.loads(out)
+    said = await turn(s, mcp("session_list"))
+    assert NOTICE_HEADER + "disk · warn" in said
