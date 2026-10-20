@@ -37,6 +37,7 @@ from ruamel.yaml.scalarstring import LiteralScalarString
 from ruamel.yaml.util import load_yaml_guess_indent
 
 from .agents import EFFORTS, HARNESSES, PERMISSION_ORDER, Agent, agents_from
+from . import notice_sources
 from .cgroups import DEFAULT_MEMORY_MAX, parse_size
 from .net.config import NetConfig, network_from
 from .ops import OpError
@@ -102,26 +103,63 @@ NOTICES_DEFAULTS = {
 
 
 def _notices_defaults() -> dict:
+    """The host kinds' defaults, then every declared per-session source's
+    (notice_sources.py)."""
     return {
         k: dict(v) if isinstance(v, dict) else v for k, v in NOTICES_DEFAULTS.items()
-    }
+    } | notice_sources.declared()
+
+
+def _source_from(name: str, v: object, default: dict) -> dict | bool | str:
+    """A declared source's entry over its defaults: false turns it off, true
+    keeps the defaults. A string is the error."""
+    if v is False:
+        return False
+    if v is True:
+        return dict(default)
+    if not isinstance(v, dict):
+        return f"notices.{name} must be true, false or a mapping"
+    for k, n in v.items():
+        if k not in default:
+            keys = ", ".join(default) or "no keys"
+            return f"notices.{name} has no key {k!r}; it takes {keys}"
+        d = default[k]
+        if isinstance(d, bool):
+            if not isinstance(n, bool):
+                return f"notices.{name}.{k} {n!r} is not true or false"
+        elif isinstance(d, int) and (
+            isinstance(n, bool) or not isinstance(n, int) or n <= 0
+        ):
+            return f"notices.{name}.{k} {n!r} is not a whole number above 0"
+        elif isinstance(n, bool) or not isinstance(n, int | float) or n <= 0:
+            return f"notices.{name}.{k} {n!r} is not a number above 0"
+    return default | v
 
 
 def notices_from(raw: object) -> dict:
     """The ``notices:`` block over its defaults. ``false`` in place of a kind
-    turns it off. A wrong block keeps every default in force and carries
-    ``error`` for aegis doctor, so a typo never stops a send."""
+    or a source turns it off. A wrong block keeps every default in force and
+    carries ``error`` for aegis doctor, so a typo never stops a send. A name
+    no installed source declares is kept as given and listed in
+    ``undeclared``, a warning: removing a plugin must not break the file."""
     out = _notices_defaults()
     if raw is None:
         return out
-    kinds = ", ".join(NOTICES_DEFAULTS)
+    sources = notice_sources.declared()
+    kinds = ", ".join([*NOTICES_DEFAULTS, *sources])
     if not isinstance(raw, dict):
         return out | {"error": f"notices must be a mapping of {kinds}"}
     for kind, v in raw.items():
+        if kind in sources:
+            got = _source_from(str(kind), v, sources[str(kind)])
+            if isinstance(got, str):
+                return _notices_defaults() | {"error": got}
+            out[kind] = got
+            continue
         if kind not in NOTICES_DEFAULTS:
-            return _notices_defaults() | {
-                "error": f"notices has no kind {kind!r}; it takes {kinds}"
-            }
+            out[kind] = v
+            out.setdefault("undeclared", []).append(str(kind))
+            continue
         default = NOTICES_DEFAULTS[str(kind)]
         if v is False or (kind == "quota" and v is True):
             out[kind] = v
