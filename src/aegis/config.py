@@ -41,6 +41,7 @@ from .agents import EFFORTS, HARNESSES, PERMISSION_ORDER, Agent, agents_from
 # Imported for their notice sources' declarations (notice_sources.py), so
 # the first parse of notices: knows them.
 from . import monitors as _monitors  # noqa: F401
+from . import nudges as _nudges  # noqa: F401
 from . import notice_sources
 from .cgroups import DEFAULT_MEMORY_MAX, parse_size
 from .net.config import NetConfig, network_from

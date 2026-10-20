@@ -441,6 +441,7 @@ class App:
         self.side_notes = SideNotes(self)
         self.sessions.side_notes = self.side_notes
         self.nudges = Nudges(self.sessions)
+        self.sessions.nudges = self.nudges
         self.notices = Notices(self)
         self.sessions.notices = self.notices
         self.watchers = Watchers()
