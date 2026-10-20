@@ -26,7 +26,8 @@ import httpx
 
 from aegis.doctor import detect
 
-URL = "https://artificialanalysis.ai/api/v2/data/llms/models"
+# The free-tier route: the other language-model routes answer 403 to a free key.
+URL = "https://artificialanalysis.ai/api/v2/language/models/free"
 OUT = Path(__file__).resolve().parents[1] / "src" / "aegis" / "data" / "models.json"
 HARNESSES = ("claude-code", "opencode")
 BINS = {"claude-code": "claude", "opencode": "opencode", "codex": "codex"}
@@ -55,9 +56,19 @@ def slug_for(value: str, resolved: str, known: set[str]) -> str | None:
 
 
 def fetch(key: str) -> dict[str, dict]:
-    r = httpx.get(URL, headers={"x-api-key": key}, timeout=60)
-    r.raise_for_status()
-    return {m["slug"]: m for m in r.json()["data"]}
+    """Every model the free route lists, following its pages."""
+    out: dict[str, dict] = {}
+    page = 1
+    while True:
+        r = httpx.get(
+            URL, headers={"x-api-key": key}, params={"page": page}, timeout=60
+        )
+        r.raise_for_status()
+        body = r.json()
+        out |= {m["slug"]: m for m in body["data"]}
+        if not (body.get("pagination") or {}).get("has_more"):
+            return out
+        page += 1
 
 
 def entry(m: dict) -> dict:
