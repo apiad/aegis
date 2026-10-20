@@ -275,7 +275,7 @@ def serve(
 
     from .app import App
     from .roots import make_roots
-    from .web import build_web, load_or_create_token
+    from .web import build_web, load_or_create_token, ws_protocol
 
     from .roots import legacy_state
 
@@ -341,7 +341,7 @@ def serve(
         typer.echo(f"open {o}/?token={token}")
     if window:
         _open_when_listening(local, port, url, browser)
-    uvicorn.run(web, host=host, port=port, log_level="warning")
+    uvicorn.run(web, host=host, port=port, log_level="warning", ws=ws_protocol())
 
 
 MARK = {"ok": "ok   ", "warn": "warn ", "error": "ERROR"}

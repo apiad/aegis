@@ -69,6 +69,36 @@ CLIENT_DIR = Path(__file__).parent / "client"
 SERVICE_WORKER = Path(__file__).parent / "sw.js"
 
 
+def ws_protocol():
+    """The websocket protocol ``aegis serve`` hands uvicorn: its own, with
+    permessage-deflate at the standard 32 KB window. uvicorn's sans-I/O
+    protocol, the default since 0.4x, offers a 4 KB window and memLevel 5,
+    which compressed an idle client's frames 4 to 1 where 32 KB does 7 to 1
+    (#525). The cost is about 300 KB of zlib state per open socket. An uvicorn
+    without that protocol keeps its default, whose deflate takes the
+    browser's offer."""
+    try:
+        from uvicorn.protocols.websockets.websockets_sansio_impl import (
+            WebSocketsSansIOProtocol,
+        )
+    except ImportError:
+        return "auto"
+    from websockets.extensions.permessage_deflate import ServerPerMessageDeflateFactory
+    from websockets.server import ServerProtocol
+
+    class Protocol(WebSocketsSansIOProtocol):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
+            if self.config.ws_per_message_deflate:
+                self.conn = ServerProtocol(
+                    extensions=[ServerPerMessageDeflateFactory()],
+                    max_size=self.config.ws_max_size,
+                    logger=self.conn.logger,
+                )
+
+    return Protocol
+
+
 def client_files(version: str) -> dict:
     """The client as the service worker keeps it: every file under CLIENT_DIR by
     the URL the page asks for it, plus the manifest, and a build id hashed from
