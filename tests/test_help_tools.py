@@ -50,3 +50,12 @@ async def test_an_agent_searches_and_reads_the_help_through_mcp(tmp_path, fake_c
         assert "call help_search" in said
     finally:
         await w.stop()
+
+
+def test_the_primer_names_the_feedback_turn_and_offers_to_file():
+    assert (
+        "`> from feedback · …` when the person asks you to report something "
+        "about aegis" in PRIMER
+    )
+    assert "Offer once per problem and never stop work to" in PRIMER
+    assert "follow help_read feedback" in PRIMER
