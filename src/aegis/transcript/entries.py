@@ -702,12 +702,17 @@ class Fold:
                 until = time.strftime("%H:%M", time.localtime(rec.get("until") or ts))
                 line = (
                     f"cascade: {rec.get('from')} failed ({rec.get('error')}); cools"
-                    f" until {until}. Continuing on {rec.get('to')}."
+                    f" until {until}"
                 )
+                if rec.get("refused"):
+                    line += f"; could not switch to {rec.get('to')}: {rec['refused']}."
+                else:
+                    line += f". Continuing on {rec.get('to')}."
             elif kind == "cascade_exhausted":
                 line = f"cascade exhausted: {rec.get('error')}"
             else:
-                line = f"cascade: interrupted before continuing on {rec.get('to')}"
+                by = "stopped" if rec.get("by") == "stop" else "interrupted"
+                line = f"cascade: {by} before continuing on {rec.get('to')}"
             return self._upsert(
                 _entry(f"e{i}", "system", "ok", ts, d.SYSTEM_GLYPH, summary=line)
             )

@@ -32,6 +32,7 @@ so a crash and a clean stop read the same.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
 import logging
 import time
@@ -416,6 +417,7 @@ class Session:
         # from the last model's failure until the next turn starts.
         self._falling: asyncio.Task | None = None
         self._fall_stop = False
+        self._fall_to: str | None = None
         self.cascade_exhausted = False
 
     # -- what the outside sees -------------------------------------------
@@ -868,16 +870,21 @@ class Session:
         await self._proc.interrupt()
 
     async def stop(self) -> None:
-        """End the process and keep the session."""
+        """End the process and keep the session. A fall under way stops
+        before it continues, and the failed turn it held open ends."""
+        fell_to = await self._drop_fall()
         if self._proc is None:
             if self.status == "parked":  # a person's Stop outranks a park
                 self._record({"kind": "stop"})
                 self._set(status="stopped")
-            return
-        await self._end_process()
-        self._record({"kind": "stop"})
-        self._set(status="stopped")
-        self._metas.write(self.meta())
+        else:
+            await self._end_process()
+            self._record({"kind": "stop"})
+            self._set(status="stopped")
+            self._metas.write(self.meta())
+        if fell_to is not None:
+            self._record({"kind": "cascade_stopped", "to": fell_to, "by": "stop"})
+            self._host.turn_ended(self)
 
     async def park(self, idle_s: float) -> bool:
         """End the process of a session nothing needs (park.py); the next
@@ -895,7 +902,10 @@ class Session:
 
     async def shutdown(self) -> None:
         """The server is stopping: end the process, record nothing, and keep the
-        last status in the meta so a mid-turn session is marked at next boot."""
+        last status in the meta so a mid-turn session is marked at next boot.
+        A fall under way is dropped there: the turn is still working, so the
+        next boot continues it."""
+        await self._drop_fall()
         self.artifacts.flush_all()
         if self._proc is not None:
             self.last_status = self.status
@@ -1173,30 +1183,53 @@ class Session:
             self.cascade_exhausted = True
             self._record({"kind": "cascade_exhausted", "error": error})
             return False
-        self._record(
-            {"kind": "cascade", "from": model, "to": to, "error": error, "until": until}
+        self._fall_stop, self._fall_to = False, to
+        self._falling = asyncio.get_running_loop().create_task(
+            self._fall({"from": model, "to": to, "error": error, "until": until})
         )
-        self._fall_stop = False
-        self._falling = asyncio.get_running_loop().create_task(self._fall(to, error))
         return True
 
-    async def _fall(self, to: str, error: str) -> None:
-        sent = False
+    async def _fall(self, row: dict) -> None:
+        """Switch to the next model, then say so and continue the turn on it.
+        Stop and shutdown cancel this task while it switches (_drop_fall); an
+        interrupt lets the switch finish and sends nothing."""
+        to, error = row["to"], row["error"]
         try:
             await self.configure(model=to)
-            if not self._fall_stop:
-                self._falling = None
-                await self._send(CONTINUE_PROMPT.format(error=error, model=to))
-                sent = True
-        except Exception:
-            log.exception("%s: the cascade could not move to %s", self.handle, to)
-        finally:
+        except Exception as e:
+            log.warning("%s: the cascade could not move to %s: %s", self.handle, to, e)
             self._falling = None
-            if not sent:
-                if self._fall_stop:
-                    self._record({"kind": "cascade_stopped", "to": to})
-                self._set(status="idle")
-                self._turn_over()
+            why = getattr(e, "message", None) or str(e)
+            self._record({"kind": "cascade", **row, "refused": why})
+            self._end_fallen_turn()
+            return
+        self._falling = None
+        if self._fall_stop:
+            self._record({"kind": "cascade_stopped", "to": to})
+            self._end_fallen_turn()
+            return
+        self._record({"kind": "cascade", **row})
+        try:
+            await self._send(CONTINUE_PROMPT.format(error=error, model=to))
+        except Exception:
+            log.exception("%s: the cascade could not continue on %s", self.handle, to)
+            if self.status == "working":  # failed before _send's _on_error ended it
+                self._end_fallen_turn()
+
+    def _end_fallen_turn(self) -> None:
+        self._set(status="idle")
+        self._turn_over()
+
+    async def _drop_fall(self) -> str | None:
+        """Cancel a fall that has not continued yet (stop, close, shutdown):
+        the model it was moving to, or None when no fall was under way."""
+        t, self._falling = self._falling, None
+        if t is None:
+            return None
+        t.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await t
+        return self._fall_to
 
     def _on_exit(self, code: int, stderr_tail: list[str]) -> None:
         if self._stopping:

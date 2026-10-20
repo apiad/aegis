@@ -184,3 +184,142 @@ async def test_a_context_error_does_not_fall(world, monkeypatch):
     assert s.spec.model == "opencode/a"
     assert not any(r.startswith("cascade") for r in world.rows(s))
     assert s.entries()[-1]["summary"].startswith("turn failed (ContextOverflowError")
+
+
+def hold_configure(s) -> asyncio.Event:
+    """Hold the fall's configure until the returned event is set."""
+    hold = asyncio.Event()
+    configure = s.configure
+
+    async def held(**kw):
+        await hold.wait()
+        await configure(**kw)
+
+    s.configure = held
+    return hold
+
+
+def continued(world, s) -> bool:
+    return any("The previous model failed" in t for t in world.sends(s))
+
+
+async def settle() -> None:
+    for _ in range(20):
+        await asyncio.sleep(0.02)
+
+
+async def test_stop_during_fallback_cancels_the_fall(world, monkeypatch):
+    exhaust(monkeypatch, "opencode/a")
+    s = await world.spawn_free(None)
+    hold = hold_configure(s)
+    await s.send("start")
+    await until(lambda: s._falling is not None, what="the fall to start")
+    await s.stop()
+    hold.set()
+    await settle()
+    assert s.status == "stopped" and not s.running
+    assert not continued(world, s)
+    assert world.rows(s)[-1] == "cascade: stopped before continuing on opencode/b"
+    assert world.ended[s.log_id] == 1
+
+
+async def test_close_during_fallback_cancels_the_fall(world, monkeypatch):
+    exhaust(monkeypatch, "opencode/a")
+    s = await world.spawn_free(None)
+    hold = hold_configure(s)
+    await s.send("start")
+    await until(lambda: s._falling is not None, what="the fall to start")
+    await world.app.sessions.close(s.log_id)
+    hold.set()
+    await settle()
+    assert s.archived and not s.running
+    assert not continued(world, s)
+    assert world.ended[s.log_id] == 1
+
+
+async def test_shutdown_during_fallback_continues_the_worker_at_boot(
+    world, monkeypatch
+):
+    exhaust(monkeypatch, "opencode/a")
+    hold = asyncio.Event()
+    from aegis.session import Session
+
+    configure = Session.configure
+
+    async def held(self, **kw):
+        if kw.get("model"):
+            await hold.wait()
+        await configure(self, **kw)
+
+    monkeypatch.setattr(Session, "configure", held)
+    q = world.app.queues
+    t = await asyncio.wait_for(
+        q.enqueue("general", "hello", False, None, str(world.root)), 3
+    )
+    await until(lambda: t.worker is not None, what="a worker")
+    s = world.session(t.worker)
+    await until(lambda: s._falling is not None, what="the fall to start")
+    end_process = s._end_process
+
+    async def ending():
+        # The switch answers while the server is going down.
+        await end_process()
+        hold.set()
+        await settle()
+
+    s._end_process = ending
+    ended = world.ended
+    await world.stop()
+    await settle()
+    assert not s.running
+    assert not continued(world, s)
+    assert ended[s.log_id] == 0
+    assert t.status == "running"
+    exhaust(monkeypatch)
+    await world.start()
+    t2 = world.app.queues.tasks[t.id]
+    await until(lambda: t2.status == "completed", timeout=10, what="the worker")
+
+
+async def test_a_continue_that_fails_to_send_ends_the_turn_once(world, monkeypatch):
+    exhaust(monkeypatch, "opencode/a")
+    s = await world.spawn_free(None)
+    await s.ensure_running()
+    proc = s._proc
+    send, calls = proc.send, []
+
+    async def broken(text):
+        calls.append(text)
+        if len(calls) > 1:
+            raise BrokenPipeError("gone")
+        await send(text)
+
+    proc.send = broken
+    await s.send("start")
+    await until(lambda: len(calls) > 1 and s.status == "idle", what="the failed send")
+    await settle()
+    assert world.ended[s.log_id] == 1
+
+
+async def test_a_refused_switch_says_so_and_ends_the_turn(world, monkeypatch):
+    from aegis.ops import OpError
+
+    exhaust(monkeypatch, "opencode/a")
+    s = await world.spawn_free(None)
+    configure = s.configure
+
+    async def refused(**kw):
+        if kw.get("model"):
+            raise OpError("control", "set_model refused")
+        await configure(**kw)
+
+    s.configure = refused
+    await s.send("start")
+    await world.turn_ended(s)
+    await settle()
+    assert s.spec.model == "opencode/a"
+    rows = world.rows(s)
+    assert not any("Continuing on" in r for r in rows), rows
+    assert rows[-1].startswith("cascade: opencode/a failed")
+    assert rows[-1].endswith("could not switch to opencode/b: set_model refused.")
+    assert world.ended[s.log_id] == 1
