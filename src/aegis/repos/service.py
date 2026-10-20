@@ -111,13 +111,15 @@ class Repos:
         self._due(log_id)
 
     def _due(self, log_id: str) -> None:
+        loop = self._loop
+        assert loop is not None  # scheduled only once started
         self._build_due.pop(log_id, None)
         if log_id in self._building:
-            self._build_due[log_id] = self._loop.call_later(1.0, self._due, log_id)
+            self._build_due[log_id] = loop.call_later(1.0, self._due, log_id)
             return
         self._building.add(log_id)
         self._built_at[log_id] = time.monotonic()
-        self._loop.create_task(self._build_and_send(log_id))
+        loop.create_task(self._build_and_send(log_id))
 
     async def _build_and_send(self, log_id: str) -> None:
         try:
@@ -143,6 +145,7 @@ class Repos:
     def _run_probe(self, top: str) -> None:
         self._probe_due.pop(top, None)
         self._probed_at[top] = time.monotonic()
+        assert self._loop is not None  # scheduled only once started
         self._loop.create_task(self._probe_and_refresh(top))
 
     async def _probe_and_refresh(self, top: str) -> None:
@@ -201,7 +204,7 @@ class Repos:
                     "commits": [],
                     "prs": {},
                 }
-            r["ts"] = max(r["ts"], ts)
+            r["ts"] = max(float(r["ts"]), ts)
             return r
 
         if con is not None:
