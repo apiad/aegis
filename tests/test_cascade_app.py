@@ -25,6 +25,13 @@ queues:
 """
 
 
+def model_of(world, log_id: str) -> str:
+    """A worker's model, read from its meta: a finished worker is archived at
+    once, so it may be gone from the open sessions by the time a test looks."""
+    metas, _ = world.app.sessions.metas.read_all()
+    return next(m["model"] for m in metas if m.get("log_id") == log_id)
+
+
 @pytest.fixture
 async def world(tmp_path, fake_claude, fake_opencode):
     (tmp_path / ".aegis.yaml").write_text(CONFIG)
@@ -66,7 +73,7 @@ async def test_a_queue_task_waits_for_cooling_and_starts_when_it_ends(world):
     assert t.status == "pending"
     assert app.cooling.earliest(time.time()) is not None
     await until(lambda: t.status != "pending", timeout=5, what="the cooling to end")
-    assert world.session(t.worker).spec.model == "opencode/a"
+    assert model_of(world, t.worker) == "opencode/a"
 
 
 async def test_a_handoff_keeps_a_model_chosen_outside_the_cascade(world):

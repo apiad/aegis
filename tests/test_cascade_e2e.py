@@ -27,6 +27,13 @@ queues:
 """
 
 
+def model_of(world, log_id: str) -> str:
+    """A worker's model, read from its meta: a finished worker is archived at
+    once, so it may be gone from the open sessions by the time a test looks."""
+    metas, _ = world.app.sessions.metas.read_all()
+    return next(m["model"] for m in metas if m.get("log_id") == log_id)
+
+
 class CascadeWorld(World):
     async def start(self) -> "CascadeWorld":
         await super().start()
@@ -118,7 +125,7 @@ async def test_a_queue_worker_that_falls_completes_once_with_the_last_answer(
     await until(lambda: t.status != "pending" and t.status != "running", timeout=10)
     assert t.status == "completed", t.result
     assert t.result.startswith("you said: > from aegis:cascade")
-    assert world.session(t.worker).spec.model == "opencode/b"
+    assert model_of(world, t.worker) == "opencode/b"
     assert world.ended[t.worker] == 1
 
 
