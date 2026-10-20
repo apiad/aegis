@@ -1,7 +1,7 @@
 ---
 title: Configuration
 kind: concept
-when: adding or changing agents, the default agent, queues, recaps, side notes, the per-session memory cap, notices about disk, memory, CPU and quota, parking idle sessions, untested harness versions or the network readings in .aegis.yaml, or picking a theme
+when: adding or changing agents, the default agent, queues, recaps, side notes, the per-session memory cap, notices about disk, memory, CPU and quota, an agent's status and stalled monitors, when aegis nudges a silent agent, parking idle sessions, untested harness versions or the network readings in .aegis.yaml, or picking a theme
 ---
 
 aegis reads one file, `.aegis.yaml`, at the root it serves: `--root` when
@@ -229,6 +229,43 @@ moves `clear:` and `critical:` with it by the default gaps, so `disk: {on:
 outside 0 to 100, or levels out of order (clear below on, on at most
 critical) leaves every default in force, and `aegis doctor` names the
 mistake.
+
+## Notices about an agent's own work
+
+The same block sets what aegis tells an agent about its own work: its plan,
+its monitors and the queue tasks it has out (the sessions page shows the
+status block they make). Each is a source that declares its keys; these are
+the defaults:
+
+```yaml
+notices:
+  plan:     {stale_min: 10}
+  monitors: {stall_min: 15, broken_checks: 3, overdue_min: 10, wake: true}
+  queues:   true
+  status:   {lines: 5}
+```
+
+`plan.stale_min` is the minutes of work on a plan left untouched before the
+agent is warned. `monitors.stall_min` is the minutes a monitor's progress may
+sit still (and at least three intervals), `broken_checks` how many intervals a
+check may fail to run, and `overdue_min` how far past its ETA a monitor may
+run, before its owner is warned; with `wake: true` the warning wakes an idle
+owner. `status.lines` caps the status block. Minutes may be fractions.
+`false` in place of a source turns it off; `status: false` drops the status
+block and keeps the warnings. A name no installed source declares is ignored,
+and `aegis doctor` warns about it.
+
+## Nudges
+
+`nudges:` sets when aegis asks an agent that drifted where it stands:
+
+```yaml
+nudges:
+  silent_s: 2     # after a turn that ended without turn_end; false: never
+  plan_min: 15    # minutes of work on a plan left untouched, at a turn's end
+```
+
+A wrong value leaves both defaults in force, and `aegis doctor` names it.
 
 ## Memory per session
 

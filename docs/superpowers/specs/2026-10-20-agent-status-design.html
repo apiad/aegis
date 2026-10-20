@@ -133,7 +133,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · agent status and the turn_end nudge</span>
-  <span class="st"><span class="pill acc">proposed, not started</span><span class="pill">2026-10-20</span><span class="pill">#490 · #178</span></span>
+  <span class="st"><span class="pill acc">built on branch agent-status-spec (#523)</span><span class="pill">2026-10-20</span><span class="pill">#490 · #178</span></span>
 </div>
 
 <div class="wrap">
@@ -162,7 +162,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 
 <main>
 <h1>Agent status: telling an agent what it is tracking, and nudging a silent turn at once</h1>
-<div class="meta"><span>docs/superpowers/specs/2026-10-20-agent-status-design.html</span><span>·</span><span>proposed, not started</span></div>
+<div class="meta"><span>docs/superpowers/specs/2026-10-20-agent-status-design.html</span><span>·</span><span>built on branch agent-status-spec (#523)</span></div>
 <p class="lede">Agents forget to update their plan, and they do not notice a monitor that has stalled or broken until the person asks. aegis already has a channel that reaches an agent without starting a turn: notices, which ride on the next prompt and the next aegis tool result. This spec opens that channel to per-session sources that any subsystem, and later any plugin, can write to. It adds an <code>info</code> level for a short status summary, and nudges a turn that ends without <code>turn_end</code> within seconds instead of ten minutes. Nothing here depends on a harness's hooks.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
@@ -371,7 +371,7 @@ queue tasks out: 2 running (review-a, review-b)</pre>
 <li>Each source declares its own keys. A source registers its defaults with <code>notice_sources.declare(source, defaults)</code> (a leaf module, since <code>config.py</code> imports <code>queues.py</code>) at import, and <code>config.notices_from</code> validates the <code>notices:</code> block against the host kinds plus every declared source. That keeps <code>config.py</code> free of per-source names, and a plugin's manifest declares its defaults through the same call. A key for a source that is not declared (a plugin not installed) is kept and reported by <code>aegis doctor</code> as a warning, not an error, so removing a plugin never invalidates the file.</li>
 <li>A wrong value follows the existing rule: the whole block keeps its defaults and carries <code>error</code> for <code>aegis doctor</code>, so a typo never stops a send.</li>
 <li>A source reads its values from <code>config.current()</code> each time it evaluates, so a changed file applies within a second with no restart, as every other key does. Lowering a threshold can turn a warning on at the next evaluation; raising one clears it, with its clear text.</li>
-<li>The Settings page's config editor shows the new keys as it shows the host kinds; it needs no code of its own.</li>
+<li>The keys are edited in <code>.aegis.yaml</code>, like the host kinds: the Settings form edits neither, and keeps both as they are when it saves.</li>
 </ul>
 
 <h2 id="nudge"><span class="n">07</span>The turn_end nudge, at once</h2>
