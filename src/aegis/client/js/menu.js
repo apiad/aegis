@@ -232,32 +232,47 @@ export function open(menu, at, target) {
 // selection before a button's click lands. Its buttons keep the selection by
 // cancelling their pointerdown. One bar at a time, and a menu opening closes
 // it.
-let bar_ = null; // {node, range, row}
+//
+// `unit` says what a selection may span: by default one transcript row's body.
+// A file's or a page's view passes its own, which answers {range, row} with
+// `row` the element the range stays in, or null.
+let bar_ = null; // {node, range, row, root}
+
+function rowUnit(range, root) {
+  const n = range.startContainer;
+  const row = (n.nodeType === 1 ? n : n.parentElement)?.closest(".row[data-id]");
+  const r = row && root.contains(row) ? clampToRow(range, row) : null;
+  return r && { range: r, row };
+}
 
 const coarse = matchMedia("(pointer: coarse)");
 
-export function bar(root, provider) {
+export function bar(root, provider, { unit = rowUnit } = {}) {
   let down = false;
   let timer = null;
+  // Several views have a bar: each closes only its own.
+  const drop = () => bar_?.root === root && unbar();
   const check = () => {
     clearTimeout(timer);
     const sel = getSelection();
     const range = sel.rangeCount && !sel.isCollapsed ? sel.getRangeAt(0) : null;
     const start = range?.startContainer;
-    const row = (start?.nodeType === 1 ? start : start?.parentElement)?.closest(".row[data-id]");
+    if (!range || !root.contains(start)) return drop();
+    const u = unit(range, root);
+    const row = u?.row;
     // A right-click inside the selection: its menu carries the bar's items.
     // A touch's long press both opens the row's menu and selects a word; the
     // selection is what the person was after, so the bar takes its place.
     if (cur && !(cur.touch && row && cur.target.contains(row))) return;
-    const r = row && root.contains(row) ? clampToRow(range, row) : null;
-    if (!r || !rangeText(r)) return unbar();
+    const r = u?.range;
+    if (!r || !rangeText(r)) return drop();
     if (bar_ && bar_.range.toString() === r.toString() && bar_.row === row) {
       bar_.at = ends(range);
       return place();
     }
     const items = provider(r, row);
-    if (!items?.length) return unbar();
-    showBar(items, r, row);
+    if (!items?.length) return drop();
+    showBar(items, r, row, root);
     bar_.at = ends(range);
   };
   // A key that moved the selection (Shift and arrows). Esc's keyup comes
@@ -281,7 +296,7 @@ export function bar(root, provider) {
     if (!getSelection().isCollapsed && !down) {
       clearTimeout(timer);
       timer = setTimeout(check, 200);
-    } else if (getSelection().isCollapsed && bar_) unbar();
+    } else if (getSelection().isCollapsed) drop();
   };
   root.addEventListener("pointerdown", onDown);
   document.addEventListener("pointerup", onUp, true);
@@ -289,7 +304,7 @@ export function bar(root, provider) {
   root.addEventListener("keyup", onKey);
   document.addEventListener("selectionchange", onChange);
   return () => {
-    unbar();
+    drop();
     root.removeEventListener("pointerdown", onDown);
     document.removeEventListener("pointerup", onUp, true);
     root.removeEventListener("pointercancel", onUp);
@@ -310,7 +325,7 @@ function same(sel, at) {
   return now.text === at.text && now.row === at.row;
 }
 
-function showBar(items, range, row) {
+function showBar(items, range, row, root) {
   close();
   unbar();
   const node = el("div", "sbar");
@@ -331,7 +346,7 @@ function showBar(items, range, row) {
     node.append(b);
   }
   document.getElementById("a2").append(node);
-  bar_ = { node, range, row };
+  bar_ = { node, range, row, root };
   addEventListener("hashchange", unbar);
   place();
 }

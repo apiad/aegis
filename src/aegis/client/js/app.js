@@ -107,6 +107,9 @@ const withKey = (m, server = null) => ({ ...lifecycle(m), server, key: keyOf(ser
 const order = new TabOrder();
 let ordered = []; // metas in this browser's tab order
 let shown = null; // the key of the session whose transcript is subscribed
+// The last session shown in this browser tab, where Files' quotes go; a
+// reload of the Files view keeps it.
+let lastShown = sessionStorage.getItem("aegis.lastShown");
 let warmed = null; // the parked (asleep, idle) session whose first keystroke asked for session.warm
 let landUnread = null; // the tab Alt+J opened, whose transcript lands on its first unread
 let unsubTranscript = null;
@@ -140,7 +143,8 @@ const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
   },
 });
 artifacts.setup({ call: (op, params, key) => callFor(key || shown, op, params), entry: (id) => transcript.entries.get(id), key: () => shown });
-const viewer = new Viewer($("viewer"), { entry: (id) => transcript.entries.get(id) });
+const pointing = { items: (ctx) => pointItems(ctx), send: (key, text) => toComposer(key, text) };
+const viewer = new Viewer($("viewer"), { entry: (id) => transcript.entries.get(id), point: pointing });
 // Open on a docked item shows its pane, so a page never runs in the viewer
 // and a pane at once. An older version of a docked file opens in the viewer:
 // the pane shows the newest.
@@ -573,7 +577,14 @@ filePicker = new FilePicker($("fpick"), conn, (path, line, newTab) => {
   if (newTab) window.open(location.pathname + location.search + hash, "_blank");
   else go(hash);
 });
-filesView = new Files(conn, $("files"), { toast, go, onPick: () => filePicker.open() });
+// Files' pointing writes to the session last shown in this window: the Files
+// view itself shows none.
+filesView = new Files(conn, $("files"), {
+  toast,
+  go,
+  onPick: () => filePicker.open(),
+  point: { items: (ctx) => pointItems({ ...ctx, to: lastShown }), send: (text) => toComposer(lastShown, text) },
+});
 // The Help tab (help.js), one per window like Settings. Its code blocks copy
 // as the transcript's do.
 // Guided tour: what /tutorial <page> does, on default_agent, for any page. A
@@ -1521,6 +1532,7 @@ function follow(id) {
   find.close(false); // it searched the old session
   if (dictation.target?.el === input) dictation.stop("tab"); // a recording belongs to its session
   shown = id;
+  if (sessions.has(id)) sessionStorage.setItem("aegis.lastShown", (lastShown = id));
   tellView();
   const turn = ++follows;
   const first = early;
@@ -3663,6 +3675,50 @@ function selectionItems(range) {
   ].filter(Boolean);
 }
 cmenu.bar($("entries"), selectionItems);
+
+// What a selection or an element in a file or a page offers (spec 07): the
+// bar's items with the locator in front of the quote, and Comment. `to` is the
+// session whose composer gets it; with none, or another member's, New session
+// alone writes it. `leave` runs first (the viewer closes over the composer).
+function pointItems({ locator, text, to, comment, leave = () => {} }) {
+  const s = to && sessions.get(to);
+  const own = s && mine(s);
+  const q = `${locator}\n${quoted(text)}`;
+  return [
+    own && { id: "ask", label: "Ask", icon: "prompt", run: () => (leave(), toComposer(to, q)) },
+    own && { id: "aside", label: "Ask aside", icon: "btw", run: () => (leave(), toComposer(to, q, { prefix: "/btw\n" })) },
+    { id: "new", label: "New session", icon: "start", run: () => newSessionWith(s, q) },
+    comment && { id: "comment", label: "Comment", icon: "comment", run: comment },
+    {
+      id: "copy",
+      label: "Copy",
+      icon: "copy",
+      title: "Copy (Shift: as a quote)",
+      run: (ev) => navigator.clipboard.writeText(ev?.shiftKey ? q : text).catch((e) => toast(`Copy failed: ${e.message || e}`, { kind: "error" })),
+    },
+  ].filter(Boolean);
+}
+
+// `text` into session `key`'s composer, going there first; Files' unsaved
+// edits ask before it leaves. No session to go to: the New session form.
+async function toComposer(key, text, opts) {
+  const s = key && sessions.get(key);
+  if (!s || !mine(s)) return newSessionWith(null, text);
+  if (shown !== key) {
+    if (filesView.leaving(route(hashOf(key))) && !(await filesView.confirmLeave())) return;
+    go(hashOf(key));
+  }
+  if (shown === key) insertIntoComposer(text, opts);
+}
+
+// The New session form with `text` for its prompt: from session `s`'s agent,
+// model and folder, or the form's own picks.
+function newSessionWith(s, text) {
+  if (s) return openSpawnWith({ server: s.server, agent: s.agent, model: s.model, cwd: s.cwd, prompt: `From ${s.handle}:\n${text}\n\n` });
+  $("sp-text").value = `${text}\n\n${$("sp-text").value}`;
+  go("#new");
+  spawnGrow();
+}
 
 // A transcript row's menu (spec 06), by kind; a selection inside the row puts
 // the bar's items on top. Kinds the spec names no menu for keep the browser's,

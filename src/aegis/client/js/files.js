@@ -22,6 +22,7 @@
 // anything else offers its size, a download and the desktop's app for it.
 
 import { fuzzy } from "./commands.js";
+import { Tray } from "./comments.js";
 import { ask, choose } from "./dialog.js";
 import { diffView } from "./diff.js";
 import { open as openEditor } from "./editor.js";
@@ -29,6 +30,7 @@ import { markdown } from "./entries.js";
 import * as menu from "./menu.js";
 import { ago } from "./fleet.js";
 import { langName, paint } from "./highlight.js";
+import { docLocator, headingOf, offsetsIn, rangeAtPoint, rangeText, textLocator } from "./quote.js";
 
 const SHOWN = 200; // rows the picker draws
 const CONTEXT = 3; // unchanged lines around each change in the conflict's diff
@@ -624,9 +626,19 @@ export class FileTree {
 
 // -- the view -----------------------------------------------------------------
 
+// A selection Files' bar is about: inside the editor's lines or the rendered
+// Markdown, start and end.
+function filesUnit(range, root) {
+  const n = range.startContainer;
+  const content = (n.nodeType === 1 ? n : n.parentElement)?.closest(".fview > .md, .fed .cm-content");
+  return content && root.contains(content) && content.contains(range.endContainer) ? { range, row: content } : null;
+}
+
 export class Files {
-  constructor(conn, box, { toast, onPick, go }) {
-    Object.assign(this, { conn, box, toast, go });
+  // `point` is app.js's: items(ctx) gives a selection's items, send(text)
+  // writes the comments' message where the quotes go.
+  constructor(conn, box, { toast, onPick, go, point }) {
+    Object.assign(this, { conn, box, toast, go, point });
     this.path = null; // the open file
     this.hash = null; // the hash the buffer is based on
     this.ed = null;
@@ -640,6 +652,7 @@ export class Files {
     this.gen = 0; // bumped when a save or the banner changes the base, so a poll begun before drops its answer
     this.polling = false;
     this.kind = null; // the open file's kind, from fs.read
+    this.tray = null; // the open file's comments
     this.viewMode = null; // "view" or "src" for a kind with a rendered view
     box.innerHTML =
       '<div class="fbar"><button class="btn tbtn" type="button" title="Folders" aria-label="Folders">☰</button>' +
@@ -659,6 +672,11 @@ export class Files {
     this.$(".tbtn").addEventListener("click", () => this.drawer(!box.hasAttribute("data-drawer")));
     this.$(".pick").addEventListener("click", () => onPick());
     this.$(".save").addEventListener("click", () => this.save());
+    // A selection in the editor or the rendered Markdown, and a right-click in
+    // the latter: the editor keeps the browser's menu, with its paste.
+    const pane = this.$(".fpane");
+    menu.bar(pane, (range, content) => this.pointItems(range, content), { unit: filesUnit });
+    menu.attach(pane, (t, ev) => this.pressed(t, ev));
     this.$(".fbanner .acts").addEventListener("click", (ev) => {
       const act = ev.target.closest("[data-act]")?.dataset.act;
       if (act === "diff") this.showDiff();
@@ -770,6 +788,7 @@ export class Files {
     this.stat = null;
     this.kind = null;
     this.viewMode = null;
+    this.tray = null;
     this.banner(false);
     this.mark(false);
   }
@@ -885,6 +904,8 @@ export class Files {
     }
     const host = el("div", "fed");
     pane.append(host);
+    // Comments, kept per version: the path and its mtime.
+    this.tray = this.point ? new Tray(pane, `${path}@${r.mtime}`, (text) => this.point.send(text), path) : null;
     const ed = await openEditor(host, {
       text: r.text,
       path,
@@ -898,6 +919,46 @@ export class Files {
     if (rendered) this.mode(line ? "src" : "view");
     if (line) ed.goto(line);
     else if (!rendered) ed.focus();
+  }
+
+  // What a selection says (spec 07): in the editor, the lines CodeMirror
+  // counts and the text it holds, which may run past what is drawn; in the
+  // rendered Markdown, the heading it sits under.
+  pointItems(range, content) {
+    if (!this.point || !this.path) return null;
+    let locator;
+    let text;
+    let at = null;
+    if (content.matches(".cm-content")) {
+      const { state } = this.ed.view;
+      const { from, to } = state.selection.main;
+      if (from === to) return null;
+      const first = state.doc.lineAt(from).number;
+      const end = state.doc.lineAt(to);
+      const last = end.from === to ? end.number - 1 : end.number;
+      locator = textLocator(this.path, first, Math.max(first, last));
+      text = state.sliceDoc(from, to).trim();
+    } else {
+      locator = docLocator(this.path, headingOf(range.startContainer, content));
+      text = rangeText(range);
+      at = offsetsIn(content, range);
+    }
+    if (!text) return null;
+    return this.point.items({ locator, text, comment: () => this.tray?.add({ locator, quote: text, at }) });
+  }
+
+  // A right-click or a long press in the rendered Markdown: the selection, or
+  // the block under it.
+  pressed(t, ev) {
+    const content = t.closest?.(".fview > .md");
+    if (!ev || !content) return null;
+    const sel = getSelection();
+    const cur = sel.rangeCount && !sel.isCollapsed ? sel.getRangeAt(0) : null;
+    const hit = (r) => ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+    const inSel = cur && filesUnit(cur, content)?.row === content && [...cur.getClientRects()].some(hit);
+    const range = inSel ? cur : rangeAtPoint(content, ev.clientX, ev.clientY);
+    const items = range && this.pointItems(range, content);
+    return items?.length ? { groups: [items] } : null;
   }
 
   // Rendered or Source, for a kind that has both.
@@ -921,6 +982,7 @@ export class Files {
       box.replaceChildren(doc);
       for (const f of doc.querySelectorAll(".fence")) paint(f);
       this.relink(doc, path);
+      this.tray?.layer(doc);
       return;
     }
     const r = await this.conn.call("fs.ticket", { path }).catch(() => null);

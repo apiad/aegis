@@ -102,3 +102,55 @@ export function insertIntoComposer(text, { prefix = "" } = {}) {
   const end = input.value.length;
   input.setSelectionRange(end, end);
 }
+
+// Where a quote comes from, in front of it (spec 07): a text file's path and
+// lines, "`src/x.py:40-52`".
+export function textLocator(path, first, last) {
+  return `\`${path}:${first}${last > first ? `-${last}` : ""}\``;
+}
+
+// The lines a range covers in a block of text drawn as one node (the
+// viewer's code): the newlines before each end, plus one. An end at the
+// start of a line does not take that line.
+export function linesOf(root, range) {
+  const [start, end] = offsetsIn(root, range);
+  const text = root.textContent;
+  const line = (at) => text.slice(0, at).split("\n").length;
+  const last = end > start && text[end - 1] === "\n" ? line(end - 1) : line(end);
+  return [line(start), Math.max(line(start), last)];
+}
+
+// The text of the node's nearest heading before it in document order, or null.
+export function headingOf(node, root) {
+  const el = node.nodeType === 1 ? node : node.parentElement;
+  let found = null;
+  for (const h of root.querySelectorAll("h1, h2, h3, h4, h5, h6")) {
+    if (h === el || h.contains(el) || h.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) found = h;
+    else break;
+  }
+  return found ? found.textContent.trim() : null;
+}
+
+// A Markdown file's locator: its path and the heading the quote sits under.
+export function docLocator(path, heading) {
+  return `\`${path}\`${heading ? ` § ${heading}` : ""}`;
+}
+
+// The text a press is about when nothing is selected: the code line or the
+// Markdown block under it, as a range.
+export function rangeAtPoint(content, x, y) {
+  const caret = document.caretRangeFromPoint?.(x, y);
+  if (!caret || !content.contains(caret.startContainer)) return null;
+  if (content.matches("code")) {
+    const text = content.textContent;
+    const [at] = offsetsIn(content, caret);
+    const end = text.indexOf("\n", at);
+    return rangeIn(content, [text.lastIndexOf("\n", at - 1) + 1, end < 0 ? text.length : end]);
+  }
+  const n = caret.startContainer;
+  const el = (n.nodeType === 1 ? n : n.parentElement)?.closest("p, li, h1, h2, h3, h4, h5, h6, pre, blockquote, td, th");
+  if (!el || !content.contains(el)) return null;
+  const r = document.createRange();
+  r.selectNodeContents(el);
+  return r;
+}

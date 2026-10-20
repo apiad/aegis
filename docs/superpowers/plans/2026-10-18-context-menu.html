@@ -218,6 +218,13 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 <li><b>An entry still streaming carries <code>live: true</code> on the wire</b> (<code>transcript/entries.py</code>, <code>_upsert</code>, while its id is in <code>_live</code>), and its row menu has no Copy link: the whole block replaces it under another id (<code>_unlive</code>), so the link would land nowhere. A server-side field, since the client cannot tell a live part from a finished one.</li>
 <li><b>The canvas drops a bar whose row it hides</b> (<code>canvas.js</code>, end of <code>place</code>, calls <code>menu.unbarHidden</code>): a tabbed canvas hides the transcript with <code>visibility</code>, which fires no scroll and leaves the view the same.</li>
 <li><b><code>render()</code> strips <code>&amp;at=</code> right after <code>route()</code></b> and keeps the row in <code>landEntry</code>, so a quiet session's bounce or a render that waits for the session list keeps neither the URL nor the row; the session branch lands it at once when that session is already shown.</li>
+<li><b>A sent file's locator names the file, not its source path</b>: a file entry carries no source (<code>agent_ops.py</code>, file_send: "The source stays in the store"), so the viewer writes <code>`x.py:3-4`</code>, or the path under the root when a peek gave one (<code>viewer.js</code>, <code>pathOf</code>). Files writes the path it opened.</li>
+<li><b>Files' quotes go to the session last shown in this browser tab</b> (<code>app.js</code>, <code>lastShown</code>, kept in <code>sessionStorage</code>): the Files view follows no session (<code>render</code> calls <code>follow(null)</code>), so <code>shown</code> is always null there. With none, or another member's, Ask and Send open New session with the text.</li>
+<li><b>The viewer's Ask and Send close the viewer</b>: it covers the composer (<code>base.css</code>, <code>.col.viewing&gt;:not(.viewer){visibility:hidden}</code>).</li>
+<li><b>The Files editor has the bar but keeps the browser's right-click menu</b>, with its paste (<code>menu.js</code>, <code>NATIVE</code> holds <code>[contenteditable]</code>), and its comments draw no pins: CodeMirror owns its DOM. Its text and lines come from CodeMirror's state, which may run past what is drawn.</li>
+<li><b><code>menu.bar</code> takes a <code>unit</code></b>, what a selection may span (a transcript row by default; the viewer's code or Markdown, Files' editor or Markdown), and each bar closes only its own: with two bars, the transcript's check dropped the viewer's.</li>
+<li><b><code>Tray.add</code> takes <code>at</code>, text offsets in the content, not an anchor element</b>: a pin is a span inserted at the offsets whose number is CSS (<code>::before</code>), so the text, the line count and the stored offsets stay as they were, and a reload draws the pins again from storage.</li>
+<li><b>A right-click with nothing selected is about the code line or the Markdown block under the pointer</b> (<code>quote.js</code>, <code>rangeAtPoint</code>), as spec 07's "picks the element under the pointer" says for pages.</li>
 </ul>
 
 <h2>Review focus</h2>
@@ -556,7 +563,7 @@ def test_copy_link_opens_the_session_at_that_row(page, server):
 
 <div class="slice">slice 4 · inside files and pages · branch menu-4-pages</div>
 
-<details class="task" id="task-10" data-state="pending">
+<details class="task" id="task-10" data-state="doing">
 <summary><span class="num">10</span><span><span class="ttl">Locators, the bar and comments in the viewer and Files</span><span class="files">js/quote.js · js/comments.js · js/viewer.js · js/files.js · css/base.css · tests/test_pages_browser.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>interfaces</h4>
