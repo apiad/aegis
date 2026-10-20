@@ -7,7 +7,8 @@
 // locator: {heading, id, css}, text}} to the parent on a gesture by the
 // person: "menu" on a right-click (not with Shift) or a touch held 500 ms
 // without moving 8 px, "select" when a selection settles, "clear" when it
-// goes. The host draws the menu or the bar in its own document, and acts only
+// goes or the page scrolls. A field, a link, an image or a press with no
+// text under it keeps the browser's own menu. The host draws the menu or the bar in its own document, and acts only
 // on an item the person picks there: a message proposes, nothing more. While
 // the host says its menu is open (aegis/point-open, aegis/point-closed), the
 // element is outlined.
@@ -18,6 +19,7 @@
   const LONG_PRESS = 500;
   const SLOP = 8;
   const TEXT_MAX = 300;
+  const NATIVE = "input, textarea, select, [contenteditable], a[href], img, video, audio, canvas, svg";
   const post = (params) => window.parent.postMessage({ jsonrpc: "2.0", method: "aegis/point", params }, "*");
 
   const elOf = (n) => (n && n.nodeType === 1 ? n : n?.parentElement) || document.body;
@@ -66,19 +68,32 @@
   let pointed = null; // the element the last menu was about
   let outline = null; // its own outline, to put back
 
-  function menuAt(target, x, y, touch) {
+  // What a press at x, y on `target` is about: the selection under it, else
+  // the element and its text. Null leaves the browser its own menu: a field
+  // (paste), a link, an image or a canvas, the page's empty space, no text.
+  function aboutAt(target, x, y) {
     const r = selected();
-    const inside = r && [...r.getClientRects()].some((b) => x >= b.left && x <= b.right && y >= b.top && y <= b.bottom);
-    const el = inside ? elOf(r.commonAncestorContainer) : elOf(target);
+    if (r && [...r.getClientRects()].some((b) => x >= b.left && x <= b.right && y >= b.top && y <= b.bottom)) {
+      return { el: elOf(r.commonAncestorContainer), text: r.toString() };
+    }
+    const el = elOf(target);
+    if (el === document.body || el === document.documentElement || el.closest(NATIVE)) return null;
+    const text = (el.innerText || el.textContent || "").trim();
+    return text ? { el, text } : null;
+  }
+
+  function menuAt({ el, text }, x, y, touch) {
     pointed = el;
-    post({ kind: "menu", x, y, touch, ...locate(el, inside ? r.toString() : el.innerText || el.textContent || "") });
+    post({ kind: "menu", x, y, touch, ...locate(el, text) });
   }
 
   document.addEventListener("contextmenu", (ev) => {
     if (ev.shiftKey) return;
+    if (swallow) return ev.preventDefault(); // the long press already reported it
+    const about = aboutAt(ev.target, ev.clientX, ev.clientY);
+    if (!about) return;
     ev.preventDefault();
-    if (swallow) return; // the long press already reported it
-    menuAt(ev.target, ev.clientX, ev.clientY, false);
+    menuAt(about, ev.clientX, ev.clientY, false);
   });
 
   let timer = null;
@@ -87,12 +102,15 @@
   document.addEventListener("pointerdown", (ev) => {
     swallow = false;
     clearTimeout(timer);
-    if (ev.pointerType === "mouse") return;
+    if (ev.pointerType === "mouse" || ev.target.closest?.(NATIVE)) return;
     at = [ev.clientX, ev.clientY];
     const target = ev.target;
     timer = setTimeout(() => {
+      const about = aboutAt(target, at[0], at[1]);
+      if (!about) return;
       swallow = true;
-      menuAt(target, at[0], at[1], true);
+      window.focus(); // the press's frame, as a click's would be: the host checks it
+      menuAt(about, at[0], at[1], true);
     }, LONG_PRESS);
   });
   document.addEventListener("pointermove", (ev) => {
@@ -135,6 +153,26 @@
     clearTimeout(quiet);
     quiet = setTimeout(report, 300);
   });
+
+  // Esc closes the host's menu: the focus stays in this frame while it is open.
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && (pointed || shown)) {
+      shown = "";
+      post({ kind: "clear" });
+    }
+  });
+
+  // The host draws at fixed points: a scroll here moves the element away
+  // from its menu or its bar, so they close.
+  document.addEventListener(
+    "scroll",
+    () => {
+      if (!pointed && !shown) return;
+      shown = "";
+      post({ kind: "clear" });
+    },
+    true,
+  );
 
   window.addEventListener("message", (ev) => {
     if (ev.source !== window.parent || ev.data?.jsonrpc !== "2.0") return;

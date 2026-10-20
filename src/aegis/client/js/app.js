@@ -3708,16 +3708,29 @@ function pointItems({ locator, text, to, comment, leave = () => {} }) {
 // menu at the point it reports, or the bar over its selection, drawn here in
 // the frame's place. Which file, session and tray it belongs to comes from
 // where the frame is: Files' page, the viewer's, or a card's in the session.
+//
+// A page's script may post at any time. A gesture there leaves the pointer
+// over the frame or the focus in it (a long press focuses its frame), so a
+// post while the person types in the composer opens nothing. A page can take
+// the focus by script, so that is not proof: what keeps a made-up proposal
+// harmless is that its menu never takes the focus, and only a click on an
+// item writes anything. A page scrolled, Esc in it, or a selection gone
+// closes only what that frame drew.
 function pagePoint(frame, { kind, x, y, rect, touch, locator = {}, text = "" }) {
-  if (kind === "clear") return cmenu.framed() && cmenu.unbar();
+  if (kind === "clear") {
+    if (cmenu.current()?.target === frame) cmenu.close();
+    return cmenu.framed(frame) && cmenu.unbar();
+  }
+  const gesture = frame.matches(":hover") || document.activeElement === frame;
+  if (!gesture || !frame.checkVisibility({ visibilityProperty: true })) return;
   const files = frame.closest("#files");
   const inViewer = frame.closest("#viewer");
   const path = files
     ? filesView.path
-    : frame.dataset.artifact || decodeURIComponent(new URL(frame.src, location.href).pathname.split("/").pop());
+    : frame.dataset.artifact || (inViewer && viewer.pathOf()) || decodeURIComponent(new URL(frame.src, location.href).pathname.split("/").pop());
   const tray = files ? filesView.tray : inViewer ? viewer.tray : null;
   const quote = String(text).trim();
-  if (!path || !quote || !frame.checkVisibility()) return;
+  if (!path || !quote) return;
   const where = [locator.heading && `§ ${locator.heading}`, locator.css].filter(Boolean).join(" › ");
   const items = pointItems({
     locator: `\`${path}\`${where ? ` ${where}` : ""}`,
@@ -3729,11 +3742,14 @@ function pagePoint(frame, { kind, x, y, rect, touch, locator = {}, text = "" }) 
   const box = frame.getBoundingClientRect();
   if (kind === "select" && rect) {
     const r = new DOMRect(box.left + rect.left, box.top + rect.top, rect.right - rect.left, rect.bottom - rect.top);
-    return cmenu.barAt(items, r);
+    return cmenu.barAt(items, r, frame);
   }
   if (kind !== "menu") return;
   artifacts.tell(frame, "aegis/point-open");
-  cmenu.open({ groups: [items] }, { x: box.left + x, y: box.top + y, touch }, frame, { onClose: () => artifacts.tell(frame, "aegis/point-closed") });
+  cmenu.open({ groups: [items] }, { x: box.left + x, y: box.top + y, touch }, frame, {
+    focus: false,
+    onClose: () => artifacts.tell(frame, "aegis/point-closed"),
+  });
 }
 
 // `text` into session `key`'s composer, going there first; Files' unsaved

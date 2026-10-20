@@ -235,21 +235,6 @@ def frame_of(pg, sel: str):
     return frame
 
 
-def select_in(frame, css: str, word: str) -> None:
-    frame.evaluate(
-        """([css, word]) => {
-          const el = document.querySelector(css);
-          const n = [...el.childNodes].find((c) => c.nodeType === 3 && c.data.includes(word));
-          const r = document.createRange();
-          r.setStart(n, n.data.indexOf(word));
-          r.setEnd(n, n.data.indexOf(word) + word.length);
-          getSelection().removeAllRanges();
-          getSelection().addRange(r);
-        }""",
-        [css, word],
-    )
-
-
 def test_a_right_click_in_a_sent_page_asks_about_that_element(server, page):  # noqa: F811
     (server.root / "page.html").write_text(PAGE)
     page.goto(server.url)
@@ -268,6 +253,10 @@ def test_a_right_click_in_a_sent_page_asks_about_that_element(server, page):  # 
     # The element is outlined while the menu is open, and not after.
     outline = "document.getElementById('p1').style.outline"
     assert "solid" in frame.evaluate(outline)
+    # A page's menu takes no focus: a key never picks one of its items.
+    assert page.evaluate("document.activeElement.closest('.cmenu')") is None
+    page.keyboard.press("Enter")
+    assert page.input_value("#input") == "later"
     page.keyboard.press("Escape")
     page.wait_for_selector(".cmenu", state="detached")
     frame.wait_for_function(f"{outline} === ''")  # the host's message lands after
@@ -290,7 +279,9 @@ def test_comments_in_a_page_and_an_artifact(server, page):  # noqa: F811
     page.click(".cmenu [data-id=comment]")
     page.keyboard.type("one")
     # A selection in the page gets the host's bar, over it.
-    select_in(frame, "p:not([id])", "plum")
+    frame.locator("p:not([id])").dblclick(
+        position={"x": 8, "y": 6}
+    )  # a selection made by hand
     page.wait_for_selector(".sbar [data-id=comment]")
     page.click(".sbar [data-id=comment]")
     page.keyboard.type("two")
@@ -366,4 +357,97 @@ def test_a_long_press_inside_a_page_on_a_phone(server, page, browser):  # noqa: 
     phone.click(".cmenu [data-id=ask]")
     assert phone.input_value("#input").startswith("`page.html` § Setup › #p1\n> kiwi")
     ctx.close()
+    assert page.errors == []
+
+
+def test_a_page_message_without_a_gesture_does_nothing(server, page):  # noqa: F811
+    """A page's script can post aegis/point at any time; with no press in the
+    frame no menu opens, so the composer keeps the focus and the typing."""
+    (server.root / "page.html").write_text(PAGE)
+    page.goto(server.url)
+    spawn(page)
+    send(page, 1, ["page.html"])
+    frame = frame_of(page, ".row.file iframe")
+    page.click("#input")
+    page.keyboard.type("hello")
+    for kind in ("menu", "select"):
+        frame.evaluate(
+            """(kind) => parent.postMessage({ jsonrpc: "2.0", method: "aegis/point", params: {
+              kind, x: 5, y: 5, rect: { left: 0, top: 0, right: 9, bottom: 9 },
+              locator: { css: "#p1" }, text: "made up" } }, "*")""",
+            kind,
+        )
+    page.wait_for_timeout(400)
+    assert page.locator(".cmenu, .sbar").count() == 0
+    page.keyboard.type(" there")
+    assert page.input_value("#input") == "hello there"
+    assert page.errors == []
+
+
+FORM = (
+    "<html><body><h2>Form</h2><p id=p1>kiwi</p><input id=f value=typed>"
+    "<textarea id=t>a draft</textarea><a id=a href='#x'>a link</a>"
+    "<img id=i width=40 height=40 src='data:image/gif;base64,R0lGODlhAQABAAAAACw='>"
+    "<script>addEventListener('contextmenu', (e) =>"
+    " (document.title = String(e.defaultPrevented)))</script></body></html>"
+)
+
+
+def test_a_right_click_on_a_field_or_an_image_keeps_the_browsers_menu(
+    server,  # noqa: F811
+    page,
+):
+    (server.root / "form.html").write_text(FORM)
+    page.goto(server.url)
+    spawn(page)
+    send(page, 1, ["form.html"])
+    view(page, "iframe")
+    frame = frame_of(page, "#viewer iframe")
+    for sel in ("#f", "#t", "#a", "#i"):
+        frame.locator(sel).click(button="right")
+        page.wait_for_timeout(300)
+        assert page.locator(".cmenu").count() == 0, sel
+        assert frame.evaluate("document.title") == "false", sel
+    frame.locator("#p1").click(button="right")
+    page.wait_for_selector(".cmenu [data-id=ask]")
+    assert frame.evaluate("document.title") == "true"
+    assert page.errors == []
+
+
+def test_a_scroll_inside_the_page_closes_its_menu_and_bar(server, page):  # noqa: F811
+    tall = PAGE.replace("</body>", "<div style='height:3000px'></div></body>")
+    (server.root / "page.html").write_text(tall)
+    page.goto(server.url)
+    spawn(page)
+    send(page, 1, ["page.html"])
+    view(page, "iframe")
+    frame = frame_of(page, "#viewer iframe")
+    frame.locator("#p1").click(button="right")
+    page.wait_for_selector(".cmenu")
+    frame.evaluate("scrollBy(0, 40)")
+    page.wait_for_selector(".cmenu", state="detached")
+    frame.evaluate("scrollTo(0, 0)")
+    page.wait_for_timeout(300)  # that scroll's own clear lands first
+    frame.locator("p:not([id])").dblclick(position={"x": 8, "y": 6})
+    page.wait_for_selector(".sbar")
+    frame.evaluate("scrollBy(0, 40)")
+    page.wait_for_selector(".sbar", state="detached")
+    assert page.errors == []
+
+
+def test_comments_on_a_page_in_files_go_to_the_last_session(server, page):  # noqa: F811
+    (server.root / "page.html").write_text(PAGE)
+    page.goto(server.url)
+    key = spawn(page)
+    page.fill("#input", "later")
+    page.goto(f"{server.url.split('#')[0]}#files=page.html")
+    frame = frame_of(page, ".v-files .fview iframe")
+    frame.locator("#p1").click(button="right")
+    page.click(".cmenu [data-id=comment]")
+    page.keyboard.type("ripe")
+    page.locator(".v-files .ctray [data-act=send]").click()
+    page.wait_for_function(f"location.hash === '#s={key}'")
+    assert page.input_value("#input") == (
+        "Comments on page.html:\n1. § Setup › #p1\n   > kiwi\n   ripe\n\nlater"
+    )
     assert page.errors == []

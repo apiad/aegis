@@ -981,9 +981,13 @@ the client's version. In the frame it reports a right-click, a long press and a
 selection, with a locator (heading, id or CSS path) and the text, as an
 `aegis/point` message; the host bridge takes that one method from any frame it
 mounted and draws the menu or the selection bar in its own document
-(`app.js`, `pagePoint`). A page can make a menu appear, never put text in a
-composer: that takes an item the person picks in the host. A page whose own
-CSP blocks the script simply has no menu. Comments on files and pages live in
+(`app.js`, `pagePoint`), only while the pointer is over that frame or the
+focus is in it. A page's script can still take the focus and make a menu
+appear; it can never put text in a composer, because that menu takes no
+focus and only a click on one of its items writes. A field, a link, an image
+or a press with no text keeps the browser's own menu, and a scroll or Esc in
+the page closes what the host drew for it. A page whose own CSP blocks the
+script simply has no menu. Comments on files and pages live in
 the browser's storage until sent, and the server never sees them
 (`client/js/comments.js`).
 

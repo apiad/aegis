@@ -385,7 +385,9 @@ export class Viewer {
     drawArtifact(e, { bar, body, acts, popout: e.status === "live" ? popButton(e.id) : null });
     acts.append(this.closeButton());
     bar.append(acts);
-    this.newTray(fileUrl(e.detail?.url), e.id);
+    // By the artifact's id: a page the agent sends again is a new file, and
+    // the comments on it so far stay.
+    this.newTray(`artifact:${e.id}`, e.id);
     if (e.status === "live") hold(e.id, (next) => this.onArtifact(next));
     else hold(e.id, null, e);
   }

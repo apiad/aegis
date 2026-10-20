@@ -147,8 +147,9 @@ function el(tag, cls, text) {
 }
 
 // `at` is a point (a right-click, a long press) or an anchor to drop under.
-// `onClose` runs when it closes, however it does.
-export function open(menu, at, target, { onClose } = {}) {
+// `onClose` runs when it closes, however it does. `focus: false` leaves the
+// focus where it is (a menu a page proposed: keys never pick its items).
+export function open(menu, at, target, { onClose, focus = true } = {}) {
   close();
   const node = el("div", "cmenu");
   node.setAttribute("role", "menu");
@@ -224,7 +225,7 @@ export function open(menu, at, target, { onClose } = {}) {
   node.addEventListener("focusout", (ev) => {
     if (!node.contains(ev.relatedTarget) && cur?.node === node) close();
   });
-  items()[0]?.focus({ preventScroll: true });
+  if (focus) items()[0]?.focus({ preventScroll: true });
 }
 
 // The selection bar: a non-empty selection inside one row's body (clampToRow)
@@ -380,19 +381,25 @@ export function unbarHidden() {
   if (!row?.checkVisibility({ visibilityProperty: true })) unbar();
 }
 
-// A bar for a selection the page cannot see, inside a sandboxed frame
+// A bar for a selection the page cannot see, inside sandboxed frame `owner`
 // (pagepoint.js reports it): over `rect`, in this page's coordinates, until
-// the frame clears it, a press elsewhere or another bar.
-export function barAt(items, rect) {
+// the frame clears it, a press elsewhere, a scroll or a resize here, or
+// another bar. The rect is fixed, so anything that moves the frame ends it.
+export function barAt(items, rect, owner) {
   if (!items?.length) return unbar();
   showBar(items, { getClientRects: () => [rect], toString: () => "" }, null, null);
+  bar_.owner = owner;
   const node = bar_.node;
   const away = (ev) => {
-    if (node.contains(ev.target)) return;
+    if (ev.type === "pointerdown" && node.contains(ev.target)) return;
     document.removeEventListener("pointerdown", away, true);
+    document.removeEventListener("scroll", away, true);
+    removeEventListener("resize", away);
     if (bar_?.node === node) unbar();
   };
   document.addEventListener("pointerdown", away, true);
+  document.addEventListener("scroll", away, true);
+  addEventListener("resize", away);
 }
 
 // True when one was shown.
@@ -404,8 +411,8 @@ export function unbar() {
   return true;
 }
 
-// True when the bar shown is a frame's (barAt).
-export const framed = () => !!bar_ && !bar_.root;
+// True when the bar shown is frame `owner`'s (barAt).
+export const framed = (owner) => !!bar_ && !bar_.root && bar_.owner === owner;
 
 // A scroll of `scroller`: one it made itself (ownScroll() true, a transcript
 // following its bottom) moves the bar and an open menu with their anchor; one
