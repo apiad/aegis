@@ -23,6 +23,7 @@ import re
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from ..journal import db, paths
 from . import gh, probe
@@ -191,10 +192,10 @@ class Repos:
                 con.close()
 
     def _build(self, con, log_id: str) -> dict:
-        repos: dict[str, dict] = {}
+        repos: dict[str, dict[str, Any]] = {}
 
         def at(top: str, main: str, ts: float) -> dict:
-            r = repos.get(top)
+            r: dict[str, Any] | None = repos.get(top)
             if r is None:
                 r = repos[top] = {
                     "top": top,
@@ -204,7 +205,7 @@ class Repos:
                     "commits": [],
                     "prs": {},
                 }
-            r["ts"] = max(float(r["ts"]), ts)
+            r["ts"] = max(r["ts"], ts)
             return r
 
         if con is not None:
