@@ -183,6 +183,18 @@ def test_three_comments_become_one_message_and_vanish(server, page):  # noqa: F8
     page.keyboard.type("second")
     tray = page.locator("#viewer .ctray")
     assert tray.locator(".cn").inner_text() == "3 comments"
+    # The note is themed like aegis's other boxes, not the browser's white.
+    assert page.evaluate(
+        """() => {
+          const probe = document.createElement("div");
+          probe.style.background = "var(--bg)";
+          document.querySelector("#a2").append(probe);
+          const want = getComputedStyle(probe).backgroundColor;
+          probe.remove();
+          const note = document.querySelector("#viewer .ctray .note");
+          return getComputedStyle(note).backgroundColor === want;
+        }"""
+    )
     assert page.locator("#viewer .pin").count() == 3
     # Removing one and making it again keeps the order of making.
     tray.locator("li").nth(2).locator(".rm").click()

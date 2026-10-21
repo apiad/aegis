@@ -1944,6 +1944,7 @@ body{background:#000}
 #a2 .ctray li{display:flex;align-items:center;gap:8px;padding:2px 0}
 #a2 .ctray li .n{min-width:18px;height:18px;border-radius:9px;background:var(--accent);color:var(--on-accent);text-align:center;line-height:18px;font-size:11px}
 #a2 .ctray li .loc{max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-family:var(--font-mono)}
-#a2 .ctray li .note{flex:1;min-width:0}
+#a2 .ctray li .note{flex:1;min-width:0;padding:3px 8px;background:var(--bg);border:1px solid var(--rule);border-radius:var(--r);color:var(--strong);outline:none}
+#a2 .ctray li .note:focus{border-color:var(--accent)}
 #a2 .pin{position:absolute;transform:translate(-110%,-20%);user-select:none;pointer-events:none}
 #a2 .pin::before{content:attr(data-n);display:block;min-width:16px;height:16px;border-radius:8px;background:var(--accent);color:var(--on-accent);text-align:center;font:600 10px/16px var(--font-chrome)}
