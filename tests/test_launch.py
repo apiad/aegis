@@ -110,3 +110,12 @@ def test_launch_calls_asyncio_through_its_module(monkeypatch):
 
     asyncio.run(go())
     assert seen == [("true",)]
+
+
+def test_browser_hands_the_url_to_webbrowser(monkeypatch):
+    import webbrowser
+
+    seen = []
+    monkeypatch.setattr(webbrowser, "open", lambda url: seen.append(url) or True)
+    launch.browser("http://127.0.0.1:1/")
+    assert seen == ["http://127.0.0.1:1/"]

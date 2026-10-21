@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
-import webbrowser
 from pathlib import Path
 
 from websockets.exceptions import WebSocketException
@@ -80,7 +79,7 @@ def find_browser(asked: str | None) -> str | None:
 def open_window(url: str, browser: str | None) -> None:
     exe = find_browser(browser)
     if exe is None:
-        webbrowser.open(url)
+        launch.browser(url)
         return
     launch.detach([exe, f"--app={url}"])
 
