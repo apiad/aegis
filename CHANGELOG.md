@@ -5,6 +5,13 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [2.13.1] - 2026-10-21
+
+### Fixed
+
+- **`/whats-new` names the file glyphs that shipped in 2.13.0.** The Files tree and the Alt+O picker show a glyph for each folder, open or closed, and for each file's kind: Markdown, code, config, image, PDF, audio, video, archive, or plain. 2.13.0's own notes left the entry out.
+  help: files#the-folder-tree
+
 ## [2.13.0] - 2026-10-21
 
 ### Added
