@@ -395,7 +395,15 @@ export class Canvas {
   tabMenu(b) {
     const id = b.dataset?.pane;
     if (!id || id === TRANSCRIPT || !this.writable) return null;
-    return { groups: [[{ id: "undock", label: "Undock", icon: "close", run: () => this.undock(id) }]] };
+    const undock = { id: "undock", label: "Undock", icon: "close", run: () => this.undock(id) };
+    // A phone draws every window's panes in one strip: no window to move to.
+    const move = !this.merged() && {
+      id: "move",
+      label: "Move to window…",
+      icon: "swap",
+      run: () => menu.open({ groups: [this.moveItems(id)] }, { anchor: b }, b),
+    };
+    return { groups: [[undock, move].filter(Boolean)] };
   }
 
   // Close the open menu when its target sits in an element `gone` picks. A
@@ -521,14 +529,19 @@ export class Canvas {
     b.setAttribute("aria-label", "Move to window");
     b.addEventListener("click", () => {
       if (menu.current()?.target === b) return menu.close();
-      const ws = this.windows();
-      const items = ws
-        .filter((w) => w.n !== this.n)
-        .map((w) => ({ id: `window-${w.n}`, label: `Window ${w.n}`, icon: "window", run: () => this.toWindow(id, w.n) }));
-      if (ws.length < MAX_WINDOWS) items.push({ id: "new-window", label: "New window", icon: "open", run: () => this.toWindow(id, "new") });
-      menu.open({ groups: [items] }, { anchor: b }, b);
+      menu.open({ groups: [this.moveItems(id)] }, { anchor: b }, b);
     });
     return b;
+  }
+
+  // Move to window's choices for pane `id`: every other window, and a new one.
+  moveItems(id) {
+    const ws = this.windows();
+    const items = ws
+      .filter((w) => w.n !== this.n)
+      .map((w) => ({ id: `window-${w.n}`, label: `Window ${w.n}`, icon: "window", run: () => this.toWindow(id, w.n) }));
+    if (ws.length < MAX_WINDOWS) items.push({ id: "new-window", label: "New window", icon: "open", run: () => this.toWindow(id, "new") });
+    return items;
   }
 
   undockButton(id) {

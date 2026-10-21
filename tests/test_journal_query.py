@@ -225,3 +225,41 @@ def test_the_fuzzy_walk_goes_on_past_a_batch_newest_first(tmp_path, monkeypatch)
     _put(con, 7, text="other")
     got = [h.text for h, _ in query.matching(con, db.Query(kinds=["note"]), "ent", "/")]
     assert got == [f"entry {i}" for i in reversed(range(7))]
+
+
+def test_a_rows_url_is_its_commit_on_github_or_the_pr_its_text_names(tmp_path):
+    import subprocess
+
+    def repo(name, origin=None):
+        d = tmp_path / name
+        d.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=d, check=True)
+        if origin:
+            subprocess.run(["git", "remote", "add", "origin", origin], cwd=d, check=True)
+        return str(d)
+
+    gh, plain, other = (
+        repo("gh", "git@github.com:own/thing.git"),
+        repo("plain"),
+        repo("other", "https://gitlab.com/own/thing.git"),
+    )
+
+    def row(kind, text, at):
+        hit = db.Hit(1, NOON, "L", "h", kind, "", text, None, at, False, [])
+        return render.rows([hit], "/root", set())[0]
+
+    assert (
+        row("commit", "1a2b3c4 feat: x · main", gh)["url"]
+        == "https://github.com/own/thing/commit/1a2b3c4"
+    )
+    assert row("commit", "1a2b3c4 feat: x · main", plain)["url"] is None
+    assert row("commit", "1a2b3c4 feat: x · main", other)["url"] is None
+    assert row("commit", "1a2b3c4 feat: x · main", None)["url"] is None
+    pr = "opened https://github.com/a/b/pull/12 · Add x, after #9"
+    assert row("pr", pr, None)["url"] == "https://github.com/a/b/pull/12"
+    assert row("note", "chose sqlite", gh)["url"] is None
+    https = repo("https", "https://github.com/own/web")
+    assert (
+        row("commit", "ff00 fix: y", https)["url"]
+        == "https://github.com/own/web/commit/ff00"
+    )

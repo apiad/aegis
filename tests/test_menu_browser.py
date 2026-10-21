@@ -9,7 +9,15 @@ import time
 
 import pytest
 
-from .test_browser import EXPECTED_CONSOLE, browser, server, spawn  # noqa: F401
+from .test_browser import (  # noqa: F401
+    EXPECTED_CONSOLE,
+    PICK,
+    _artifact,
+    browser,
+    server,
+    spawn,
+    turns_done,
+)
 
 pytestmark = [pytest.mark.browser, pytest.mark.slow]
 
@@ -611,3 +619,142 @@ def test_sleep_asks_when_it_cannot_check_what_would_die(server, browser):  # noq
     assert page.locator(card(a) + ".asleep").count() == 0
     assert page.errors == []
     ctx.close()
+
+
+# -- journal entries, sent cards, canvas tabs and archive rows --------------------
+
+
+def mcp(pg, n, tool, args):
+    pg.fill("#input", f"/mcp {tool} {json.dumps(args)}")
+    pg.press("#input", "Enter")
+    turns_done(pg, n)
+
+
+def test_a_journal_entry_opens_its_commit_and_goes_to_its_session(
+    server,  # noqa: F811
+    page,
+    tmp_path,
+):
+    import subprocess
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git = ["git", "-C", str(repo)]
+    subprocess.run([*git, "init", "-q"], check=True)
+    subprocess.run(
+        [*git, "remote", "add", "origin", "git@github.com:own/thing.git"], check=True
+    )
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    key = spawn(
+        page,
+        f"/sh cd {repo} && echo y > c.py && git add c.py && git -c user.name=n"
+        " -c user.email=n@x commit -m 'add c'",
+    )
+    turns_done(page, 1)
+    sha = subprocess.run(
+        [*git, "rev-parse", "--short", "HEAD"], capture_output=True, text=True
+    ).stdout.strip()
+    page.evaluate("window.open = (u) => { window.opened = u; }")
+    page.keyboard.press("Alt+KeyL")
+    page.wait_for_selector("#a2[data-view=journal]")
+    commit = page.locator(".journal .jrow.k-commit").first
+    commit.wait_for()
+    commit.click(button="right")
+    assert item_ids(page) == ["url", "session"]
+    assert page.locator(".cmenu [data-id=url]").inner_text().strip() == "Open commit"
+    page.click(".cmenu [data-id=url]")
+    assert page.evaluate("window.opened") == (
+        f"https://github.com/own/thing/commit/{sha}"
+    )
+
+    turn = page.locator(".journal .jrow.k-turn").first
+    turn.click(button="right")
+    assert item_ids(page) == ["session"]
+    page.click(".cmenu [data-id=session]")
+    page.wait_for_function(f"location.hash.startsWith('#s={key}')")
+    assert page.errors == []
+
+
+def test_a_sent_cards_menu_docks_opens_a_window_and_downloads(server, page):  # noqa: F811
+    (server.root / "r.md").write_text("# One\n")
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page)
+    mcp(page, 1, "file_send", {"paths": ["r.md"]})
+    fkey = page.locator(".row.file .fbar .dock").get_attribute("data-dock")
+    page.click(".row.file .fbar .fn", button="right")
+    assert item_ids(page) == ["dock-right", "dock-left", "window", "download"]
+    with page.expect_download() as got:
+        page.click(".cmenu [data-id=download]")
+    assert got.value.suggested_filename == "r.md"
+
+    page.click(".row.file .fbar .fn", button="right")
+    page.click(".cmenu [data-id=dock-left]")
+    pane = page.locator(f'#canvas .pane[data-pane="{fkey}"]')
+    pane.wait_for()
+    page.wait_for_function(
+        "k => document.querySelector(`#canvas .pane[data-pane='${k}']`).getBoundingClientRect().x"
+        " < document.querySelector('#tr-pane').getBoundingClientRect().x",
+        arg=fkey,
+    )
+    # Docked here: no Dock; a new window still takes it.
+    page.click(".row.file .fbar .fn", button="right")
+    assert item_ids(page) == ["window", "download"]
+    with page.context.expect_page() as opened:
+        page.click(".cmenu [data-id=window]")
+    two = opened.value
+    two.wait_for_function(f"location.hash === '#w=2:{sid}'")
+    two.locator(f'#canvas .pane[data-pane="{fkey}"]').wait_for()
+
+    aid, _ = _artifact(page, server, PICK, 1)
+    page.click(".row.artifact .fbar", button="right", position={"x": 60, "y": 10})
+    assert item_ids(page) == ["dock-right", "dock-left", "window"]
+    page.click(".cmenu [data-id=dock-right]")
+    page.locator(f'#canvas .pane[data-pane="{aid}"]').wait_for()
+    assert page.errors == []
+
+
+def test_a_canvas_tab_offers_undock_and_move_to_window(server, page):  # noqa: F811
+    (server.root / "r.md").write_text("# One\n")
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    sid = spawn(page)
+    mcp(page, 1, "file_send", {"paths": ["r.md"]})
+    fkey = page.locator(".row.file .fbar .dock").get_attribute("data-dock")
+    page.click(".row.file .fbar .dock")
+    page.locator(f'#canvas .pane[data-pane="{fkey}"]').wait_for()
+    page.set_viewport_size({"width": 820, "height": 800})
+    tab = page.locator(f'#canvas .ptabs button[data-pane="{fkey}"]')
+    tab.wait_for()
+    tab.click(button="right")
+    assert item_ids(page) == ["undock", "move"]
+    page.click(".cmenu [data-id=move]")
+    assert item_ids(page) == ["new-window"]
+    with page.context.expect_page() as opened:
+        page.click(".cmenu [data-id=new-window]")
+    opened.value.wait_for_function(f"location.hash === '#w=2:{sid}'")
+    tab.wait_for(state="detached")
+    page.set_viewport_size({"width": 1280, "height": 800})
+    assert page.errors == []
+
+
+def test_an_archive_rows_menu_reads_and_reopens(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    key = spawn(page, "hello")
+    turns_done(page, 1)
+    page.fill("#input", "/archive")
+    page.press("#input", "Enter")
+    page.goto(f"{server.url.split('#')[0]}#fleet")
+    row = page.locator(f"#arch-list tr[data-id='{key}']")
+    row.wait_for()
+    row.locator("td").first.click(button="right")
+    assert item_ids(page) == ["read", "reopen"]
+    page.click(".cmenu [data-id=read]")
+    page.wait_for_function(f"location.hash === '#read={key}'")
+    page.goto(f"{server.url.split('#')[0]}#fleet")
+    row.locator("td").first.click(button="right")
+    page.click(".cmenu [data-id=reopen]")
+    page.wait_for_selector(f"#cards .card[data-id='{key}']", state="attached")
+    assert page.errors == []

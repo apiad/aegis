@@ -4,6 +4,7 @@
 // (src/aegis/journal/render.py); this module draws and asks, nothing more.
 
 import { entryIcon, icon } from "./glyphs.js";
+import * as menu from "./menu.js";
 
 const KINDS = ["turn", "commit", "pr", "plan", "note", "session"];
 const PAGE = 50;
@@ -149,6 +150,7 @@ export class Journal {
     this.count = el("div", "jcount");
     this.count.setAttribute("aria-live", "polite");
     this.list = el("div", "jlist");
+    menu.attach(this.list, (t) => this.menuFor(t), { selector: ".jrow" });
     this.moreBtn = el("button", "btn jmore", `Show ${PAGE} more`);
     this.moreBtn.hidden = true;
     this.moreBtn.addEventListener("click", () => this.load(true));
@@ -230,6 +232,21 @@ export class Journal {
     if (res.counts) this.total = Object.values(res.counts).reduce((a, b) => a + b, 0);
     this.chips();
     this.render(p);
+  }
+
+  // An entry's menu (spec 06): its commit or pull request on GitHub, when the
+  // server found one (render.py, url), and its session.
+  menuFor(row) {
+    const r = row?.dataset && this.rows.find((x) => String(x.id) === row.dataset.id);
+    if (!r) return null;
+    const url = r.url && {
+      id: "url",
+      label: r.kind === "pr" ? "Open PR" : "Open commit",
+      icon: "open",
+      run: () => window.open(r.url, "_blank", "noopener"),
+    };
+    const go = { id: "session", label: "Go to session", icon: "arrow", run: () => this.onOpen(r) };
+    return { groups: [[url, go].filter(Boolean)] };
   }
 
   render(p, failed = null) {

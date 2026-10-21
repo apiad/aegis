@@ -3,10 +3,12 @@ Python decides every field a row shows; the client only draws them."""
 
 from __future__ import annotations
 
+import functools
 import os
+import re
 import time
 
-from . import when
+from . import paths, when
 from .db import Hit
 
 # A glyph is the name of a symbol in the client's sprite (js/glyphs.js), as
@@ -21,6 +23,27 @@ GLYPH = {
     "session": "window",
 }
 SHOWN = 3
+# A remote on GitHub, over ssh or https: its owner/repo.
+GITHUB = re.compile(r"github\.com[:/]([\w.-]+/[\w.-]+?)(?:\.git)?/?$")
+PULL = re.compile(r"https://github\.com/[\w.-]+/[\w.-]+/pull/\d+")
+
+
+@functools.cache
+def _github(repo: str) -> str | None:
+    """The https URL of ``repo``'s origin on GitHub, or None. Cached for the
+    server's life: a row asks once per repo, and git runs for the first."""
+    out = paths._git(["remote", "get-url", "origin"], repo)
+    m = GITHUB.search(out.strip()) if out else None
+    return f"https://github.com/{m.group(1)}" if m else None
+
+
+def _url(h: Hit, commit: str) -> str | None:
+    """Where the row's menu opens it: a commit on its repo's GitHub remote, or
+    the first pull request URL a row's text carries."""
+    if commit and h.repo and (base := _github(h.repo)):
+        return f"{base}/commit/{commit}"
+    m = PULL.search(h.text) if h.kind == "pr" else None
+    return m.group(0) if m else None
 
 
 def shown(full: str, root: str) -> str:
@@ -106,6 +129,7 @@ def rows(
                 "more": max(0, len(h.paths) - SHOWN),
                 "source": h.source,
                 "marks": text_marks,
+                "url": _url(h, commit),
             }
         )
     return out

@@ -2334,6 +2334,25 @@ async function loadArchive(more = false) {
   drawArchive();
 }
 
+// An archive row's menu: its own Read and Reopen buttons (fleet.js).
+cmenu.attach(
+  $("arch-list"),
+  (t) => {
+    const read = t.querySelector?.("button.read");
+    const again = t.querySelector?.("button.reopen");
+    if (!t.dataset?.id || !read) return null;
+    return {
+      groups: [
+        [
+          { id: "read", label: "Read", icon: "book", run: () => read.click() },
+          again && { id: "reopen", label: "Reopen", icon: "again", run: () => again.click() },
+        ].filter(Boolean),
+      ],
+    };
+  },
+  { selector: "tr[data-id]" },
+);
+
 function drawArchive() {
   renderArchive($("arch-list"), archived.filter(kindShown), {
     onReopen: reopen,
@@ -4077,12 +4096,30 @@ function rowMenu(t, ev) {
     const open = e.detail?.path && !s.server && { id: "open", label: "Open file", icon: "file", run: () => openToolFile(id) };
     const out = { id: "copyout", label: "Copy output", icon: "copy", key: "c", run: copy.run };
     groups = [[open, out], [own && reply, link]];
+  } else if (e.kind === "file" || e.kind === "artifact") {
+    const items = sentItems(t).filter(Boolean);
+    if (items.length) groups = [items];
   }
   groups = groups?.map((g) => g.filter(Boolean));
   if (!groups && !picked) return null;
   return { groups: [picked || [], ...(groups || [])] };
 }
 cmenu.attach($("entries"), rowMenu, { selector: ".row[data-id]" });
+
+// A sent card's menu, from the buttons its bar drew (entries.js): Dock shows
+// only where the person may dock it, and the shown file's key is on it.
+function sentItems(row) {
+  const dock = row.querySelector(".fbar .btn.dock");
+  const id = dock?.dataset.dock;
+  const can = id && !dock.hidden;
+  const dl = row.querySelector(".fbar a.btn.dl");
+  return [
+    can && { id: "dock-right", label: "Dock right", icon: "dock", run: () => canvas.dock(id) },
+    can && { id: "dock-left", label: "Dock left", icon: "dock", run: () => canvas.move(id, "left") },
+    id && canvas.writable && !canvas.merged() && { id: "window", label: "Open in new window", icon: "window", run: () => canvas.popOut(id) },
+    dl && { id: "download", label: "Download", icon: "latest", run: () => dl.click() },
+  ];
+}
 
 // A Read, Write or Edit row's file, in the viewer (file.peek, as its Show button).
 async function openToolFile(id) {
