@@ -1,13 +1,15 @@
 """Every process aegis starts, started here (#548).
 
-No other module calls ``subprocess``, ``asyncio.create_subprocess_*`` or the
-``os`` process calls; ``tests/test_launch_only.py`` fails if one does. The
+No other module starts a process, by ``subprocess``, asyncio's spawns, the
+``os`` and ``pty`` process calls, ``webbrowser`` or ``multiprocessing``, whether
+it calls them or hands them to an executor; ``tests/test_launch_only.py`` fails
+if one does. The
 multi-user mode switches each child to its owner's Linux user and drops its
 capabilities, and that has to happen for every process or it protects nothing
 (docs/superpowers/specs/2026-10-21-linux-users-design.html, section 06), so
 there is one place to do it.
 
-A caller picks one of four shapes and keeps its own reading, timeout and kill
+A caller picks one of five shapes and keeps its own reading, timeout and kill
 logic:
 
 - ``child``: async, with pipes, optionally in a session's cgroup with the OOM
@@ -15,6 +17,8 @@ logic:
 - ``pty``: async, on a terminal that becomes the child's controlling terminal.
 - ``run``: sync, output captured, with a timeout. git, gh, systemctl.
 - ``detach``: sync, in a session of its own, never waited for.
+- ``browser``: a URL handed to the desktop's browser through ``webbrowser``,
+  which starts its own process.
 
 ``asyncio.create_subprocess_exec`` and ``subprocess.run``/``Popen`` are looked
 up on their modules at each call, so a test that patches them reaches every
@@ -25,6 +29,7 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
+import webbrowser
 from pathlib import Path
 
 from .cgroups import wrap
@@ -131,3 +136,9 @@ def detach(
         start_new_session=True,
         cwd=cwd,
     )
+
+
+def browser(url: str) -> None:
+    """``url`` opened by ``webbrowser``, which picks the desktop's browser and
+    starts it itself."""
+    webbrowser.open(url)
