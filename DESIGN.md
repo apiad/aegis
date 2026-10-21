@@ -30,15 +30,16 @@ while the server runs. Plugin hosts come later, in the order the vision spec
 gives.
 
 **A session outlives its process.** A session is live (a harness child, `claude`,
-`opencode serve` or `codex app-server`, is running), asleep (no process, the
+`opencode serve`, `codex app-server` or `cursor-agent acp`, is running), asleep (no process, the
 conversation kept), or archived (no process, no tab). An asleep session carries
 `asleep_why`: `slept` (Sleep or `session.stop`), `idle` (a park), `exited` (the
 harness ended on its own) or `server` (the server restarted under it). A meta
 written before that state says `stopped` or `parked`, and loads through
 `session.asleep_from`, so nothing on disk is migrated. Quiet is the other axis:
 it hides the tab and never touches the process. A prompt to an asleep session starts the harness again on the same
-conversation (`claude --resume`, `opencode serve` and the same session id, or
-`thread/resume` on the same Codex thread),
+conversation (`claude --resume`, `opencode serve` and the same session id,
+`thread/resume` on the same Codex thread, or `session/load` on the same Cursor
+session id),
 which prints nothing old, so the store and the fold simply continue. Shutdown, Sleep, Restart (`session.restart`: the
 process ends and a fresh one resumes the conversation, under the start lock), Archive and a park end a process.
 A park (park.py) happens only when ending the process kills nothing: no background
@@ -276,7 +277,14 @@ the only harness whose model, effort and sandbox travel with every turn, so only
 a new provider restarts it. Its process writes `aegis/*` lines of its own for what
 only a response carries (the version, the thread, each turn's model), and kills
 its process group after any exit, because a grandchild of a dead child held the
-thread's writer lease and the child's pipes. The parsers emit the same events, so
+thread's writer lease and the child's pipes. Cursor (`cursor/process.py`) is one
+`cursor-agent acp --trust` per session over ACP on stdio: `session/new` hands the
+session its own MCP server as a header (`mcpServers`), the only per-session
+channel Cursor offers, its model ids carry their effort so `set(effort)` only
+confirms one, and it has no cancel — an interrupt closes the turn with its own
+`aegis/turn_done` line, clears the queued prompts and kills the child quietly,
+while a prompt typed mid-turn waits in the driver, because a second
+`session/prompt` would cancel the running one. The parsers emit the same events, so
 the entry rules exist once. Token deltas, OpenCode's, Codex's and Claude's
 (`--include-partial-messages`), are the one thing folded and never stored: the
 part's closing update carries the whole text, so the live view is ahead of a
@@ -285,6 +293,10 @@ step and ordinal as its deltas; Claude's is the assistant line for that block, w
 deltas drew (`claude/stream.py`). OpenCode's and Codex's parts are stored
 opening too, and the fold puts the entry in, empty, at the open, so a prompt
 read while a part streams sits after that part, live and on a reload (#373).
+Cursor is the exception on purpose: no update of its own ever repeats a block,
+so its chunk lines each carry the block's text so far as a keyed part and are
+stored — they are the only copy, and a fresh fold rebuilds exactly what
+streamed (`cursor/stream.py`).
 
 **Where aegis has a tool, the harness's twin is off.** A Claude Code session
 with aegis's tools starts with `--disallowedTools` naming every Claude Code tool
