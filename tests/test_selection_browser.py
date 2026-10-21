@@ -146,7 +146,8 @@ def test_ask_and_ask_aside_with_a_draft(btw_server, page):  # noqa: F811
     assert page.input_value("#input") == "/btw\n> kiwi\n\nlater"
     page.press("#input", "Enter")
     page.wait_for_selector(".row.btw .hd .q", timeout=8000)
-    assert "kiwi" in page.locator(".row.btw .hd .q").inner_text()
+    # textContent: innerText reads a row content-visibility skips as "" (#359).
+    assert "kiwi" in page.locator(".row.btw .hd .q").text_content()
     # Copy takes the clean text; with Shift, the quote.
     select(page, REPLY, "kiwi")
     page.click(".sbar [data-id=copy]")
@@ -510,7 +511,11 @@ def test_a_linked_servers_rows_open_no_file_and_spawn_there(
     page.wait_for_selector("#a2[data-view=spawn]")
     page.wait_for_function("document.querySelector('#sp-server').value === 'beta'")
     page.wait_for_function("document.querySelector('#sp-agent').value === 'opus'")
-    assert page.input_value("#sp-cwd") == cwd
+    # The folder is set last, after the roster's load: 'opus' may already be
+    # the form's pick before that.
+    page.wait_for_function(
+        "(cwd) => document.querySelector('#sp-cwd').value === cwd", arg=cwd
+    )
     assert page.input_value("#sp-text").startswith("From ")
     assert not [e for e in page.errors if "server_offline" not in e]
 

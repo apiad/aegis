@@ -107,6 +107,9 @@ const withKey = (m, server = null) => ({ ...lifecycle(m), server, key: keyOf(ser
 const order = new TabOrder();
 let ordered = []; // metas in this browser's tab order
 let shown = null; // the key of the session whose transcript is subscribed
+// The last session shown in this browser tab, where Files' quotes go; a
+// reload of the Files view keeps it.
+let lastShown = sessionStorage.getItem("aegis.lastShown");
 let warmed = null; // the parked (asleep, idle) session whose first keystroke asked for session.warm
 let landUnread = null; // the tab Alt+J opened, whose transcript lands on its first unread
 let unsubTranscript = null;
@@ -139,8 +142,14 @@ const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
     });
   },
 });
-artifacts.setup({ call: (op, params, key) => callFor(key || shown, op, params), entry: (id) => transcript.entries.get(id), key: () => shown });
-const viewer = new Viewer($("viewer"), { entry: (id) => transcript.entries.get(id) });
+artifacts.setup({
+  call: (op, params, key) => callFor(key || shown, op, params),
+  entry: (id) => transcript.entries.get(id),
+  key: () => shown,
+  point: (frame, params) => pagePoint(frame, params),
+});
+const pointing = { items: (ctx) => pointItems(ctx), send: (key, text) => toComposer(key, text) };
+const viewer = new Viewer($("viewer"), { entry: (id) => transcript.entries.get(id), point: pointing });
 // Open on a docked item shows its pane, so a page never runs in the viewer
 // and a pane at once. An older version of a docked file opens in the viewer:
 // the pane shows the newest.
@@ -573,7 +582,14 @@ filePicker = new FilePicker($("fpick"), conn, (path, line, newTab) => {
   if (newTab) window.open(location.pathname + location.search + hash, "_blank");
   else go(hash);
 });
-filesView = new Files(conn, $("files"), { toast, go, onPick: () => filePicker.open() });
+// Files' pointing writes to the session last shown in this window: the Files
+// view itself shows none.
+filesView = new Files(conn, $("files"), {
+  toast,
+  go,
+  onPick: () => filePicker.open(),
+  point: { items: (ctx) => pointItems({ ...ctx, to: lastShown }), send: (text) => toComposer(lastShown, text) },
+});
 // The Help tab (help.js), one per window like Settings. Its code blocks copy
 // as the transcript's do.
 // Guided tour: what /tutorial <page> does, on default_agent, for any page. A
@@ -1565,6 +1581,7 @@ function follow(id) {
   find.close(false); // it searched the old session
   if (dictation.target?.el === input) dictation.stop("tab"); // a recording belongs to its session
   shown = id;
+  if (sessions.has(id)) sessionStorage.setItem("aegis.lastShown", (lastShown = id));
   tellView();
   const turn = ++follows;
   const first = early;
@@ -3882,6 +3899,114 @@ function selectionItems(range) {
   ].filter(Boolean);
 }
 cmenu.bar($("entries"), selectionItems);
+
+// What a selection or an element in a file or a page offers (spec 07): the
+// bar's items with the locator in front of the quote, and Comment. `to` is the
+// session whose composer gets it; with none, or another member's, New session
+// alone writes it. `leave` runs first (the viewer closes over the composer).
+function pointItems({ locator, text, to, comment, leave = () => {} }) {
+  const s = to && sessions.get(to);
+  const own = s && mine(s);
+  const q = `${locator}\n${quoted(text)}`;
+  return [
+    own && { id: "ask", label: "Ask", icon: "prompt", run: () => (leave(), toComposer(to, q)) },
+    own && { id: "aside", label: "Ask aside", icon: "btw", run: () => (leave(), toComposer(to, q, { prefix: "/btw\n" })) },
+    { id: "new", label: "New session", icon: "start", run: () => newSessionWith(s, q) },
+    comment && { id: "comment", label: "Comment", icon: "comment", run: comment },
+    {
+      id: "copy",
+      label: "Copy",
+      icon: "copy",
+      title: "Copy (Shift: as a quote)",
+      run: (ev) => navigator.clipboard.writeText(ev?.shiftKey ? q : text).catch((e) => toast(`Copy failed: ${e.message || e}`, { kind: "error" })),
+    },
+  ].filter(Boolean);
+}
+
+// A gesture inside a sandboxed page (pagepoint.js, through artifacts.js): the
+// menu at the point it reports, or the bar over its selection, drawn here in
+// the frame's place. Which file, session and tray it belongs to comes from
+// where the frame is: Files' page, the viewer's, or a card's in the session.
+//
+// A page's script may post at any time. A press there leaves the focus in
+// the frame (a right-click's mousedown gives it, and a long press focuses its
+// frame), so a post while the person types in the composer or only rests the
+// pointer over the page opens nothing. A page can take the focus by script,
+// so that is not proof: what keeps a made-up proposal harmless is that its
+// menu never takes the focus, and only a click on an item writes anything, and not in its first half second: the page chose
+// where the menu or the bar opens, and could put Ask under a click aimed at
+// the page. A page scrolled, Esc in it, or a selection gone
+// closes only what that frame drew.
+const PAGE_MENU_SETTLE_MS = 500; // a page's menu or bar takes no click this soon
+let pageMenus = 0; // numbers each page menu, for its open and closed messages
+function pagePoint(frame, { kind, x, y, rect, touch, locator = {}, text = "" }) {
+  if (kind === "clear") {
+    if (cmenu.current()?.target === frame) cmenu.close();
+    return cmenu.framed(frame) && cmenu.unbar();
+  }
+  if (document.activeElement !== frame || !frame.checkVisibility({ visibilityProperty: true })) return;
+  const files = frame.closest("#files");
+  const inViewer = frame.closest("#viewer");
+  const path = files
+    ? filesView.path
+    : frame.dataset.artifact || (inViewer && viewer.pathOf()) || decodeURIComponent(new URL(frame.src, location.href).pathname.split("/").pop());
+  // The tray as it is when Comment runs: the view may have drawn a new one.
+  const trayNow = () => (files ? filesView.tray : inViewer ? viewer.tray : null);
+  const tray = trayNow();
+  const quote = String(text).trim();
+  if (!path || !quote) return;
+  const where = [locator.heading && `§ ${locator.heading}`, locator.css].filter(Boolean).join(" › ");
+  const items = pointItems({
+    locator: `\`${path}\`${where ? ` ${where}` : ""}`,
+    text: quote,
+    to: files ? lastShown : shown,
+    leave: inViewer ? () => viewer.close() : undefined,
+    comment: tray && (() => trayNow()?.add({ locator: where || `\`${path}\``, quote, at: locator })),
+  });
+  const box = frame.getBoundingClientRect();
+  if (kind === "select" && rect) {
+    const r = new DOMRect(box.left + rect.left, box.top + rect.top, rect.right - rect.left, rect.bottom - rect.top);
+    return cmenu.barAt(items, r, frame, PAGE_MENU_SETTLE_MS);
+  }
+  if (kind !== "menu") return;
+  // Numbered: opening this one closes the one before, whose closed message
+  // reaches the page after this open would, and must not undo it.
+  const n = ++pageMenus;
+  cmenu.open({ groups: [items] }, { x: box.left + x, y: box.top + y, touch }, frame, {
+    focus: false,
+    settle: PAGE_MENU_SETTLE_MS,
+    onClose: () => artifacts.tell(frame, "aegis/point-closed", { n }),
+  });
+  artifacts.tell(frame, "aegis/point-open", { n });
+}
+
+// `text` into session `key`'s composer, going there first; Files' unsaved
+// edits ask before it leaves. No session to go to: the New session form.
+// True when the text landed.
+async function toComposer(key, text, opts) {
+  const s = key && sessions.get(key);
+  if (!s || !mine(s)) return newSessionWith(null, text);
+  // A window tab (#w=) follows the session too, but draws no composer.
+  if (shown !== key || route().view !== "session") {
+    if (filesView.leaving(route(hashOf(key))) && !(await filesView.confirmLeave())) return false;
+    go(hashOf(key));
+  }
+  if (shown !== key || route().view !== "session") return false;
+  insertIntoComposer(text, opts);
+  return true;
+}
+
+// The New session form with `text` for its prompt: from session `s`'s agent,
+// model and folder, or the form's own picks. The text is in the form at once.
+function newSessionWith(s, text) {
+  if (s) openSpawnWith({ server: s.server, agent: s.agent, model: s.model, cwd: s.cwd, prompt: `From ${s.handle}:\n${text}\n\n` });
+  else {
+    $("sp-text").value = `${text}\n\n${$("sp-text").value}`;
+    go("#new");
+    spawnGrow();
+  }
+  return true;
+}
 
 // A transcript row's menu (spec 06), by kind; a selection inside the row puts
 // the bar's items on top. Kinds the spec names no menu for keep the browser's,

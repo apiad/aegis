@@ -1,7 +1,7 @@
 ---
 title: Files
 kind: howto
-when: opening, reading or editing any file on the server in the browser with Alt+O or the folder tree, viewing rendered Markdown, HTML, images, PDF, audio and video, creating, renaming, moving or deleting files and folders, undoing a delete, and saving a file that changed on disk
+when: opening, reading or editing any file on the server in the browser with Alt+O or the folder tree, viewing rendered Markdown, HTML, images, PDF, audio and video, creating, renaming, moving or deleting files and folders, undoing a delete, and saving a file that changed on disk, and asking a session about selected lines or elements, or commenting on them
 ---
 
 Files opens any file under the config root in the browser, so reading a file,
@@ -107,6 +107,40 @@ starts in Source.
 The bytes of images, pages and downloads come from a short-lived address
 that reads the file again each time. It lapses after ten minutes without a use,
 or when the server restarts; Download asks for a fresh one on each click.
+
+## Pointing at lines and comments
+
+Selecting text in a file shows a bar over it, in the Files editor, rendered
+Markdown and HTML, and over a sent file opened from its card. A
+right-click (not with Shift) or a long press on rendered Markdown, a line of a
+sent file or an element of a page opens the same items for what is under it.
+In the editor a right-click is the browser's own, with its paste, and so is
+one on a field, a link or an image inside a page. Scrolling a page or
+pressing anywhere in it closes its menu, and the menu takes no click in its
+first half second.
+
+- Ask writes the place and the quote into the message box, above your draft:
+  `` `src/park.py:40-52` `` and the lines for code, the path and the nearest
+  heading (`` `notes.md` § Setup ``) for Markdown, and the heading and the
+  element's id or a short CSS path (`` `report.html` § Setup › #p1 ``) for a
+  page. Ask aside does the same after `/btw`.
+- New session opens the New session form with it as the prompt.
+- Copy copies the text; with Shift, as a quote.
+- Comment pins a number on the place and adds a line for your note to a tray
+  at the bottom: `3 comments · Send · Discard`. Each line can be edited or
+  removed. Send writes them all as one message into the message box, in the
+  order you made them, and forgets them; nothing is sent until you send that
+  message.
+
+A sent file's quotes go to the session that sent it. A file opened in Files
+goes to the session last shown in this browser tab; with none, New session
+opens with it. Comments not sent yet stay in this browser's storage, so a
+reload does not lose them; no other browser or the server sees them. They belong to
+that version of the file: a sent file sent again, or a Files file changed on
+disk, starts with none.
+
+A page whose own Content-Security-Policy blocks scripts from the server works
+as before, without the menu or the bar inside it.
 
 ## When the file changed on disk
 

@@ -4,6 +4,10 @@
 // artifact; the operations are called with the id the frame's row carries.
 // The theme reaches a frame as CSS variables, read from #a2, where the themes
 // declare them.
+//
+// aegis/point (pagepoint.js) is taken from any frame under #a2, a sent page's
+// or a Files page's as well as an artifact's: it only proposes a menu or a
+// bar, which app.js draws in this document (setup's `point`).
 
 const VARS = ["--bg", "--ink", "--accent", "--accent-soft", "--on-accent", "--surface", "--raised",
   "--rule", "--muted", "--faint", "--strong", "--fill", "--ok", "--warn", "--err", "--err-bg",
@@ -29,11 +33,16 @@ function inOrder(id, fn) {
 }
 
 let keyNow = () => null; // the session on screen, read when a message arrives
+let point = () => {}; // (frame, params): a page's gesture, for the host to draw
 export function setup(opts) {
   call = opts.call; // (op, params, key) -> Promise; key names the session
   entryOf = opts.entry;
   keyNow = opts.key;
+  point = opts.point ?? point;
 }
+
+// A message to a frame from the pointing host: aegis/point-open and -closed.
+export const tell = (frame, method, params = {}) => notify(frame, method, params);
 
 export function themeVars() {
   const cs = getComputedStyle(document.getElementById("a2"));
@@ -80,9 +89,20 @@ function frameOf(source) {
   return null;
 }
 
+// Any frame this page mounted and shows, for aegis/point only.
+function anyFrameOf(source) {
+  for (const f of document.querySelectorAll("#a2 iframe")) if (f.contentWindow === source && !f.closest("#probes")) return f;
+  return null;
+}
+
 window.addEventListener("message", async (ev) => {
   const m = ev.data;
   if (!m || m.jsonrpc !== "2.0") return;
+  if (m.method === "aegis/point") {
+    const f = anyFrameOf(ev.source);
+    if (f) point(f, m.params || {});
+    return;
+  }
   const frame = frameOf(ev.source);
   if (!frame) return;
   const p = probes.get(frame);

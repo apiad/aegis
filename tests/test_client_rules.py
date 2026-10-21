@@ -23,11 +23,13 @@ def test_only_keys_js_listens_for_keys_on_the_page():
     """A page-wide key binding lives in the registry in js/keys.js, so the ?
     list and the command palette show it (#248). A widget may answer keys in
     its own field, as the command menu and the palette do, but a listener on
-    the document or the window anywhere else is a key nobody can find."""
+    the document or the window anywhere else is a key nobody can find.
+    pagepoint.js runs inside a sandboxed page, not this one: its Esc only
+    closes the menu the host drew over that page (#479)."""
     found = [
         f"{p.name}:{n}"
         for p in JS.glob("*.js")
-        if p.name != "keys.js"
+        if p.name not in ("keys.js", "pagepoint.js")
         for n, line in enumerate(p.read_text().splitlines(), 1)
         if re.search(
             r"""(document|window|self)\.addEventListener\(\s*["']key(down|up|press)""",

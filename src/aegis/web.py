@@ -69,6 +69,37 @@ CLIENT_DIR = Path(__file__).parent / "client"
 SERVICE_WORKER = Path(__file__).parent / "sw.js"
 
 
+POINT_TAG = b'<script src="/static/js/pagepoint.js"></script>'
+
+
+def inject_point(body: bytes) -> bytes:
+    """An HTML page with the pointing script (js/pagepoint.js) before its last
+    ``</body>``, or at its end. A tag, not the script inline: previews are
+    cached as immutable, and a static script follows the client's version.
+    Idempotent, so a page that already has it gets no second one."""
+    if POINT_TAG in body:
+        return body
+    low = body.lower()
+    at = low.rfind(b"</body>")
+    # A "</body>" before the last </script> is inside a script's text (the
+    # page left out its own, which HTML allows): the tag goes at the end.
+    if at < 0 or at < low.rfind(b"</script>"):
+        return body + POINT_TAG
+    return body[:at] + POINT_TAG + body[at:]
+
+
+def _file_response(path: Path, download: bool, extra: dict | None = None):
+    """A sent or a Files file: its bytes, under the headers files.py decides.
+    An HTML preview gets the pointing script; a download is the file as it is."""
+    headers = {**files.headers(path, download), **(extra or {})}
+    media = headers.pop("Content-Type")
+    if not download and files.classify(path)[1] == "html":
+        return Response(
+            inject_point(path.read_bytes()), media_type=media, headers=headers
+        )
+    return FileResponse(path, media_type=media, headers=headers)
+
+
 def ws_protocol():
     """The websocket protocol ``aegis serve`` hands uvicorn: its own, with
     permessage-deflate at the standard 32 KB window. uvicorn's sans-I/O
@@ -322,10 +353,7 @@ def build_web(
         )
         if path is None:
             return PlainTextResponse("Not Found", status_code=404)
-        headers = files.headers(path, request.query_params.get("download") == "1")
-        return FileResponse(
-            path, media_type=headers.pop("Content-Type"), headers=headers
-        )
+        return _file_response(path, request.query_params.get("download") == "1")
 
     async def fs_file(request):
         """A file under the root, through a ticket fs.ticket or fs.read issued
@@ -342,10 +370,10 @@ def build_web(
             return PlainTextResponse("Not Found", status_code=404)
         if not path.is_file():
             return PlainTextResponse("Not Found", status_code=404)
-        headers = files.headers(path, request.query_params.get("download") == "1")
-        headers["Cache-Control"] = "no-store"
-        return FileResponse(
-            path, media_type=headers.pop("Content-Type"), headers=headers
+        return _file_response(
+            path,
+            request.query_params.get("download") == "1",
+            {"Cache-Control": "no-store"},
         )
 
     async def dictation_file(request):
@@ -370,7 +398,11 @@ def build_web(
         if link is None or not (host in allowed_hosts or host in public):
             return PlainTextResponse("Not Found", status_code=404)
         download = request.query_params.get("download") == "1"
+        # A download asks the far server for one too: its preview of a page
+        # carries the pointing script, and a download is the file's own bytes.
         url = f"{link.url}{files.url(p['file_id'], p['name'])}"
+        if download:
+            url += "?download=1"
         client = httpx.AsyncClient(timeout=httpx.Timeout(30, read=None))
         try:
             # Identity: the bytes go out as they arrive, under this server's
@@ -397,7 +429,16 @@ def build_web(
                 await upstream.aclose()
                 await client.aclose()
 
-        return StreamingResponse(body(), headers=files.via_headers(p["name"], download))
+        headers = files.via_headers(p["name"], download)
+        if not download and files.classify_name(p["name"])[1] == "html":
+            # The script here too, once: a far server older than it sends none.
+            page = b"".join([chunk async for chunk in body()])
+            return Response(
+                inject_point(page),
+                media_type=headers.pop("Content-Type"),
+                headers=headers,
+            )
+        return StreamingResponse(body(), headers=headers)
 
     async def ws(websocket: WebSocket) -> None:
         host = websocket.headers.get("host", "")

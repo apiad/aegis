@@ -20,7 +20,7 @@ const SLOP = 8; // px a held touch may move and still open it
 const NATIVE = "input, textarea, [contenteditable], iframe, .xterm";
 
 const roots = new Map(); // root -> {provider, selector}
-let cur = null; // {target, node, anchor, away}
+let cur = null; // {target, node, anchor, away, onClose}
 
 // The element a press on `el` inside `root` is about: the nearest match of
 // the root's selector, else the root; without a selector, `el` itself.
@@ -126,11 +126,12 @@ export function current() {
 // True when one was open (Esc closes it before it interrupts).
 export function close() {
   if (!cur) return false;
-  const { node, away } = cur;
+  const { node, away, onClose } = cur;
   cur = null; // first: removing the focused node fires its focusout
   document.removeEventListener("pointerdown", away, true);
   removeEventListener("hashchange", close);
   node.remove();
+  onClose?.();
   return true;
 }
 
@@ -146,7 +147,12 @@ function el(tag, cls, text) {
 }
 
 // `at` is a point (a right-click, a long press) or an anchor to drop under.
-export function open(menu, at, target) {
+// `onClose` runs when it closes, however it does. `focus: false` leaves the
+// focus where it is, and `settle` ms pass before a click picks an item: a menu
+// a page proposed, where the page chose the point, so a click the person
+// aimed at the page cannot land on an item it put under the pointer.
+export function open(menu, at, target, { onClose, focus = true, settle = 0 } = {}) {
+  const armed = performance.now() + settle;
   close();
   const node = el("div", "cmenu");
   node.setAttribute("role", "menu");
@@ -167,6 +173,7 @@ export function open(menu, at, target) {
           b.title = item.disabled;
         }
         b.addEventListener("click", () => {
+          if (performance.now() < armed) return;
           close();
           refocus(target);
           item.run();
@@ -195,7 +202,7 @@ export function open(menu, at, target) {
   document.addEventListener("pointerdown", away, true);
   addEventListener("hashchange", close);
   unbar(); // one at a time: the bar's items go on top of a row's menu instead
-  cur = { target, node, anchor: at.anchor ?? null, away, top: target.getBoundingClientRect().top, touch: !!at.touch };
+  cur = { target, node, anchor: at.anchor ?? null, away, onClose, top: target.getBoundingClientRect().top, touch: !!at.touch };
   const items = () => [...node.querySelectorAll("[role=menuitem]:not(:disabled)")];
   node.addEventListener("keydown", (ev) => {
     const all = items();
@@ -222,7 +229,7 @@ export function open(menu, at, target) {
   node.addEventListener("focusout", (ev) => {
     if (!node.contains(ev.relatedTarget) && cur?.node === node) close();
   });
-  items()[0]?.focus({ preventScroll: true });
+  if (focus) items()[0]?.focus({ preventScroll: true });
 }
 
 // The selection bar: a non-empty selection inside one row's body (clampToRow)
@@ -232,32 +239,47 @@ export function open(menu, at, target) {
 // selection before a button's click lands. Its buttons keep the selection by
 // cancelling their pointerdown. One bar at a time, and a menu opening closes
 // it.
-let bar_ = null; // {node, range, row}
+//
+// `unit` says what a selection may span: by default one transcript row's body.
+// A file's or a page's view passes its own, which answers {range, row} with
+// `row` the element the range stays in, or null.
+let bar_ = null; // {node, range, row, root}
+
+function rowUnit(range, root) {
+  const n = range.startContainer;
+  const row = (n.nodeType === 1 ? n : n.parentElement)?.closest(".row[data-id]");
+  const r = row && root.contains(row) ? clampToRow(range, row) : null;
+  return r && { range: r, row };
+}
 
 const coarse = matchMedia("(pointer: coarse)");
 
-export function bar(root, provider) {
+export function bar(root, provider, { unit = rowUnit } = {}) {
   let down = false;
   let timer = null;
+  // Several views have a bar: each closes only its own.
+  const drop = () => bar_?.root === root && unbar();
   const check = () => {
     clearTimeout(timer);
     const sel = getSelection();
     const range = sel.rangeCount && !sel.isCollapsed ? sel.getRangeAt(0) : null;
     const start = range?.startContainer;
-    const row = (start?.nodeType === 1 ? start : start?.parentElement)?.closest(".row[data-id]");
+    if (!range || !root.contains(start)) return drop();
+    const u = unit(range, root);
+    const row = u?.row;
     // A right-click inside the selection: its menu carries the bar's items.
     // A touch's long press both opens the row's menu and selects a word; the
     // selection is what the person was after, so the bar takes its place.
     if (cur && !(cur.touch && row && cur.target.contains(row))) return;
-    const r = row && root.contains(row) ? clampToRow(range, row) : null;
-    if (!r || !rangeText(r)) return unbar();
+    const r = u?.range;
+    if (!r || !rangeText(r)) return drop();
     if (bar_ && bar_.range.toString() === r.toString() && bar_.row === row) {
       bar_.at = ends(range);
       return place();
     }
     const items = provider(r, row);
-    if (!items?.length) return unbar();
-    showBar(items, r, row);
+    if (!items?.length) return drop();
+    showBar(items, r, row, root);
     bar_.at = ends(range);
   };
   // A key that moved the selection (Shift and arrows). Esc's keyup comes
@@ -277,11 +299,11 @@ export function bar(root, provider) {
   const onChange = () => {
     // A selection that moved (a touch handle dragged) is not the one the bar
     // quotes: the bar goes at once, and only its reopening waits.
-    if (bar_ && !same(getSelection(), bar_.at)) unbar();
+    if (bar_?.at && !same(getSelection(), bar_.at)) unbar();
     if (!getSelection().isCollapsed && !down) {
       clearTimeout(timer);
       timer = setTimeout(check, 200);
-    } else if (getSelection().isCollapsed && bar_) unbar();
+    } else if (getSelection().isCollapsed) drop();
   };
   root.addEventListener("pointerdown", onDown);
   document.addEventListener("pointerup", onUp, true);
@@ -289,7 +311,7 @@ export function bar(root, provider) {
   root.addEventListener("keyup", onKey);
   document.addEventListener("selectionchange", onChange);
   return () => {
-    unbar();
+    drop();
     root.removeEventListener("pointerdown", onDown);
     document.removeEventListener("pointerup", onUp, true);
     root.removeEventListener("pointercancel", onUp);
@@ -310,7 +332,9 @@ function same(sel, at) {
   return now.text === at.text && now.row === at.row;
 }
 
-function showBar(items, range, row) {
+// `settle` ms pass before a click picks an item (a page's bar: barAt).
+function showBar(items, range, row, root, settle = 0) {
+  const armed = performance.now() + settle;
   close();
   unbar();
   const node = el("div", "sbar");
@@ -325,13 +349,14 @@ function showBar(items, range, row) {
     b.addEventListener("pointerdown", (ev) => ev.preventDefault());
     b.addEventListener("mousedown", (ev) => ev.preventDefault());
     b.addEventListener("click", (ev) => {
+      if (performance.now() < armed) return;
       unbar();
       item.run(ev);
     });
     node.append(b);
   }
   document.getElementById("a2").append(node);
-  bar_ = { node, range, row };
+  bar_ = { node, range, row, root };
   addEventListener("hashchange", unbar);
   place();
 }
@@ -358,9 +383,34 @@ function place() {
 export function unbarHidden() {
   // A tabbed canvas hides a pane with visibility, not display (base.css).
   // The row by its id: a streaming delta redraws it as a new node.
-  if (!bar_) return;
+  if (!bar_?.row) return;
   const row = bar_.row.isConnected ? bar_.row : document.querySelector(`.row[data-id="${CSS.escape(bar_.row.dataset.id)}"]`);
   if (!row?.checkVisibility({ visibilityProperty: true })) unbar();
+}
+
+// A bar for a selection the page cannot see, inside sandboxed frame `owner`
+// (pagepoint.js reports it): over `rect`, in this page's coordinates, until
+// the frame clears it, a press elsewhere, a scroll or a resize here, or
+// another bar. The rect is fixed, so anything that moves the frame ends it.
+// The page chose the rect, so its buttons take no click for `settle` ms, as
+// a page's menu (open's settle).
+export function barAt(items, rect, owner, settle = 0) {
+  if (!items?.length) return unbar();
+  showBar(items, { getClientRects: () => [rect], toString: () => "" }, null, null, settle);
+  bar_.owner = owner;
+  const node = bar_.node;
+  // A press in another frame reaches neither listener: the owner's
+  // pagepoint.js posts clear when its page loses the focus.
+  const away = (ev) => {
+    if (ev.type === "pointerdown" && node.contains(ev.target)) return;
+    document.removeEventListener("pointerdown", away, true);
+    document.removeEventListener("scroll", away, true);
+    removeEventListener("resize", away);
+    if (bar_?.node === node) unbar();
+  };
+  document.addEventListener("pointerdown", away, true);
+  document.addEventListener("scroll", away, true);
+  addEventListener("resize", away);
 }
 
 // True when one was shown.
@@ -371,6 +421,16 @@ export function unbar() {
   removeEventListener("hashchange", unbar);
   return true;
 }
+
+// A page's menu or bar whose frame left the document (the viewer, Files, a
+// pane or a row redrew it): closed. The views call this after they redraw.
+export function dropDetached() {
+  if (cur && cur.target.localName === "iframe" && !cur.target.isConnected) close();
+  if (bar_?.owner && !bar_.owner.isConnected) unbar();
+}
+
+// True when the bar shown is frame `owner`'s (barAt).
+export const framed = (owner) => !!bar_ && !bar_.root && bar_.owner === owner;
 
 // A scroll of `scroller`: one it made itself (ownScroll() true, a transcript
 // following its bottom) moves the bar and an open menu with their anchor; one
