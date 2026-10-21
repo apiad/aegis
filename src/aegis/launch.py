@@ -33,6 +33,8 @@ from .harness import raise_oom_score
 PIPE = asyncio.subprocess.PIPE
 DEVNULL = asyncio.subprocess.DEVNULL
 STDOUT = asyncio.subprocess.STDOUT
+# asyncio.create_subprocess_exec's own default for a pipe's line limit.
+LIMIT = 2**16
 
 
 async def child(
@@ -46,12 +48,11 @@ async def child(
     cgroup: Path | None = None,
     oom: bool = False,
     new_session: bool = False,
-    limit: int | None = None,
+    limit: int = LIMIT,
 ) -> asyncio.subprocess.Process:
     """``argv`` started inside ``cgroup`` when there is one. ``env`` None is
     the server's environment. Raises FileNotFoundError for a missing binary,
     with or without the cgroup."""
-    extra = {} if limit is None else {"limit": limit}
     proc = await asyncio.create_subprocess_exec(
         *wrap(cgroup, argv),
         cwd=cwd,
@@ -60,7 +61,7 @@ async def child(
         stdout=stdout,
         stderr=stderr,
         start_new_session=new_session,
-        **extra,
+        limit=limit,
     )
     if oom:
         raise_oom_score(proc.pid)
