@@ -150,7 +150,9 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <a href="#visibility">What a member sees</a>
   <a class="sub" href="#try">Try it</a>
   <a href="#state">The state directory</a>
-  <a href="#host">What the host owner does</a>
+  <a href="#host">Setting it up: /multiuser</a>
+  <a class="sub" href="#cmd">The command</a>
+  <a class="sub" href="#page">The help page</a>
   <a href="#delivery">Delivery</a>
   <a href="#testing">Testing</a>
   <a href="#nongoals">Non-goals and open questions</a>
@@ -197,6 +199,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <tr><td>Shared repositories</td><td>Each person clones into their own home. A folder everyone uses is a directory with a group, set up by the host owner</td><td class="why"><span class="who">maintainer</span> Separate clones keep each push under its author. A shared folder needs nothing from aegis.</td></tr>
 <tr><td>Visibility of other people's work</td><td>In multi-user mode a member sees and addresses only what it owns, and an address it does not own reads as unknown. Outside the mode, members keep reading every session as today</td><td class="why"><span class="who">maintainer</span> A member should not learn that other people use the server. Tying the change to the mode leaves single-user and trusted-team servers as they are.</td></tr>
 <tr><td>Subscriptions</td><td>Pooled. Every person's harness uses the server's Claude and OpenRouter accounts, gated by the existing quota policies</td><td class="why"><span class="who">maintainer</span> Per-person accounts are not wanted. The quota lines from #311 already share one pool fairly.</td></tr>
+<tr><td>How a server gets set up</td><td>By its own agent. A help page, <code>multi-user</code>, is written so an agent can take a running single-user aegis to multi-user mode, and <code>/multiuser</code> starts that work in the current session: the agent explains the mode, checks the host and asks the person before each change</td><td class="why"><span class="who">maintainer</span> The setup is a dozen host steps with root, a unit change and a restart. An agent that reads the page and the host can do them, and the person decides each one.</td></tr>
 <tr><td>How a token names its user</td><td><code>linux_user</code> on the token entry. <code>aegis token add NAME</code> uses NAME unless <code>--linux-user</code> says otherwise, and fails when the user does not exist</td><td class="why"><span class="who q">proposed</span> The common case needs no flag, and a typo is caught when the token is made, not at the first spawn.</td></tr>
 <tr><td>Which users a token may name</td><td>Any existing user with a uid at or above <code>UID_MIN</code> from <code>/etc/login.defs</code> (1000 if unset), other than the server's own user. Never root</td><td class="why"><span class="who q">proposed</span> A member must not run as the server, which can read every token, or as a system account.</td></tr>
 <tr><td>A token without a Linux user</td><td>Allowed for an admin only, and runs as the server's user. A member token without one is refused when the mode is on</td><td class="why"><span class="who q">proposed</span> The server's own admin token and a link from another of the owner's servers keep working with no setup. A member always gets the boundary.</td></tr>
@@ -394,17 +397,35 @@ CapabilityBoundingSet=CAP_SETUID CAP_SETGID</pre>
 <h2 id="state"><span class="n">09</span>The state directory</h2>
 <p><code>&lt;state&gt;</code> holds <code>tokens.json</code>, the admin token, transcripts and metas. In multi-user mode it is mode 0700 and owned by the server's user, so a member's shell or agent cannot read any of it. This closes the gap the tokens spec named, where a member's agent could read <code>&lt;state&gt;/token</code> and act as the admin. The aegis root, where <code>.aegis.yaml</code> lives, should be outside every member's reach as well; the doctor warns when a member's user can write it.</p>
 
-<h2 id="host"><span class="n">10</span>What the host owner does</h2>
-<p>None of this is aegis's to do, and the deploy guide lists it:</p>
+<h2 id="host"><span class="n">10</span>Setting it up: /multiuser</h2>
+<p>Turning the mode on takes host work that aegis does not do itself: users, groups, a unit change, credentials. The person should not have to know those steps. Their own agent does them, from a help page written for that, started by a command.</p>
+
+<h3 id="cmd">The command</h3>
+<p><code>/multiuser</code> works like <code>/feedback</code>: it delivers one turn to the agent of the session it was typed in, built from the help page, and starts no new session. Only an admin may run it; a member gets <code>not_for_members</code>. The turn tells the agent to:</p>
 <ol>
-  <li>Create a Linux user per person, and a service user for aegis.</li>
-  <li>Set home modes, for example 0700, so people cannot read each other's homes.</li>
-  <li>Create shared folders with a group and the setgid bit, and add the people to the group.</li>
-  <li>Have each person sign in to <code>gh</code> and set their git identity as their own user, from a terminal in aegis.</li>
-  <li>Write <code>/etc/aegis/pool.env</code> with the pooled credentials.</li>
-  <li>Run <code>aegis service install --multi-user</code>, then <code>aegis token add</code> for each person.</li>
-  <li>Install the harnesses where every user can run them, for example under <code>/usr/local</code>, not in the service user's home.</li>
+  <li>read <code>help_read multi-user</code> in full;</li>
+  <li>look at the host without changing anything: <code>aegis doctor</code>, how aegis runs (unit or shell, its user, its capabilities), the Linux users and groups, the tokens and the sessions open now;</li>
+  <li>explain to the person, in a few lines, what the mode changes and what it does not protect against (the first row of the decisions table);</li>
+  <li>ask the person who the users are, which shared folders they need, and where the pooled credentials come from;</li>
+  <li>show the plan as a list of commands and ask before running it. Each step that needs root is either run with <code>sudo</code>, when the agent's user has it and the person agrees, or handed to the person to paste;</li>
+  <li>end with <code>aegis doctor</code> clean in multi-user mode and one sign-in per member token, which the person checks in a second browser.</li>
 </ol>
+<p><code>/multiuser</code> on a server already in the mode starts the same page at its "add a person" and "check" sections instead.</p>
+
+<h3 id="page">The help page</h3>
+<p><code>src/aegis/help/multi-user.md</code>, with a <code>when:</code> line that matches "several people on one server", "Linux users", "members cannot see each other". It is written for an agent first, as numbered steps with the exact commands and what each one should print, and it covers:</p>
+<ul>
+  <li>what the mode does and does not do, and the pooled-credentials caveat, including the provider's terms;</li>
+  <li>preconditions: Linux with util-linux <code>setpriv</code>, systemd, cgroup v2, harnesses installed where every user can run them;</li>
+  <li>creating the service user and moving an existing aegis to it, keeping its state directory;</li>
+  <li>a Linux user per person, home modes, shared folders with a group and the setgid bit;</li>
+  <li>the pool env file, its mode, and which variable each harness reads;</li>
+  <li><code>multi_user</code> in <code>.aegis.yaml</code>, <code>aegis service install --multi-user</code>, the restart, and what the restart does to running sessions (they continue, #312);</li>
+  <li><code>aegis token add</code> per person, and how each person then signs in to <code>gh</code> and sets their git identity from their own terminal;</li>
+  <li>adding and removing a person later, and turning the mode off;</li>
+  <li>checks: <code>aegis doctor</code>, <code>id -un</code> in a member's terminal, a member's Files tree.</li>
+</ul>
+<p>The restart in the middle of the setup interrupts the agent doing it. The page says so, and the agent tells the person before it restarts, so the person knows the session will continue on its own.</p>
 
 <h2 id="delivery"><span class="n">11</span>Delivery</h2>
 <div class="steps">
@@ -412,13 +433,15 @@ CapabilityBoundingSet=CAP_SETUID CAP_SETGID</pre>
   <div class="step"><div class="n"></div><div><h4>The mode, the mapping and the user switch</h4><p><code>multi_user</code>, the boot checks, <code>linux_user</code> on tokens and the CLI and Settings, <code>setpriv</code> and the capability drop in the launcher, the env file, the doctor checks, the unit. After this PR every process a person starts runs as their user.</p></div></div>
   <div class="step"><div class="n"></div><div><h4>Files through the worker</h4><p><code>aegis file-worker</code>, the server's file paths routed through it, artifact drafts in the owner's home, the desktop opener refused, and the test that lists file call sites.</p></div></div>
   <div class="step"><div class="n"></div><div><h4>What a member sees</h4><p>The owner filter on every list and address in the table above, for the mode only.</p></div></div>
-  <div class="step"><div class="n"></div><div><h4>The deploy guide</h4><p>A help page and a know-how doc for the host owner's steps, including the pooled credentials and what members can read.</p></div></div>
+  <div class="step"><div class="n"></div><div><h4>The help page and /multiuser</h4><p><code>help/multi-user.md</code> and the <code>/multiuser</code> command. Its acceptance test is an agent that takes a fresh single-user server to multi-user mode from the command alone, on a host with real Linux users.</p></div></div>
 </div>
 <p>The second PR is the first one people notice: with it, git and GitHub already record each person's own work. Each PR goes through issue, worktree, review and the maintainer's smoke test, which for this feature runs on a host with three real Linux users.</p>
 
 <h2 id="testing"><span class="n">12</span>Testing</h2>
 <p>These tests need real Linux users and a server with the two capabilities. CI creates the users with <code>sudo useradd</code> and starts the server under <code>systemd-run</code> with the capabilities. Locally they skip with a reason when that is not possible. Each check below is broken on purpose once to confirm it fails.</p>
 <ul class="checks">
+  <li><code>/multiuser</code> by a member is refused with <code>not_for_members</code>; by an admin it delivers one turn that names the help page and starts no session <span class="b">fast</span></li>
+  <li>From <code>/multiuser</code> alone, an agent on a single-user server reaches a clean <code>aegis doctor</code> in multi-user mode, asking before each change. Run once by hand before release, as the smoke test <span class="b">smoke</span></li>
   <li>The call-site test fails when a <code>subprocess.run</code> is added outside <code>launch.py</code> <span class="b">fast</span></li>
   <li>In multi-user mode, the repos panel for a member runs <code>git</code> and <code>gh</code> as that member: a repository the server's user cannot read still shows its branch and pull requests <span class="b">slow</span></li>
   <li>A member's session runs <code>id -un</code> and gets its own user; its <code>HOME</code> is its home <span class="b">slow</span></li>
