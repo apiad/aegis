@@ -93,11 +93,6 @@ the file in a new browser tab. A file card's Open, new tab and Download are
 icon buttons, with Open natively beside them in a browser on the server's own
 desktop.
 
-A right-click on a card's bar, or a long press, opens its menu: Dock right,
-Dock left, Open in new window and Download, each where the card's own
-buttons allow it. A page card has no Download, and a docked card offers only
-the new window, which moves its pane there.
-
 ## The canvas
 
 A page or a file can stay on screen beside the transcript instead of
@@ -118,6 +113,10 @@ stacked panes:
 - When the canvas draws as tabs, a right-click on a tab other than the
   transcript's, or a long press, offers Undock and Move to window…, which
   lists the windows as the pane bar's button does.
+- A right-click on a sent card's bar, or a long press, opens its menu: Dock
+  right, Dock left, Open in new window and Download, each where the card's
+  own buttons allow it. A docked card offers only the new window, which
+  moves its pane there.
 
 A column whose share of the window is under its minimum is drawn at the
 minimum, and the wider columns give up the difference; the shares kept with
