@@ -41,7 +41,10 @@ than 30 seconds old.
 
 ## The folder tree
 
-The left side of Files is the folder tree, starting at the config root. Click
+The left side of Files is the folder tree, starting at the config root. Each row
+has a glyph: a folder, open or closed, or the file's kind: Markdown, code,
+config, image, PDF, audio, video, archive, or a plain file. The Alt+O picker
+shows the same glyph in front of each path. Click
 a folder to open it; its contents are read the first time, and the folders you
 leave open stay open the next time. A file opened from the picker or a
 link opens the tree down to it. Ignored entries are hidden, by the same

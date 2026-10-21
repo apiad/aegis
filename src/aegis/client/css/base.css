@@ -1365,7 +1365,7 @@ body{background:#000}
 #a2 .cmenu .btn.danger,#a2 .cmenu .btn.danger .ic{color:var(--err)}
 #a2 .cmenu .btn:disabled{opacity:.45}
 #a2 .fbar .tbtn{display:none;padding:3px 9px}
-#a2 .fpick .file-row{grid-template-columns:auto minmax(0,1fr) auto}
+#a2 .fpick .file-row{grid-template-columns:auto auto minmax(0,1fr) auto}
 #a2 .fpick .file-row .dir{color:var(--muted);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 #a2 .fpick .file-row b{color:var(--accent)}
 #a2 .fpick .file-row .age{color:var(--faint);font-size:11px;white-space:nowrap}
