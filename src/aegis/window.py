@@ -21,6 +21,7 @@ from websockets.exceptions import WebSocketException
 from websockets.sync.client import connect
 from websockets.typing import Origin
 
+from . import launch
 from .web import PROTO
 
 # Tried after the desktop's default browser, in this order. On zion
@@ -50,9 +51,8 @@ def desktop_default() -> str | None:
     if exe is None:
         return None
     try:
-        out = subprocess.run(
+        out = launch.run(
             [exe, "get", "default-web-browser"],
-            capture_output=True,
             text=True,
             timeout=2,
         ).stdout.strip()

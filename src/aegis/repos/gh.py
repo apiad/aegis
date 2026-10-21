@@ -9,6 +9,8 @@ import subprocess
 import threading
 import time
 
+from .. import launch
+
 TTL = 120.0
 TIMEOUT = 8.0
 
@@ -42,7 +44,7 @@ def prs(top: str, branch: str) -> list[dict] | None:
     found = None
     if branch and shutil.which("gh"):
         try:
-            r = subprocess.run(
+            r = launch.run(
                 [
                     "gh",
                     "pr",
@@ -57,7 +59,6 @@ def prs(top: str, branch: str) -> list[dict] | None:
                     "number,title,state,url,statusCheckRollup",
                 ],
                 cwd=top,
-                capture_output=True,
                 text=True,
                 errors="replace",
                 timeout=TIMEOUT,

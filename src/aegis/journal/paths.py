@@ -13,12 +13,12 @@ from __future__ import annotations
 import os
 import subprocess
 
+from .. import launch
+
 
 def _git(args: list[str], cwd: str) -> str | None:
     try:
-        r = subprocess.run(
-            ["git", *args], cwd=cwd, capture_output=True, text=True, timeout=10
-        )
+        r = launch.run(["git", *args], cwd=cwd, text=True, timeout=10)
     except (OSError, subprocess.TimeoutExpired):
         return None
     return r.stdout if r.returncode == 0 else None
@@ -27,7 +27,7 @@ def _git(args: list[str], cwd: str) -> str | None:
 def _git_binary(args: list[str], cwd: str) -> bytes | None:
     """Run git and return binary output (for -z handling)."""
     try:
-        r = subprocess.run(["git", *args], cwd=cwd, capture_output=True, timeout=10)
+        r = launch.run(["git", *args], cwd=cwd, timeout=10)
     except (OSError, subprocess.TimeoutExpired):
         return None
     return r.stdout if r.returncode == 0 else None
