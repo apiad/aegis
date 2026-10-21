@@ -259,8 +259,11 @@ process may park: the run's messages restart it.
 
 You are woken by a message headed `> from workflow:<id>` for each thing the
 run waits on you for: a failed step, a gate with `by: main`, a worker's
-question, and the person's answer to a change you proposed. Each one is told
-once, also across a restart. You get one more message when the run ends,
+question, and the person's answer to a change you proposed. You are also
+told, with nothing to answer, when a gate with `by: person` opens (headed
+`gate`) and when the person continues at it (headed `passed`), so you can
+tell the person their card waits and need no monitor to see it. Each one is
+told once, also across a restart. You get one more message when the run ends,
 headed `done`, `failed` or `stopped`, or `rejected` when the person rejects
 the plan before it starts. `workflow_status` shows the tree, the
 story and what the run waits on at any time; `workflow_stop` stops the run
@@ -329,12 +332,19 @@ A step that fails once its `retries` are spent does not end the run. Its
 branch waits, the other branches go on, and a failed branch keeps its slot
 of a `cap`. You get a message headed `> from workflow:<id> · failed · <step>`
 naming the step, its error, its attempt and, for an agent, its session to
-read with `peer_read`. It ends with the `workflow_answer` call that answers
-it, whose choice is one of three:
+read with `peer_read`; a command that failed or ran past its deadline adds
+the last 50 lines of its output, which `workflow_status` shows too as the
+step's `tail`. It ends with the `workflow_answer` call that answers
+it, whose choice is one of these:
 
 - "retry" runs the step again; a group runs again whole;
 - "skip" goes on without it, and `value`, checked against its result schema, stands in for its result where later steps read it;
+- "more", only for a loop whose `until` did not pass in its rounds, runs one round more and goes on from there; `value` takes how many rounds more;
 - "fail" ends the run, with `text` as the reason the story keeps.
+
+`workflow_answer` and `workflow_stop` reply with the run's status, the state
+of the step you named and what the run still waits on; the whole tree is
+`workflow_status`'s.
 
 Change a step before retrying it with `workflow_edit`, below. The workflow's
 own `deadline` ends the run without asking, and so does a run whose main
@@ -359,14 +369,21 @@ root:
 
 `gate: {by, ask, show}` holds its branch until someone answers `ask`. With
 `by: person`, a card in your transcript shows the question and each value in
-`show` as JSON, with an answer box, Continue and Stop; no agent can answer
-it, you included. With `by: main` the question comes to you, and you answer
+`show` as JSON, with an answer box, Continue, Stop and Auto; no agent can
+answer it, you included. Auto is the person handing the gate to you: it
+becomes a `by: main` gate, now and each later time the same step asks (each
+item of a map, each round of a loop, each retry), and you are woken to
+answer it. Other items of a map already waiting stay the person's until
+they press Auto on one of them, which hands the step over. When the person
+tells you in chat that you may pass their gates yourself, ask them to press
+Auto once on the card: you cannot do it for them. With `by: main` the question comes to you, and you answer
 with `workflow_answer`: choice "continue" with an optional `value`, or
 "abort". You may ask the person first, in your own words. Later steps read
 the answer as `{{ok.value}}`. A no, the person's Stop or your "abort", stops
 the run at the gate.
 
-Only the person makes a person's gate count as passed. `workflow_stop` does
+Only the person makes a person's gate count as passed, until they hand it
+to you with Auto. `workflow_stop` does
 not take a gate, and when a person's gate fails (its deadline, a deadline
 around it, a question that did not render) the step, or the group around
 it, takes only "retry", which asks the person again, or "fail": never

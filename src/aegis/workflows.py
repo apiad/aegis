@@ -100,6 +100,7 @@ def tell_backoff(fails: int) -> float:
 
 
 TAIL = 4000  # the end of an sh's stdout and of its stderr kept as its value
+TAIL_LINES = 50  # what a failed or timed-out sh keeps of its output, to read why
 LEAVES = frozenset({"agent", "sh", "wait", "check", "gate"})  # logged; the rest derived
 STARTS = frozenset(
     {
@@ -114,17 +115,31 @@ STARTS = frozenset(
 )
 
 
-async def _tail(stream) -> str:
+async def _tail(stream, seen: dict | None = None, name: str = "") -> str:
     """A stream's last TAIL characters, read in chunks so a chatty command
-    never holds more than a few of them."""
+    never holds more than a few of them. ``seen[name]`` holds them as they
+    come, so a command cut by its deadline still says where it was."""
     buf = b""
     while chunk := await stream.read(65536):
         buf = (buf + chunk)[-TAIL * 4 :]
+        if seen is not None:
+            seen[name] = buf
     return buf.decode("utf-8", "replace")[-TAIL:]
 
 
+def last_lines(out: str, err: str) -> str:
+    """The end of a command's output, stdout then stderr, TAIL_LINES at
+    most: what a failure shows of why."""
+    lines = (out.rstrip() + "\n" + err.rstrip()).strip().splitlines()
+    return "\n".join(lines[-TAIL_LINES:])
+
+
 async def run_sh(
-    cmd: str, cwd: str, on_pid, env: dict[str, str] | None = None
+    cmd: str,
+    cwd: str,
+    on_pid,
+    env: dict[str, str] | None = None,
+    seen: dict | None = None,
 ) -> tuple[int, str, str]:
     """An sh node's command under bash, with ``env`` (its values, see
     shell_command) added to the server's, in its own process group, so a
@@ -144,7 +159,9 @@ async def run_sh(
     )
     on_pid(proc.pid)
     try:
-        out, err = await asyncio.gather(_tail(proc.stdout), _tail(proc.stderr))
+        out, err = await asyncio.gather(
+            _tail(proc.stdout, seen, "out"), _tail(proc.stderr, seen, "err")
+        )
         await proc.wait()
     except asyncio.CancelledError:
         with contextlib.suppress(ProcessLookupError):
@@ -158,6 +175,12 @@ async def run_sh(
             await asyncio.wait_for(asyncio.shield(proc.wait()), 2)
         raise
     return proc.returncode or 0, out, err
+
+
+def _news(o: dict) -> bool:
+    """Whether an open item only tells the main agent something: a person's
+    gate opened or passed. Nothing waits on its answer."""
+    return o["kind"] == "passed" or (o["kind"] == "gate" and o.get("by") == "person")
 
 
 def iso_now() -> str:
@@ -299,6 +322,9 @@ class Workflows:
         # no pass ever awaits one. A running sh with no task here was cut
         # by a restart.
         self._tasks: dict[tuple[str, str], asyncio.Task] = {}
+        # A running sh's output so far, by (run, instance): a deadline that
+        # cuts it keeps its last lines.
+        self._seen_out: dict[tuple[str, str], dict[str, bytes]] = {}
         # A probe's last reading, for the card; never logged.
         self._readings: dict[tuple[str, str], str] = {}
         # An if's or an until's sh probe outcome, by (run, instance, round),
@@ -499,6 +525,20 @@ class Workflows:
             out["story"] = st.story
         return out
 
+    def taken(self, run: str, to: str | None) -> dict:
+        """The short reply to an answer or a stop: the run's status, the
+        state of what it named, and what the run still waits on. The whole
+        tree is workflow_status's."""
+        st, wf = self.runs[run], self.definition(run)
+        out: dict = {"run": run, "status": st.status}
+        if to and wf is not None and template_key(to) in wf.by_key:
+            out |= {"node": to, "state": self._state(st, self._template(wf, to), to)}
+        out["open"] = [
+            {"to": k, "kind": o["kind"], "text": self._open_text(st, k, o)}
+            for k, o in st.open.items()
+        ]
+        return out
+
     def _open_text(self, st: RunState, to: str, o: dict) -> str:
         n = st.nodes.get(o.get("node") or "") or NodeState()
         if o["kind"] == "ask":
@@ -507,6 +547,8 @@ class Workflows:
             return (n.gate or {}).get("ask") or n.say
         if o["kind"] == "failed":
             return o.get("error") or n.error
+        if o["kind"] == "passed":
+            return "continued by the person"
         return o.get("outcome") or ""
 
     def _rows(self, st: RunState, wf: Workflow) -> list[dict]:
@@ -640,6 +682,13 @@ class Workflows:
                 row["rounds"] = {"round": n.round, "max": n.max}
             if n.gate is not None:
                 row |= {"ask": n.gate.get("ask"), "shown": n.gate.get("shown") or {}}
+                row["by"] = n.gate.get("by") or row.get("by")
+            if n.tail:
+                row["tail"] = n.tail
+        if node.kind == "gate" and node.key in st.delegated:
+            row["delegated"] = True
+            if n is None or n.gate is None:
+                row["by"] = "main"  # it opens as the main agent's
         if (reading := self._readings.get((st.run, inst))) is not None:
             row["reading"] = reading
         if node.after:
@@ -1198,7 +1247,11 @@ class Workflows:
         n = next_stop(wf, done) if wf else None
         if n is None:
             when = "calls you when it ends"
-        elif n.kind == "gate" and n.body.get("by") == "person":
+        elif (
+            n.kind == "gate"
+            and n.body.get("by") == "person"
+            and n.key not in st.delegated
+        ):
             when = (
                 f'stops at the gate "{n.body.get("ask")}", which the person '
                 "answers on the card"
@@ -1661,7 +1714,7 @@ class Workflows:
         except RENDER_ERRORS as e:
             self._fail(st, inst, f"a reference has no value: {e}", say, retry=False)
             return "failed"
-        by = node.body["by"]
+        by = "main" if node.key in st.delegated else node.body["by"]
         self._log(
             st.run,
             {
@@ -1671,6 +1724,7 @@ class Workflows:
                 "ask": ask,
                 "shown": shown,
                 "say": say,
+                "tell": True,
             },
         )
         if by == "person" and (owner := self.owner(st)) is not None:
@@ -1751,10 +1805,24 @@ class Workflows:
                 self._fail(st, k, CUT, retry=False)
                 if k == inst:
                     return
+        tails = []
         for k, n in self._under(st, node, inst):
             if n.status not in ("done", "failed", "stopped"):
+                if (seen := self._seen_out.get((st.run, k))) is not None:
+                    said = last_lines(
+                        *(
+                            seen.get(s, b"").decode("utf-8", "replace")[-TAIL:]
+                            for s in ("out", "err")
+                        )
+                    )
+                    tails.append(said if k == inst else f"{k}:\n{said}")
                 await self._halt(st, k, n)
-        self._fail(st, inst, f"ran past its deadline of {fmt_duration(span)}")
+        self._fail(
+            st,
+            inst,
+            f"ran past its deadline of {fmt_duration(span)}",
+            tail="\n".join(tails),
+        )
 
     async def _halt(self, st: RunState, inst: str, n: NodeState) -> None:
         """End one running leaf: kill its task, interrupt its session and its
@@ -2093,7 +2161,8 @@ class Workflows:
         try:
             if any("\0" in v for v in env.values()):
                 raise ValueError(NUL)
-            code, out, err = await run_sh(cmd, self._cwd(st), pid, env)
+            seen = self._seen_out[(st.run, inst)] = {}
+            code, out, err = await run_sh(cmd, self._cwd(st), pid, env, seen)
         except ValueError:  # a NUL byte, from a value: every attempt would
             # fail the same way, so it fails once, never retried (below)
             code, out, err = None, "", NUL
@@ -2101,6 +2170,7 @@ class Workflows:
             code, out, err = None, "", str(e)
         finally:
             self._drop((st.run, inst))
+            self._seen_out.pop((st.run, inst), None)
         n = st.nodes.get(inst)
         if st.status != "running" or n is None or n.status != "running":
             return  # stopped, or ended by a deadline, while it ran
@@ -2119,7 +2189,9 @@ class Workflows:
                 :200
             ]
             head = f"exit {code}" if code is not None else "bash did not start"
-            self._fail(st, inst, head + (f": {why}" if why else ""))
+            self._fail(
+                st, inst, head + (f": {why}" if why else ""), tail=last_lines(out, err)
+            )
         self.changed()
 
     def _forget_probes(self, run: str, inst: str = "") -> None:
@@ -2673,6 +2745,12 @@ class Workflows:
         if not untold or st.status not in LIVE:
             return
         owner = self.owner(st)
+        if owner is None and all(_news(o) for _, o in untold):
+            # News with nobody to read it: the person's gate still waits on
+            # the person, so the run goes on.
+            for to, _ in untold:
+                self._log(st.run, {"ev": "woke", "to": to})
+            return
         if owner is None:
             await self._end(
                 st,
@@ -2711,6 +2789,22 @@ class Workflows:
                 f"The person kept the plan: your change {to} was not applied, and "
                 "the run goes on as it was. Nothing to answer."
             )
+        if o["kind"] == "passed":
+            value = o.get("value")
+            got = f" with {json.dumps(value)}" if value not in (None, "") else ""
+            return (
+                f'The person continued at step "{n.say}"{got}: the run goes on. '
+                "Nothing to answer."
+            )
+        if o["kind"] == "gate" and o.get("by") == "person":
+            return (
+                f'Step "{n.say}" waits for the person on its card: '
+                f"{(n.gate or {}).get('ask') or ''}\n"
+                "Only the person answers it, so there is nothing to answer here: "
+                "you are told when they continue, and the run's end tells you if "
+                "they stop it. If they hand it to you on the card, it comes back "
+                "to you as a gate to answer."
+            )
         if o["kind"] == "gate":
             g = n.gate or {}
             shown = "".join(
@@ -2735,6 +2829,8 @@ class Workflows:
         lines = [f'Step "{n.say}" failed: {o.get("error") or n.error}']
         if n.attempts:
             lines[0] += f" (attempt {n.attempts + 1})"
+        if n.tail:
+            lines.append(f"Its output ended:\n```text\n{n.tail}\n```")
         h = self._reg.sessions.get(n.log_id or "")
         if h is not None:
             lines.append(f"Its session is {h.handle}; read it with peer_read.")
@@ -2751,6 +2847,11 @@ class Workflows:
                 else [
                     '- "skip" goes on without it; give value matching its result schema if later steps read it;'
                 ]
+            ),
+            *(
+                ['- "more" runs one more round (value=n for n more rounds);']
+                if wf is not None and self._spent(st, wf, to)
+                else []
             ),
             '- "fail" ends the run.',
             "Other branches keep running meanwhile.",
@@ -2831,6 +2932,30 @@ class Workflows:
                 await self._answer_gate(
                     st, to, choice == "continue", text, "main", value
                 )
+            elif o["kind"] == "failed" and choice == "more":
+                if not self._spent(st, wf, to):
+                    raise OpError(
+                        "bad_choice",
+                        f"{to} is not a loop out of rounds: more takes one whose "
+                        "until did not pass",
+                    )
+                more = 1 if value is None else value
+                n = st.nodes[to]
+                if (
+                    isinstance(more, bool)
+                    or not isinstance(more, int)
+                    or not 1 <= more <= MAX_ROUNDS - n.round
+                ):
+                    raise OpError(
+                        "bad_value",
+                        f"more takes a whole number of rounds from 1 to "
+                        f"{MAX_ROUNDS - n.round}",
+                    )
+                self._log(
+                    st.run,
+                    {"ev": "extended", "node": to, "max": n.round + more, "text": text},
+                )
+                self.changed()
             elif o["kind"] == "failed" and choice == "fail":
                 n = st.nodes[to]
                 why = f"{n.say} failed: {n.error}" + (
@@ -2839,9 +2964,11 @@ class Workflows:
                 await self._end(st, "failed", why)
             else:
                 takes = {
-                    "failed": "retry, skip or fail",
+                    "failed": "retry, skip or fail"
+                    + (", or more" if self._spent(st, wf, to) else ""),
                     "gate": "continue or abort",
                     "ask": "none: answer it with text",
+                    "passed": "none: it only tells you the person continued",
                 }.get(o["kind"], "")
                 raise OpError(
                     "bad_choice", f"{to} is a {o['kind']} item: it takes choice {takes}"
@@ -2855,6 +2982,38 @@ class Workflows:
         async with self._lock:
             st = self._get(run)
             await self._answer_gate(st, inst, go, text, by, text)
+
+    async def delegate_gate(self, run: str, inst: str) -> None:
+        """The person hands an open gate of theirs to the main agent, and
+        with it every later opening of the same step: each item of a map,
+        each round, each retry. The main agent is woken to answer it."""
+        async with self._lock:
+            st = self._get(run)
+            o = st.open.get(inst)
+            if o is None or o["kind"] != "gate" or st.status != "running":
+                raise OpError(
+                    "not_open", f"no gate {inst} waits for an answer in run {run}"
+                )
+            if o.get("by") != "person":
+                raise OpError("not_yours_to_answer", "this gate is the main agent's")
+            self._log(
+                run, {"ev": "gate_delegated", "node": inst, "key": template_key(inst)}
+            )
+            self._owner_card(st)
+            self.changed()
+
+    def _spent(self, st: RunState, wf: Workflow, inst: str) -> bool:
+        """Whether a failed instance is a loop whose until never passed in
+        all its rounds, which a round more may still pass."""
+        n = st.nodes.get(inst)
+        return (
+            n is not None
+            and n.status == "failed"
+            and n.max is not None
+            and n.round >= n.max
+            and n.error.startswith("until did not pass")
+            and self._template(wf, inst).kind == "loop"
+        )
 
     async def _answer_gate(
         self, st: RunState, inst: str, go: bool, text: str, by: str, value
@@ -2877,6 +3036,7 @@ class Workflows:
                 "go": go,
                 "value": value,
                 "text": text,
+                "tell": True,
             },
         )
         if go:
@@ -2901,7 +3061,9 @@ class Workflows:
         gates = {
             g.key
             for g in walk(node)
-            if g.kind == "gate" and g.body.get("by") == "person"
+            if g.kind == "gate"
+            and g.body.get("by") == "person"
+            and g.key not in st.delegated
         }
         if not gates:
             return False
@@ -2963,6 +3125,7 @@ class Workflows:
         say: str = "",
         retry: bool = True,
         by: str = "",
+        tail: str = "",
     ) -> None:
         """Fail one node, or send it back to pending while it has retries
         left. ``retry`` False marks a failure a retry would only repeat (a
@@ -2972,6 +3135,7 @@ class Workflows:
             {"ev": "failed", "node": node, "error": why}
             | ({"say": say} if say else {})
             | ({"by": by} if by else {})
+            | ({"tail": tail} if tail else {})
         )
         self._forget_probes(st.run, node)
         wf = self.defs.get(st.run)

@@ -754,8 +754,10 @@ function keepDraft(card) {
 }
 
 // A gate's panel: the question, the values the decider sees, and for an
-// open person gate an answer box with Continue and Stop (workflow.gate, an
-// operation no agent reaches). Answered, one line says who and what.
+// open person gate an answer box with Continue, Stop and Auto (workflow.gate
+// and workflow.gate.delegate, operations no agent reaches). Auto hands this
+// gate, and every later opening of the same step, to the main agent.
+// Answered, one line says who and what.
 function gatePanel(w, r) {
   const box = el("div", "gate");
   box.append(el("div", "q", r.ask || r.say));
@@ -764,7 +766,8 @@ function gatePanel(w, r) {
     if (r.summary) box.append(el("div", "out", r.summary.replace("by the person", "by you")));
     else if (r.error) box.append(el("div", "out bad", r.error));
     else if (r.state === "stopped") box.append(el("div", "out bad", "Stopped there."));
-    else if (r.by === "main" && r.state === "running") box.append(el("div", "out", "Waiting for the main agent."));
+    else if (r.by === "main" && r.state === "running") box.append(el("div", "out", r.delegated ? "Handed to the main agent: it answers this one and each later one." : "Waiting for the main agent."));
+    else if (r.delegated) box.append(el("div", "out", "Handed to the main agent."));
     return box;
   }
   const key = `${w.run}/${r.id}`;
@@ -787,10 +790,21 @@ function gatePanel(w, r) {
   const btns = el("div", "btns");
   const ok = el("button", "btn primary", "Continue");
   const no = el("button", "btn danger", "Stop");
-  ok.type = no.type = "button";
+  const auto = el("button", "btn", "Auto");
+  ok.type = no.type = auto.type = "button";
   ok.onclick = go(true, ok);
   no.onclick = go(false, no);
-  btns.append(ok, no);
+  auto.title = "Hand this gate to the main agent, now and each later time this step asks";
+  auto.onclick = async () => {
+    auto.disabled = true;
+    try {
+      await workflows.call("workflow.gate.delegate", { run: w.run, node: r.id });
+    } catch (err) {
+      auto.disabled = false;
+      auto.title = String(err?.message || err);
+    }
+  };
+  btns.append(ok, no, auto);
   box.append(answer, btns);
   return box;
 }
@@ -869,7 +883,7 @@ function fillDecision(card) {
     } else {
       if (r) panel = gatePanel(w, r);
       const open = r && r.state === "running" && r.by === "person" && w.status === "running";
-      state = open ? "waits for you" : r?.state === "done" ? "continued" : r?.state === "stopped" ? "stopped" : WF_WORDS[w.status] || w.status;
+      state = open ? "waits for you" : r?.state === "done" ? "continued" : r?.state === "stopped" ? "stopped" : r?.delegated && r.state === "running" ? "handed to the main agent" : WF_WORDS[w.status] || w.status;
     }
   } else if (what === "edit") {
     const e = (w.edits || []).find((x) => String(x.v) === key);

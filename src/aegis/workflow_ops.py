@@ -130,13 +130,15 @@ class Answer(_Strict):
         min_length=1,
         description="What you answer: the id in the message's header (a node path, or q<n> for a question).",
     )
-    choice: Literal["continue", "abort", "retry", "skip", "fail"] | None = Field(
-        default=None,
-        description="A gate: continue or abort. A failure: retry, skip or fail. A question takes text instead.",
+    choice: Literal["continue", "abort", "retry", "skip", "fail", "more"] | None = (
+        Field(
+            default=None,
+            description="A gate: continue or abort. A failure: retry, skip or fail; a loop out of rounds also takes more, one more round. A question takes text instead.",
+        )
     )
     value: Any = Field(
         default=None,
-        description="A gate's value for later steps, or a skipped step's result.",
+        description="A gate's value for later steps, a skipped step's result, or how many rounds more takes (1 if omitted).",
     )
     text: str = Field(
         default="",
@@ -331,7 +333,9 @@ def register_workflow_ops(app: App) -> None:
             await wf.stop_node(p.run, p.node)
         else:
             await wf.stop_run(p.run)
-        return wf.wire(p.run)
+        # The browser's Stop reads the run from its channel; an agent reads
+        # what it changed, and workflow_status for the rest.
+        return wf.taken(p.run, p.node) if caller.is_agent else wf.wire(p.run)
 
     @r.op("workflow.answer", Answer, agent=True)
     async def workflow_answer(p: Answer, caller):
@@ -341,7 +345,7 @@ def register_workflow_ops(app: App) -> None:
         names what to answer."""
         owned(p.run, caller)
         await wf.answer(me(caller), p.run, p.to, p.choice, p.value, p.text)
-        return wf.wire(p.run)
+        return wf.taken(p.run, p.to)
 
     # Open to read permission, as workflow_result is: any node may ask.
     @r.op("workflow.ask", Ask, agent=True, read=True)
@@ -364,6 +368,14 @@ def register_workflow_ops(app: App) -> None:
     async def workflow_gate(p: GateAnswer, caller):
         owned(p.run, caller)
         await wf.answer_gate(p.run, p.node, p.go, p.answer, by="person")
+        return wf.wire(p.run)
+
+    # Not marked for agents: only a person hands their gate to the main
+    # agent, as only a person answers it.
+    @r.op("workflow.gate.delegate", NodeRef)
+    async def workflow_delegate_gate(p: NodeRef, caller):
+        owned(p.run, caller)
+        await wf.delegate_gate(p.run, p.node)
         return wf.wire(p.run)
 
     # Not marked for agents: a person opens a step's see (spec §07). The
