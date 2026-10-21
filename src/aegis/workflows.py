@@ -45,7 +45,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from . import layout as canvas
-from . import refs, restarts
+from . import launch, refs, restarts
 from .agents import PERMISSION_ORDER, resolve
 from .monitors import CONDITION_LIMIT_S
 from .ops import OpError
@@ -147,15 +147,13 @@ async def run_sh(
     the task ends the group, SIGTERM first and SIGKILL 2 s later, or as
     soon as the group is empty. The SIGKILL goes even when bash has
     exited, since a member may ignore SIGTERM and outlive it."""
-    proc = await asyncio.create_subprocess_exec(
-        "bash",
-        "-c",
-        cmd,
+    proc = await launch.child(
+        ["bash", "-c", cmd],
         cwd=cwd,
         env={**os.environ, **(env or {})},
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        start_new_session=True,
+        stdout=launch.PIPE,
+        stderr=launch.PIPE,
+        new_session=True,
     )
     on_pid(proc.pid)
     try:

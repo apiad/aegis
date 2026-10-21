@@ -24,6 +24,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import launch
 from .agents import EFFORTS, HARNESSES, Agent
 from .cgroups import parse_size, total_ram
 from .claude.control import Catalog, Model
@@ -71,9 +72,7 @@ class Found:
 
 
 async def _version(bin: str) -> str:
-    proc = await asyncio.create_subprocess_exec(
-        bin, "--version", stdout=PIPE, stderr=STDOUT
-    )
+    proc = await launch.child([bin, "--version"], stdout=PIPE, stderr=STDOUT)
     try:
         out, _ = await asyncio.wait_for(proc.communicate(), VERSION_TIMEOUT_S)
     except TimeoutError:

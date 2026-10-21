@@ -19,6 +19,7 @@ from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
 
+from . import launch
 from .agents import ConfigError, load_agents, read_config
 
 T = TypeVar("T", bound=BaseModel)
@@ -123,13 +124,13 @@ async def run(argv: list[str], cwd: Path, timeout: float) -> str:
     running would keep billing."""
     cwd.mkdir(parents=True, exist_ok=True)
     try:
-        proc = await asyncio.create_subprocess_exec(
-            *argv,
+        proc = await launch.child(
+            argv,
             cwd=cwd,
             env={**os.environ, "MAX_THINKING_TOKENS": "0"},
-            stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
+            stdin=launch.DEVNULL,
+            stdout=launch.PIPE,
+            stderr=launch.DEVNULL,
         )
     except OSError as e:
         raise OneshotError(str(e)) from e
