@@ -40,7 +40,11 @@ from . import launch
 if TYPE_CHECKING:
     from .harness import Harness
 
-VERSION_TIMEOUT_S = 5.0
+# `cursor-agent --version` needs 8.1 s to answer (measured 2026-10-19: a node
+# bundle's cold start), so 5 s made its version unreadable forever — every
+# person's launch asked, and "always" could not settle it because a version
+# that was never read can never be accepted.
+VERSION_TIMEOUT_S = 30.0
 OUTSIDE = ("newer", "older", "unknown")
 _VERSION = re.compile(r"(\d+(?:\.\d+)+)([-+][0-9A-Za-z])?")
 
@@ -176,6 +180,11 @@ def install_command(
 ) -> tuple[str, tuple[str, ...]]:
     """(the command that installs the tested max, notes to show under it)."""
     npm = f"npm install -g {r.package}@{r.max_s}"
+    if r.harness == "cursor":
+        return "curl https://cursor.com/install -fsS | bash", (
+            "Cursor's own installer, which always installs its latest build;"
+            " `npm install -g cursor-agent` is a different, unrelated package.",
+        )
     p = path or ""
     if "/.local/share/claude/versions/" in p:
         return f"claude install {r.max_s}", (

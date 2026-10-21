@@ -18,9 +18,17 @@ queues:
 
 
 def bins(
-    claude: str, opencode: str, codex: str = "codex-not-installed"
+    claude: str,
+    opencode: str,
+    codex: str = "codex-not-installed",
+    cursor: str = "cursor-not-installed",
 ) -> dict[str, str]:
-    return {"claude-code": claude, "opencode": opencode, "codex": codex}
+    return {
+        "claude-code": claude,
+        "opencode": opencode,
+        "codex": codex,
+        "cursor": cursor,
+    }
 
 
 async def run(tmp_path: Path, text: str | None, claude: str, opencode: str):
@@ -157,8 +165,11 @@ async def test_legacy_state_is_an_error_and_the_doctor_writes_nothing(
 async def test_detect_finds_both_fakes_with_their_models(
     tmp_path, fake_claude, fake_opencode
 ):
-    claude, opencode, codex = await detect(tmp_path, bins(fake_claude, fake_opencode))
+    claude, opencode, codex, cursor = await detect(
+        tmp_path, bins(fake_claude, fake_opencode)
+    )
     assert codex.error == "codex-not-installed is not on PATH"
+    assert cursor.error == "cursor-not-installed is not on PATH"
     assert (claude.harness, claude.version, claude.error) == (
         "claude-code",
         f"{ranges()['claude-code'].max_s} (Claude Code)",
@@ -166,6 +177,21 @@ async def test_detect_finds_both_fakes_with_their_models(
     )
     assert [m.value for m in claude.models] == ["opus", "sonnet", "haiku"]
     assert opencode.models[0].value == "opencode-go/fake-pro"
+
+
+async def test_detect_probes_an_installed_cursor(
+    tmp_path, fake_claude, fake_opencode, fake_cursor
+):
+    _, _, _, cursor = await detect(
+        tmp_path, bins(fake_claude, fake_opencode, cursor=fake_cursor)
+    )
+    assert cursor.error is None and cursor.bin == fake_cursor
+    assert cursor.version and cursor.version.endswith(ranges()["cursor"].max_s)
+    assert [m.value for m in cursor.models] == [
+        "fake-pro",
+        "fake-flash",
+        "fake-reason",
+    ]
 
 
 def m(value: str, efforts=(), free=False) -> Model:

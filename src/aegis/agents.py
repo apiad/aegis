@@ -34,7 +34,7 @@ from .roots import CONFIG_FILE
 from .session import SpawnSpec
 
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
-HARNESSES = ("claude-code", "opencode", "codex")
+HARNESSES = ("claude-code", "opencode", "codex", "cursor")
 SUPPORTED_HARNESSES = HARNESSES
 FIELDS = ("harness", "model", "effort", "permission")
 # Least to most: an agent spawns sessions with at most its own permission.

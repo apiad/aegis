@@ -50,7 +50,12 @@ from .ops import OpError
 from .session import SpawnSpec
 
 PROBE_TIMEOUT_S = 20.0
-LABELS = {"claude-code": "Claude Code", "opencode": "OpenCode", "codex": "Codex"}
+LABELS = {
+    "claude-code": "Claude Code",
+    "opencode": "OpenCode",
+    "codex": "Codex",
+    "cursor": "Cursor Agent",
+}
 
 
 @dataclass(frozen=True)
@@ -89,7 +94,9 @@ async def _version(bin: str) -> str:
 
 
 async def _catalog(name: str, bins: dict[str, str], cwd: Path) -> Catalog:
-    h = harness_for(name, bins["claude-code"], bins["opencode"], bins["codex"])
+    h = harness_for(
+        name, bins["claude-code"], bins["opencode"], bins["codex"], bins["cursor"]
+    )
     spec = SpawnSpec(
         agent="doctor", model="", effort="", permission="read", cwd=cwd, harness=name
     )
@@ -372,7 +379,9 @@ def _park(park: dict) -> Finding:
         f"{h} after {s // 60} min" if s >= 60 else f"{h} after {s} s"
         for h, s in park.items()
     )
-    unmeasured = [h for h in park if h != "claude-code"]
+    # Cursor resumes by session/load on the same session id, which the probe
+    # and the stop/resume test measured (the conversation survived).
+    unmeasured = [h for h in park if h not in ("claude-code", "cursor")]
     if unmeasured:
         return Finding(
             "warn",

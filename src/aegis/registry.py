@@ -51,7 +51,11 @@ def _public(meta: dict) -> dict:
     the harness's label as the wire does, for the side panel's model line."""
     out = {k: v for k, v in meta.items() if k not in ("priming", "standing")}
     harness = harness_for(
-        meta.get("harness") or "claude-code", "claude", "opencode", "codex"
+        meta.get("harness") or "claude-code",
+        "claude",
+        "opencode",
+        "codex",
+        "cursor-agent",
     )
     out["harness_label"] = harness.label
     return out
@@ -66,12 +70,14 @@ class Registry(Host):
         interrupt_timeout: float = 10.0,
         opencode_bin: str = "opencode",
         codex_bin: str = "codex",
+        cursor_bin: str = "cursor-agent",
     ) -> None:
         self.roots = roots
         self._publish = publish
         self._claude_bin = claude_bin
         self._opencode_bin = opencode_bin
         self._codex_bin = codex_bin
+        self._cursor_bin = cursor_bin
         self._interrupt_timeout = interrupt_timeout
         self.metas = MetaStore(roots.state_root / "sessions")
         self.sessions: dict[str, Session] = {}
@@ -478,6 +484,7 @@ class Registry(Host):
             claude_bin=self._claude_bin,
             opencode_bin=self._opencode_bin,
             codex_bin=self._codex_bin,
+            cursor_bin=self._cursor_bin,
             publish=self._publish,
             metas=self.metas,
             title=meta.get("title") or "",
