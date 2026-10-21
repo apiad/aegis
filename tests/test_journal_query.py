@@ -235,7 +235,9 @@ def test_a_rows_url_is_its_commit_on_github_or_the_pr_its_text_names(tmp_path):
         d.mkdir()
         subprocess.run(["git", "init", "-q"], cwd=d, check=True)
         if origin:
-            subprocess.run(["git", "remote", "add", "origin", origin], cwd=d, check=True)
+            subprocess.run(
+                ["git", "remote", "add", "origin", origin], cwd=d, check=True
+            )
         return str(d)
 
     gh, plain, other = (

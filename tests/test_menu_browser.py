@@ -190,7 +190,9 @@ def test_files_menu_inserts_paths_and_opens_sessions_and_terminals_here(
     page.click(row("sub/deep"), button="right")
     page.click(".cmenu [data-id=insert-path]")
     page.wait_for_function(f"location.hash === '#s={key}'")
-    page.wait_for_function("document.querySelector('#input').value === 'see `sub/deep`'")
+    page.wait_for_function(
+        "document.querySelector('#input').value === 'see `sub/deep`'"
+    )
     assert page.evaluate("document.activeElement.id") == "input"
 
     files(page, server)
