@@ -430,10 +430,16 @@ export class FileTree {
       { id: "new-file", label: "New file", icon: "file", run: () => this.create(dir, "file") },
       { id: "new-folder", label: "New folder", icon: "folder", run: () => this.create(dir, "dir") },
     ];
-    if (!r) return { groups: [make] };
+    const { here } = this.host;
+    const herein = [
+      { id: "session-here", label: "New session here", icon: "start", run: () => here.session(dir) },
+      { id: "terminal-here", label: "Terminal here", icon: "terminal", run: () => here.terminal(dir) },
+    ];
+    if (!r) return { groups: [herein, make] };
     const copy = () => navigator.clipboard.writeText(path).then(() => this.host.toast(`Copied ${path}`));
     return {
       groups: [
+        [{ id: "insert-path", label: "Insert path", icon: "prompt", run: () => here.insert(path) }, ...herein],
         [
           ...make,
           { id: "rename", label: "Rename", icon: "pencil", run: () => this.rename(path) },
@@ -636,9 +642,10 @@ function filesUnit(range, root) {
 
 export class Files {
   // `point` is app.js's: items(ctx) gives a selection's items, send(text)
-  // writes the comments' message where the quotes go.
-  constructor(conn, box, { toast, onPick, go, point }) {
-    Object.assign(this, { conn, box, toast, go, point });
+  // writes the comments' message where the quotes go. `here` is app.js's
+  // too: a row's path into the composer, a session or a terminal in a folder.
+  constructor(conn, box, { toast, onPick, go, point, here }) {
+    Object.assign(this, { conn, box, toast, go, point, here });
     this.path = null; // the open file
     this.hash = null; // the hash the buffer is based on
     this.ed = null;

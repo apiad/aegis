@@ -589,6 +589,23 @@ filesView = new Files(conn, $("files"), {
   go,
   onPick: () => filePicker.open(),
   point: { items: (ctx) => pointItems({ ...ctx, to: lastShown }), send: (text) => toComposer(lastShown, text) },
+  // A Files row's menu (spec 06): paths are under the root, which is this
+  // server's harness folder (roster.cwd).
+  here: {
+    insert: (path) => toComposer(lastShown, `\`${path}\``, { caret: true }),
+    session: async (dir) => {
+      go("#new");
+      spawnGrow();
+      await setSpServer(null);
+      await agentsLoading; // roster.cwd comes with the roster
+      $("sp-cwd").value = dir ? `${roster.cwd}/${dir}` : roster.cwd;
+    },
+    terminal: (dir) =>
+      conn.call("term.spawn", { profile: "shell", cwd: dir || "." }).then(
+        (card) => go(`#t=${keyOf(null, card.id)}`),
+        (e) => toast(e.message, { kind: "error" }),
+      ),
+  },
 });
 // The Help tab (help.js), one per window like Settings. Its code blocks copy
 // as the transcript's do.

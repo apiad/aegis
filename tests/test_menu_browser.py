@@ -59,21 +59,24 @@ def test_a_menu_walks_with_arrows_runs_with_enter_and_esc_returns_focus(
     page.wait_for_selector(".cmenu[role=menu]")
     labels = page.locator(".cmenu [role=menuitem]").all_inner_texts()
     assert [x.strip() for x in labels] == [
+        "Insert path",
+        "New session here",
+        "Terminal here",
         "New file",
         "New folder",
         "Rename",
         "Copy path",
         "Delete",
     ]
-    assert page.locator(".cmenu .grp").count() == 1  # Delete stands apart
-    assert focused_label(page) == "New file"
+    assert page.locator(".cmenu .grp").count() == 2  # Delete stands apart
+    assert focused_label(page) == "Insert path"
     page.keyboard.press("ArrowDown")
     page.keyboard.press("ArrowDown")
-    assert focused_label(page) == "Rename"
+    assert focused_label(page) == "Terminal here"
     page.keyboard.press("End")
     assert focused_label(page) == "Delete"
     page.keyboard.press("ArrowDown")  # wraps
-    assert focused_label(page) == "New file"
+    assert focused_label(page) == "Insert path"
     page.keyboard.press("Escape")
     page.wait_for_selector(".cmenu", state="detached")
     assert page.evaluate("document.activeElement.dataset.path") == "a.py"
@@ -81,7 +84,7 @@ def test_a_menu_walks_with_arrows_runs_with_enter_and_esc_returns_focus(
     page.evaluate("navigator.clipboard.writeText('')")
     page.click(row("a.py"), button="right")
     page.wait_for_selector(".cmenu")
-    for _ in range(3):
+    for _ in range(6):
         page.keyboard.press("ArrowDown")
     assert focused_label(page) == "Copy path"
     page.keyboard.press("Enter")
@@ -122,7 +125,7 @@ def test_the_menu_key_opens_the_focused_rows_menu(server, page, tmp_path):  # no
     page.focus(row("a.py"))
     page.keyboard.press("Shift+F10")
     page.wait_for_selector(".cmenu")
-    assert focused_label(page) == "New file"
+    assert focused_label(page) == "Insert path"
     page.keyboard.press("Escape")
     page.wait_for_selector(".cmenu", state="detached")
     page.keyboard.press("ContextMenu")
@@ -159,6 +162,46 @@ def test_a_long_press_on_touch_opens_it_and_swallows_the_click(
     )  # the click that followed opened nothing
     ctx.close()
     assert errors == []
+
+
+def test_files_menu_inserts_paths_and_opens_sessions_and_terminals_here(
+    server,  # noqa: F811
+    page,
+    tmp_path,
+):
+    (tmp_path / "a.py").write_text("a = 1\n")
+    (tmp_path / "sub" / "deep").mkdir(parents=True)
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    key = spawn(page, "hello")
+    page.fill("#input", "see")
+    files(page, server)
+    page.click(".ftree .trow[data-path='sub']")  # opens the folder
+    page.wait_for_selector(row("sub/deep"))
+
+    page.click(row("sub/deep"), button="right")
+    page.click(".cmenu [data-id=insert-path]")
+    page.wait_for_function(f"location.hash === '#s={key}'")
+    page.wait_for_function("document.querySelector('#input').value === 'see `sub/deep`'")
+    assert page.evaluate("document.activeElement.id") == "input"
+
+    files(page, server)
+    page.click(row("sub"), button="right")
+    page.click(".cmenu [data-id=session-here]")
+    page.wait_for_selector("#a2[data-view=spawn]")
+    page.wait_for_function(
+        f"document.querySelector('#sp-cwd').value === {json.dumps(str(tmp_path / 'sub'))}"
+    )
+
+    files(page, server)
+    page.click(row("sub/deep"), button="right")
+    page.click(".cmenu [data-id=terminal-here]")
+    page.wait_for_function("location.hash.startsWith('#t=')")
+    metas = list((tmp_path / ".aegis" / "state" / "terminals").glob("*/meta.json"))
+    assert [json.loads(m.read_text())["cwd"] for m in metas] == [
+        str((tmp_path / "sub" / "deep").resolve())
+    ]
+    assert page.errors == []
 
 
 # -- the fleet card and session tab menus ------------------------------------------

@@ -30,6 +30,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from . import fs_paths
 from .ops import OpError
 from .term_profiles import argv, login_shell, with_shell
 from .term_store import CastStore
@@ -75,16 +76,20 @@ class Terminals:
         return with_shell(self._profiles())
 
     async def spawn(
-        self, profile: str, owner: str, started_by: str | None = None
+        self,
+        profile: str,
+        owner: str,
+        started_by: str | None = None,
+        cwd: str | None = None,
     ) -> Terminal:
+        """Start a terminal from ``profile``, in the profile's folder or in
+        ``cwd``, a folder under the root that Files may open (Terminal here)."""
         p = self.profiles().get(profile)
         if p is None:
             raise OpError("no_profile", f"no terminal profile named {profile!r}")
         if "error" in p:
             raise OpError("bad_profile", f"terminal profile {profile}: {p['error']}")
-        cwd = (self.config_root / p["cwd"]).resolve()
-        if not cwd.is_dir():
-            raise OpError("bad_cwd", f"{p['cwd']} is not a directory")
+        cwd = self._cwd(p["cwd"] if cwd is None else cwd, under_root=cwd is not None)
         tid = mint_term_id()
         meta = {
             "id": tid,
@@ -111,6 +116,18 @@ class Terminals:
             del self.open[tid]
             raise
         return t
+
+    def _cwd(self, rel: str, under_root: bool) -> Path:
+        if under_root:
+            try:
+                path = fs_paths.resolve(self.config_root, self.dir.parent, rel)
+            except OpError as e:
+                raise OpError("bad_cwd", str(e)) from None
+        else:
+            path = (self.config_root / rel).resolve()
+        if not path.is_dir():
+            raise OpError("bad_cwd", f"{rel} is not a directory")
+        return path
 
     def get(self, tid: str) -> Terminal:
         t = self.open.get(tid)

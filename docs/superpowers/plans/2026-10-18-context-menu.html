@@ -248,6 +248,9 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 <li><b>The gate is the focus in the frame alone</b>, not <code>:hover</code>: a page posted a menu under a pointer that only rested over it, with the composer focused. A right-click's mousedown and a long press (<code>window.focus()</code>) give the frame the focus. A page that takes the focus by script can still propose a menu; only a click on an item, after the settle, writes.</li>
 <li><b><code>pagepoint.js</code> listens on the window, after the page's own listeners, and leaves a right-click or a press the page cancelled</b>: a page with its own right-click (a board, an editor, its own menu) got the host's menu over its own.</li>
 <li><b>The viewer keeps an item's tray across its redraws</b> (an artifact's status or a resend), with the note being typed and its caret. Two browser tabs on one file still write the whole tray to storage each, so the last one to save wins.</li>
+<li><b>Insert path lands at the caret of the session last shown, which is the draft's end</b>: going back from Files reloads the draft into <code>#input</code> (<code>app.js</code>, <code>follow</code>, <code>$("input").value = localStorage…</code>), which puts the caret there. <code>insertIntoComposer</code> takes <code>caret: true</code> and keeps a space from a word before it. With no session shown, it opens New session, as Files' Ask does.</li>
+<li><b>New session here writes an absolute folder</b>, <code>roster.cwd</code> and the row's folder, since a Files path is under the root and <code>roster.cwd</code> is the server's harness folder, the root (<code>roots.py</code>, <code>make_roots</code>). A file row's "here" is its folder.</li>
+<li><b>Terminal here starts the <code>shell</code> profile</b> (<code>term_profiles.py</code>, <code>with_shell</code>) with the new <code>cwd</code>, which <code>fs_paths.resolve</code> checks as Files does: an error there, or a cwd that is not a folder, is <code>bad_cwd</code>. A profile's own <code>cwd</code> is still relative to the root and unchecked.</li>
 </ul>
 
 <h2>Review focus</h2>
@@ -650,7 +653,7 @@ def test_a_long_press_inside_a_page_on_a_phone(browser, server): ...</script></l
 
 <div class="slice">slice 5 · the rest · branch menu-5-rest</div>
 
-<details class="task" id="task-12" data-state="pending">
+<details class="task" id="task-12" data-state="doing">
 <summary><span class="num">12</span><span><span class="ttl">Files' new items and term.spawn's cwd</span><span class="files">js/files.js · term_ops.py · terminals.py · tests/test_terminals*.py · tests/test_menu_browser.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>interfaces</h4>

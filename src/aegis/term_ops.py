@@ -22,6 +22,7 @@ class _Strict(BaseModel):
 
 class TermSpawn(_Strict):
     profile: str
+    cwd: str | None = None  # a folder under the root, from Files' Terminal here
 
 
 class TermRef(_Strict):
@@ -51,8 +52,10 @@ def register_term_ops(app: App) -> None:
 
     @r.op("term.spawn", TermSpawn)
     async def spawn(p: TermSpawn, caller):
-        """Start a terminal from a profile; the caller owns it."""
-        return terms.card(await terms.spawn(p.profile, owner=app.who(caller).name))
+        """Start a terminal from a profile, in its folder or in ``cwd``; the
+        caller owns it."""
+        t = await terms.spawn(p.profile, owner=app.who(caller).name, cwd=p.cwd)
+        return terms.card(t)
 
     @r.op("term.input", TermInput, owned="id")
     async def input_(p: TermInput, caller):
