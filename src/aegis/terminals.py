@@ -89,7 +89,7 @@ class Terminals:
             raise OpError("no_profile", f"no terminal profile named {profile!r}")
         if "error" in p:
             raise OpError("bad_profile", f"terminal profile {profile}: {p['error']}")
-        cwd = self._cwd(p["cwd"] if cwd is None else cwd, under_root=cwd is not None)
+        where = self._cwd(p["cwd"] if cwd is None else cwd, under_root=cwd is not None)
         tid = mint_term_id()
         meta = {
             "id": tid,
@@ -97,7 +97,7 @@ class Terminals:
             "profile": profile,
             "spec": p,
             "title": p["cmd"] or login_shell(),
-            "cwd": str(cwd),
+            "cwd": str(where),
             "owner": owner,
             "started_by": started_by,
             "cols": COLS,
