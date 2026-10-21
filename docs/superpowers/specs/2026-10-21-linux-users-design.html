@@ -141,7 +141,9 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <a href="#mode">Turning the mode on</a>
   <a href="#mapping">Tokens and Linux users</a>
   <a href="#processes">Processes</a>
-  <a class="sub" href="#wrapper">The one spawn path</a>
+  <a class="sub" href="#wrapper">One launcher</a>
+  <a class="sub" href="#sites">Every call site</a>
+  <a class="sub" href="#switch">The user switch</a>
   <a class="sub" href="#caps">Capabilities</a>
   <a class="sub" href="#env">Environment and the pool</a>
   <a href="#files">Files the server touches</a>
@@ -176,7 +178,8 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 </div>
 <div class="stats">
   <div class="stat"><div class="v">1</div><div class="k">Linux user that runs every process on a shared server today</div></div>
-  <div class="stat"><div class="v">7</div><div class="k">places that start a child for a person: three harnesses, terminals, monitors, workflows, one-shot runs</div></div>
+  <div class="stat"><div class="v">23</div><div class="k">calls that start a process, in 20 files, each built its own way</div></div>
+  <div class="stat"><div class="v">1</div><div class="k">launcher every one of them goes through after this spec</div></div>
   <div class="stat"><div class="v">0</div><div class="k">changes for a server that does not turn the mode on</div></div>
 </div>
 
@@ -188,7 +191,8 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <tr><td>What it protects against</td><td>Accidents between people who trust each other: an agent writing into someone else's checkout, a push under the wrong GitHub identity, permissions that blur who did what. Not a hostile user, and not the host itself</td><td class="why"><span class="who">maintainer</span> The code and its attribution are what need protecting. Hardening the machine against its own users is out of scope.</td></tr>
 <tr><td>One server or one per person</td><td>One aegis server for everyone</td><td class="why"><span class="who">maintainer</span> One URL, one place for quota policies, one admin view of every tab. Linking a server per person would split all three.</td></tr>
 <tr><td>Off by default</td><td>A mode turned on in <code>.aegis.yaml</code>. Without it aegis behaves exactly as today</td><td class="why"><span class="who">maintainer</span> A laptop with one user must not need capabilities, a dedicated service user or any new setup.</td></tr>
-<tr><td>What aegis knows</td><td>Linux users, their groups and their homes. Nothing about git, <code>gh</code>, GitHub or SSH</td><td class="why"><span class="who">maintainer</span> Each person's tools find their own configuration in their own home. aegis only has to start the process as the right user.</td></tr>
+<tr><td>What aegis knows</td><td>Linux users, their groups and their homes. Nothing about git, <code>gh</code>, GitHub or SSH identities. Where aegis already runs <code>git</code> or <code>gh</code> (the repos panel, Alt+O, the journal, usage), it runs them as the person, like any other process</td><td class="why"><span class="who">maintainer</span> Each person's tools find their own configuration in their own home. aegis only has to start the process as the right user.</td></tr>
+<tr><td>How aegis starts processes</td><td>Every process aegis starts, in every mode, goes through one launcher module. A test fails on any process call outside it. This refactor lands first, with no change in behaviour</td><td class="why"><span class="who">maintainer</span> The user switch, the capability drop, the cgroup join, the OOM score and the environment then live in one place, and a new feature cannot start a process that skips them.</td></tr>
 <tr><td>Isolation beyond file permissions</td><td>The host owner's job: home modes, a shared folder's group, chroot, namespaces. aegis does not build any of it</td><td class="why"><span class="who">maintainer</span> These are ordinary Linux administration. aegis stays correct under whatever the owner sets up, because the kernel checks every access.</td></tr>
 <tr><td>Shared repositories</td><td>Each person clones into their own home. A folder everyone uses is a directory with a group, set up by the host owner</td><td class="why"><span class="who">maintainer</span> Separate clones keep each push under its author. A shared folder needs nothing from aegis.</td></tr>
 <tr><td>Visibility of other people's work</td><td>In multi-user mode a member sees and addresses only what it owns, and an address it does not own reads as unknown. Outside the mode, members keep reading every session as today</td><td class="why"><span class="who">maintainer</span> A member should not learn that other people use the server. Tying the change to the mode leaves single-user and trusted-team servers as they are.</td></tr>
@@ -280,9 +284,39 @@ CapabilityBoundingSet=CAP_SETUID CAP_SETGID</pre>
 </ul>
 
 <h2 id="processes"><span class="n">06</span>Processes</h2>
-<h3 id="wrapper">The one spawn path</h3>
-<p>Seven places start a child on a person's behalf: the Claude Code, OpenCode and Codex processes, terminals, monitors, workflow <code>sh</code> steps and one-shot runs such as recaps. Today each builds its own argv. In multi-user mode all seven go through one function that, given the owner's user, returns the argv prefix and the environment. Server-level children that act for nobody (the doctor, the harness version probe, quota readers) keep running as the server's user, through the same function with no user, so they drop capabilities too.</p>
-<p>The prefix comes after the existing cgroup join, so the order is: <code>/bin/sh</code> writes its pid to the session's <code>cgroup.procs</code> while it is still the server's user, then execs <code>setpriv</code>, which switches and execs the program. The pid the server records is still the program's pid. Terminals keep <code>setsid --ctty</code> outermost, as today.</p>
+<h3 id="wrapper">One launcher</h3>
+<p>Today aegis starts processes from 23 calls in 20 files, through <code>asyncio.create_subprocess_exec</code>, <code>subprocess.run</code> and <code>subprocess.Popen</code>. Each call builds its own argv, environment and options, and the cross-cutting steps are repeated where someone remembered them: the cgroup join and the OOM score in the harnesses, <code>setsid --ctty</code> in terminals, <code>start_new_session</code> in some places and not others.</p>
+<p>A new module, <code>aegis/launch.py</code>, becomes the only code that calls those functions. A caller describes what it wants and the launcher builds the process:</p>
+<ul>
+  <li><strong>who</strong>: the principal the process acts for, or the server itself;</li>
+  <li><strong>what</strong>: argv, working directory, and the variables to add to the environment;</li>
+  <li><strong>how</strong>: one of four shapes. A <em>session child</em> with pipes, its own cgroup and the OOM score (harnesses, monitors, workflow steps, one-shot runs). A <em>terminal</em> on a PTY with <code>setsid --ctty</code>. A <em>short run</em> that captures output under a timeout (<code>git</code>, <code>gh</code>, version and doctor probes). A <em>detached</em> process the server does not wait for (the desktop opener, the service helper).</li>
+</ul>
+<p>The launcher returns the same objects the callers use today (an asyncio process, a <code>CompletedProcess</code>), so each call site changes in a few lines. A test walks <code>src/aegis</code> and fails on any call to <code>subprocess</code>, <code>asyncio.create_subprocess_*</code>, <code>os.system</code>, <code>os.exec*</code>, <code>os.spawn*</code>, <code>os.posix_spawn</code> or <code>pty.spawn</code> outside <code>launch.py</code>.</p>
+<p>This lands first, on its own, and changes no behaviour: with <code>multi_user</code> off, every process starts exactly as it does today. The existing suite is the check.</p>
+
+<h3 id="sites">Every call site</h3>
+<p>Who each process acts for decides which user it runs as in multi-user mode. A process that reads a person's files acts for that person, because the server's user may not be able to read them, and because <code>git</code> refuses a repository owned by another user.</p>
+<table class="tbl">
+<thead><tr><th>Call site</th><th>Shape</th><th>Acts for</th></tr></thead>
+<tbody>
+<tr><td>claude/process.py, opencode/process.py, codex/process.py</td><td>session child</td><td>the session's owner</td></tr>
+<tr><td>terminal.py</td><td>terminal</td><td>the terminal's owner</td></tr>
+<tr><td>monitors.py</td><td>session child</td><td>the owner of the session that armed it</td></tr>
+<tr><td>workflows.py</td><td>session child</td><td>the owner of the workflow</td></tr>
+<tr><td>oneshot.py (recaps and other one-shot runs)</td><td>session child</td><td>the owner of the session it summarises</td></tr>
+<tr><td>repos/probe.py (<code>git</code>), repos/gh.py (<code>gh</code>)</td><td>short run</td><td>the person viewing the repos panel</td></tr>
+<tr><td>fs_index.py, fs_ops.py (<code>git</code> for Alt+O and the Files view)</td><td>short run</td><td>the person viewing</td></tr>
+<tr><td>journal/paths.py (<code>git</code>)</td><td>short run</td><td>the owner of the session whose touch it names</td></tr>
+<tr><td>usage/gitfacts.py (<code>git log</code>)</td><td>short run</td><td>the person asking for the report</td></tr>
+<tr><td>doctor.py, harness_versions.py, version.py, service.py</td><td>short run</td><td>the server</td></tr>
+<tr><td>cli.py (the background server), window.py, files.py (<code>open_natively</code>)</td><td>detached</td><td>the server; the opener and windows are refused in multi-user mode</td></tr>
+</tbody>
+</table>
+<p>The table is what a reading of <code>origin/main</code> found. The test above is what keeps it complete.</p>
+
+<h3 id="switch">The user switch</h3>
+<p>In multi-user mode the launcher puts <code>setpriv</code> in front of every process. It comes after the cgroup join, so the order is: <code>/bin/sh</code> writes its pid to the session's <code>cgroup.procs</code> while it is still the server's user, then execs <code>setpriv</code>, which switches and execs the program. The pid the server records is still the program's pid. Terminals keep <code>setsid --ctty</code> outermost, as today. A process that acts for the server, or for an admin token without a Linux user, gets <code>setpriv</code> without the switch, so it still drops capabilities.</p>
 <pre>sh -c 'echo $$ &gt; …/cgroup.procs; exec "$@"' sh \
   setpriv --reuid=ben --regid=ben --init-groups --reset-env \
           --inh-caps=-all --ambient-caps=-all --bounding-set=-all --no-new-privs \
@@ -299,6 +333,7 @@ CapabilityBoundingSet=CAP_SETUID CAP_SETGID</pre>
 <p>Some reads and writes happen inside the server, not in a child: listing the Files tree, reading and saving in the editor, serving a file to the browser, uploads and dictation files, <code>file_send</code> copying a file an agent names, and artifact drafts an agent edits. In multi-user mode each of these goes through the requesting principal's file worker.</p>
 <ul>
   <li>The worker is <code>aegis file-worker</code>, started through the spawn path above as the owner's user, with no cgroup of its own. It speaks a line protocol on stdin and stdout: list, stat, read, write, mkdir, rename, remove, copy-out. Each request carries a path and returns data or the <code>errno</code>.</li>
+  <li>The Files view and Alt+O are rooted at the aegis root today (<code>fs_ops.py</code>, <code>fs_index.py</code>). In multi-user mode a member's root is their home; an admin with a Linux user keeps the aegis root.</li>
   <li>The server starts one worker per Linux user the first time it is needed, and stops it after 10 minutes without a request.</li>
   <li>An admin without a Linux user, and every request outside the mode, keep today's in-process code. The worker only replaces the calls; the endpoints and ops do not change.</li>
   <li><code>file_send</code> copies through the worker into <code>&lt;state&gt;</code>. Once copied, the file belongs to the server and is served to the sender's browsers only.</li>
@@ -373,16 +408,19 @@ CapabilityBoundingSet=CAP_SETUID CAP_SETGID</pre>
 
 <h2 id="delivery"><span class="n">11</span>Delivery</h2>
 <div class="steps">
-  <div class="step"><div class="n"></div><div><h4>The mode, the mapping and the spawn path</h4><p><code>multi_user</code>, the boot checks, <code>linux_user</code> on tokens and the CLI and Settings, the one spawn function with <code>setpriv</code> and the capability drop for all seven start points, the env file, the doctor checks, the unit. After this PR every process a person starts runs as their user.</p></div></div>
+  <div class="step"><div class="n"></div><div><h4>One launcher</h4><p><code>aegis/launch.py</code>, all 23 calls moved onto it, and the test that fails on a process call anywhere else. No behaviour changes; the existing suite passes unchanged.</p></div></div>
+  <div class="step"><div class="n"></div><div><h4>The mode, the mapping and the user switch</h4><p><code>multi_user</code>, the boot checks, <code>linux_user</code> on tokens and the CLI and Settings, <code>setpriv</code> and the capability drop in the launcher, the env file, the doctor checks, the unit. After this PR every process a person starts runs as their user.</p></div></div>
   <div class="step"><div class="n"></div><div><h4>Files through the worker</h4><p><code>aegis file-worker</code>, the server's file paths routed through it, artifact drafts in the owner's home, the desktop opener refused, and the test that lists file call sites.</p></div></div>
   <div class="step"><div class="n"></div><div><h4>What a member sees</h4><p>The owner filter on every list and address in the table above, for the mode only.</p></div></div>
   <div class="step"><div class="n"></div><div><h4>The deploy guide</h4><p>A help page and a know-how doc for the host owner's steps, including the pooled credentials and what members can read.</p></div></div>
 </div>
-<p>The first PR is useful on its own: with it, git and GitHub already record each person's own work. Each PR goes through issue, worktree, review and the maintainer's smoke test, which for this feature runs on a host with three real Linux users.</p>
+<p>The second PR is the first one people notice: with it, git and GitHub already record each person's own work. Each PR goes through issue, worktree, review and the maintainer's smoke test, which for this feature runs on a host with three real Linux users.</p>
 
 <h2 id="testing"><span class="n">12</span>Testing</h2>
 <p>These tests need real Linux users and a server with the two capabilities. CI creates the users with <code>sudo useradd</code> and starts the server under <code>systemd-run</code> with the capabilities. Locally they skip with a reason when that is not possible. Each check below is broken on purpose once to confirm it fails.</p>
 <ul class="checks">
+  <li>The call-site test fails when a <code>subprocess.run</code> is added outside <code>launch.py</code> <span class="b">fast</span></li>
+  <li>In multi-user mode, the repos panel for a member runs <code>git</code> and <code>gh</code> as that member: a repository the server's user cannot read still shows its branch and pull requests <span class="b">slow</span></li>
   <li>A member's session runs <code>id -un</code> and gets its own user; its <code>HOME</code> is its home <span class="b">slow</span></li>
   <li>Inside a member's session, <code>/proc/self/status</code> shows zero capabilities in every set and <code>NoNewPrivs: 1</code>. Remove the drop from the prefix and this fails <span class="b">slow</span></li>
   <li>A member's agent tries to write into another member's home and into <code>&lt;state&gt;</code>: both fail with a permission error <span class="b">slow</span></li>
