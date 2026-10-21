@@ -31,8 +31,8 @@ from typing import Any
 import httpx
 
 from ..claude.control import Catalog
-from ..cgroups import wrap
-from ..harness import Launch, raise_oom_score, session_env
+from .. import launch
+from ..harness import Launch, session_env
 from .config import (
     SANDBOX_MODE,
     SANDBOX_POLICY,
@@ -138,20 +138,18 @@ class CodexProcess:
         self._quiet = False
         mcp = self._launch.mcp
         self._launch.stderr_path.parent.mkdir(parents=True, exist_ok=True)
-        self._proc = await asyncio.create_subprocess_exec(
-            *wrap(
-                self._launch.cgroup,
-                argv(self._bin, mcp[0] if mcp else None, person_excludes()),
-            ),
+        self._proc = await launch.child(
+            argv(self._bin, mcp[0] if mcp else None, person_excludes()),
             cwd=self._launch.cwd,
             env=session_env(self._launch, child_env(os.environ, mcp)),
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            stdin=launch.PIPE,
+            stdout=launch.PIPE,
+            stderr=launch.PIPE,
             limit=LINE_LIMIT,
-            start_new_session=True,
+            new_session=True,
+            cgroup=self._launch.cgroup,
+            oom=True,
         )
-        raise_oom_score(self._proc.pid)
         self._keep(self._drain(self._proc.stderr))
         self._keep(self._read())
         self._wait_task = asyncio.create_task(self._wait())
