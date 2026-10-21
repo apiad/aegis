@@ -169,6 +169,9 @@ asked before a session starts. A range moves only on canary evidence:
    run green: `gh workflow run canary.yml --ref <branch> -f versions=max`,
    then `-f versions=min`; locally, `AEGIS_CANARY_VERSIONS=max scripts/canary.sh`.
    Those runs open no issues: a failure at an end means the range is wrong.
+   Dispatch them one at a time: the workflow's `concurrency: canary` group
+   keeps one pending run and cancels the older, which at 2.13.0 cancelled
+   the `min` run queued behind `latest`.
 
 The canary's own server turns the gate off and tests whatever it installed,
 so a green nightly run on a newer version is evidence for a move, not a move.

@@ -50,6 +50,9 @@ jobs:
           name: canary-report-${{ inputs.versions || 'latest' }}
           path: .canary
           if-no-files-found: ignore
+          # .canary is hidden, and upload-artifact skips hidden paths since
+          # v4.4: no report was uploaded until this line.
+          include-hidden-files: true
       # Runs after a pass too, so a test that passes again closes its issue.
       # Not after a cancel or a broken install: no junit-*.xml, nothing to say.
       # Only on the latest versions: a range end that fails is the release's
