@@ -25,7 +25,11 @@ It installs `@anthropic-ai/claude-code`, `@openai/codex` and `@opencode/cli`
 at `latest` into `~/.cache/aegis-canary/npm`, and `opencode-ai` (OpenCode 1,
 what `opencode.ai/install` gives) into `~/.cache/aegis-canary/oc1`, never over
 the ones on PATH. To pin a version, install it there and pass
-`AEGIS_CANARY_NO_INSTALL=1`. Comparing two versions of one harness is how a
+`AEGIS_CANARY_NO_INSTALL=1`. `AEGIS_CANARY_VERSIONS=min` or `max` installs
+an end of the tested range instead, into `npm-min` or `npm-max`
+(`releasing.md`, *Moving the tested harness range*). The canary's server turns
+aegis's version gate off, and `versions.txt` marks each version `in_range` or
+`newer`. Comparing two versions of one harness is how a
 regression is proved to be the harness's: on 2026-10-16 the read-session test
 passed on Claude Code 2.1.296 and failed on 2.1.301 (#442).
 
