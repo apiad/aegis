@@ -4,7 +4,8 @@
 The child runs in a session of its own with the PTY as its controlling
 terminal (``setsid --ctty``), so Ctrl-C, job control and SIGWINCH reach it as
 they do over SSH. asyncio's subprocess cannot make a PTY the controlling
-terminal, and a preexec_fn in a threaded server is unsafe, so util-linux does.
+terminal, and a preexec_fn in a threaded server is unsafe, so util-linux does
+(launch.pty).
 
 The reader reads at most READ_PER_S bytes a second. Past that it stops reading
 until the next tick, the kernel's PTY buffer fills, and the program blocks on
@@ -35,8 +36,7 @@ import termios
 from collections.abc import Callable
 from pathlib import Path
 
-from .cgroups import wrap
-from .harness import raise_oom_score
+from . import launch
 from .ops import OpError
 from .term_store import CastStore
 
@@ -119,19 +119,15 @@ class Terminal:
         master, slave = os.openpty()
         _winsize(master, cols, rows)
         os.set_blocking(master, False)
-        full = ["setsid", "--ctty", *argv]
         try:
-            if cgroup is not None:
-                full = wrap(cgroup, full)
-            self.proc = await asyncio.create_subprocess_exec(
-                *full, stdin=slave, stdout=slave, stderr=slave, cwd=cwd, env=env
+            self.proc = await launch.pty(
+                argv, tty=slave, cwd=cwd, env=env, cgroup=cgroup
             )
         except BaseException:
             os.close(master)
             raise
         finally:
             os.close(slave)
-        raise_oom_score(self.proc.pid)
         self.fd = master
         self.exited = asyncio.Event()
         self._decoder.reset()
