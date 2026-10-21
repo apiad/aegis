@@ -11,7 +11,6 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..cgroups import wrap
 from ..harness import Launch, session_env
 from . import control
 from .control import Catalog
@@ -50,12 +49,13 @@ class ClaudeSession:
             disallowed=disallowed,
         )
         self._proc = ClaudeProcess(
-            wrap(launch.cgroup, argv),
+            argv,
             launch.cwd,
             launch.stderr_path,
             launch.on_line,
             launch.on_exit,
             env=session_env(launch),
+            cgroup=launch.cgroup,
         )
 
     @property

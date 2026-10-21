@@ -18,7 +18,7 @@ from collections import deque
 from collections.abc import Callable
 from pathlib import Path
 
-from ..harness import raise_oom_score
+from .. import launch
 
 
 LINE_LIMIT = 64 * 1024 * 1024
@@ -160,9 +160,11 @@ class ClaudeProcess:
         on_line: Callable[[str], None],
         on_exit: Callable[[int, list[str]], None],
         env: dict[str, str] | None = None,
+        cgroup: Path | None = None,
     ) -> None:
         self.argv = argv
         self.cwd = cwd
+        self.cgroup = cgroup
         self.stderr_path = stderr_path
         self._on_line = on_line
         self._on_exit = on_exit
@@ -183,16 +185,17 @@ class ClaudeProcess:
     async def start(self) -> None:
         """Raises FileNotFoundError when the binary is missing."""
         self.stderr_path.parent.mkdir(parents=True, exist_ok=True)
-        self._proc = await asyncio.create_subprocess_exec(
-            *self.argv,
+        self._proc = await launch.child(
+            self.argv,
             cwd=str(self.cwd),
             env=self.env,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            stdin=launch.PIPE,
+            stdout=launch.PIPE,
+            stderr=launch.PIPE,
             limit=LINE_LIMIT,
+            cgroup=self.cgroup,
+            oom=True,
         )
-        raise_oom_score(self._proc.pid)
         err = asyncio.create_task(self._pump_stderr())
         self._tasks = [err, asyncio.create_task(self._pump_stdout(err))]
 
