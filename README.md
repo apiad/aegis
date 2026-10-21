@@ -64,6 +64,14 @@ On top of the three CLIs, aegis adds what none has on its own:
   at the current pace. A session's panel shows the windows that session spends.
 - `aegis usage` reports what the work cost, by month, weekday, hour, session or
   repo, from the transcripts aegis keeps.
+- Cascades: an agent can name an ordered list of models (`models:`). A session
+  starts on the first one that is not cooling and whose quota is open, and a
+  turn that fails on quota, a rate limit or an overload falls to the next
+  model and continues. Every model pick shows the model's rank, its
+  Intelligence Index from Artificial Analysis and its price, or "free".
+- Each release names the harness versions it was tested with. On a version
+  outside them, a session you start asks first, and every message names the
+  binary found and the command that installs a tested version.
 
 ## Agents that work together
 
@@ -181,10 +189,16 @@ it sends it, and a file sent again from the same path updates its card.
   you, error, review, waiting or done. The page title counts the sessions that
   need you, and Alt+J goes to the one that has waited longest. aegis knows what
   you have read in every browser.
-- **Nudges.** An agent that ends a turn without saying how and then sits idle
-  for 10 minutes is asked once where it stands. One that works 15 minutes
-  without touching an unfinished plan is reminded once to update it. Both
-  arrive as rows headed `aegis:nudge`, never as your message.
+- **Nudges.** An agent that ends a turn without saying how is asked where it
+  stands two seconds later, so its card never reads done when it was not. One
+  that works 15 minutes without touching an unfinished plan is reminded once
+  to update it. Both arrive as rows headed `aegis:nudge`, never as your
+  message.
+- **Agents know what they track.** A session's next message carries a short
+  status block when its plan, its monitors or its queue tasks changed, and a
+  warning when the host runs short of disk, memory, CPU or quota. A monitor
+  that stalls, cannot run its check or overruns its ETA wakes the agent that
+  waits on it instead of leaving it asleep until the timeout.
 - **The journal.** aegis records what was done from the transcripts: commits,
   pull requests, plan items done and turns that changed files. The Journal view
   (the book in the header, or Alt+L) searches it with one fuzzy box over every
@@ -202,7 +216,15 @@ it sends it, and a file sent again from the same path updates its card.
   that opens on hover: the session, the plan, the monitors, usage and quota, and
   the host's CPU, RAM, disk and network (whether packets leave, the exit address
   and the link's speed). A session waiting on queue workers names them. Alt+B
-  collapses the panel, and you drag its edge to resize it.
+  collapses the panel, and you drag its edge to resize it. A Repos row lists
+  each repository the session wrote to, with its uncommitted files, unpushed
+  commits and open pull requests.
+- **Every file on the server.** Alt+O finds any file under the config root as
+  you type, and the Files view browses, edits and saves it, with a folder tree
+  and a check that a session did not change it meanwhile. Select lines of a
+  file, a rendered page or an artifact, or text in a transcript, to ask the
+  session about them, ask aside, start a new session or collect comments;
+  rows, cards, tabs and Files entries have menus on a right-click or long press.
 - **Files from agents.** `file_send` hands you one file, or a set of up to
   twenty as one card that pages with ‹ ›, with a preview (images, PDF, HTML,
   Markdown, text, audio, video), Open and Download. A Read, Write or Edit row
@@ -259,6 +281,9 @@ it sends it, and a file sent again from the same path updates its card.
 - **References that say what they are.** A path in a reply shows a file or
   folder icon, or is struck out when nothing is there; `owner/repo#n` links to
   GitHub, and a URL carries its site's icon.
+- **Feedback that becomes an issue.** `/feedback` in any session drafts an
+  aegis issue with the agent, asking only what it still needs, and files it
+  once you say yes.
 - **Help that teaches.** `/tutorial` starts a guide for the five-level
   getting-started tutorial or any of four others. Every help page has a Guided
   tour button, and the Help search box asks an agent when the pages are not
