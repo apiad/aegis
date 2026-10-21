@@ -1,0 +1,1 @@
+- **A queue worker continued after a restart no longer leaves its task running.** The server continued the worker before it loaded the queue tasks, so a worker that ended its turn in that window ended it with no task to complete, and the task stayed `running` (#505).
