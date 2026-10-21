@@ -61,6 +61,9 @@ def test_the_dialog_names_version_path_and_command_then_starts_once(
         "[...document.querySelectorAll('#entries .body')]"
         ".some((e) => e.textContent.includes('99.0.0 is newer'))"
     )
+    # The panel's harness row names the version in the warning colour (#456).
+    page.wait_for_selector("#s-harness.warn", state="attached")
+    assert page.text_content("#s-harness") == "Claude Code 99.0.0"
     assert page.errors == []
 
 

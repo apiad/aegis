@@ -108,6 +108,7 @@ body{background:#000}
 .a2 .set-vtag summary{cursor:pointer;list-style:none;display:inline;color:var(--muted)}
 .a2 .set-vtag summary::-webkit-details-marker{display:none}
 .a2 .set-vtag.warn summary{color:var(--warn)}
+.a2 #s-harness.warn{color:var(--warn)}
 .a2 .set-vtag .set-vline{font-size:12px;color:var(--muted);overflow-wrap:anywhere;margin-top:4px}
 .a2 .dialog .b{margin:0 0 16px;font-size:13px;line-height:1.5;color:var(--ink)}
 .a2 .untested .range{color:var(--muted);margin:0 0 8px}

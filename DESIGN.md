@@ -1132,7 +1132,8 @@ mtime so a launch pays for it only after an upgrade, and judges it
 queue worker, a schedule, a workflow node, a parked session's wake, the
 restart's continue) starts anyway and records an `untested` notice, once per
 version per session, which the transcript shows and the journal derives a
-row from. A person's spawn, `/spawn` line or send to an asleep session that did not park, Wake of one, and Restart are
+row from. The verdict of the last launch, when it is outside, is the
+session's `untested_version`, which the panel's harness row shows. A person's spawn, `/spawn` line or send to an asleep session that did not park, Wake of one, and Restart are
 refused first with `harness_untested`, whose error data the browser turns into
 a dialog, and the second call says once or always (`App._version_gate`). The
 split is by who is there to answer: a refusal nobody can answer would stop a

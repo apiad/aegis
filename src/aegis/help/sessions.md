@@ -50,6 +50,9 @@ carries it too. aegis does not install anything: run the command, and the next
 session starts on the tested version. The configuration page says how to turn
 the question or the notice off.
 
+While a session runs on an untested version, the harness row of its panel names
+that version in the warning colour; hovering it shows the tested range.
+
 ## From the Help tab
 
 Every help page has a Guided tour button. On a tutorial it starts the

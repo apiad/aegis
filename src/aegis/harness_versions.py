@@ -258,7 +258,12 @@ class Verdict:
     def notice(self, started_anyway: bool) -> str:
         head = self.headline()
         if started_anyway:
-            head += " The session started anyway because nobody was there to ask."
+            # True of every unattended start, a person's parked wake, Continue
+            # and /workflow included (#450).
+            head += (
+                " The session started without asking: aegis asks only when a"
+                " person starts a session or resumes a stopped one."
+            )
         return "\n".join([head, *self._details()])
 
     def wire(self) -> dict:

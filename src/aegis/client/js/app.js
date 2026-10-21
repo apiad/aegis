@@ -1987,7 +1987,13 @@ function renderMeta(s) {
   $("c-title").textContent = s.title || "untitled";
   const born = s.created_at ? ` · started ${new Date(s.created_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "";
   $("c-sub").textContent = `${s.handle}${born}`;
-  $("s-harness").textContent = s.harness_label || s.harness || "";
+  // A launch on a version outside the tested range shows it in the warning
+  // colour (harness_versions.py, #456).
+  const u = s.untested_version;
+  const hEl = $("s-harness");
+  hEl.textContent = (s.harness_label || s.harness || "") + (u ? ` ${u.version || "?"}` : "");
+  hEl.classList.toggle("warn", !!u);
+  hEl.title = u ? `${u.state === "unknown" ? "version unknown" : `${u.state} than tested`} · tested with ${u.range}` : "";
   $("s-model").textContent = s.model_id && s.model_id !== s.model ? `${modelLine(s)} → ${s.model_id}` : modelLine(s);
   $("s-effort").textContent = s.effort || "";
   $("s-perm").textContent = s.permission || "";

@@ -760,15 +760,15 @@ class App:
         if hv["startup"] == "off":
             return
         names = sorted({a.harness for a in snap.agents if a.harness in HARNESSES})
+
+        # harness_for runs inside the coroutine, so its exception is gathered
+        # too, not raised past return_exceptions (#455).
+        async def one(n: str) -> harness_versions.Verdict:
+            h = harness_for(n, self.claude_bin, self.opencode_bin, self.codex_bin)
+            return await harness_versions.check(h, hv["accepted"])
+
         verdicts = await asyncio.gather(
-            *(
-                harness_versions.check(
-                    harness_for(n, self.claude_bin, self.opencode_bin, self.codex_bin),
-                    hv["accepted"],
-                )
-                for n in names
-            ),
-            return_exceptions=True,
+            *(one(n) for n in names), return_exceptions=True
         )
         for v in verdicts:
             if isinstance(v, BaseException):
