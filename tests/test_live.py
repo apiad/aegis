@@ -1384,6 +1384,109 @@ async def test_a_real_codex_session(tmp_path: Path, monkeypatch):
         await app.shutdown()
 
 
+async def test_a_real_cursor_session(tmp_path: Path):
+    """A prompt, an aegis tool call over the MCP endpoint Cursor fetches
+    itself, an interrupt (which has no cancel behind it: the child is killed),
+    a resume that keeps the context, and a read session refused a write.
+    Needs a logged-in `cursor-agent`; its own subscription pays."""
+    import asyncio
+
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    cursor = shutil.which("cursor-agent")
+    assert cursor, "cursor-agent is not on PATH"
+    # The installed version is whatever this machine runs — a pre-release the
+    # tested range cannot compare against — so the test accepts it the way a
+    # person does when aegis asks once.
+    import subprocess
+
+    raw = subprocess.run(
+        [cursor, "--version"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        timeout=120,
+    ).stdout.strip()
+    (tmp_path / ".aegis.yaml").write_text(
+        "agents:\n"
+        "  cx: {harness: cursor, model: default, effort: high, permission: full}\n"
+        "  reader: {harness: cursor, model: default, effort: high, permission: read}\n"
+        f"harness_versions: {{accepted: {{cursor: [{raw!r}]}}}}\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        cursor_bin=cursor,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+
+    def tools(s) -> list[dict]:
+        return [e for e in s.entries() if e["kind"] == "tool"]
+
+    def prose(s) -> list[str]:
+        return [e["md"] for e in s.entries() if e["kind"] == "prose"]
+
+    async def turn(s, text: str) -> None:
+        await s.send(text)
+        await until(lambda: s.status == "working", timeout=60, what="the turn to start")
+        await until(lambda: s.status == "idle", timeout=300, what=f"the turn {text!r}")
+
+    try:
+        r = await app.registry.call("session.spawn", {"agent": "cx"})
+        s = app.sessions.sessions[r["log_id"]]
+        await turn(s, "Remember the word PELICAN. Reply with the single word OK.")
+        assert s.resume_id and prose(s)
+
+        await turn(
+            s, "Call the aegis meta tool, then tell me in one line what it returned."
+        )
+        assert any(
+            t["status"] == "ok" and "meta" in (t["title"] or "") for t in tools(s)
+        )
+
+        # No cancel over ACP: the interrupt ends the turn by killing the child.
+        await s.send("Run exactly this shell command in the foreground: sleep 40")
+        await until(
+            lambda: any(t["status"] == "running" for t in tools(s)),
+            timeout=180,
+            what="the bash call",
+        )
+        await s.interrupt()
+        await until(
+            lambda: s.status == "idle", timeout=20, what="idle after the interrupt"
+        )
+        assert tools(s)[-1]["status"] == "err"
+
+        sid = s.resume_id
+        await s.stop()
+        await turn(s, "What word did I ask you to remember? Reply with that one word.")
+        assert "PELICAN" in prose(s)[-1].upper() and s.resume_id == sid
+
+        r = await app.registry.call("session.spawn", {"agent": "reader"})
+        reader = app.sessions.sessions[r["log_id"]]
+        await turn(
+            reader, "Use your edit or write tool to create a file named x.txt with hi."
+        )
+        assert not (tmp_path / "x.txt").exists()
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)
+        await app.shutdown()
+
+
 async def test_real_claude_passes_a_brief_past_handoff_at_and_hands_off(tmp_path: Path):
     """The context line in turn_end's answer, followed by a real model (#354):
     at a finished task past a low handoff_at, it calls turn_end again with a
