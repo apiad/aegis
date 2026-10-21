@@ -27,14 +27,6 @@ OS = {"system", "popen", "posix_spawn", "posix_spawnp", "fork", "forkpty"}
 OS_PREFIXES = ("exec", "spawn")
 PTY = {"spawn", "fork"}
 
-# Files that still start processes their own way. Each task of the launcher
-# plan removes its files; its last task deletes this set and the second test.
-NOT_YET = {
-    "window.py",
-    "files.py",
-    "cli.py",
-}
-
 
 def _starts(module: str, name: str) -> bool:
     if module == "subprocess":
@@ -93,12 +85,7 @@ def offenders(root: Path = SRC) -> dict[str, list[tuple[int, str]]]:
 
 
 def test_no_process_starts_outside_launch():
-    found = offenders()
-    assert {f: v for f, v in found.items() if f not in NOT_YET} == {}
-
-
-def test_the_not_yet_list_is_not_stale():
-    assert NOT_YET <= set(offenders())
+    assert offenders() == {}
 
 
 def test_an_aliased_import_is_caught(tmp_path):

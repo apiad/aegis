@@ -28,6 +28,8 @@ import sys
 from pathlib import Path
 from urllib.parse import quote
 
+from . import launch
+
 MAX_BYTES = 100 * 1024 * 1024
 EXCERPT_LINES = 40
 EXCERPT_BYTES = 4096
@@ -257,10 +259,4 @@ def open_natively(path: Path) -> subprocess.Popen:
     cmd = opener()
     if cmd is None:
         raise FileError("no_desktop", "this server has no desktop to open files on")
-    return subprocess.Popen(
-        [*cmd, str(path)],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    return launch.detach([*cmd, str(path)])
