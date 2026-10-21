@@ -283,8 +283,20 @@ async def test_shutdown_during_fallback_continues_the_worker_at_boot(
     assert ended[s.log_id] == 0
     assert t.status == "running"
     exhaust(monkeypatch)
+    from aegis.registry import Registry
+
+    cont, loaded = Registry.continue_after_boot, []
+
+    async def continuing(self):
+        # A worker that ends its turn during the continue finds its task (#505).
+        loaded.append(t.id in world.app.queues.tasks)
+        await cont(self)
+
+    monkeypatch.setattr(Registry, "continue_after_boot", continuing)
     await world.start()
-    # Continued, not failed; whether it completes races queues.boot (app.py).
+    assert loaded == [True]
+    # Continued, not failed. Whether it completes still races the held flush
+    # with the instant fake model (#536).
     assert world.app.queues.tasks[t.id].status in ("running", "completed")
     sends = [
         r.get("text", "")

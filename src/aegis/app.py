@@ -724,12 +724,15 @@ class App:
         self.monitors.boot()
         # No session notice until every source has set its items (notices.py).
         self.notices.boot_begin()
+        # The tasks load first, so a worker continued below that ends its turn
+        # at once finds its task and completes it (#505).
+        resume = self.queues.boot()
         # Before the monitors are armed, so a wake cannot start a turn ahead of
-        # the continue; before the queues, so a worker the registry continued
-        # needs no second message from its queue.
+        # the continue; before the queues resume, so a worker the registry
+        # continued needs no second message from its queue.
         await self.sessions.continue_after_boot()
         self.monitors.arm_all()
-        await self.queues.resume_after_boot(self.queues.boot())
+        await self.queues.resume_after_boot(resume)
         for s in list(self.sessions.sessions.values()):
             self.nudges.refresh(s)
         self.notices.boot_end()
