@@ -1,1 +1,0 @@
-- **The websocket compresses with the standard 32 KB window.** uvicorn's default websocket offered a 4 KB window, which compressed an idle browser's traffic 4 to 1; the full window does 7 to 1, about 40% fewer bytes on the wire, at about 300 KB of memory per open socket.

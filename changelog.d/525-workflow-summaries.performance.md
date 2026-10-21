@@ -1,1 +1,0 @@
-- **Workflow runs reach the browser as summaries.** Every browser got every run with its whole tree and story, about 50 KB a run, on every open and on every change to a node; that was 70% of what opening aegis cost. The browser now gets each run's summary, and a run whole only while one of its cards is on screen.

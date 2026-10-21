@@ -5,6 +5,188 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [2.13.0] - 2026-10-21
+
+### Added
+
+- **Agents are told when the host runs short.** Each live session learns
+  once, on its next message or aegis tool result, that the disk, memory, CPU
+  or quota has crossed a line, and again when it clears. A notice never
+  starts a turn and never enters the system prompt. Every agent frees only
+  what its own session created; one session the person opened asks about
+  the rest, and a notice at critical shows a toast. `/announce` and
+  `notice_announce` let a person or an admin's agent tell every agent
+  something the same way, and `notices:` in `.aegis.yaml` moves or turns off
+  each line.
+  help: sessions#notices
+
+- **Settings edits an agent's cascade.** An agent's model in Settings is now
+  an ordered list: move a model up or down, remove one, add one from the
+  harness's models with its rank, Intelligence Index and price, or sort the list by
+  the ranking. A warning names the first pair out of ranking order with both
+  scores, a model that is cooling shows dimmed with the time it is free again,
+  and saving writes `models:` for two or more models and `model:` for one.
+  help: config#cascades
+
+- **The doctor warns when a cascade puts a weaker model first.** aegis now
+  ships Artificial Analysis's Coding and Intelligence Indexes and list prices
+  for the models its harnesses offer, refreshed at each release, and
+  `aegis doctor` names the first model in a `models:` list that sits above
+  one scoring higher on the Intelligence Index (the Coding Index breaking
+  ties), or an unranked model above a ranked one. The order is not changed.
+  help: config#cascades
+
+- **An agent can name an ordered list of models.** `models:` in `.aegis.yaml`
+  makes a cascade: sessions, queue workers, workflow nodes and schedules start
+  on the first model that is not cooling and whose quota gate is open, and a
+  turn that fails on quota, a rate limit, an overload or a model that left the
+  provider falls to the next model and continues the same turn. The
+  transcript says when it falls, the card shows the model's place in the
+  cascade, and a model that failed cools so new sessions skip it. `model:`
+  agents work as before.
+  help: config#cascades
+
+- **Every model pick shows how good a model is and what it costs.** The new
+  tab's model chip, the `/model` menu and an agent's model in Settings show
+  each model's rank among its harness's models, its Intelligence Index and its
+  price per million tokens in and out, or "free". A Models section in
+  Settings lists every model the installed harnesses run, the ones agents use
+  first with their place in each cascade, filtered by harness and price and
+  sorted by any column, and agents read the same list with `models_list`.
+  help: config#models
+
+- **Files, the Journal, sent cards, canvas tabs and the archive have menus.**
+  A right-click or long press on a Files row adds Insert path, which writes
+  the path into the last session's message box at the cursor, New session
+  here and Terminal here, which start in that folder. A Journal entry offers
+  its commit or pull request on GitHub and its session; a sent card offers
+  Dock right, Dock left, Open in new window and Download; a canvas tab offers
+  Undock and Move to window; an archive row offers Read and Reopen.
+  help: files
+
+- **Lines of a file and elements of a page can be asked about or commented
+  on.** Selecting text in the viewer, the Files editor, rendered Markdown, a
+  sent HTML page or an artifact shows a bar, and a right-click or long press
+  opens a menu, with Ask, Ask aside, New session, Comment and Copy. What the
+  session gets starts with where the text is: `` `src/x.py:3-4` ``, the
+  nearest heading of a Markdown file, or a page's heading and element. Comment
+  collects notes in a tray that sends them as one message; until then a
+  reload keeps them. A sent page this browser already showed before the
+  upgrade comes from its cache, without the menu; clearing the browser's cache
+  for the aegis address brings it.
+  help: files#pointing-at-lines-and-comments
+
+- **A selection in a transcript can be asked about, and rows have a menu.**
+  Selecting text inside one row shows a bar: Ask quotes it into the message
+  box above your draft, Ask aside does the same after `/btw`, New session
+  opens the form with this session's agent, model and folder and the quote,
+  and Copy copies it without a code block's language label or copy buttons.
+  A right-click or long press on a reply, your message or a tool row opens a
+  menu with Reply, Edit and resend, Open file, Copy and Copy link; the link
+  opens the session at that row.
+  help: transcript#quoting-and-row-menus
+
+- **/feedback turns a complaint or a wish into a good aegis issue.** Type `/feedback` with a few words, or none, in any session: the agent reads the help page, asks only what it still needs, shows you a draft and files it on GitHub once you say yes, or gives you a link that opens the issue already written. Agents also offer to file when aegis itself gets something wrong.
+  help: feedback
+
+- **Agents are told what they track, and a stalled monitor wakes its owner.**
+  A session's next message carries a short status block when its plan, its
+  live monitors or the queue tasks it has out changed. A warning rides on the
+  next message or aegis tool result when a plan has gone ten minutes of work
+  untouched, or when a monitor has stalled, cannot run its check or has
+  overrun its ETA; the monitor warnings wake an agent that was waiting
+  instead of leaving it asleep until the timeout. Thresholds live under
+  `notices:` in `.aegis.yaml`, declared by each source.
+  help: monitors#a-monitor-that-stalls
+
+- **The session panel shows the repos a session works in.** A Repos row lists
+  each repository and worktree the session wrote to, with its uncommitted
+  files, its unpushed commits and its open pull requests as links, or a check
+  when nothing is pending. Its card adds the commits and PRs the session left
+  in each repo and the other sessions working there. It follows writes within
+  seconds, mid-turn.
+  help: sessions#the-repos-a-session-works-in
+
+- **Settings edits every key of `.aegis.yaml`.** Recaps and side notes,
+  terminal profiles, the memory caps, the context thresholds, nudges,
+  notices, the network readings, each agent's kept Claude Code tools and each
+  queue's `quiet:` joined the sections it had. A blank field is left out of
+  the file and shows its default. `aegis doctor` no longer warns that it does
+  not read `btw:`.
+  help: config#editing-it
+
+- **Auto on a person's gate hands it to the main agent, once and for good.**
+  The card's Auto button makes that gate, and every later time the same step
+  asks (each map item, loop round and retry), a gate the main agent answers.
+  Before, a person who told the main agent "merge them yourself" still had to
+  press Continue on every card, because no agent may answer a person's gate.
+  help: workflows#gates
+
+- **The main agent hears when a person's gate opens and when it is passed.**
+  It gets a `gate` message when the card opens and a `passed` one when the
+  person continues, with nothing to answer, so it can tell the person their
+  card waits without polling `workflow_status` from a monitor.
+  help: workflows#while-it-runs
+
+- **A loop out of rounds takes "more".** `workflow_answer` with choice
+  "more" runs one round more of a loop whose `until` never passed, or `value`
+  rounds more, where "retry" ran all its rounds again from the start.
+  help: workflows#when-a-step-fails
+
+- **A failed or timed-out command keeps the end of its output.** The last 50
+  lines show in the failure message and as the step's `tail` in
+  `workflow_status`. Before, a step past its deadline said only that it ran
+  past it, and a failed one only its last line, so each failure needed a
+  rerun by hand to see why.
+  help: workflows#when-a-step-fails
+
+### Changed
+
+- **`aegis init` proposes a cascade of every free OpenCode model, best
+  first.** With OpenCode installed, the proposal is an agent `free` whose
+  `models:` are the catalog's free models that can run an agent, ordered by
+  the shipped ranking, unranked ones last, so a first config falls to the
+  next free model when one runs out instead of stopping. Beside Claude Code
+  it adds a `light` queue on `free` and `opus` stays the default; without
+  it, `free` is the default and the `general` queue runs it. A paid model
+  never joins the cascade; a catalog with no free model gets its best model
+  alone, as before.
+  Settings' Set up offer makes the same proposal.
+  help: config#cascades
+
+- **A turn that ends without turn_end is asked about within seconds.** The
+  idle nudge comes two seconds after such a turn instead of ten minutes, so a
+  card does not read done for ten minutes when it was not. `nudges:` in
+  `.aegis.yaml` sets the wait and the plan nudge, or turns the idle one off.
+  help: sessions#what-the-agent-reports
+
+- **`workflow_answer` and `workflow_stop` reply in a few lines.** They return
+  the run's status, the named step's state and what the run still waits on,
+  instead of the whole run, which was 60 KB on a long run and spilled past the
+  tool output limit. `workflow_status` still returns the whole run.
+  help: workflows#when-a-step-fails
+
+### Fixed
+
+- **Read sessions on Claude Code 2.1.301 and later can call aegis's tools again.** Claude Code started refusing every MCP call in plan mode, the mode a `read` session runs in, so such a session could not end its turn, keep a plan or read help. aegis's tools now declare themselves read-only to the harness, which plan mode lets through; aegis still decides which of them a session may call, and plan mode still refuses writes. This release is tested with Claude Code 2.1.296 to 2.1.306 and OpenCode 2.0.31 to 2.1.2 (#442).
+
+- **Untested harness versions: the panel shows the version, and the words are right.** A session running on a harness version outside the tested range names that version in its panel's harness row, in the warning colour. A start nobody was asked about no longer says "nobody was there to ask" when a person's wake, Continue or `/workflow` started it. `aegis doctor` reports a harness whose `--version` fails as a version it could not read, a warning, and still lists its models, instead of an error. A harness that could not be built at server start is logged instead of ending the startup check (#450, #454, #455, #456).
+
+- **Chrome desktop push subscriptions can register.** Aegis now accepts Google's
+  `jmt17.google.com` Web Push endpoint instead of rejecting it as unknown.
+
+- **A queue worker continued after a restart no longer leaves its task running.** The server continued the worker before it loaded the queue tasks, so a worker that ended its turn in that window ended it with no task to complete, and the task stayed `running` (#505).
+
+### Performance
+
+- **Closing a session no longer reloads the archive.** Each close made every open Fleet read the archive's first page again, about 85 KB on a busy server, to add one row; the close now carries that row, and the Fleet adds it where it sorts.
+
+- **The websocket compresses with the standard 32 KB window.** uvicorn's default websocket offered a 4 KB window, which compressed an idle browser's traffic 4 to 1; the full window does 7 to 1, about 40% fewer bytes on the wire, at about 300 KB of memory per open socket.
+
+- **A session's card update sends only what changed.** Every update to a session re-sent its whole row, 40-odd fields, when one or two had changed, and that was about a third of what an idle browser received. The browser now asks for only the changed fields; an older browser or linked server still gets whole rows.
+
+- **Workflow runs reach the browser as summaries.** Every browser got every run with its whole tree and story, about 50 KB a run, on every open and on every change to a node; that was 70% of what opening aegis cost. The browser now gets each run's summary, and a run whole only while one of its cards is on screen.
+
 ## [2.12.0] - 2026-10-20
 
 ### Added
