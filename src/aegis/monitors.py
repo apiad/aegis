@@ -38,7 +38,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from . import notice_sources
+from . import launch, notice_sources
 from .notice_sources import Item
 
 if TYPE_CHECKING:
@@ -76,13 +76,8 @@ async def run_bash(
     ``timeout`` seconds, and stderr then says which. A monitor's conditions
     and a schedule's check both run through here."""
     try:
-        proc = await asyncio.create_subprocess_exec(
-            "bash",
-            "-c",
-            cmd,
-            cwd=cwd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        proc = await launch.child(
+            ["bash", "-c", cmd], cwd=cwd, stdout=launch.PIPE, stderr=launch.PIPE
         )
     except OSError as e:
         return None, "", str(e)

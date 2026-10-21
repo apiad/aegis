@@ -35,6 +35,8 @@ from dataclasses import dataclass
 from importlib import resources
 from typing import TYPE_CHECKING
 
+from . import launch
+
 if TYPE_CHECKING:
     from .harness import Harness
 
@@ -136,13 +138,12 @@ async def read_version(bin: str) -> tuple[str | None, str | None]:
 
 async def _run(exe: str) -> str | None:
     try:
-        proc = await asyncio.create_subprocess_exec(
-            exe,
-            "--version",
-            stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
-            start_new_session=True,
+        proc = await launch.child(
+            [exe, "--version"],
+            stdin=launch.DEVNULL,
+            stdout=launch.PIPE,
+            stderr=launch.DEVNULL,
+            new_session=True,
         )
     except OSError:
         return None
