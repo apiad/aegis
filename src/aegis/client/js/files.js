@@ -25,7 +25,8 @@ import { fuzzy } from "./commands.js";
 import { Tray } from "./comments.js";
 import { ask, choose } from "./dialog.js";
 import { diffView } from "./diff.js";
-import { open as openEditor } from "./editor.js";
+import { fileGlyph, open as openEditor } from "./editor.js";
+import { icon } from "./glyphs.js";
 import { markdown } from "./entries.js";
 import * as menu from "./menu.js";
 import { ago } from "./fleet.js";
@@ -168,7 +169,8 @@ export class FilePicker {
     };
     const name = marked(cut, p.length, "nm");
     const dir = marked(0, cut, "dir");
-    r.append(name, dir, el("span", "age", ago(m / 1000)));
+    r.dataset.glyph = fileGlyph(p, false);
+    r.append(icon(r.dataset.glyph), name, dir, el("span", "age", ago(m / 1000)));
     return r;
   }
 
@@ -409,7 +411,8 @@ export class FileTree {
         r.style.setProperty("--depth", depth);
         const open = isDir && this.open.has(path);
         if (isDir) r.setAttribute("aria-expanded", String(open));
-        r.append(el("span", "tw", isDir ? (open ? "▾" : "▸") : ""), el("span", "nm", e.name));
+        r.dataset.glyph = fileGlyph(path, isDir, open);
+        r.append(el("span", "tw", isDir ? (open ? "▾" : "▸") : ""), icon(r.dataset.glyph), el("span", "nm", e.name));
         if (e.repo) r.append(el("span", "tag", "repo"));
         out.push(r);
         if (open) walk(path, depth + 1);
@@ -490,7 +493,7 @@ export class FileTree {
     const depth = dir ? dir.split("/").length : 0;
     const row = el("div", "trow new");
     row.style.setProperty("--depth", depth);
-    row.append(el("span", "tw", kind === "dir" ? "▸" : ""), el("span", "nm"));
+    row.append(el("span", "tw", kind === "dir" ? "▸" : ""), icon(kind === "dir" ? "folder" : "file"), el("span", "nm"));
     const first = [...this.rows.children].find((r) => parentOf(r.dataset.path) === dir);
     if (first) first.before(row);
     else if (dir) this.row(dir).after(row);

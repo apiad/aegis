@@ -30,6 +30,35 @@ const BY_NAME = {
   ".bashrc": "shell", ".zshrc": "shell", ".profile": "shell", ".bash_profile": "shell",
 };
 
+// A file's kind for its glyph in the Files tree and the picker (glyphs.js,
+// #500): the kinds no editor language names, then the languages: Markdown,
+// config, or code. A new language in BY_EXT is code without a row here.
+const KIND_BY_EXT = {
+  png: "image", jpg: "image", jpeg: "image", gif: "image", webp: "image", svg: "image", bmp: "image", ico: "image", avif: "image",
+  pdf: "pdf",
+  mp3: "audio", wav: "audio", ogg: "audio", m4a: "audio", flac: "audio", opus: "audio", aac: "audio",
+  mp4: "video", webm: "video", mov: "video", mkv: "video", avi: "video",
+  zip: "archive", tar: "archive", gz: "archive", tgz: "archive", bz2: "archive", xz: "archive", "7z": "archive", rar: "archive", zst: "archive",
+  ini: "config", cfg: "config", conf: "config", env: "config", lock: "config",
+};
+const KIND_BY_LANG = { markdown: "md", json: "config", yaml: "config", toml: "config" };
+
+export function kindOf(path) {
+  const name = (path || "").split("/").pop();
+  const dot = name.lastIndexOf(".");
+  const kind = dot > 0 && KIND_BY_EXT[name.slice(dot + 1).toLowerCase()];
+  if (kind) return kind;
+  const lang = langOf(path);
+  return lang ? KIND_BY_LANG[lang] || "code" : "file";
+}
+
+// The glyph id for a Files row: a folder open or closed, or the file's kind.
+export function fileGlyph(path, isDir, open = false) {
+  if (isDir) return open ? "folder-open" : "folder";
+  const kind = kindOf(path);
+  return kind === "file" ? "file" : `f-${kind}`;
+}
+
 export function langOf(path) {
   const name = (path || "").split("/").pop();
   if (BY_NAME[name]) return BY_NAME[name];

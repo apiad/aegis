@@ -506,3 +506,50 @@ def test_a_file_deleted_then_written_again_moves_the_banner_to_changed(
     page.click(".fbanner [data-act=reload]")
     page.wait_for_function(f"{BUFFER} === 'agent\\n'")
     assert page.errors == []
+
+
+KINDS = {
+    "notes.md": "f-md",
+    "app.py": "f-code",
+    "conf.yaml": "f-config",
+    "pic.png": "f-image",
+    "paper.pdf": "f-pdf",
+    "song.mp3": "f-audio",
+    "clip.mp4": "f-video",
+    "bundle.zip": "f-archive",
+    "LICENSE": "file",
+}
+
+
+def glyph_of(pg, selector: str) -> str:
+    return pg.eval_on_selector(
+        selector, "r => r.querySelector('svg.ic use').getAttribute('href')"
+    )
+
+
+def test_rows_carry_a_glyph_for_folders_and_each_file_kind(
+    server,  # noqa: F811
+    page,  # noqa: F811
+    tmp_path,
+):
+    """A folder glyph, open or closed, and one per file kind, in the tree and
+    in the Alt+O picker (#500)."""
+    for i, name in enumerate(KINDS):
+        write(tmp_path / "kinds" / name, "x\n", 1_000_000_000 + i)
+    page.goto(f"{server.url.split('#')[0]}#files")
+    page.wait_for_selector(row("kinds"))
+    assert glyph_of(page, row("kinds")) == "#g-folder"
+    page.click(row("kinds"))
+    page.wait_for_selector(row("kinds/LICENSE"))
+    assert glyph_of(page, row("kinds")) == "#g-folder-open"
+    for name, want in KINDS.items():
+        assert glyph_of(page, row(f"kinds/{name}")) == f"#g-{want}", name
+        # The symbol exists, so the glyph draws instead of an empty box.
+        assert page.locator(f"#g-{want}").count() == 1, want
+
+    page.keyboard.press("Alt+o")
+    page.wait_for_selector("#fpick:not([hidden]) .file-row")
+    for name, want in KINDS.items():
+        sel = f"#fpick .file-row[data-path='kinds/{name}']"
+        assert glyph_of(page, sel) == f"#g-{want}", name
+    assert page.errors == []
