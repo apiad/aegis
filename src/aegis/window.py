@@ -82,13 +82,7 @@ def open_window(url: str, browser: str | None) -> None:
     if exe is None:
         webbrowser.open(url)
         return
-    subprocess.Popen(
-        [exe, f"--app={url}"],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    launch.detach([exe, f"--app={url}"])
 
 
 def serves(host: str, port: int, token: str) -> bool:

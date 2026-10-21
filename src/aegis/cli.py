@@ -154,6 +154,8 @@ def _detach(
     nothing will read its stdout. The parent waits for the port so a boot
     failure is reported here, before the prompt comes back."""
     import subprocess
+
+    from . import launch
     import sys
 
     log_path = roots.state_root / "serve.log"
@@ -175,13 +177,8 @@ def _detach(
     with log_path.open("a") as log:
         log.write(f"== {time.strftime('%Y-%m-%dT%H:%M:%S%z')} aegis serve --detach\n")
         log.flush()
-        child = subprocess.Popen(
-            cmd,
-            stdin=subprocess.DEVNULL,
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-            cwd=roots.config_root,
+        child = launch.detach(
+            cmd, cwd=roots.config_root, stdout=log, stderr=subprocess.STDOUT
         )
     pid_path.write_text(f"{child.pid}\n")
     deadline = time.monotonic() + DETACH_BOOT_S
