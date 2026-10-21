@@ -308,6 +308,28 @@ def test_a_person_gate_card_asks_and_continue_finishes_the_run(server, page):  #
     assert not page.errors
 
 
+def test_auto_hands_the_gate_to_the_main_agent(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "/mcp workflow_arm " + json.dumps({"definition": GATED, "args": {}}))
+    page.click(".wfcard[data-status=armed] button >> text=Approve and run")
+    card = ".wfdcard[data-what=gate]"
+    page.wait_for_selector(f"{card} >> text=Ship it with 41?")
+    page.click(f"{card} button >> text=Auto")
+    page.wait_for_selector(f"{card} >> text=Handed to the main agent")
+    assert page.locator(f"{card} button >> text=Continue").count() == 0
+    page.wait_for_selector(".wfcard .wfopen >> text=waits on the main agent: 1 gate")
+    run = page.eval_on_selector(".wfcard", "c => c.dataset.run")
+    send(
+        page,
+        "/mcp workflow_answer "
+        + json.dumps({"run": run, "to": "g", "choice": "continue"}),
+    )
+    page.wait_for_selector(".wfcard[data-status=done]", timeout=20000)
+    page.wait_for_selector(f"{card} >> text=Continued by the main agent")
+    assert not page.errors
+
+
 def test_an_edit_card_shows_the_diff_and_apply_changes_the_plan(server, page):  # noqa: F811
     slow = GATED.replace(
         '{gate: {by: person, ask: "Ship it with {{a.out}}?", show: [a.out]}, id: g, say: Ask the person.}',

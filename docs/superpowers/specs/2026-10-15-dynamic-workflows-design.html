@@ -448,7 +448,7 @@ workflow_arm(id, args, token). Schema: {…}  Text: "issue 197, the slices in th
 <h3 id="gates">Gates and questions</h3>
 <ul>
   <li><code>gate by: main</code>: the main agent sees the <code>show</code> values and answers <code>continue</code> or <code>abort</code>, optionally with a value later nodes read as <code>{{gate.value}}</code>. It may propose an edit, or ask the person first.</li>
-  <li><code>gate by: person</code>: a card in the main transcript, never folded, with the question, the <code>show</code> values, Continue, Stop and an optional answer. The main agent is not woken.</li>
+  <li><code>gate by: person</code>: a card in the main transcript, never folded, with the question, the <code>show</code> values, Continue, Stop, Auto and an optional answer. The main agent is told it opened and that it was passed, with nothing to answer (#531). Auto hands the gate's step to the main agent: this opening and every later one are <code>by: main</code>.</li>
   <li><code>workflow_ask</code>: only the asking node waits. The main agent answers with <code>workflow_answer</code>, and the answer reaches the worker's inbox.</li>
 </ul>
 

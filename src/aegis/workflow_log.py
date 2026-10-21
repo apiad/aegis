@@ -18,10 +18,15 @@ have started on them), in that one record, so no crash lands between the two.
 
 What a run waits on is folded into ``open``, keyed by the id the main agent
 answers to: a failure that will not retry, a gate, a question, an edit's
-outcome. ``woke`` (and ``approved_told``, for an approval) records that the main agent was told, so a restart tells
+outcome, a person's gate opening or passed. ``woke`` (and ``approved_told``, for an approval) records that the main agent was told, so a restart tells
 again only what was never delivered; the answers (``retried``, ``skipped``,
-``gate_answered``, ``answered``, ``edit_applied``, ``edit_rejected``) close
-the items. A stop or an ending stops only leaves: a loop or an if keeps its
+``extended``, ``gate_answered``, ``answered``, ``edit_applied``,
+``edit_rejected``) close the items, and a notice (an edit's outcome, a
+person's gate passed) closes once told. A record that wakes for news the
+main agent was never woken for before carries ``tell``, so an older log
+folds as it did and a restart tells nothing it had kept quiet.
+``gate_delegated`` hands a person's gate to the main agent: the open one,
+and every later opening of the same step (``delegated``, by template key). A stop or an ending stops only leaves: a loop or an if keeps its
 round and branch, so arming a run again goes on from there.
 """
 
@@ -32,6 +37,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 LIVE = frozenset({"armed", "running"})
+NOTICES = frozenset({"edit", "passed"})  # open only until the main agent is told
 
 
 @dataclass
@@ -63,6 +69,7 @@ class NodeState:
     # A judge's session and verdict by round ("" for a check or an if).
     judges: dict[str, dict] = field(default_factory=dict)
     gate: dict | None = None  # {by, ask, shown} once a gate opened
+    tail: str = ""  # a failed or timed-out sh's last lines of output
     main: bool = False  # a session: main step, run in the main agent's session
 
 
@@ -97,6 +104,9 @@ class RunState:
     # The text and version a person last approved: arming again compares
     # with these, so a rejected change shows again when it is armed again.
     approved: dict | None = None
+    # The person's gates the person handed to the main agent, by template
+    # key: each later opening of one is the main agent's.
+    delegated: set[str] = field(default_factory=set)
 
 
 def _tell(st: RunState, t: float, mark: str, text: str, **extra) -> None:
@@ -222,7 +232,7 @@ def _apply(st: RunState, r: dict) -> None:
         o = st.open.get(to)
         if o is not None:
             o["told"] = True
-            if o.get("kind") == "edit":
+            if o.get("kind") in NOTICES:
                 del st.open[to]
     elif ev == "edit_proposed":
         if st.proposal is not None:
@@ -265,6 +275,7 @@ def _apply(st: RunState, r: dict) -> None:
         node.items, node.started = r.get("items") or [], t
     elif ev == "failed":
         node.status, node.ended, node.error = "failed", t, r.get("error") or ""
+        node.tail = r.get("tail") or ""
         node.say = node.say or r.get("say") or ""
         text = f"{node.say} Failed: {node.error}"
         if r.get("retrying"):
@@ -300,10 +311,25 @@ def _apply(st: RunState, r: dict) -> None:
             "kind": "gate",
             "node": r["node"],
             "by": r.get("by"),
-            "told": r.get("by") == "person",
+            # A person's gate tells the main agent it waits, not what to
+            # answer; one logged before that tell stays quiet.
+            "told": r.get("by") == "person" and not r.get("tell"),
         }
         who = "the person" if r.get("by") == "person" else "the main agent"
         _tell(st, t, "ask", f"{node.say} Asks {who}: {r.get('ask') or ''}".strip())
+    elif ev == "gate_delegated":
+        st.delegated.add(r.get("key") or "")
+        o = st.open.get(r["node"])
+        if o is not None and o.get("kind") == "gate":
+            o["by"], o["told"] = "main", False
+        if node.gate is not None:
+            node.gate["by"] = "main"
+        _tell(
+            st,
+            t,
+            "ok",
+            f"{node.say} Handed to the main agent by the person, now and each later time.",
+        )
     elif ev == "gate_answered":
         st.open.pop(r["node"], None)
         text = r.get("text") or ""
@@ -313,6 +339,13 @@ def _apply(st: RunState, r: dict) -> None:
             who = "the person" if r.get("by") == "person" else "the main agent"
             node.summary = f"Continued by {who}" + (f": {text}" if text else ".")
             _tell(st, t, "ok", f"{node.say} {node.summary}")
+            if r.get("by") == "person" and r.get("tell"):
+                st.open[r["node"]] = {
+                    "kind": "passed",
+                    "node": r["node"],
+                    "value": r.get("value"),
+                    "told": False,
+                }
         else:
             node.status, node.ended = "stopped", t
             _tell(
@@ -361,6 +394,16 @@ def _apply(st: RunState, r: dict) -> None:
         node.status, node.say = "running", r.get("say") or ""
     elif ev == "round":
         node.round = int(r.get("n") or 0)
+    elif ev == "extended":
+        # A loop out of rounds gets more: it runs again from its next round.
+        st.open.pop(r["node"], None)
+        node.max, node.status, node.ended, node.error = (
+            r.get("max"),
+            "running",
+            None,
+            "",
+        )
+        _tell(st, t, "ok", f"{node.say} More rounds: up to {node.max}.".strip())
     elif ev == "until":
         n = int(r.get("n") or 0)
         node.untils[n] = {"pass": bool(r.get("pass")), "why": r.get("why") or ""}

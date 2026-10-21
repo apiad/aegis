@@ -731,3 +731,67 @@ async def test_a_probe_answer_inside_a_group_past_its_deadline_is_not_reused(wor
     await until(lambda: (run_id, "c") in wf._tasks, timeout=10)
     await asyncio.sleep(1)
     assert st.nodes["c"].took is None and not (world.root / "took").exists()
+
+
+async def test_a_failed_sh_keeps_the_end_of_its_output(world):
+    cmd = "for i in $(seq 1 80); do echo line $i; done; echo boom >&2; exit 3"
+    run_id = await run(world, flow(f'{{sh: "{cmd}", id: s, say: S.}}'))
+    wf = world.app.workflows
+    await until(lambda: "s" in wf.runs[run_id].open, timeout=20)
+    st = wf.runs[run_id]
+    tail = st.nodes["s"].tail.splitlines()
+    assert len(tail) == 50 and tail[0] == "line 32" and tail[-1] == "boom"
+    (row,) = [r for r in wf.wire(run_id)["tree"] if r["id"] == "s"]
+    assert row["tail"] == st.nodes["s"].tail
+    told = wf._wake_text(st, "s", st.open["s"])
+    assert "Its output ended:" in told and "line 79\nline 80\nboom" in told
+
+
+@pytest.mark.slow  # waits out a real deadline
+async def test_an_sh_past_its_deadline_keeps_what_it_said(world):
+    sh = '{sh: "echo started; echo halfway >&2; sleep 30", id: slow, deadline: 2s, say: Slow.}'
+    st = await ended(world, await run(world, flow(sh)))
+    assert st.nodes["slow"].error == "ran past its deadline of 2s"
+    assert st.nodes["slow"].tail == "started\nhalfway"
+
+
+SPENT = '{loop: {max: 2, until: {sh: "test -f ok"}, do: {sh: "echo x >> rounds; test $(wc -l < rounds) -lt 3 || touch ok", say: Try.}}, id: l, say: Loop.}'
+
+
+async def test_a_loop_out_of_rounds_takes_one_more(world):
+    run_id = await run(world, flow(SPENT))
+    wf = world.app.workflows
+    await until(lambda: "l" in wf.runs[run_id].open, timeout=20)
+    st = wf.runs[run_id]
+    assert st.nodes["l"].error == "until did not pass in 2 rounds"
+    assert '"more"' in wf._wake_text(st, "l", st.open["l"])
+    me = Caller("agent", st.owner)
+    with pytest.raises(OpError) as e:
+        await world.app.registry.call(
+            "workflow.answer",
+            {"run": run_id, "to": "l", "choice": "more", "value": 0},
+            me,
+        )
+    assert e.value.code == "bad_value"
+    out = await world.app.registry.call(
+        "workflow.answer", {"run": run_id, "to": "l", "choice": "more"}, me
+    )
+    assert "tree" not in out and out["state"] == "running"
+    await until(lambda: wf.runs[run_id].status == "done", timeout=20)
+    assert (world.root / "rounds").read_text() == "x\nx\nx\n"
+    assert wf.runs[run_id].nodes["l"].round == 3
+
+
+async def test_more_is_refused_for_a_step_that_is_not_a_spent_loop(world):
+    run_id = await run(world, flow('{sh: "exit 1", id: s, say: S.}'))
+    wf = world.app.workflows
+    await until(lambda: "s" in wf.runs[run_id].open, timeout=20)
+    st = wf.runs[run_id]
+    assert '"more"' not in wf._wake_text(st, "s", st.open["s"])
+    with pytest.raises(OpError) as e:
+        await world.app.registry.call(
+            "workflow.answer",
+            {"run": run_id, "to": "s", "choice": "more"},
+            Caller("agent", st.owner),
+        )
+    assert e.value.code == "bad_choice"

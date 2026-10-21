@@ -317,6 +317,43 @@ def test_gates_questions_and_notes_fold_into_open_items_and_the_story():
     assert st.open == {}
 
 
+def test_a_person_gate_tells_its_news_and_older_logs_stay_quiet():
+    opened = {"t": 3, "ev": "gate_opened", "node": "m.1.g", "by": "person"}
+    opened |= {"ask": "Go?", "shown": {}, "say": "Ask."}
+    passed = {"t": 4, "ev": "gate_answered", "node": "m.1.g", "by": "person"}
+    passed |= {"go": True, "value": "yes", "text": ""}
+    # Logged before the main agent heard of a person's gate: never told now.
+    assert _run(opened).open["m.1.g"]["told"] is True
+    assert _run(opened, passed).open == {}
+    st = _run(opened | {"tell": True})
+    assert st.open["m.1.g"]["told"] is False
+    st = _run(opened | {"tell": True}, passed | {"tell": True})
+    assert st.open["m.1.g"] == {
+        "kind": "passed",
+        "node": "m.1.g",
+        "value": "yes",
+        "told": False,
+    }
+    st = _run(
+        opened | {"tell": True},
+        passed | {"tell": True},
+        {"t": 5, "ev": "woke", "to": "m.1.g"},
+    )
+    assert st.open == {}  # a notice closes once told
+    st = _run(
+        opened | {"tell": True},
+        {"t": 4, "ev": "gate_delegated", "node": "m.1.g", "key": "m.g"},
+    )
+    assert st.delegated == {"m.g"} and st.nodes["m.1.g"].gate["by"] == "main"
+    assert st.open["m.1.g"] == {
+        "kind": "gate",
+        "node": "m.1.g",
+        "by": "main",
+        "told": False,
+    }
+    assert "Handed to the main agent" in st.story[-1]["text"]
+
+
 def test_edits_replace_apply_and_reject():
     st = _run(
         {
