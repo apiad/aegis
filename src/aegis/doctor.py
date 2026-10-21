@@ -110,11 +110,15 @@ async def _find(
     bin = shutil.which(bins[name])
     if bin is None:
         return Found(name, None, error=f"{bins[name]} is not on PATH")
+    failed = None
     try:
         version = await _version(bin)
     except (OSError, RuntimeError) as e:
-        return Found(name, bin, error=f"`{bin} --version` failed: {e}")
+        # Judged unknown, as a launch judges it: a warning, not an error (#454).
+        version, failed = None, f"`{bin} --version` failed: {e}"
     verdict = judge(name, LABELS[name], version, os.path.realpath(bin), accepted).wire()
+    if failed:
+        verdict["message"] += f"\n{failed}"
     try:
         cat = await _catalog(name, {**bins, name: bin}, cwd)
     except RuntimeError as e:

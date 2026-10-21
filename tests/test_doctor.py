@@ -326,3 +326,16 @@ async def test_a_cascade_out_of_ranking_order_warns(
     (f,) = at(found, "agents.unranked.models")
     assert f.message == "haiku (unranked) is above opus (57.6) in the ranking"
     assert at(found, "agents.ordered.models") == []
+
+
+async def test_a_failing_version_read_warns_unknown_and_still_lists_models(
+    tmp_path, fake_claude, fake_opencode, monkeypatch
+):
+    """A harness whose --version fails is judged unknown, as a launch judges it,
+    and its models are still read (#454)."""
+    monkeypatch.setenv("AEGIS_FAKE_HARNESS_VERSION", "")
+    found = await run(tmp_path, GOOD, fake_claude, fake_opencode)
+    claude = at(found, "harness.claude-code")
+    assert [f.level for f in claude] == ["warn"], claude
+    assert "could not be read" in claude[0].message
+    assert "--version` failed" in claude[0].message
