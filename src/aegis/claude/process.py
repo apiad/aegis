@@ -73,7 +73,8 @@ REPLACED_TOOLS = {
 # plan mode refuses an MCP call even when --allowedTools or a settings rule
 # allows it, acceptEdits and auto on Haiku ask, which -p answers no, and a
 # PreToolUse hook's allow passes all three, while plan mode still refuses
-# writes (#305).
+# writes (#305). From 2.1.301 plan mode refuses the hook's allow too, unless
+# the tool is annotated readOnlyHint, which every aegis tool is (mcp.py, #442).
 ALLOW_AEGIS = json.dumps(
     {
         "hooks": {

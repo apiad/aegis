@@ -23,6 +23,7 @@ from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_headers
 from fastmcp.tools import Tool
 from fastmcp.tools import ToolResult
+from mcp.types import ToolAnnotations
 from fastmcp.utilities.logging import configure_logging
 from pydantic import PrivateAttr
 
@@ -130,12 +131,23 @@ SHELL_FORM = (
 )
 
 
+READ_ONLY = ToolAnnotations(readOnlyHint=True)
+
+
 def build_mcp(registry: Registry, tokens: Tokens, sessions: Sessions | None = None):
     """The fastmcp server and its ASGI app, routed at ``/mcp``."""
     server = FastMCP("aegis")
     for op in registry.agent_ops():
         doc = (op.doc or op.name) + SHELL_FORM.format(name=op.tool_name)
-        tool = OpTool(name=op.tool_name, description=doc, parameters=_schema(op))
+        # Read-only to the harness: aegis decides which of its tools a session
+        # may call (ops.Registry.call), and Claude Code 2.1.301 and later refuse
+        # any other MCP call in plan mode, a read session's mode (#442).
+        tool = OpTool(
+            name=op.tool_name,
+            description=doc,
+            parameters=_schema(op),
+            annotations=READ_ONLY,
+        )
         tool._op, tool._registry, tool._tokens = op, registry, tokens
         tool._sessions = sessions
         server.add_tool(tool)

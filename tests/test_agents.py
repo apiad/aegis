@@ -121,6 +121,23 @@ def inbox(s) -> list[dict]:
 
 
 # -- the endpoint -----------------------------------------------------------------
+async def test_every_tool_is_read_only_to_the_harness(world):
+    """Claude Code 2.1.301 and later refuse an MCP call in plan mode, hook or
+    not, unless the tool says it is read-only; aegis gates its own tools, so
+    each one says so and a read session can call them (#442)."""
+    async with httpx.AsyncClient() as c:
+        r = await c.post(
+            world.base + "/mcp",
+            json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+            headers={"accept": "application/json, text/event-stream"},
+        )
+    tools = r.json()["result"]["tools"]
+    assert tools
+    assert [
+        t["name"] for t in tools if not (t.get("annotations") or {}).get("readOnlyHint")
+    ] == []
+
+
 async def test_the_tools_are_named_after_their_operations_and_take_no_handle(world):
     async with httpx.AsyncClient() as c:
         r = await c.post(
