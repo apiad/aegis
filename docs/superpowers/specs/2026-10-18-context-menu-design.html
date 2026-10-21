@@ -143,7 +143,7 @@ svg.ic{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-wid
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · one context menu</span>
-  <span class="st"><span class="pill acc">building: slices 1-4 of 5</span><span class="pill">2026-10-18</span><span class="pill" id="issue-pill">#479 · from #441</span></span>
+  <span class="st"><span class="pill acc">built</span><span class="pill">2026-10-18</span><span class="pill" id="issue-pill">#479 · from #441</span></span>
 </div>
 
 <div class="wrap">
@@ -353,15 +353,15 @@ menu.attach(root, (target, ev) =&gt; ({
     <tr><td>Agent reply row</td><td>Reply · New session | Copy · Copy link</td><td class="why">Reply quotes the whole row; Copy is the <code>c</code> key's copyRow</td></tr>
     <tr><td>Person's message</td><td>Edit and resend · New session | Copy · Copy link</td><td class="why">Edit puts the text back in the composer</td></tr>
     <tr><td>Tool row</td><td>Open file (when it touched one) · Copy output | Reply · Copy link</td><td class="why"><code>transcript.output</code>; the Files viewer</td></tr>
-    <tr><td>Fleet card and session tab</td><td>Open · Open beside · Quiet or Unquiet | Interrupt (working) · Wake and Continue (asleep) · Sleep (live) · Restart · Hand off | Rename… | Archive</td><td class="why">the session.* calls, quiet and unquiet included; Restart is new</td></tr>
-    <tr><td>Files row</td><td>Insert path · New session here · Terminal here | New file · New folder · Rename · Copy path | Delete</td><td class="why">today's Files menu, moved</td></tr>
-    <tr><td>Journal entry</td><td>Open commit or PR · Go to session</td><td class="why">the entry's refs and log id</td></tr>
-    <tr><td>Sent card (artifact, file)</td><td>Dock right · Dock left · Open in new window · Download</td><td class="why">the card's existing buttons</td></tr>
-    <tr><td>Canvas tab</td><td>Undock · Move to window… | Close pane</td><td class="why">today's long-press menu, grown</td></tr>
+    <tr><td>Fleet card and session tab</td><td>Open · Open in new tab · Quiet or Unquiet | Interrupt (working) · Wake (asleep) · Continue (not working) · Sleep (live) · Restart · Hand off | Rename… | Archive</td><td class="why">the session.* calls, quiet and unquiet included; Restart is new. Open in new tab opens <code>#s=&lt;key&gt;</code> in a browser tab, since the canvas holds no session pane; Rename… opens the session and starts the panel's in-place handle edit</td></tr>
+    <tr><td>Files row</td><td>Insert path · New session here · Terminal here | New file · New folder · Rename · Copy path | Delete</td><td class="why">today's Files menu, moved; Insert path writes at the caret of the session last shown in this browser tab; Terminal here is the shell profile with <code>term.spawn</code>'s new <code>cwd</code></td></tr>
+    <tr><td>Journal entry</td><td>Open commit or PR · Go to session</td><td class="why">the row's <code>url</code>, new: a commit on its repo's GitHub <code>origin</code>, or the first pull request URL a PR row's text carries; and its log id</td></tr>
+    <tr><td>Sent card (artifact, file)</td><td>Dock right · Dock left · Open in new window · Download</td><td class="why">the card's existing buttons; Open in new window is Pop out, for a file too</td></tr>
+    <tr><td>Canvas tab</td><td>Undock · Move to window…</td><td class="why">today's long-press menu, grown. No Close pane: Undock is the only way a pane leaves the canvas. A phone has one window and no Move to window</td></tr>
     <tr><td>Archive row</td><td>Read · Reopen</td><td class="why">the row's existing buttons</td></tr>
   </tbody>
 </table>
-<p>A session card shows only what applies to its state and what the viewer may do: a member reading another's session gets Open and Open beside; a workflow's locked step shows Sleep, Restart and Archive disabled with the reason.</p>
+<p>A session card shows only what applies to its state and what the viewer may do: a member reading another's session gets Open and Open in new tab; a workflow's locked step shows Sleep, Restart and Archive disabled with the reason.</p>
 
 <h2 id="pointing"><span class="n">07</span>Pointing inside files and pages</h2>
 <p>The same bar and menu work inside an open file or page: the code viewer and the Files editor, a Markdown file, an artifact and a sent HTML page. Two uses: a quick question about one place, and a set of comments made while reading, sent as one message.</p>
@@ -384,8 +384,7 @@ menu.attach(root, (target, ev) =&gt; ({
 <h3 id="frames">Pages in a sandbox</h3>
 <p>Artifacts and sent HTML run in frames with an opaque origin (<code>files.py</code>, <code>_policy</code>: <code>sandbox allow-scripts</code>), so the client cannot read a selection or an element inside them. A small script inside the frame does it:</p>
 <ul>
-  <li>Artifacts already load <code>artifact.js</code>; it gains the pointing script.</li>
-  <li>A sent HTML file gets the same script inlined by the server on the preview response only. Download returns the original bytes.</li>
+  <li>The pointing script is its own file, <code>client/js/pagepoint.js</code>. The server adds a <code>&lt;script src&gt;</code> tag for it to every HTML preview, an artifact's, a sent file's and a Files page's, and not to a download, which returns the original bytes. A tag rather than the script inlined, because previews are cached as immutable and the static script follows the client's version.</li>
   <li>The script answers right-click, long press and a selection with <code>{kind, locator, text, rect}</code> over the existing postMessage channel, and outlines the element while the menu is open. There is no separate inspect mode.</li>
   <li>The client draws the bar and the menu over the frame, in its own coordinates from <code>rect</code>, so the frame's edges never cut them.</li>
   <li>The script reports only on a gesture by the person; a page cannot fake one into the composer, because the client acts only on the menu item the person picks in its own document.</li>
@@ -448,7 +447,8 @@ menu.attach(root, (target, ev) =&gt; ({
   <li>The <code>asleep</code> state and <code>asleep_why</code> in <code>describe</code>, the fleet's marks and <code>session_list</code>; old metas read through.</li>
   <li>The Fleet's marks: <code>zz</code> for asleep, an eye-off <code>quiet</code> mark for quiet (<code>fleet.js</code>, <code>base.css</code>).</li>
   <li><code>/sleep</code>, <code>/restart</code>, <code>/archive</code> in <code>commands.py</code>, with <code>/stop</code> and <code>/close</code> as aliases.</li>
-  <li>The pointing script, inlined into a sent HTML file's preview response and added to <code>artifact.js</code>, with a <code>point</code> message on the existing channel.</li>
+  <li>The pointing script's tag on every HTML preview (<code>web.inject_point</code>, <code>/via</code> included), with an <code>aegis/point</code> message on the existing channel.</li>
+  <li>A journal row's <code>url</code> (<code>journal/render.py</code>), for the entry's Open commit or PR.</li>
   <li><code>term.spawn</code> takes an optional <code>cwd</code>, so Files' Terminal here opens in the folder pressed.</li>
   <li>Client only: a row link, <code>#s=&lt;id&gt;&amp;at=&lt;i&gt;</code>, that opens the session scrolled to entry <code>i</code>; <code>route()</code> learns it.</li>
 </ul>
@@ -456,7 +456,7 @@ menu.attach(root, (target, ev) =&gt; ({
 <h2 id="delivery"><span class="n">10</span>Delivery</h2>
 <p>Five PRs, each usable alone, in this order:</p>
 <ol>
-  <li><b>menu.js</b>: the module, Files' and the canvas tabs' menus moved onto it with no change in what they show, and the fleet card and session tab menus with today's calls (Open, Open beside, Interrupt, Stop, Hand off, Rename, Close).</li>
+  <li><b>menu.js</b>: the module, Files' and the canvas tabs' menus moved onto it with no change in what they show, and the fleet card and session tab menus with today's calls (Open, Open in new tab, Interrupt, Stop, Hand off, Rename, Close).</li>
   <li><b>Lifecycle</b>: asleep, Wake, Restart, Archive, the commands and aliases, the panel's buttons renamed, the help pages (<code>commands.md</code>, <code>getting-started.md</code>, <code>config.md</code>'s park section) and DESIGN.md's process model.</li>
   <li><b>Transcript</b>: the selection bar, the row menus, the composer helper, <code>data-chrome</code>, the row link.</li>
   <li><b>Inside files and pages</b>: the bar, menu and comment tray in the viewer and editor, then in artifacts and sent HTML with the pointing script.</li>
@@ -534,7 +534,7 @@ const A = {
   openfile: ["Open file", "file", "", "Open the file the tool touched in the Files viewer."],
   output: ["Copy output", "copy", "", "Copy the whole output, fetched from the server."],
   open: ["Open", "open", "↵", "Open the session."],
-  beside: ["Open beside", "beside", "", "Open it in a column next to this one."],
+  beside: ["Open in new tab", "beside", "", "Open the session in a new browser tab."],
   quiet: ["Quiet", "quiet", "", "Hide its tab until the turn ends with something for you; the process keeps running."],
   unquiet: ["Unquiet", "unquiet", "", "Give it its tab back now."],
   interrupt: ["Interrupt", "interrupt", "", "Cut the current turn; the process stays."],
@@ -562,7 +562,6 @@ const A = {
   dl: ["Download", "download", "", "Download the file or the page."],
   undock: ["Undock", "undock", "", "Back to its card in the transcript."],
   movewin: ["Move to window…", "window", "", "To another canvas window."],
-  closepane: ["Close pane", "close", "", "Remove the pane."],
 };
 const MENUS = {
   reply: ["opus · reply", [["reply", "newsess"], ["copy", "link"]]],
@@ -574,7 +573,7 @@ const MENUS = {
   file: ["files.js", [["insert", "sesshere", "termhere"], ["fnew", "fdir", "frename", "fpath"], ["!fdelete"]]],
   journal: ["journal entry", [["jopen", "jsess"]]],
   card: ["a sent page", [["dockr", "dockl", "win", "dl"]]],
-  tab: ["Help", [["undock", "movewin"], ["closepane"]]],
+  tab: ["Help", [["undock", "movewin"]]],
 };
 const said = document.getElementById("said");
 let open = null;

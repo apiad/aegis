@@ -1017,6 +1017,16 @@ that throws is a tool error, not a card; with no browser open it lands with
 `started` unset, and the first browser to mount it reports an error to the
 inbox.
 
+**One menu, built on demand.** `client/js/menu.js` owns the page's one open
+context menu and its one selection bar. A view attaches a provider to a root
+element; on a right-click, a long press or the menu key, the provider turns
+the element pressed into groups of items, built from the calls and buttons
+the view already has, or null to keep the browser's own menu. Nothing watches
+the page while no menu is open: no MutationObserver, and a view that redraws
+calls the menu's checks (`retarget`, `dropDetached`, `unbarHidden`) from its
+own redraw path. An item's `run` is called after the menu closes, so a dialog
+it opens or the focus it moves is not fought by the menu.
+
 **A page proposes what the person points at; only the host acts on it.** Every
 HTML preview, a sent page's, a Files page's and an artifact's, is served with a
 `<script src="/static/js/pagepoint.js">` added before its `</body>`
