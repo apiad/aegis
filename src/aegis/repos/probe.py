@@ -12,6 +12,8 @@ import re
 import subprocess
 from dataclasses import dataclass, field
 
+from .. import launch
+
 TIMEOUT = 3.0
 SLUG = re.compile(r"github\.com[:/]([^/\s]+)/([^/\s]+?)(?:\.git)?(?:/|$)")
 
@@ -40,9 +42,8 @@ class Probe:
 
 def git(top: str, *args: str) -> str | None:
     try:
-        r = subprocess.run(
+        r = launch.run(
             ["git", "-C", top, *args],
-            capture_output=True,
             text=True,
             errors="surrogateescape",  # a path git prints may not be UTF-8
             timeout=TIMEOUT,

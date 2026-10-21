@@ -20,6 +20,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import launch
 from .config import Finding
 
 UNIT = """\
@@ -179,7 +180,7 @@ def cat(unit: Path, user: bool) -> str:
     systemctl cannot say."""
     cmd = ["systemctl", *(["--user"] if user else []), "cat", unit.name]
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        r = launch.run(cmd, text=True, timeout=5)
         if r.returncode == 0:
             return r.stdout
     except (OSError, subprocess.TimeoutExpired):

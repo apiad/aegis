@@ -33,6 +33,8 @@ import subprocess
 import time
 from pathlib import Path
 
+from . import launch
+
 _IGNORE_DIRS: frozenset[str] = frozenset(
     {
         ".git",
@@ -117,9 +119,8 @@ def _ignored(rel: str) -> bool:
 def _git_ls(repo: str, *args: str) -> list[str] | None:
     """``git ls-files -z`` in ``repo``, or None when git cannot answer."""
     try:
-        out = subprocess.run(
+        out = launch.run(
             ["git", "-C", repo, "ls-files", "-z", "--exclude-standard", *args],
-            capture_output=True,
             timeout=60,
         )
     except (OSError, subprocess.TimeoutExpired):

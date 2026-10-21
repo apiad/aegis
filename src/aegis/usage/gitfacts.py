@@ -16,11 +16,11 @@ from __future__ import annotations
 import collections
 import fnmatch
 import re
-import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from .. import launch
 from .locality import SPLIT_DIRS, classify, module_of
 
 SEP = "\x01"
@@ -44,9 +44,7 @@ class GitFacts:
 
 
 def _sh(repo_path: Path, *args: str) -> str:
-    proc = subprocess.run(
-        ("git", "-C", str(repo_path), *args), capture_output=True, text=True
-    )
+    proc = launch.run(["git", "-C", str(repo_path), *args], text=True)
     if proc.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} failed: {proc.stderr.strip()[:400]}")
     return proc.stdout

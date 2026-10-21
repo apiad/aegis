@@ -40,6 +40,7 @@ from urllib.parse import quote
 
 from pydantic import BaseModel
 
+from . import launch
 from . import files, fs_trash
 from .fs_index import FsIndex, _is_repo, ignore_dir, ignore_file
 from .fs_paths import resolve
@@ -232,10 +233,9 @@ def _git_ignored(top: Path, paths: list[Path]) -> set[Path]:
         return set()
     rels = [str(p.relative_to(top)) for p in paths]
     try:
-        out = subprocess.run(
+        out = launch.run(
             ["git", "-C", str(top), "check-ignore", "--stdin", "-z"],
             input="\0".join(rels).encode("utf-8", "surrogateescape"),
-            capture_output=True,
             timeout=30,
         )
     except (OSError, subprocess.TimeoutExpired):

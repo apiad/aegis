@@ -24,6 +24,8 @@ import urllib.request
 from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 
+from . import launch
+
 DIST = "aegis-harness"
 PYPI_URL = f"https://pypi.org/pypi/{DIST}/json"
 FETCH_TIMEOUT_S = 5.0
@@ -33,9 +35,8 @@ RETRY_S = 600.0
 
 def _git(cwd: Path, *args: str) -> str | None:
     try:
-        out = subprocess.run(
+        out = launch.run(
             ["git", "-C", str(cwd), *args],
-            capture_output=True,
             text=True,
             timeout=2,
         )

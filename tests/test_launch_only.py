@@ -30,14 +30,6 @@ PTY = {"spawn", "fork"}
 # Files that still start processes their own way. Each task of the launcher
 # plan removes its files; its last task deletes this set and the second test.
 NOT_YET = {
-    "fs_index.py",
-    "fs_ops.py",
-    "journal/paths.py",
-    "repos/gh.py",
-    "repos/probe.py",
-    "usage/gitfacts.py",
-    "version.py",
-    "service.py",
     "window.py",
     "files.py",
     "cli.py",
