@@ -187,6 +187,13 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 - **Workflow runs reach the browser as summaries.** Every browser got every run with its whole tree and story, about 50 KB a run, on every open and on every change to a node; that was 70% of what opening aegis cost. The browser now gets each run's summary, and a run whole only while one of its cards is on screen.
 
+### Known issues
+
+- On a slow machine, an OpenCode session's first prompt can reach the model
+  without aegis's tools: OpenCode reports aegis's MCP server connected before
+  it has listed its tools. The next message has them. Seen on CI runners at
+  both ends of the tested range, never on the test host (#540).
+
 ## [2.12.0] - 2026-10-20
 
 ### Added
