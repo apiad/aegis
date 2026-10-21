@@ -251,6 +251,9 @@ async def canary(setup, fake_model, tmp_path, monkeypatch, request):
         f"  cascade: {{harness: {harness}, models: [{model}, {model}-two], "
         "effort: low, permission: full}\n"
         "queues:\n  canary: {agent: canary, max_parallel: 2}\n"
+        # The canary tests the harness it installed, inside the tested range
+        # or not: versions.txt says which (#501).
+        "harness_versions: {person: off, agent: off, startup: off}\n"
     )
     c = Canary(harness, None, fm, root, setup)
     await c.boot()

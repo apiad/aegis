@@ -1,6 +1,7 @@
 name: canary
 # The latest stable Claude Code, Codex and OpenCode under main's aegis, against
-# a fake model (tests/canary/), once a day and before a release. A failure
+# a fake model (tests/canary/), once a day; before a release, also the min and
+# max of the tested range (versions: min or max). A failure
 # opens or updates one issue per test and setup; a test that passes again
 # closes its issue (scripts/canary_issue.py). Never on push or pull_request:
 # the harnesses change on their own schedule, not on ours.
@@ -8,6 +9,12 @@ on:
   schedule:
     - cron: "17 6 * * *"
   workflow_dispatch:
+    inputs:
+      versions:
+        description: latest, or an end of src/aegis/data/tested-harnesses.toml
+        type: choice
+        options: [latest, min, max]
+        default: latest
 permissions:
   contents: read
   issues: write
@@ -34,17 +41,22 @@ jobs:
       - name: canary
         id: canary
         run: scripts/canary.sh
+        env:
+          AEGIS_CANARY_VERSIONS: ${{ inputs.versions || 'latest' }}
       - name: report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: canary-report
+          name: canary-report-${{ inputs.versions || 'latest' }}
           path: .canary
           if-no-files-found: ignore
       # Runs after a pass too, so a test that passes again closes its issue.
-      # Not after a cancel or a broken install: no junit.xml, nothing to say.
+      # Not after a cancel or a broken install: no junit-*.xml, nothing to say.
+      # Only on the latest versions: a range end that fails is the release's
+      # to read, not an issue. tests/test_canary_workflow.py holds the glob to
+      # the files canary.sh writes (#501).
       - name: issues
-        if: always() && hashFiles('.canary/junit.xml') != ''
+        if: always() && hashFiles('.canary/junit-*.xml') != '' && (inputs.versions || 'latest') == 'latest'
         run: >
           uv run python scripts/canary_issue.py .canary
           --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"

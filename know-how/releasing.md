@@ -127,6 +127,8 @@ no user-facing doc.
    `gh workflow run canary.yml --ref main`, then read
    `gh issue list --label canary`. An open canary issue is a harness that
    does not work under this release; fix it or name it in the release notes.
+   Then move the tested harness range (*Moving the tested harness range*,
+   below) and run the canary at its ends.
    Run the full gates locally, once, here and not per PR: `make check`,
    `make test-slow` and `make bench`. A red run is a regression; do not
    re-roll it.
@@ -151,6 +153,25 @@ no user-facing doc.
     get this". Read its exit code directly: piping it through `tail` and
     then testing `$?` reports `tail`'s status and turns a failed install
     green.
+
+## Moving the tested harness range
+
+`src/aegis/data/tested-harnesses.toml` names, per harness, the min and max
+versions this release was tested with; a person on a version outside them is
+asked before a session starts. A range moves only on canary evidence:
+
+1. The latest run's `versions.txt` (the `canary-report-latest` artifact, or
+   `scripts/canary.sh` locally) marks each harness `in_range` or `newer`. A
+   `newer` one whose scenarios all passed may become the new `max`; one with
+   a failure stays out, and its issue goes in the release notes.
+2. Edit `max` (and `min`, when aegis drops an old version) in the toml.
+3. Run the canary at both ends, on the branch with the edit, and read each
+   run green: `gh workflow run canary.yml --ref <branch> -f versions=max`,
+   then `-f versions=min`; locally, `AEGIS_CANARY_VERSIONS=max scripts/canary.sh`.
+   Those runs open no issues: a failure at an end means the range is wrong.
+
+The canary's own server turns the gate off and tests whatever it installed,
+so a green nightly run on a newer version is evidence for a move, not a move.
 
 ## Recovering a failed publish
 
