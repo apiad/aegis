@@ -78,6 +78,7 @@ Publish = Callable[[str, list[dict]], None]
 # line in the bench (issue #127).
 _NOW = (
     "status",
+    "untested_version",
     "asleep_why",
     "handle",
     "title",
@@ -448,6 +449,9 @@ class Session:
         # parked session's wake included, is unattended.
         self.launch_by = "agent"
         self.last_verdict: harness_versions.Verdict | None = None
+        # The last launch's version when it was outside the tested range, for
+        # the panel's warning colour (#456); None in range or before a launch.
+        self.untested_version: dict | None = None
         # The notice the last launch wrote, for the spawn op's result.
         self.last_notice: str | None = None
         # A cascade falling to its next model inside a turn, and whether an
@@ -536,6 +540,7 @@ class Session:
         # differently depending on whether a turn had run (#243).
         m["model"] = self.spec.model or "default"
         m["harness_label"] = self.harness.label
+        m["untested_version"] = self.untested_version
         m["cache_hit"] = cache.hit_rate(self.cache_recent)
         m["cache_alarm"] = cache.alarm(self.cache_recent, self.spec.harness)
         m.update(self._host.card(self))
@@ -722,6 +727,15 @@ class Session:
             return
         v = await harness_versions.check(self.harness, cfg["accepted"])
         self.last_verdict, self.last_notice = v, None
+        self._set(
+            untested_version={
+                "version": v.version,
+                "state": v.state,
+                "range": v.range.text(),
+            }
+            if v.path is not None and v.outside
+            else None
+        )
         token = v.version or "?"
         if v.path is None or not v.outside or token == self.checked_version:
             return

@@ -81,7 +81,7 @@ def test_messages_name_path_range_and_command():
             and R.max_s in text
             and v.install in text
         )
-    assert "nobody was there to ask" in v.notice(started_anyway=True)
+    assert "started without asking" in v.notice(started_anyway=True)
 
 
 async def test_read_version_caches_by_mtime(tmp_path):

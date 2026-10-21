@@ -51,8 +51,9 @@ async def test_agent_spawn_outside_range_starts_with_notice(world, monkeypatch):
     text = n["summary"] + "\n" + n["detail"]["tail"]
     assert str(Path(world.fake).resolve()) in text
     assert "npm install -g @anthropic-ai/claude-code@" in text
-    assert "nobody was there to ask" in text
+    assert "started without asking" in text
     assert "Claude Code 99.0.0 is newer" in result["untested"]
+    assert child.wire()["untested_version"]["version"] == "99.0.0"  # the panel (#456)
 
 
 async def test_agent_off_writes_no_notice(tmp_path, fake_claude, monkeypatch):
@@ -258,7 +259,7 @@ async def test_warm_parked_never_asks(world, monkeypatch):
     await world.app.registry.call("session.warm", {"log_id": s.log_id})
     await until(lambda: s.running, timeout=5, what="warmed")
     (n,) = notices(s)
-    assert "nobody was there to ask" in n["summary"]
+    assert "started without asking" in n["summary"]
 
 
 # -- at startup ---------------------------------------------------------------------
@@ -281,6 +282,32 @@ async def test_boot_warns_but_serves(tmp_path, fake_claude, monkeypatch, caplog)
         (line,) = startup_lines(caplog)
         assert "Claude Code 99.0.0" in line and str(Path(fake_claude).resolve()) in line
         assert "npm install -g @anthropic-ai/claude-code@" in line
+    finally:
+        await w.stop()
+
+
+async def test_boot_logs_a_harness_that_cannot_be_built_and_serves(
+    tmp_path, fake_claude, monkeypatch, caplog
+):
+    """harness_for raising at startup is one warning, never the check's end (#455)."""
+    caplog.set_level(logging.WARNING, logger="aegis.app")
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+
+    def broken(*a, **k):
+        raise ValueError("no such harness")
+
+    monkeypatch.setattr("aegis.app.harness_for", broken)
+    w = await World(tmp_path, fake_claude).start()
+    try:
+        await until(
+            lambda: any(
+                "reading a harness version failed: no such harness" in r.getMessage()
+                for r in caplog.records
+            ),
+            timeout=6,
+            what="the warning",
+        )
+        assert w.app._versions_task.exception() is None
     finally:
         await w.stop()
 
