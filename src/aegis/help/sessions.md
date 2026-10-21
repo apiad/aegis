@@ -267,7 +267,9 @@ Open in new tab only, and a step of a running workflow shows the rest
 disabled, with the reason as the item's tooltip. A terminal's card has Open,
 Open in new tab and Archive.
 
-The tree in the Files view has a menu opened the same way.
+The tree in the Files view has a menu opened the same way, and so do the
+Journal's entries (Open commit or Open PR, when the entry has one on GitHub,
+and Go to session) and the archive's rows (Read and Reopen).
 
 ## Sleep, wake, restart, archive and reopen
 

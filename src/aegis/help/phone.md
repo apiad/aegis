@@ -115,7 +115,8 @@ switches the tab you are on; Show on a docked card does.
 
 Dragging panes and resizing them is for a desktop. On a phone, press and hold
 a tab other than the transcript's for half a second to get Undock, which puts
-the page or file back on its card in the transcript. The canvas itself does
+the page or file back on its card in the transcript. A phone has one window,
+so the tab's menu has no Move to window. The canvas itself does
 not change on a phone: a desktop on the same session still shows its columns.
 
 A phone has one window. When the canvas spreads over several browser

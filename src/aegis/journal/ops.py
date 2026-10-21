@@ -136,8 +136,10 @@ def register_journal_ops(app: "App") -> None:
         hits, cut, c, marks = await asyncio.to_thread(
             run, p, p.offset, p.counts, p.q or ""
         )
+        open_ids = set(app.sessions.sessions)
         out = {
-            "rows": render.rows(hits, root, set(app.sessions.sessions), marks),
+            # In a thread: a row's url may run git once per repo (render._github).
+            "rows": await asyncio.to_thread(render.rows, hits, root, open_ids, marks),
             "more": cut,
             "today": when.today(),
         }

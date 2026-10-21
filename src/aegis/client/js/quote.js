@@ -93,8 +93,17 @@ export function quoted(text) {
 
 // prefix + text, a blank line, then the draft that was there; the caret at
 // the end. The prefix opens the text: send() reads /btw only at the start.
-export function insertIntoComposer(text, { prefix = "" } = {}) {
+export function insertIntoComposer(text, { prefix = "", caret = false } = {}) {
   const input = document.getElementById("input");
+  if (caret) {
+    // At the caret, a space apart from a word before it (Files' Insert path).
+    const at = input.selectionStart;
+    const gap = at && !/\s/.test(input.value[at - 1]) ? " " : "";
+    input.setRangeText(gap + text, at, input.selectionEnd, "end");
+    input.dispatchEvent(new Event("input"));
+    input.focus();
+    return;
+  }
   const draft = input.value;
   input.value = `${prefix}${text}\n\n${draft}`;
   input.dispatchEvent(new Event("input"));

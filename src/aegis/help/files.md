@@ -51,6 +51,13 @@ state folder never show.
 
 Right-click a row, or hold it on a touch screen, for its menu:
 
+- Insert path: writes the row's path, as `` `README.md` ``, into the
+  message box of the session you last had open in this browser tab, where
+  its cursor was, and takes you there. With no session open it starts the
+  New session form with it.
+- New session here: the New session form, with the row's folder (a file's
+  own folder) as the session's directory.
+- Terminal here: a shell terminal started in that folder.
 - New file and New folder: type the name in the tree and press Enter, or Esc
   to cancel. A new file opens in the editor at once.
 - Rename: edit the name in place. A name starting with `/` is a path from the

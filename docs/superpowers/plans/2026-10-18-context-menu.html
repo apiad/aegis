@@ -248,6 +248,12 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 <li><b>The gate is the focus in the frame alone</b>, not <code>:hover</code>: a page posted a menu under a pointer that only rested over it, with the composer focused. A right-click's mousedown and a long press (<code>window.focus()</code>) give the frame the focus. A page that takes the focus by script can still propose a menu; only a click on an item, after the settle, writes.</li>
 <li><b><code>pagepoint.js</code> listens on the window, after the page's own listeners, and leaves a right-click or a press the page cancelled</b>: a page with its own right-click (a board, an editor, its own menu) got the host's menu over its own.</li>
 <li><b>The viewer keeps an item's tray across its redraws</b> (an artifact's status or a resend), with the note being typed and its caret. Two browser tabs on one file still write the whole tray to storage each, so the last one to save wins.</li>
+<li><b>Insert path lands at the caret of the session last shown, which is the draft's end</b>: going back from Files reloads the draft into <code>#input</code> (<code>app.js</code>, <code>follow</code>, <code>$("input").value = localStorage…</code>), which puts the caret there. <code>insertIntoComposer</code> takes <code>caret: true</code> and keeps a space from a word before it. With no session shown, it opens New session, as Files' Ask does.</li>
+<li><b>New session here writes an absolute folder</b>, <code>roster.cwd</code> and the row's folder, since a Files path is under the root and <code>roster.cwd</code> is the server's harness folder, the root (<code>roots.py</code>, <code>make_roots</code>). A file row's "here" is its folder.</li>
+<li><b>Terminal here starts the <code>shell</code> profile</b> (<code>term_profiles.py</code>, <code>with_shell</code>) with the new <code>cwd</code>, which <code>fs_paths.resolve</code> checks as Files does: an error there, or a cwd that is not a folder, is <code>bad_cwd</code>. A profile's own <code>cwd</code> is still relative to the root and unchecked.</li>
+<li><b>A canvas tab's menu has no Close pane</b>: the layout has no op that closes a pane other than <code>layout.undock</code> (<code>layout_ops.py</code>, <code>layout.dock</code>, <code>layout.undock</code>, <code>layout.resize</code>), which is Undock. Move to window… opens the pane bar's own window menu at the tab (<code>canvas.js</code>, <code>moveItems</code>), and is left out on a phone, whose strip holds every window (<code>merged()</code>).</li>
+<li><b>The sent card's and the archive row's menus run the buttons their rows drew</b> (<code>app.js</code>, <code>sentItems</code> and the <code>#arch-list</code> provider): Dock right and Dock left show only where the card's Dock does (<code>docker.can</code>), Open in new window is <code>canvas.popOut</code>, for a file as for a live page, and Download clicks the card's <code>a.btn.dl</code>. A page card has no Download, and a card with none of the four keeps the browser's menu. The menu is the transcript row's (<code>rowMenu</code>), for the <code>file</code> and <code>artifact</code> kinds.</li>
+<li><b>A journal row's url is computed off the event loop</b> (<code>journal/ops.py</code>, <code>journal.rows</code> runs <code>render.rows</code> in a thread): the first row of a repo runs <code>git remote get-url origin</code>, cached for the server's life (<code>render._github</code>), so a remote added later shows after a restart. A PR's url is read only from a <code>pr</code> row's text. The menu is on the Journal view's rows; the sidebar's journal card keeps its click.</li>
 </ul>
 
 <h2>Review focus</h2>
@@ -650,7 +656,7 @@ def test_a_long_press_inside_a_page_on_a_phone(browser, server): ...</script></l
 
 <div class="slice">slice 5 · the rest · branch menu-5-rest</div>
 
-<details class="task" id="task-12" data-state="pending">
+<details class="task" id="task-12" data-state="done">
 <summary><span class="num">12</span><span><span class="ttl">Files' new items and term.spawn's cwd</span><span class="files">js/files.js · term_ops.py · terminals.py · tests/test_terminals*.py · tests/test_menu_browser.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -664,7 +670,7 @@ def test_a_long_press_inside_a_page_on_a_phone(browser, server): ...</script></l
 </div>
 </details>
 
-<details class="task" id="task-13" data-state="pending">
+<details class="task" id="task-13" data-state="done">
 <summary><span class="num">13</span><span><span class="ttl">Journal, sent cards, canvas tabs and archive rows</span><span class="files">journal/render.py · js/journal.js · js/entries.js · js/canvas.js · js/fleet.js · tests</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -679,7 +685,7 @@ def test_a_long_press_inside_a_page_on_a_phone(browser, server): ...</script></l
 </div>
 </details>
 
-<details class="task" id="task-14" data-state="pending">
+<details class="task" id="task-14" data-state="done">
 <summary><span class="num">14</span><span><span class="ttl">Ship slice 5, and the spec's status</span><span class="files">docs/superpowers/specs/2026-10-18-context-menu-design.html · help · changelog.d · DESIGN.md</span></span><span class="state">pending</span></summary>
 <div class="body">
 <h4>steps</h4>

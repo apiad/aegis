@@ -92,6 +92,20 @@ async def test_a_bad_or_unknown_profile_is_refused(reg):
     assert e.value.code == "no_profile"
 
 
+async def test_a_cwd_under_the_root_is_where_it_starts_and_others_are_refused(
+    reg, tmp_path
+):
+    (tmp_path / "sub" / "deep").mkdir(parents=True)
+    (tmp_path / "file.txt").write_text("x")
+    t = await reg.spawn("echo", owner="ana", cwd="sub/deep")
+    assert t.meta["cwd"] == str((tmp_path / "sub" / "deep").resolve())
+    for bad in ("../", "/tmp", "file.txt", "nope", "state", ".git"):
+        with pytest.raises(OpError) as e:
+            await reg.spawn("echo", owner="ana", cwd=bad)
+        assert e.value.code == "bad_cwd", bad
+    assert len(reg.open) == 1
+
+
 async def test_a_command_that_is_not_found_shows_as_a_failed_terminal(reg):
     t = await reg.spawn("missing", owner="ana")
     await asyncio.wait_for(t.exited.wait(), 3)

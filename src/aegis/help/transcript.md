@@ -110,6 +110,13 @@ stacked panes:
   resize them. A column stays at least 280 px wide, the transcript's at least
   360 px, and a pane at least 120 px high.
 - × on a pane's bar undocks it, and the card shows it again.
+- When the canvas draws as tabs, a right-click on a tab other than the
+  transcript's, or a long press, offers Undock and Move to window…, which
+  lists the windows as the pane bar's button does.
+- A right-click on a sent card's bar, or a long press, opens its menu: Dock
+  right, Dock left, Open in new window and Download, each where the card's
+  own buttons allow it. A docked card offers only the new window, which
+  moves its pane there.
 
 A column whose share of the window is under its minimum is drawn at the
 minimum, and the wider columns give up the difference; the shares kept with
