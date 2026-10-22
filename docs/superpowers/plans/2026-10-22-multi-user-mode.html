@@ -120,7 +120,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 -->
 <div class="chrome">
   <div class="bar"><span>aegis</span><span class="tab">plan · linux users</span>
-    <span class="st"><span class="pill acc">execution method: not chosen yet</span><span class="pill">#548</span><span class="pill">2026-10-22</span></span></div>
+    <span class="st"><span class="pill acc">execution method: inline, one fresh review</span><span class="pill">#548</span><span class="pill">2026-10-22</span></span></div>
   <div class="progress"><span id="pcount">0 of 0 done</span><div class="track" id="ptrack"></div></div>
 </div>
 <main>
@@ -202,7 +202,7 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
 </table>
 
 <!-- ============================================================ TASK 1 -->
-<details class="task" id="task-1" data-state="pending">
+<details class="task" id="task-1" data-state="done">
 <summary><span class="num">1</span><span><span class="ttl">The rules about Linux users, and multi_user in .aegis.yaml</span><span class="files">src/aegis/users.py · src/aegis/config.py · tests/test_users.py · tests/test_config.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>A module of pure functions: which users a token may name, how the <code>multi_user</code> block parses, and how the pool file reads. The config learns the key.</p>
@@ -321,7 +321,7 @@ And in <code>tests/test_config.py</code>: <code>test_multi_user_is_a_known_key_a
 </details>
 
 <!-- ============================================================ TASK 2 -->
-<details class="task" id="task-2" data-state="pending">
+<details class="task" id="task-2" data-state="done">
 <summary><span class="num">2</span><span><span class="ttl">Boot checks, and the mode pinned at start</span><span class="files">src/aegis/users.py · src/aegis/cli.py · src/aegis/app.py · tests/test_users.py · tests/test_multi_user_boot.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>The server refuses to start in the mode without its capabilities, as root, or with a state directory or pool file others can read. Once it starts, the mode is fixed until the next start.</p>
@@ -406,7 +406,7 @@ def test_serve_with_a_bad_multi_user_block_exits_with_the_error(tmp_path):
 </details>
 
 <!-- ============================================================ TASK 3 -->
-<details class="task" id="task-3" data-state="pending">
+<details class="task" id="task-3" data-state="done">
 <summary><span class="num">3</span><span><span class="ttl">Tokens name their Linux user: store, CLI, op and Settings</span><span class="files">src/aegis/tokens.py · src/aegis/cli.py · src/aegis/app.py · client/js/settings.js · tests/test_tokens.py · tests/test_cli_token.py · tests/test_browser.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p><code>linux_user</code> on each entry in <code>tokens.json</code>, checked when the token is made and again at each sign-in.</p>
@@ -493,7 +493,7 @@ In <code>tests/test_cli_token.py</code>: <code>test_token_add_linux_user_needs_t
 </details>
 
 <!-- ============================================================ TASK 4 -->
-<details class="task" id="task-4" data-state="pending">
+<details class="task" id="task-4" data-state="done">
 <summary><span class="num">4</span><span><span class="ttl">The user switch and the capability drop in launch.py</span><span class="files">src/aegis/users.py · src/aegis/launch.py · the 23 call sites · tests/test_users.py · tests/test_launch.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>Every shape takes <code>user</code>. Once the mode is configured, every process gets the <code>setpriv</code> prefix and a switched one gets its user's environment. In this task every call site passes <code>user=None</code>, so behaviour does not change yet; task 5 passes the real users.</p>
@@ -584,7 +584,7 @@ In <code>tests/test_launch.py</code>, with a fixture that calls <code>launch.con
 </details>
 
 <!-- ============================================================ TASK 5 -->
-<details class="task" id="task-5" data-state="pending">
+<details class="task" id="task-5" data-state="done">
 <summary><span class="num">5</span><span><span class="ttl">Every call site passes the user it acts for</span><span class="files">session.py · registry.py · harness.py · claude/opencode/codex · terminals.py · monitors.py · schedules.py · workflows.py · oneshot.py · recaps.py · btws.py · repos/ · journal/ · tests/test_acts_for.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>A session records its Linux user when it is created, a member's session starts in their home, and every call site in the table above passes the user it names.</p>
@@ -625,7 +625,7 @@ terminal metas gain <code>"linux_user"</code> (added to <code>terminals.META_KEY
 </details>
 
 <!-- ============================================================ TASK 6 -->
-<details class="task" id="task-6" data-state="pending">
+<details class="task" id="task-6" data-state="done">
 <summary><span class="num">6</span><span><span class="ttl">Doctor checks, service install --multi-user, the changelog</span><span class="files">src/aegis/doctor.py · src/aegis/service.py · src/aegis/cli.py · changelog.d/ · tests/test_doctor.py · tests/test_service.py</span></span><span class="state"></span></summary>
 <div class="body">
 <p>The doctor says what is wrong with a multi-user server before a person finds it, and the unit can be written with the capabilities.</p>
@@ -657,7 +657,7 @@ In the service tests: <code>test_install_multi_user_adds_the_capability_lines</c
 </details>
 
 <!-- ============================================================ TASK 7 -->
-<details class="task" id="task-7" data-state="pending">
+<details class="task" id="task-7" data-state="done">
 <summary><span class="num">7</span><span><span class="ttl">The tests on a host with real Linux users, and their CI job</span><span class="files">tests/multiuser/ · tests/conftest.py · pyproject.toml · Makefile · .github/workflows/ci.yml</span></span><span class="state"></span></summary>
 <div class="body">
 <p>The spec's slow tests, run against a real server under <code>systemd-run</code> with the three capabilities and two real members. They create Linux users, so they run only when asked.</p>
@@ -691,7 +691,7 @@ In the service tests: <code>test_install_multi_user_adds_the_capability_lines</c
 </details>
 
 <!-- ============================================================ TASK 8 -->
-<details class="task" id="task-8" data-state="pending">
+<details class="task" id="task-8" data-state="done">
 <summary><span class="num">8</span><span><span class="ttl">Gates, a fresh review, the PR</span><span class="files">the branch</span></span><span class="state"></span></summary>
 <div class="body">
 <ol class="steps">
