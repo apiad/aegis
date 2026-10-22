@@ -710,3 +710,50 @@ def test_an_until_is_today_or_tomorrow_and_never_past():
     for bad in ("2026-10-17T09:00", "noon", "24:00"):
         with pytest.raises(OpError):
             until_ts(bad, now)
+
+
+# -- held messages ------------------------------------------------------------------
+HELD_WARN = NOTICE_HEADER + "held:"
+
+
+def test_held_items_name_the_senders_and_skip_the_quota_held():
+    from aegis.registry import held_items
+
+    assert held_items([]) == []
+    quota = {"header": "> from agent:b · t", "body": "x", "held_for": "quota"}
+    assert held_items([quota]) == []
+    two = [
+        {"header": "> from agent:b · t", "body": "x"},
+        {"header": "> from monitor:m-1 · fail · t", "body": "y"},
+    ]
+    [item] = held_items(two)
+    assert item.key == "n2" and item.level == "warn"
+    assert "2 messages wait for your turn to end: agent:b, monitor:m-1." in item.text
+
+
+async def test_a_message_held_mid_turn_is_announced_on_the_next_tool_result(world):  # noqa: F811
+    a = await world.spawn()
+    script = json.dumps([["sleep", 0.6], ["session_list", {}]])
+    busy = asyncio.create_task(turn(a, f"/script {script}"))
+    await until(lambda: a.status == "working", timeout=5, what="a's turn")
+    await a.deliver("> from agent:peer · 2026-10-22T12:00:00Z", "the spec changed")
+    assert [m["body"] for m in a.held] == ["the spec changed"]
+    await busy
+    await until(lambda: not a.held and a.status == "idle", timeout=5, what="the flush")
+    records, _ = read_store(world.app.sessions.store_path(a.log_id))
+    store = json.dumps(records)
+    assert "aegis:notice" in store and "held:n1" in store
+    assert "1 message waits for your turn to end: agent:peer." in store
+    flushed = sent(world.app, a.log_id)[-1]
+    assert flushed.startswith("> from agent:peer") and HELD_WARN not in flushed
+    assert not [k for k in a.items_sent if k.startswith("held:")]
+
+
+async def test_an_urgent_message_is_steered_into_the_running_turn(world):  # noqa: F811
+    a = await world.spawn()
+    busy = asyncio.create_task(turn(a, "/busy 0.6"))
+    await until(lambda: a.status == "working", timeout=5, what="a's turn")
+    await a.deliver("> from agent:peer · 2026-10-22T12:00:00Z", "stop now", urgent=True)
+    assert a.held == []
+    said = await busy
+    assert said.startswith("done: > from agent:peer") and "stop now" in said

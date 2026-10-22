@@ -30,6 +30,8 @@ from .config import CONTEXT_DEFAULTS
 from .harness import harness_for
 from .meta import MetaStore, rebuild
 from .names import TITLE_MAX, mint_handle, valid_handle
+from . import notice_sources
+from .notice_sources import Item
 from .ops import OpError
 from .roots import Roots
 from .session import Host, Session, SpawnSpec
@@ -39,6 +41,32 @@ from .transcript.wire import withheld_text
 
 log = logging.getLogger("aegis.registry")
 Publish = Callable[[str, list[dict]], None]
+
+# A busy session is told, on its next tool result, that inbox messages wait
+# for its turn to end (Session.deliver), so it can finish early when they may
+# change its work. The message itself stays a user turn.
+HELD_SOURCE = "held"
+notice_sources.declare(HELD_SOURCE, {})
+
+
+def held_items(held: list[dict]) -> list[Item]:
+    """One warning naming who sent what is held mid-turn. Its key counts the
+    messages, so each new one is told again. Messages the quota gate holds
+    are left out: their session is not in a turn."""
+    turn = [m for m in held if "held_for" not in m]
+    if not turn:
+        return []
+    senders = ", ".join(
+        m["header"].split(" · ")[0].removeprefix("> from ") for m in turn
+    )
+    n = len(turn)
+    text = (
+        f"{n} message{'s' if n > 1 else ''} wait{'' if n > 1 else 's'} for "
+        f"your turn to end: {senders}. They arrive as a user turn when it ends. "
+        "If they may change what you are doing, finish the current step and "
+        "end your turn."
+    )
+    return [Item(f"n{n}", "warn", text)]
 
 
 def mint_log_id() -> str:
@@ -503,6 +531,8 @@ class Registry(Host):
             self.schedules.changed()
         if self.workflows is not None:
             self.workflows.changed()
+        if self.notices is not None:
+            self.notices.set(session.log_id, HELD_SOURCE, held_items(session.held))
 
     def finished(self, s: Session) -> bool:
         """Done working, which a turn ending is not: not busy (held messages
