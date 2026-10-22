@@ -73,3 +73,13 @@ async def test_an_old_meta_has_no_group(world):  # noqa: F811
     old = a.meta()
     old.pop("group", None)
     assert world.app.sessions._session(old).spec.group is None
+
+
+def test_a_far_spawn_names_the_group_once_across_servers():
+    from aegis.app import far_group
+
+    assert far_group("a1", "alpha", "beta") == "a1@alpha"
+    # Already from a linked server: it keeps its server, not a second one.
+    assert far_group("a1@alpha", "beta", "gamma") == "a1@alpha"
+    # Back on the server it began on, it is a plain log id again.
+    assert far_group("a1@alpha", "beta", "alpha") == "a1"

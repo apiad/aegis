@@ -155,6 +155,15 @@ class SpawnedFrom(_Strict):
     group: str | None = None
 
 
+def far_group(key: str, here: str, there: str) -> str:
+    """The group key a spawn from server ``here`` sends to server ``there``
+    (#586): a local log id gains ``@here``, a key that already names its
+    server keeps it, and one that names ``there`` is a plain log id again."""
+    if "@" not in key:
+        return f"{key}@{here}"
+    return key.removesuffix(f"@{there}")
+
+
 class SpawnParams(_Strict):
     agent: str | None = Field(
         None,
@@ -1381,7 +1390,7 @@ class App:
             "permission": permission,
             "spawned_from": {"handle": parent.handle, "server": self.server_name}
             | (
-                {"group": f"{parent.group_key()}@{self.server_name}"}
+                {"group": far_group(parent.group_key(), self.server_name, far)}
                 if (link.remote or {}).get("groups")
                 else {}
             ),
