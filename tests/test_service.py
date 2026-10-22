@@ -144,3 +144,27 @@ def test_aegis_doctor_reports_the_unit_and_says_nothing_without_one(host):
     r = invoke("doctor", "--root", str(host))
     assert "service.aegis-fixture.service.KillMode" in r.output
     assert "control-group, recommended mixed" in r.output
+
+
+def test_install_multi_user_adds_the_capability_lines(host):
+    from aegis.users import UNIT_LINES
+
+    plain = invoke("service", "install", "--yes", "--dry-run", *EXAMPLE).output
+    r = invoke("service", "install", "--yes", "--dry-run", "--multi-user", *EXAMPLE)
+    assert r.exit_code == 0, r.output
+    text = r.output
+    after_user = text.split("User=aegis\n", 1)[1]
+    assert all(line in after_user for line in UNIT_LINES)
+    stripped = "\n".join(
+        x
+        for x in text.splitlines()
+        if x not in UNIT_LINES and x not in service.MULTI_USER.splitlines()
+    )
+    assert stripped + "\n" == plain
+
+
+def test_install_multi_user_refuses_root(host):
+    r = invoke(
+        "service", "install", "--yes", "--dry-run", "--multi-user", "--user", "root"
+    )
+    assert r.exit_code == 1 and "root" in r.output

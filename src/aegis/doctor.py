@@ -15,6 +15,7 @@ The doctor writes nothing: probe stderr goes to a temporary directory.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import shlex
 import shutil
@@ -24,7 +25,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import launch
+from . import launch, users
 from .agents import EFFORTS, HARNESSES, Agent
 from .cgroups import parse_size, total_ram
 from .claude.control import Catalog, Model
@@ -44,6 +45,7 @@ from .harness_versions import OUTSIDE, VERSION_TIMEOUT_S, judge
 from .ranking import annotate, ranking
 from .recap import load_recap
 from .roots import CONFIG_FILE, Roots, legacy_state
+from .ops import OpError
 from .session import SpawnSpec
 
 PROBE_TIMEOUT_S = 20.0
@@ -468,6 +470,167 @@ def _state(roots: Roots) -> Finding:
     return Finding("ok", "state", str(sr))
 
 
+def _blocked_for_others(path: Path) -> Path | None:
+    """The first path that keeps a user other than its owner from running
+    ``path``: a directory above it without o+x, or the file without o+x (and
+    o+r for a script). None when every user can run it."""
+    real = path.resolve()
+    for d in reversed(real.parents):
+        if not d.stat().st_mode & 0o001:
+            return d
+    mode = real.stat().st_mode
+    try:
+        script = real.read_bytes()[:2] == b"#!"
+    except OSError:
+        script = False
+    if not mode & 0o001 or (script and not mode & 0o004):
+        return real
+    return None
+
+
+def _multi_user(
+    roots: Roots,
+    mu: users.MultiUser,
+    entries: list[dict],
+    unit: dict[str, str] | None,
+    bins: dict[str, str],
+) -> list[Finding]:
+    """The multi-user mode's rows: the unit's capabilities, each member
+    token's Linux user, the state directory, the pool file, and whether every
+    user can run each harness. Reads only."""
+    out = []
+    if unit is None:
+        out.append(
+            Finding("warn", "multi_user.unit", "no installed unit runs aegis serve")
+        )
+    else:
+        missing = [
+            c
+            for key in ("AmbientCapabilities", "CapabilityBoundingSet")
+            for c in users.CAPS
+            if c not in unit.get(key, "").split()
+        ]
+        if missing:
+            out.append(
+                Finding(
+                    "error",
+                    "multi_user.unit",
+                    "the unit lacks capabilities; its [Service] needs "
+                    + " and ".join(users.UNIT_LINES),
+                )
+            )
+        else:
+            out.append(
+                Finding("ok", "multi_user.unit", "the unit grants the capabilities")
+            )
+    me = os.getuid()
+    members = 0
+    for e in entries:
+        if not isinstance(e, dict) or e.get("role") == "admin":
+            continue
+        members += 1
+        name, user = e.get("name"), e.get("linux_user")
+        where = f"multi_user.tokens.{name}"
+        if not user:
+            out.append(
+                Finding(
+                    "error",
+                    where,
+                    "no Linux user; revoke it and add it again with --linux-user",
+                )
+            )
+            continue
+        try:
+            users.allowed(str(user), server_uid=me)
+        except OpError as err:
+            out.append(Finding("error", where, err.message))
+    if not any(f.where.startswith("multi_user.tokens.") for f in out):
+        out.append(
+            Finding(
+                "ok",
+                "multi_user.tokens",
+                f"{members} member tokens, each with a Linux user",
+            )
+        )
+    try:
+        st = roots.state_root.stat()
+        if st.st_uid != me or st.st_mode & 0o777 != 0o700:
+            out.append(
+                Finding(
+                    "error",
+                    "multi_user.state",
+                    f"{roots.state_root} must be mode 0700, owned by the server's user",
+                )
+            )
+        else:
+            out.append(Finding("ok", "multi_user.state", f"{roots.state_root}, 0700"))
+    except FileNotFoundError:
+        out.append(
+            Finding(
+                "ok", "multi_user.state", f"{roots.state_root} is made 0700 at start"
+            )
+        )
+    if mu.env_file is not None:
+        try:
+            pst = mu.env_file.stat()
+            if pst.st_uid != me or pst.st_mode & 0o077:
+                out.append(
+                    Finding(
+                        "error",
+                        "multi_user.env_file",
+                        f"{mu.env_file} must be mode 0600, owned by the server's user",
+                    )
+                )
+            else:
+                n = len(users.parse_env(mu.env_file.read_text()))
+                out.append(
+                    Finding(
+                        "ok", "multi_user.env_file", f"{mu.env_file}, {n} variables"
+                    )
+                )
+        except OSError as err:
+            out.append(
+                Finding(
+                    "error", "multi_user.env_file", f"{mu.env_file}: {err.strerror}"
+                )
+            )
+    blocked = []
+    for name, b in bins.items():
+        exe = shutil.which(b)
+        if exe is None:
+            continue
+        if (at := _blocked_for_others(Path(exe))) is not None:
+            blocked.append(f"{name} at {exe}: {at} keeps other users out")
+    out += [Finding("error", "multi_user.harnesses", b) for b in blocked]
+    if not blocked:
+        out.append(
+            Finding("ok", "multi_user.harnesses", "every user can run each harness")
+        )
+    return out
+
+
+def _installed_unit() -> dict[str, str] | None:
+    """The [Service] settings of the first installed unit that runs aegis
+    serve, drop-ins included; None when there is none."""
+    from . import service
+
+    found = service.units(service.UNIT_DIRS)
+    if not found:
+        return None
+    return service.directives(service.cat(*found[0]))
+
+
+def _token_entries(roots: Roots) -> list[dict]:
+    """tokens.json's entries, read without a TokenStore, which would create
+    the admin's token: the doctor writes nothing."""
+    try:
+        doc = json.loads((roots.state_root / "tokens.json").read_text())
+    except (OSError, ValueError):
+        return []
+    entries = doc.get("tokens") if isinstance(doc, dict) else None
+    return entries if isinstance(entries, list) else []
+
+
 async def doctor(
     roots: Roots, bins: dict[str, str], start: Path | None = None
 ) -> list[Finding]:
@@ -528,4 +691,14 @@ async def doctor(
     out.append(_workflows(snap.workflows, tuple(a.name for a in snap.agents)))
     out.append(_session_memory(snap))
     out.append(_state(roots))
+    if snap.multi_user_error:
+        out.append(Finding("error", "multi_user", snap.multi_user_error))
+    elif snap.multi_user is not None:
+        out += _multi_user(
+            roots,
+            snap.multi_user,
+            _token_entries(roots),
+            _installed_unit(),
+            {h: bins.get(h, h) for h in used},
+        )
     return out
