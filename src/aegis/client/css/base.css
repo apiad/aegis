@@ -413,6 +413,11 @@ body{background:#000}
 #a2 .composer textarea::placeholder,#a2 .spawn textarea::placeholder{color:var(--faint);opacity:1}
 /* Buttons inside the box, bottom right: send, and the mic when it comes. */
 #a2 .composer .acts{display:flex;gap:6px;align-items:center;padding:8px 8px 8px 0}
+/* Text longer than a line takes the whole width, and the buttons a row of their
+   own under it (#575): beside it they narrowed every line, not only the last. */
+#a2 :is(.composer,.spawn) .box.stacked{flex-wrap:wrap}
+#a2 :is(.composer,.spawn) .box.stacked textarea{flex:1 0 100%;padding-bottom:0}
+#a2 :is(.composer,.spawn) .box.stacked .acts{margin-left:auto;padding-top:4px}
 #a2 .composer .acts .send{font-size:15px;line-height:1;padding:6px 12px;font-weight:600}
 #a2 .composer.sending .acts .send{position:relative;opacity:1;cursor:progress}#a2 .composer.sending .acts .send .ic{visibility:hidden}
 #a2 .composer.sending .acts .send::after{content:"";position:absolute;inset:0;margin:auto;width:13px;height:13px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:a2spin .8s linear infinite}

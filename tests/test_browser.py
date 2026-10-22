@@ -817,7 +817,8 @@ def test_the_first_message_grows_until_the_form_fills_the_view(server, page):
     view = "document.querySelector('.v-spawn')"
     assert page.evaluate(f"{view}.scrollHeight <= {view}.clientHeight")
     wide = page.viewport_size
-    assert page.evaluate(f"{box}.clientHeight") > wide["height"] * 0.6
+    # The text and, under it, its buttons (#575).
+    assert page.evaluate(f"{box}.closest('.box').clientHeight") > wide["height"] * 0.6
     # A phone, or a keyboard coming up: the box shrinks to the new room.
     page.set_viewport_size({"width": 390, "height": 600})
     page.wait_for_function(f"{view}.scrollHeight <= {view}.clientHeight")
@@ -825,6 +826,43 @@ def test_the_first_message_grows_until_the_form_fills_the_view(server, page):
     page.set_viewport_size(wide)
     page.fill("#sp-text", "")
     assert page.evaluate(f"{box}.clientHeight") == empty
+
+
+def test_text_past_one_line_takes_the_whole_width_and_the_buttons_drop_under_it(
+    server, page
+):
+    # #575: the buttons sat beside the text, so every line of it lost their width.
+    rect = lambda sel: page.locator(sel).bounding_box()  # noqa: E731
+    stacked = "(sel) => document.querySelector(sel).closest('.box').classList.contains('stacked')"
+    page.goto(server.url)
+    spawn(page)
+    for text, go in (("#input", "#send"), ("#sp-text", "#sp-go")):
+        if text == "#sp-text":
+            page.click("#tab-add")
+            page.wait_for_selector("#a2[data-view=spawn]")
+        page.fill(text, "one line")
+        assert not page.evaluate(stacked, text)
+        assert rect(go)["x"] > rect(text)["x"] + rect(text)["width"] - 1
+        # A text that fits the whole width but not the width beside the buttons
+        # stacks, and stays stacked when measured again: no flip back and forth.
+        page.fill(text, "")
+        words = ""
+        while not page.evaluate(stacked, text):
+            words += "word "
+            page.fill(text, words)
+            assert len(words) < 2000
+        assert page.evaluate(stacked, text)
+        page.evaluate("window.dispatchEvent(new Event('resize'))")
+        page.dispatch_event(text, "input")
+        assert page.evaluate(stacked, text)
+        t, b = rect(text), rect(go)
+        whole = page.evaluate(
+            "(sel) => document.querySelector(sel).closest('.box').clientWidth", text
+        )
+        assert t["width"] >= whole - 1, (t, whole)
+        assert b["y"] >= t["y"] + t["height"] - 1, "the buttons sit under the text"
+        page.fill(text, "")
+        assert not page.evaluate(stacked, text)
 
 
 def test_a_failed_spawn_keeps_the_text_and_says_why(server, page):

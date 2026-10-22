@@ -2882,6 +2882,7 @@ function spawnGrow() {
   const t = $("sp-text");
   const view = t.closest(".view");
   if (!view.clientHeight) return;
+  stackActs(t);
   t.style.height = "";
   const css = getComputedStyle(view);
   const pad = parseFloat(css.paddingTop) + parseFloat(css.paddingBottom);
@@ -3250,7 +3251,21 @@ $("sp-mic").addEventListener("click", () => !offline() && dictation.toggle(spawn
 const touch = matchMedia("(pointer: coarse)");
 if (touch.matches) $("sp-text").placeholder = "What should the agent do?";
 
+// The buttons sit beside one line of text and drop under a longer one, so its
+// lines get the box's whole width (#575). It measures at the narrow width every
+// time: measured wide, a text that fits there would flip back and forth. A
+// placeholder never stacks: an empty box keeps its height.
+function stackActs(t) {
+  const box = t.closest(".box");
+  box.classList.remove("stacked");
+  t.style.height = "0";
+  const css = getComputedStyle(t);
+  const line = parseFloat(css.lineHeight) + parseFloat(css.paddingTop) + parseFloat(css.paddingBottom);
+  box.classList.toggle("stacked", !!t.value && t.scrollHeight > line + 1);
+}
+
 function autosize() {
+  stackActs(input);
   input.style.height = "auto";
   input.style.height = `${Math.min(input.scrollHeight, window.innerHeight * 0.4)}px`;
 }
