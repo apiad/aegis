@@ -123,6 +123,7 @@ from .ops import Caller, NoParams, OpError, Principal, Registry as Ops
 from . import as_user, launch
 from .tokens import TokenStore
 from .as_user import Place
+from .member_view import MemberView
 from .users import MultiUser
 from .registry import Registry
 from .roots import Roots
@@ -748,6 +749,14 @@ class App:
         if self.multi_user is None or who.is_admin:
             return True
         return (owner or self.user) == who.name
+
+    def view_of(self, caller: Caller) -> MemberView | None:
+        """What ``caller``'s next channel subscription may see: None for
+        everything, which is everyone outside multi-user mode and an admin."""
+        who = self.who(caller)
+        if self.multi_user is None or who.is_admin:
+            return None
+        return MemberView(self, who)
 
     def owner_of_handle(self, handle: str) -> str | None:
         """The owner of the session a handle or a log id names, open or
