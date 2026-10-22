@@ -51,6 +51,7 @@ from .ops import OpError
 from .queues import queues_from
 from .roots import CONFIG_FILE
 from .term_profiles import RESTARTS, terminals_from
+from .users import MultiUser, multi_user_from
 
 log = logging.getLogger("aegis.config")
 
@@ -58,7 +59,7 @@ WATCH_EVERY_S = 1.0
 TOP_KEYS = (
     "agents", "queues", "default_agent", "recap", "btw", "context",
     "session_memory_max", "terminals", "terminal_memory_max", "park", "network",
-    "workflows", "harness_versions", "notices", "nudges",
+    "workflows", "harness_versions", "notices", "nudges", "multi_user",
 )  # fmt: skip
 AGENT_KEYS = (
     "harness", "provider", "model", "models", "effort", "permission", "priming",
@@ -755,6 +756,9 @@ class Snapshot:
     terminal_memory_error: str | None = None
     network: NetConfig = field(default_factory=NetConfig)
     network_error: str | None = None
+    # The multi-user mode (users.py); read once, at boot (cli.serve).
+    multi_user: MultiUser | None = None
+    multi_user_error: str | None = None
     # Why the file on disk is not the one in force, when it does not parse.
     error: str | None = None
 
@@ -767,6 +771,7 @@ class Snapshot:
             data.get("terminal_memory_max"), "terminal_memory_max"
         )
         network, network_error = network_from(data.get("network"))
+        multi_user, multi_user_error = multi_user_from(data)
         return cls(
             path=path,
             exists=True,
@@ -790,6 +795,8 @@ class Snapshot:
             terminal_memory_error=tmem_error,
             network=network,
             network_error=network_error,
+            multi_user=multi_user,
+            multi_user_error=multi_user_error,
         )
 
     def wire(self) -> dict:

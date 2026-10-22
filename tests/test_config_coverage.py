@@ -20,6 +20,11 @@ JS = Path(__file__).parents[1] / "src" / "aegis" / "client" / "js" / "settings.j
 
 # Spelled another way in the file, edited by the control of the key it names.
 ALIASES = {"agents.*.provider": "agents.*.harness"}
+# Keys the form leaves out on purpose. multi_user changes what the host must
+# provide (a service user, capabilities) and applies at the next start, so a
+# click in the browser could leave a server that refuses to boot. It is set by
+# hand or by the setup page (#548).
+HOST_ONLY = {"multi_user.env_file"}
 
 # A file that sets every key, none to its default.
 FULL = """\
@@ -82,6 +87,7 @@ def reader_keys() -> list[str]:
         "notices": notices,
         "recap": ["agent"],
         "btw": ["agent"],
+        "multi_user": ["env_file"],
     }
     scalars = {"default_agent", "session_memory_max", "terminal_memory_max"}
     out = []
@@ -91,7 +97,7 @@ def reader_keys() -> list[str]:
             continue
         assert top in blocks, f"{top}: a block this test does not know; list its keys"
         out += [f"{top}.{k}" for k in blocks[top]]
-    return out
+    return [k for k in out if k not in HOST_ONLY]
 
 
 def paths(node: object, prefix: str = "") -> set[str]:
