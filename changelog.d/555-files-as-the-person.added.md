@@ -1,1 +1,2 @@
 - **In multi-user mode, files are read and written as their person.** The Files view, Alt+O, the editor, downloads, `file_send`, attachments and artifact drafts open each file with the Linux credentials of the person it is for, so the kernel checks every access. A member's Files view shows their home, and their attachments and artifact drafts live under `~/.aegis` there, where their agent can reach them.
+help: tokens#linux-users
