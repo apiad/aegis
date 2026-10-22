@@ -107,6 +107,9 @@ PUBLISH_EVERY_S = 0.25
 # Why an asleep session has no process: a Stop or /sleep, a park, the harness
 # ending on its own, the server restarting under it (#479).
 ASLEEP_WHY = ("slept", "idle", "exited", "server")
+# The harnesses that read a message sent mid-turn inside that turn; any other
+# queues it until the turn ends, so an urgent inbox message is held there too.
+STEERS = ("claude-code", "codex")
 
 
 def asleep_from(last_status: str, why: str | None) -> tuple[str, str | None]:
@@ -853,7 +856,12 @@ class Session:
             raise OpError("in_workflow", why)
 
     async def deliver(
-        self, header: str, body: str, *, through_lock: bool = False
+        self,
+        header: str,
+        body: str,
+        *,
+        through_lock: bool = False,
+        urgent: bool = False,
     ) -> None:
         """An inbox message. Idle or stopped: sent now (a stopped session is
         resumed to receive it). Mid-turn: held, and sent with any others when
@@ -866,6 +874,11 @@ class Session:
         if not through_lock:
             self.check_lock()
         msg = {"header": header, "body": body, "ts": time.time()}
+        if urgent and self.status == "working" and self.spec.harness in STEERS:
+            # Steered in as a person's mid-turn message is: a user message at
+            # the next tool boundary (Claude Code) or a turn/steer (Codex).
+            await self._send(_inbox_text([msg]))
+            return
         if self.status == "working" or self._flushing:
             self._hold(msg)
             return
@@ -885,6 +898,8 @@ class Session:
         try:
             batch, self.held = self.held, []
             if batch:
+                # Before the send gathers notices: the "held" warning ends here.
+                self._host.status_changed(self)
                 await self._send(_inbox_text(batch))
         finally:
             self._flushing = False
