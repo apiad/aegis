@@ -1923,7 +1923,9 @@ class App:
         @r.op("session.rename", RenameParams, agent=True, read=True, owned="log_id")
         async def rename(p: RenameParams, caller):
             """Rename your session: a handle (2 or 3 lowercase segments joined by
-            hyphens) and/or a title."""
+            hyphens) and a title, both saying what it works on. Set both in
+            one call: turn_end reminds you while either is still the one
+            aegis gave."""
             log_id = p.log_id
             if caller.is_agent:
                 if log_id not in (None, caller.log_id):

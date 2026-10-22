@@ -723,7 +723,11 @@ class Registry(Host):
             except PermissionError as e:
                 raise OpError("no_linux_user", str(e)) from None
         s = self._session(
-            {"log_id": log_id, "handle": mint_handle(self._handles()), "handle_set": False}
+            {
+                "log_id": log_id,
+                "handle": mint_handle(self._handles()),
+                "handle_set": False,
+            }
             | spec.record()
             | {
                 "created_at": time.time(),
