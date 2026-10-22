@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>aegis: the programmable meta-harness that grows with you</title>
-<meta name="description" content="aegis runs the coding agents you already pay for, Claude Code and OpenCode, side by side in one browser workplace. Its agents hand work to each other across machines, and write the interface they need into the conversation.">
+<meta name="description" content="aegis runs the coding agents you already pay for, Claude Code, Codex, OpenCode and Cursor, in one browser workplace. Start with one agent; grow to agents that plan, wait, hand work to each other and run a software company on demand.">
 <meta property="og:title" content="aegis: a programmable multi-agent meta-harness">
-<meta property="og:description" content="Bring your own subscriptions, let the agents work together across machines, and let them write their own interface. uv tool install aegis-harness.">
+<meta property="og:description" content="Bring your own subscriptions, then grow from one agent to a team that plans, waits, reviews and ships. uv tool install aegis-harness, then /setup.">
 <meta property="og:image" content="https://apiad.github.io/aegis/aegis-512.png">
 <meta name="theme-color" content="#0b0a09">
 <link rel="icon" href="aegis-192.png">
@@ -35,51 +35,67 @@
 <nav class="top">
   <a class="mark" href="#">aegis</a>
   <a href="#install">Install</a>
-  <a href="#grows">Grows with you</a>
-  <a href="#subscriptions">Subscriptions</a>
-  <a href="#together">Multi-agent</a>
-  <a href="#programmable">Programmable</a>
-  <a href="#workplace">Workplace</a>
+  <a href="#rung-1">Today</a>
+  <a href="#rung-2">One agent</a>
+  <a href="#rung-3">Many projects</a>
+  <a href="#rung-4">Together</a>
+  <a href="#rung-5">A company</a>
+  <a href="#rung-6">Beyond one machine</a>
   <a href="#configure">Configure</a>
   <a href="https://github.com/apiad/aegis">GitHub</a>
 </nav>
 
 <header class="hero" id="install">
   <h1>The programmable meta&#8209;harness that grows with you.</h1>
-  <p class="lede">aegis runs the coding agents you already pay for, Claude Code, OpenCode and Codex, side by side in one browser workplace. Start with one agent in a tab. As you need more, shape the workplace with what is already there: presets and queues in one file, agents that hand work to each other and wait on each other, and pages they write for your decisions and dock beside the conversation. The same harness that runs one session runs a studio, with you as the producer.</p>
-  <div class="install">
-    <pre><code>uv tool install aegis-harness
+  <p class="lede">Start with the subscriptions you already pay for, Claude Code, Codex, OpenCode and Cursor, mixed as you like in one browser workplace. Today it is simply a better way to use your harness. When the work grows, the same agents plan, wait, hand work to each other and run a whole software company on demand.</p>
+  <div class="install" role="tablist">
+    <div class="itabs"><button type="button" class="on" data-itab="me" role="tab">I install it</button><button type="button" data-itab="agent" role="tab">My agent installs it</button></div>
+    <div class="ipane" data-ipane="me">
+      <pre><code>uv tool install aegis-harness   # or: pip install aegis-harness
 cd ~/your/project
 aegis</code></pre>
-    <p class="note">The last line starts the server and opens it in a browser window. <span id="ver">Version 2.8.0</span> on PyPI, MIT license, Python 3.13 or newer.</p>
+      <p class="note">The last line writes a first <code>.aegis.yaml</code> from the harnesses it finds, starts the server and opens it in a browser window. In the first tab, type <code>/setup</code>. <span id="ver">Version 2.8.0</span> on PyPI, MIT license, Python 3.13 or newer.</p>
+    </div>
+    <div class="ipane" data-ipane="agent" hidden>
+      <pre><code id="agent-prompt">Install aegis for me (https://github.com/apiad/aegis).
+Read its getting-started help page first, then install it
+with uv, run `aegis init`, start `aegis serve -d`, and tell
+me the URL. When I open it, I will run /setup.</code></pre>
+      <p class="note">Paste this into the harness you use now. <button type="button" class="copy" data-copy="agent-prompt">Copy</button></p>
+    </div>
+    <p class="note setup-note"><code>/setup</code> has the agent read how you work now (skills, instruction files, cron jobs, past sessions, after you say yes) and propose what each becomes in aegis. You tick, it applies. Run it again whenever you like.</p>
   </div>
-  <ul class="pillars">
-    <li><a href="#subscriptions"><b>Meta-harness</b>It runs <code>claude</code>, <code>opencode</code> and <code>codex</code> under your own subscriptions. aegis calls no model and holds no API key.</a></li>
-    <li><a href="#programmable"><b>Programmable</b>Agents hand each other work and write the pages you decide through; presets, queues, monitors and links change while it runs.</a></li>
-    <li><a href="#grows"><b>Grows with you</b>One agent, then several, then queues, a team and a studio. Each step adds one file or habit, and nothing below it is thrown away.</a></li>
-  </ul>
 </header>
 
+<section class="film" id="film" aria-label="aegis in two minutes">
+  <video controls playsinline preload="none" poster="video/aegis-poster.jpg">
+    <source src="video/aegis.mp4" type="video/mp4">
+    <track kind="captions" src="video/aegis.vtt" srclang="en" label="English">
+  </video>
+</section>
+
 <section class="plain" id="grows">
-  <h2>From one agent to a studio</h2>
-  <p>Climb only as far as the work needs. aegis has no studio mode: every rung uses the same tools, and the structure lives in your own files, so it is versioned, reviewed and copied to the next project like code.</p>
+  <h2>One ladder, climbed as far as the work needs</h2>
+  <p>aegis has no studio mode. Every rung uses the same tools, and the structure lives in your own files, so it is versioned, reviewed and copied to the next project like code.</p>
   <ol class="ladder">
-    <li><b>One agent</b>A session in a browser tab under your own subscription, with a transcript that folds the work, the quota and its pace, and replies you send with one tap.</li>
-    <li><b>Several side by side</b>Sessions on different harnesses hand context to each other, read each other, and wait on CI or on each other with monitors instead of polling. <i>You add agent presets.</i></li>
-    <li><b>Delegated work</b>Queues of workers report back as turns, plans stay in view, choices arrive as pages you click, and a long session continues in a fresh one at a break. <i>You add queues.</i></li>
-    <li><b>A team</b>A lead spawns implementers in their own worktrees, reviews their pull requests and merges on green, following know-how written in the repo. <i>You add briefs and procedures.</i></li>
-    <li><b>A studio</b>A director runs several teams on one project and brings you decisions as pages and checklists you mark from a phone, with the pages the work needs docked beside the transcript. <i>You are the producer.</i></li>
+    <li><a href="#rung-1"><b>The agents you already pay for</b>Your subscriptions, mixed in one interface, with every quota and its pace in view.</a></li>
+    <li><a href="#rung-2"><b>An agent that does more than chat</b>A plan you can see, monitors instead of polling, pages you click, files, your voice.</a></li>
+    <li><a href="#rung-3"><b>Several projects at once</b>One tab per project, and each tells you when it needs you.</a></li>
+    <li><a href="#rung-4"><b>Agents that work together</b>Handoffs, peers that read each other, and queues of workers.</a></li>
+    <li><a href="#rung-5"><b>A software company on demand</b>Workflows you approve, schedules, reviewers, pages that guide each decision.</a></li>
+    <li><a href="#rung-6"><b>Beyond one machine and one person</b>Linked servers, your phone, a shared browser, a server for a team.</a></li>
   </ol>
 </section>
 
 <section class="app" id="features">
   <div class="steps">
-    <h2 id="subscriptions"><span class="eyebrow">Meta-harness</span>Bring your own subscriptions</h2>
+    <h2 id="rung-1"><span class="eyebrow">Rung 1 · today</span>The agents you already pay for</h2>
 
     <article class="step" data-step="subs">
       <h3>The agents you already pay for</h3>
       <p>aegis calls no model. Each session is the vendor's own command-line agent, <code>claude</code>, <code>opencode</code> or <code>codex</code>, running under your account: a Claude plan, OpenCode Go or Zen, a ChatGPT plan, or any provider OpenCode or Codex reaches. aegis holds no API key, and your prompts go from the CLI to the vendor as they would from a terminal.</p>
       <p>Sessions of every harness share one tab bar, each with its own model, effort and permission. The panel shows the quota the session spends: this one runs on OpenCode Go, so it shows Go's three windows.</p>
+      <p class="fine">aegis calls no model and holds no key: each session is the vendor's own CLI. Harness versions outside the tested range are flagged before a session starts.</p>
     </article>
 
     <article class="step" data-step="quota">
@@ -88,21 +104,25 @@ aegis</code></pre>
       <p><code>aegis usage</code> turns the transcripts aegis keeps into what the work cost, by month, weekday, session or repo.</p>
     </article>
 
-    <h2 id="together"><span class="eyebrow">Multi-agent</span>Agents that work together</h2>
-
-    <article class="step" data-step="together">
-      <h3>They hand work to each other</h3>
-      <p>Every agent gets aegis's tools over MCP. It hands a task to a queue of workers and hears back when one finishes, starts a monitor on a CI run and ends its turn instead of polling, reads what another session is doing, and gives that session context or an instruction. It can also wait on other sessions: <code>monitor_sessions</code> wakes it when they have all finished, or as soon as one needs you.</p>
-      <p>Every answer lands in the transcript as a new turn, headed by whoever sent it: a monitor, a queue task or another agent.</p>
+    <article class="step" data-step="fold">
+      <h3>Fold the work, keep the conversation</h3>
+      <p><code>z</code> folds each stretch of tool calls and notes between two messages into one line that says what it holds. Press it again and only your messages and the agent's replies remain. Open a line to see that stretch alone.</p>
+      <p class="try">Press the fold button over the message box, or a folded line.</p>
     </article>
 
-    <article class="step" data-step="links">
-      <h3>Across machines</h3>
-      <p><code>aegis link add vps https://dev.example</code> makes this server a client of another aegis. The far server's sessions show in your Fleet under its own band, with its host and quota, and in your tab bar with a server tag. You prompt, interrupt and close them from here, and an agent here hands work to one there with <code>peer_handoff(target="brisk-turing@vps")</code>.</p>
-      <p>The link goes one way. The far server can never reach the one that linked it, so a shared box cannot touch your laptop.</p>
+    <article class="step" data-step="themes">
+      <h3>Ten themes</h3>
+      <p>Ink is the warm dark palette of the terminal app aegis used to be. Logbook is a daylight lab notebook with times in the margin. The other eight each commit to one idea: Electric lights the thread like a circuit trace, Phosphor is a green CRT, Blueprint a drafting sheet, Amphora black-figure pottery, Riso a two-ink print, Solari a departure board, Aizome indigo cloth stitched in white, and Poster a brutalist print.</p>
+      <p class="try">Press the theme in the window's top bar.</p>
     </article>
 
-    <h2 id="programmable"><span class="eyebrow">Programmable</span>Agents that write their own interface</h2>
+    <h2 id="rung-2"><span class="eyebrow">Rung 2 · one agent</span>An agent that does more than chat</h2>
+
+    <article class="step" data-step="plan">
+      <h3>A plan you can see, and waits that cost nothing</h3>
+      <p>In any harness, the agent keeps its plan in the panel, one step marked doing, each with its time. To wait on CI, a build or a download it arms a monitor with a done condition and a progress count, ends its turn, and is woken when the condition holds.</p>
+      <p class="fine">Monitors run on the server, so a wait spends no tokens. A stalled monitor wakes its owner.</p>
+    </article>
 
     <article class="step" data-step="artifact">
       <h3>A page instead of a paragraph</h3>
@@ -116,17 +136,29 @@ aegis</code></pre>
       <p>A page can also stay: docked beside the transcript, arranged in columns, moved to a second browser window, or shown as tabs on a phone, so the workplace grows with what its agents build.</p>
     </article>
 
-    <h2 id="workplace"><span class="eyebrow">The workplace</span>Everything around it</h2>
+    <article class="step" data-step="voice">
+      <h3>Talk to it, and send it files</h3>
+      <p>Dictate into the composer and the words appear while you talk; the agent is told the message was dictated. Drop, paste or pick files to attach them to a message.</p>
+      <p class="fine">Dictation runs in your browser. Attachments are stored with the session.</p>
+    </article>
+
+    <article class="step" data-step="files">
+      <h3>Files that preview where you are</h3>
+      <p>An agent sends you a file, or a set of them, as one card: a rendered page, a PDF, an image, a diff you swipe through. Open shows it inside aegis; Alt+O opens any file on the server, and the Files view edits it.</p>
+      <p class="fine">A path in a reply opens its file with one click.</p>
+    </article>
+
+    <article class="step" data-step="replies">
+      <h3>One tap to answer</h3>
+      <p>An agent ends each turn by saying how it ended and may offer up to three replies, which you send with one tap. <code>/model</code>, <code>/effort</code> and <code>/permission</code> switch a running session, and <code>/</code> opens a menu that completes aegis's commands and the agent's own. Alt+M dictates into the box, transcribed in the browser.</p>
+    </article>
+
+    <h2 id="rung-3"><span class="eyebrow">Rung 3 · many projects</span>Several projects at once</h2>
 
     <article class="step" data-step="fleet">
       <h3>A Fleet that says who needs you</h3>
       <p>Each tab and card carries one of six marks: working, needs you, error, review, waiting or done. The Fleet puts the sessions that block on you first, oldest wait on top, and Alt+J goes to the one that has waited longest. Each card shows the plan as a bar with an estimate of the work left.</p>
-    </article>
-
-    <article class="step" data-step="fold">
-      <h3>Fold the work, keep the conversation</h3>
-      <p><code>z</code> folds each stretch of tool calls and notes between two messages into one line that says what it holds. Press it again and only your messages and the agent's replies remain. Open a line to see that stretch alone.</p>
-      <p class="try">Press the fold button over the message box, or a folded line.</p>
+      <p class="fine">Push notifications reach a phone with aegis closed.</p>
     </article>
 
     <article class="step" data-step="panel">
@@ -135,20 +167,57 @@ aegis</code></pre>
       <p class="try">Hover the panel's rows, drag its edge, or press the panel button in the top bar.</p>
     </article>
 
-    <article class="step" data-step="replies">
-      <h3>One tap to answer</h3>
-      <p>An agent ends each turn by saying how it ended and may offer up to three replies, which you send with one tap. <code>/model</code>, <code>/effort</code> and <code>/permission</code> switch a running session, and <code>/</code> opens a menu that completes aegis's commands and the agent's own. Alt+M dictates into the box, transcribed in the browser.</p>
+    <h2 id="rung-4"><span class="eyebrow">Rung 4 · together</span>Agents that work together</h2>
+
+    <article class="step" data-step="together">
+      <h3>They hand work to each other</h3>
+      <p>Every agent gets aegis's tools over MCP. It hands a task to a queue of workers and hears back when one finishes, starts a monitor on a CI run and ends its turn instead of polling, reads what another session is doing, and gives that session context or an instruction. It can also wait on other sessions: <code>monitor_sessions</code> wakes it when they have all finished, or as soon as one needs you.</p>
+      <p>Every answer lands in the transcript as a new turn, headed by whoever sent it: a monitor, a queue task or another agent.</p>
     </article>
 
-    <article class="step" data-step="themes">
-      <h3>Ten themes</h3>
-      <p>Ink is the warm dark palette of the terminal app aegis used to be. Logbook is a daylight lab notebook with times in the margin. The other eight each commit to one idea: Electric lights the thread like a circuit trace, Phosphor is a green CRT, Blueprint a drafting sheet, Amphora black-figure pottery, Riso a two-ink print, Solari a departure board, Aizome indigo cloth stitched in white, and Poster a brutalist print.</p>
-      <p class="try">Press the theme in the window's top bar.</p>
+    <article class="step" data-step="queues">
+      <h3>Queues of workers</h3>
+      <p>An agent hands tasks to a queue and keeps working; each result comes back as a turn in its transcript. A queue names the agent preset its workers run, and how many at once.</p>
+      <p class="fine">Point a queue at a cheaper model for tests, reviews and research.</p>
+    </article>
+
+    <h2 id="rung-5"><span class="eyebrow">Rung 5 · a company</span>A software company on demand</h2>
+
+    <article class="step" data-step="workflow">
+      <h3>Workflows you approve</h3>
+      <p>When the work has steps that wait on CI, on other branches or on a clock, the agent writes it as a workflow: a tree in which every node says what it does. You approve it on a card, the server runs it, and the agent hears when a step fails or a gate needs you.</p>
+      <p class="fine">Saved workflows live in the project, versioned like code. Reviewers can check implementers inside one.</p>
+    </article>
+
+    <article class="step" data-step="schedule">
+      <h3>Schedules, and pages that guide the decisions</h3>
+      <p>A schedule fires a prompt on a clock into a new session or an existing one. One an agent creates waits, paused, until you start it from its card. Decisions arrive as pages you click, and those pages can stay docked beside the transcript.</p>
+      <p class="fine">The Schedules view lists every schedule with its next fire and its runs.</p>
+    </article>
+
+    <h2 id="rung-6"><span class="eyebrow">Rung 6 · beyond</span>Beyond one machine and one person</h2>
+
+    <article class="step" data-step="links">
+      <h3>Across machines</h3>
+      <p><code>aegis link add vps https://dev.example</code> makes this server a client of another aegis. The far server's sessions show in your Fleet under its own band, with its host and quota, and in your tab bar with a server tag. You prompt, interrupt and close them from here, and an agent here hands work to one there with <code>peer_handoff(target="brisk-turing@vps")</code>.</p>
+      <p>The link goes one way. The far server can never reach the one that linked it, so a shared box cannot touch your laptop.</p>
     </article>
 
     <article class="step" data-step="phone">
       <h3>On a phone</h3>
       <p>Below 760 px the tabs get their own row, the panel becomes a drawer, and touch targets are 44 px. Chrome installs aegis as an app named after the server. A return to a recent tab, or a reconnect after the phone slept, sends only what changed.</p>
+    </article>
+
+    <article class="step" data-step="browsers">
+      <h3>A browser you share with the agent</h3>
+      <p>The server holds a Chromium the agent drives and you watch, docked beside its transcript. You can take over, sign in, and hand it back.</p>
+      <p class="fine">Useful for tests against a running app and for sites that need you to log in.</p>
+    </article>
+
+    <article class="step" data-step="multiuser">
+      <h3>A server for a team</h3>
+      <p>Give each person a token and their own Linux user. Everything they start runs as that user, so the kernel checks every file their agents touch, and each one sees only their own sessions, queues and schedules. A quota policy per person keeps the shared subscriptions fair.</p>
+      <p class="fine">An admin, and root on the host, can still read everything. <code>/multiuser</code> has an agent walk you through the setup.</p>
     </article>
   </div>
 
@@ -159,7 +228,7 @@ aegis</code></pre>
         <header class="tabs">
           <div class="tab home" data-on="fleet quota links" data-feature="fleet">Fleet</div>
           <div class="tablist">
-            <div class="tab" data-on="fold panel replies phone together themes" data-feature="together"><svg class="ic need"><use href="#g-need"/></svg><span class="tname">Flaky CI: the websocket…</span><span class="srv">keen-noether</span></div>
+            <div class="tab" data-on="fold panel replies phone together themes plan voice files browsers queues workflow schedule" data-feature="together"><svg class="ic need"><use href="#g-need"/></svg><span class="tname">Flaky CI: the websocket…</span><span class="srv">keen-noether</span></div>
             <div class="tab" data-on="subs" data-feature="subs"><svg class="ic work"><use href="#g-work"/></svg><span class="tname">Translate the errors</span><span class="srv">swift-hopper</span></div>
             <div class="tab" data-on="artifact answer" data-feature="artifact"><svg class="ic need"><use href="#g-need"/></svg><span class="tname">Settings page layout</span><span class="srv">slate-hamming</span></div>
             <div class="tab" data-feature="links"><svg class="ic wait"><use href="#g-wait"/></svg><span class="tname">Benchmark the cold start</span><span class="srv">brisk-turing</span><span class="where">vps</span></div>
@@ -194,8 +263,8 @@ aegis</code></pre>
               <div class="gauge warning"><span>month</span><div class="bar q warning"><i style="width:72%"></i><span class="tick" style="left:70%"></span></div><span class="val"><b>72%</b><span class="proj">→ 96%</span><span class="rst">↻ 22d</span></span></div>
             </div>
           </section>
-          <div class="order" data-show="fleet"><h3>Sessions</h3><div class="seg"><button class="on" type="button">Needs you first</button><button type="button">Tab order</button></div></div>
-          <section class="cards" data-show="fleet">
+          <div class="order" data-show="fleet multiuser"><h3>Sessions</h3><div class="seg"><button class="on" type="button">Needs you first</button><button type="button">Tab order</button></div></div>
+          <section class="cards" data-show="fleet multiuser">
             <div class="grp-h">Needs you</div>
             <div class="card running at-needs_you" data-feature="together">
               <div class="hd"><svg class="ic need"><use href="#g-need"/></svg><span class="h">keen-noether</span><span class="s at-needs_you">needs you</span></div>
@@ -232,7 +301,7 @@ aegis</code></pre>
               <div class="ft"><span class="when">just now</span><span>$8.52</span><span class="prog"><span class="pbar live"><i class="done"></i><i class="done"></i><i class="doing"></i><i></i></span><span class="pt">2/4 · ~25m</span></span><span class="ctx">40%</span></div>
             </div>
           </section>
-          <div class="remote" data-show="quota links fleet" data-feature="links">
+          <div class="remote" data-show="quota links fleet multiuser" data-feature="links">
             <section class="band far">
               <div><h5><span class="band-server">vps</span><span class="band-link">dev.example · linked · 38 ms</span></h5><div class="counts">
                 <div><svg class="ic wait"><use href="#g-wait"/></svg><b>1</b> waiting</div>
@@ -280,27 +349,27 @@ aegis</code></pre>
                 <div class="row tool ok" data-show="subs"><span class="t">10:45</span><span class="g">✎</span><div class="body"><details open><summary class="line"><span class="tn">Edit</span><span class="ta">src/errors/auth.py</span><span class="tr2">6 lines changed</span></summary><div class="more"><div class="diff"><div class="path">src/errors/auth.py</div><div class="del">-     raise AuthError("token expired, sign in again")</div><div class="add">+     raise AuthError(catalog.E_TOKEN_EXPIRED)</div></div></div></details></div></div>
 
                 <!-- keen-noether: the websocket session -->
-                <div class="row user ok" data-show="fold panel replies phone themes"><span class="t">10:02</span><span class="g">❯</span><div class="body">The websocket test hangs CI for hours sometimes. Find out why and propose a fix.</div></div>
-                <div class="row tool ok" data-show="fold panel replies phone themes" data-feature="fold"><span class="t">10:02</span><span class="g">⌬</span><div class="body"><details><summary class="line"><span class="tn">Bash</span><span class="ta">Run the websocket test 20 times</span><span class="tr2">20 runs, 3 hung</span></summary></details></div></div>
-                <div class="row tool ok" data-show="fold panel replies phone themes" data-feature="fold"><span class="t">10:04</span><span class="g">📖</span><div class="body"><details><summary class="line"><span class="tn">Read</span><span class="ta">tests/test_ws.py</span><span class="tr2">212 lines</span></summary></details></div></div>
-                <div class="row prose ok" data-show="fold panel replies phone themes"><span class="t">10:05</span><span class="g">⏺</span><div class="body"><div class="md"><p>The hang is a race. The test awaits <code>recv()</code> with no timeout, and when the server closes first that await never returns. Three of twenty runs hit it here, so CI hits it about once a day.</p></div></div><span class="rm"><svg class="ic read"><use href="#g-read"/></svg></span></div>
-                <div class="row tool err" data-show="fold panel replies phone themes" data-feature="fold"><span class="t">10:05</span><span class="g">✎</span><div class="body"><details><summary class="line"><span class="tn">Edit</span><span class="ta">tests/test_ws.py</span><span class="tr2">old_string not found</span></summary></details></div></div>
-                <div class="row tool ok" data-show="fold panel replies phone themes" data-feature="fold"><span class="t">10:06</span><span class="g">✎</span><div class="body"><details open><summary class="line"><span class="tn">Edit</span><span class="ta">tests/test_ws.py</span><span class="tr2">1 line changed</span></summary><div class="more"><div class="diff"><div class="path">tests/test_ws.py</div><div class="del">-     msg = await ws.recv()</div><div class="add">+     msg = await asyncio.wait_for(ws.recv(), timeout=25)</div></div></div></details></div></div>
-                <div class="row tool ok" data-show="fold panel replies phone themes" data-feature="fold"><span class="t">10:07</span><span class="g">⌬</span><div class="body"><details><summary class="line"><span class="tn">Bash</span><span class="ta">Run the suite</span><span class="tr2">142 passed in 31.2s</span></summary></details></div></div>
-                <div class="row inbox" data-show="fold panel replies phone themes" data-feature="together"><span class="t">10:07</span><span class="g">⇄</span><div class="body"><div class="from">agent:calm-dijkstra · 2026-10-09T10:07:40Z</div><div class="md"><p>The tokenizer port touches test_ws.py too. Wait for my merge before you edit it.</p></div></div></div>
-                <div class="row prose ok" data-show="fold panel replies phone themes"><span class="t">10:08</span><span class="g">⏺</span><div class="body"><div class="md"><p>Two fixes pass locally. Capping the wait at 25 s fails the run loudly instead of hanging it. Mocking the socket removes the race from the test, and the thing it tests with it. I lean to the cap.</p></div></div><span class="rm"><svg class="ic unread"><use href="#g-unread"/></svg></span></div>
+                <div class="row user ok" data-show="fold panel replies phone themes plan voice files browsers"><span class="t">10:02</span><span class="g">❯</span><div class="body">The websocket test hangs CI for hours sometimes. Find out why and propose a fix.</div></div>
+                <div class="row tool ok" data-show="fold panel replies phone themes plan voice files browsers" data-feature="fold"><span class="t">10:02</span><span class="g">⌬</span><div class="body"><details><summary class="line"><span class="tn">Bash</span><span class="ta">Run the websocket test 20 times</span><span class="tr2">20 runs, 3 hung</span></summary></details></div></div>
+                <div class="row tool ok" data-show="fold panel replies phone themes plan voice files browsers" data-feature="fold"><span class="t">10:04</span><span class="g">📖</span><div class="body"><details><summary class="line"><span class="tn">Read</span><span class="ta">tests/test_ws.py</span><span class="tr2">212 lines</span></summary></details></div></div>
+                <div class="row prose ok" data-show="fold panel replies phone themes plan voice files browsers"><span class="t">10:05</span><span class="g">⏺</span><div class="body"><div class="md"><p>The hang is a race. The test awaits <code>recv()</code> with no timeout, and when the server closes first that await never returns. Three of twenty runs hit it here, so CI hits it about once a day.</p></div></div><span class="rm"><svg class="ic read"><use href="#g-read"/></svg></span></div>
+                <div class="row tool err" data-show="fold panel replies phone themes plan voice files browsers" data-feature="fold"><span class="t">10:05</span><span class="g">✎</span><div class="body"><details><summary class="line"><span class="tn">Edit</span><span class="ta">tests/test_ws.py</span><span class="tr2">old_string not found</span></summary></details></div></div>
+                <div class="row tool ok" data-show="fold panel replies phone themes plan voice files browsers" data-feature="fold"><span class="t">10:06</span><span class="g">✎</span><div class="body"><details open><summary class="line"><span class="tn">Edit</span><span class="ta">tests/test_ws.py</span><span class="tr2">1 line changed</span></summary><div class="more"><div class="diff"><div class="path">tests/test_ws.py</div><div class="del">-     msg = await ws.recv()</div><div class="add">+     msg = await asyncio.wait_for(ws.recv(), timeout=25)</div></div></div></details></div></div>
+                <div class="row tool ok" data-show="fold panel replies phone themes plan voice files browsers" data-feature="fold"><span class="t">10:07</span><span class="g">⌬</span><div class="body"><details><summary class="line"><span class="tn">Bash</span><span class="ta">Run the suite</span><span class="tr2">142 passed in 31.2s</span></summary></details></div></div>
+                <div class="row inbox" data-show="fold panel replies phone themes plan voice files browsers" data-feature="together"><span class="t">10:07</span><span class="g">⇄</span><div class="body"><div class="from">agent:calm-dijkstra · 2026-10-09T10:07:40Z</div><div class="md"><p>The tokenizer port touches test_ws.py too. Wait for my merge before you edit it.</p></div></div></div>
+                <div class="row prose ok" data-show="fold panel replies phone themes plan voice files browsers"><span class="t">10:08</span><span class="g">⏺</span><div class="body"><div class="md"><p>Two fixes pass locally. Capping the wait at 25 s fails the run loudly instead of hanging it. Mocking the socket removes the race from the test, and the thing it tests with it. I lean to the cap.</p></div></div><span class="rm"><svg class="ic unread"><use href="#g-unread"/></svg></span></div>
 
                 <!-- keen-noether, later: the agent works with others -->
-                <div class="row tool ok comms" data-show="together" data-feature="together"><span class="t">11:20</span><span class="g comms">⇄</span><div class="body"><details open><summary class="line"><span class="tn">monitor_start</span><span class="ta">the full suite in CI</span><span class="tr2">mon-7c1e · every 60s</span></summary><div class="more"><pre class="args">done: gh run view 4821 --json status -q .status | grep -qv in_progress
+                <div class="row tool ok comms" data-show="together queues" data-feature="together"><span class="t">11:20</span><span class="g comms">⇄</span><div class="body"><details open><summary class="line"><span class="tn">monitor_start</span><span class="ta">the full suite in CI</span><span class="tr2">mon-7c1e · every 60s</span></summary><div class="more"><pre class="args">done: gh run view 4821 --json status -q .status | grep -qv in_progress
 progress: gh run view 4821 --json jobs -q '[.jobs[]|select(.status=="completed")]|length*100/6'</pre></div></details></div></div>
-                <div class="row tool ok comms" data-show="together" data-feature="together"><span class="t">11:20</span><span class="g comms">⇄</span><div class="body"><details><summary class="line"><span class="tn">queue_enqueue</span><span class="ta">general · Write the migration for the audit table</span><span class="tr2">task#12 · quiet-lovelace</span></summary></details></div></div>
-                <div class="row tool ok comms" data-show="together" data-feature="together"><span class="t">11:21</span><span class="g comms">⇄</span><div class="body"><details><summary class="line"><span class="tn">peer_read</span><span class="ta">calm-dijkstra, last 8 entries</span><span class="tr2">8 lines</span></summary></details></div></div>
-                <div class="row tool ok comms" data-show="together" data-feature="together"><span class="t">11:21</span><span class="g comms">⇄</span><div class="body"><details><summary class="line"><span class="tn">monitor_sessions</span><span class="ta">the tokenizer port and the migration</span><span class="tr2">mon-3a2f · 2 sessions</span></summary></details></div></div>
-                <div class="row prose ok" data-show="together"><span class="t">11:21</span><span class="g">⏺</span><div class="body"><div class="md"><p>CI is watched, the migration is with a worker, and calm-dijkstra is still on the tokenizer. I will rebase once both of them have finished. Ending the turn until something comes back.</p></div></div><span class="rm"><svg class="ic read"><use href="#g-read"/></svg></span></div>
-                <div class="row inbox" data-show="together" data-feature="together"><span class="t">11:34</span><span class="g">⇄</span><div class="body"><div class="from">monitor:mon-7c1e · ok · 14m</div><div class="md"><p>The run finished: 6 of 6 jobs completed, conclusion success.</p></div></div></div>
-                <div class="row inbox" data-show="together" data-feature="together"><span class="t">11:41</span><span class="g">⇄</span><div class="body"><div class="from">queue:general · task#12 · ok · 2026-10-09T11:41:07Z</div><div class="md"><p>Migration 0042 adds the audit table with its two indexes. The migration test passes forward and back. Committed on the branch as 3f9c2a1.</p></div></div></div>
-                <div class="row inbox" data-show="together" data-feature="together"><span class="t">11:42</span><span class="g">⇄</span><div class="body"><div class="from">monitor:mon-3a2f · ok · 2026-10-09T11:42:30Z</div><div class="md"><p>the tokenizer port and the migration: ok, every session finished: calm-dijkstra done, quiet-lovelace done, after 21m 9s.</p></div></div></div>
-                <div class="row inbox" data-show="together" data-feature="links"><span class="t">11:43</span><span class="g">⇄</span><div class="body"><div class="from">agent:brisk-turing@vps · 2026-10-09T11:43:52Z</div><div class="md"><p>Cold start on staging: p50 1.8 s, p95 3.1 s over 50 runs. The websocket fix does not move it.</p></div></div></div>
+                <div class="row tool ok comms" data-show="together queues" data-feature="together"><span class="t">11:20</span><span class="g comms">⇄</span><div class="body"><details><summary class="line"><span class="tn">queue_enqueue</span><span class="ta">general · Write the migration for the audit table</span><span class="tr2">task#12 · quiet-lovelace</span></summary></details></div></div>
+                <div class="row tool ok comms" data-show="together queues" data-feature="together"><span class="t">11:21</span><span class="g comms">⇄</span><div class="body"><details><summary class="line"><span class="tn">peer_read</span><span class="ta">calm-dijkstra, last 8 entries</span><span class="tr2">8 lines</span></summary></details></div></div>
+                <div class="row tool ok comms" data-show="together queues" data-feature="together"><span class="t">11:21</span><span class="g comms">⇄</span><div class="body"><details><summary class="line"><span class="tn">monitor_sessions</span><span class="ta">the tokenizer port and the migration</span><span class="tr2">mon-3a2f · 2 sessions</span></summary></details></div></div>
+                <div class="row prose ok" data-show="together queues"><span class="t">11:21</span><span class="g">⏺</span><div class="body"><div class="md"><p>CI is watched, the migration is with a worker, and calm-dijkstra is still on the tokenizer. I will rebase once both of them have finished. Ending the turn until something comes back.</p></div></div><span class="rm"><svg class="ic read"><use href="#g-read"/></svg></span></div>
+                <div class="row inbox" data-show="together queues" data-feature="together"><span class="t">11:34</span><span class="g">⇄</span><div class="body"><div class="from">monitor:mon-7c1e · ok · 14m</div><div class="md"><p>The run finished: 6 of 6 jobs completed, conclusion success.</p></div></div></div>
+                <div class="row inbox" data-show="together queues" data-feature="together"><span class="t">11:41</span><span class="g">⇄</span><div class="body"><div class="from">queue:general · task#12 · ok · 2026-10-09T11:41:07Z</div><div class="md"><p>Migration 0042 adds the audit table with its two indexes. The migration test passes forward and back. Committed on the branch as 3f9c2a1.</p></div></div></div>
+                <div class="row inbox" data-show="together queues" data-feature="together"><span class="t">11:42</span><span class="g">⇄</span><div class="body"><div class="from">monitor:mon-3a2f · ok · 2026-10-09T11:42:30Z</div><div class="md"><p>the tokenizer port and the migration: ok, every session finished: calm-dijkstra done, quiet-lovelace done, after 21m 9s.</p></div></div></div>
+                <div class="row inbox" data-show="together queues" data-feature="links"><span class="t">11:43</span><span class="g">⇄</span><div class="body"><div class="from">agent:brisk-turing@vps · 2026-10-09T11:43:52Z</div><div class="md"><p>Cold start on staging: p50 1.8 s, p95 3.1 s over 50 runs. The websocket fix does not move it.</p></div></div></div>
 
                 <!-- slate-hamming: an artifact -->
                 <div class="row user ok" data-show="artifact answer"><span class="t">11:48</span><span class="g">❯</span><div class="body">Redo the settings page layout. Show me options before you build one.</div></div>
@@ -323,6 +392,12 @@ progress: gh run view 4821 --json jobs -q '[.jobs[]|select(.status=="completed")
                 <div class="row inbox" data-show="answer" data-feature="answer"><span class="t">11:52</span><span class="g">⇄</span><div class="body"><div class="from">artifact:art-5d0c · submit · 2026-10-09T11:52:18Z</div><div class="md"><p>answered</p><pre><code id="ans-json">{"layout": "sidebar"}</code></pre></div></div></div>
                 <div class="row prose ok" data-show="answer"><span class="t">11:52</span><span class="g">⏺</span><div class="body"><div class="md"><p id="ans-prose">Sidebar sections it is. Building it in <code>web/settings/Page.tsx</code> now.</p></div></div><span class="rm"><svg class="ic read"><use href="#g-read"/></svg></span></div>
                 <div class="row tool ok" data-show="answer"><span class="t">11:53</span><span class="g">✎</span><div class="body"><details><summary class="line"><span class="tn">Edit</span><span class="ta">web/settings/Page.tsx</span><span class="tr2">38 lines changed</span></summary></details></div></div>
+                <div class="row user ok" data-show="voice" data-feature="voice"><span class="t">10:41</span><span class="g">❯</span><div class="body">Also make the retry wait longer on the second failure, and keep the log of each attempt. <span class="dict">dictated</span> <span class="att">ci-log.txt · 12 KB</span></div></div>
+                <div class="row file" data-show="files" data-feature="files"><span class="t">10:44</span><span class="g">▤</span><div class="body"><div class="fcard"><div class="fbar"><span class="fn">ws-hang-report.html</span><span class="fs">2 files · page 1 of 2</span><span class="acts"><span class="btn">Open</span></span></div><div class="fprev">The hang: the test client never closes its socket when the server restarts. Fix and timings inside.</div></div></div></div>
+                <div class="row user ok" data-show="workflow"><span class="t">14:02</span><span class="g">❯</span><div class="body">Ship dark mode across the app. Split it, review each part, merge on green.</div></div>
+                <div class="row workflow" data-show="workflow" data-feature="workflow"><span class="t">14:05</span><span class="g">◇</span><div class="body"><div class="fcard"><div class="fbar"><span class="fn">workflow · ship dark mode</span><span class="fs">waits for your go</span></div><ol class="wtree"><li>implement, 3 workers in worktrees</li><li>review each pull request</li><li>wait on CI</li><li>merge on green</li></ol><div class="apbar"><span class="btn primary">Approve</span></div></div></div></div>
+                <div class="row approval" data-show="schedule" data-feature="schedule"><span class="t">14:20</span><span class="g">◷</span><div class="body"><div class="fcard"><div class="fbar"><span class="fn">nightly-bench</span><span class="fs">waits for your go</span></div><dl class="apkv"><dt>clock</dt><dd>daily 03:00</dd><dt>fires</dt><dd>a new opus session in .</dd><dt>prompt</dt><dd class="pre">Run the bench and compare with yesterday.</dd></dl><div class="apbar"><span class="btn primary">Unpause</span></div></div></div></div>
+                <div class="row tool ok comms" data-show="browsers" data-feature="browsers"><span class="t">10:50</span><span class="g comms">⇄</span><div class="body"><details><summary class="line"><span class="tn">browser_open</span><span class="ta">http://localhost:5173/settings</span><span class="tr2">docked beside the transcript</span></summary></details></div></div>
               </div>
             </div>
             <div class="nav">
@@ -346,7 +421,7 @@ progress: gh run view 4821 --json jobs -q '[.jobs[]|select(.status=="completed")
                 <div class="acts"><button class="mic" type="button" data-state="idle" aria-label="Dictate"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5V15" fill="none"/></svg></button><button class="send" type="button" aria-label="Send">↵</button></div>
               </div>
               <div class="chips" data-show="subs"><span class="chip">opencode-go/deepseek-v4-pro</span><span class="chip">high effort</span><span class="chip">write</span></div>
-              <div class="chips" data-show="fold panel replies phone together artifact answer themes"><span class="chip">claude-opus-5-5</span><span class="chip">high effort</span><span class="chip">full</span></div>
+              <div class="chips" data-show="fold panel replies phone together artifact answer themes plan voice files browsers queues workflow schedule"><span class="chip">claude-opus-5-5</span><span class="chip">high effort</span><span class="chip">full</span></div>
             </div>
           </section>
           <div class="grip" data-feature="panel" title="Drag to resize; double-click for the default width"></div>
@@ -357,7 +432,7 @@ progress: gh run view 4821 --json jobs -q '[.jobs[]|select(.status=="completed")
                 <div class="pcard"><div class="chd"><div class="t">Translate the error messages to the new catalog</div><div class="sub">swift-hopper · started 10:41</div></div><div class="csec">
                   <div class="kv"><span>harness</span><span>OpenCode</span></div><div class="kv"><span>model</span><span>opencode-go/deepseek-v4-pro</span></div><div class="kv"><span>effort</span><span>high</span></div><div class="kv"><span>permission</span><span>write</span></div><div class="kv"><span>directory</span><span class="path">/home/sam/acme/api</span></div><div class="kv"><span>server</span><span>studio</span></div></div></div>
               </div>
-              <div class="prow" data-show="fold panel replies phone together themes" data-feature="panel"><div class="title">Flaky CI: the websocket test that waits forever</div><div class="sline"><span class="handle">keen-noether</span><span class="st at-needs_you"><svg class="ic need"><use href="#g-need"/></svg> needs you</span></div>
+              <div class="prow" data-show="fold panel replies phone together themes plan voice files browsers queues workflow schedule" data-feature="panel"><div class="title">Flaky CI: the websocket test that waits forever</div><div class="sline"><span class="handle">keen-noether</span><span class="st at-needs_you"><svg class="ic need"><use href="#g-need"/></svg> needs you</span></div>
                 <div class="pcard"><div class="chd"><div class="t">Flaky CI: the websocket test that waits forever</div><div class="sub">keen-noether · started 10:02</div></div><div class="csec">
                   <div class="kv"><span>harness</span><span>Claude Code</span></div><div class="kv"><span>model</span><span>claude-opus-5-5</span></div><div class="kv"><span>effort</span><span>high</span></div><div class="kv"><span>permission</span><span>full</span></div><div class="kv"><span>directory</span><span class="path">/home/sam/acme/api</span></div><div class="kv"><span>server</span><span>studio</span></div><p class="cnote">Click the title or the handle to rename.</p></div></div>
               </div>
@@ -365,9 +440,9 @@ progress: gh run view 4821 --json jobs -q '[.jobs[]|select(.status=="completed")
                 <div class="pcard"><div class="chd"><div class="t">Settings page layout</div><div class="sub">slate-hamming · started 11:48</div></div><div class="csec">
                   <div class="kv"><span>harness</span><span>Claude Code</span></div><div class="kv"><span>model</span><span>claude-opus-5-5</span></div><div class="kv"><span>directory</span><span class="path">/home/sam/acme/web</span></div></div></div>
               </div>
-              <div class="askbox at-needs_you" data-show="fold panel replies phone themes" data-feature="replies">Two fixes pass locally. Cap the wait at 25 s, or mock the socket? I lean to the cap.</div>
+              <div class="askbox at-needs_you" data-show="fold panel replies phone themes plan voice files browsers" data-feature="replies">Two fixes pass locally. Cap the wait at 25 s, or mock the socket? I lean to the cap.</div>
             </div>
-            <div class="sec" data-show="fold panel replies phone together themes" data-feature="panel"><h4 id="s-plan-h">Plan 3/5 · 41m work · 6m idle · ~18m left</h4>
+            <div class="sec" data-show="fold panel replies phone together themes plan voice files browsers queues workflow schedule" data-feature="panel"><h4 id="s-plan-h">Plan 3/5 · 41m work · 6m idle · ~18m left</h4>
               <div class="plan">
                 <div class="done"><svg class="ic done"><use href="#g-done"/></svg><span>Find the race</span><span class="t">12m</span></div>
                 <div class="done"><svg class="ic done"><use href="#g-done"/></svg><span>Write both fixes</span><span class="t">9m</span></div>
@@ -385,7 +460,7 @@ progress: gh run view 4821 --json jobs -q '[.jobs[]|select(.status=="completed")
                   </div></div></div>
               </div>
             </div>
-            <div class="sec" data-show="together panel" data-feature="together"><h4>Monitors</h4>
+            <div class="sec" data-show="together panel queues" data-feature="together"><h4>Monitors</h4>
               <div class="mon"><div class="kv"><span>the full suite in CI</span><span class="r">67%<span class="eta"> · ~6m</span></span></div><div class="bar"><i style="width:67%"></i></div></div>
             </div>
             <div class="sec"><h4>Usage</h4>
@@ -408,7 +483,7 @@ progress: gh run view 4821 --json jobs -q '[.jobs[]|select(.status=="completed")
                   </div>
                 </div>
               </div>
-              <div class="prow" data-show="fold panel replies phone together artifact answer themes" data-feature="quota">
+              <div class="prow" data-show="fold panel replies phone together artifact answer themes plan voice files browsers queues workflow schedule" data-feature="quota">
                 <div class="tiles">
                   <div class="tile normal"><div class="k">context</div><div class="v">23%</div><div class="bar normal"><i style="width:23%"></i></div></div>
                   <div class="tile normal" data-kind="session"><div class="k">5 hours</div><div class="v">22%</div><div class="bar q normal"><i style="width:22%"></i><span class="tick" style="left:34%"></span></div></div>
