@@ -101,9 +101,24 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 .nmock .hint .go:hover code{color:var(--accent)}
 .nmock .hint .x{flex:none;background:none;border:0;color:var(--faint);padding:4px 6px;cursor:pointer;font-size:12px}
 .nmock .hint .x:hover{color:var(--err)}
-.nmock .hint.doc.warn .go{color:var(--warn)}
-.nmock .hint.doc.err .go{color:var(--err)}
-.nmock .hint.doc .go:hover{color:var(--strong)}
+.nmock .doc{margin:2px 0 4px;border:1px solid var(--rule);border-left:2px solid var(--lvl);border-radius:var(--r);background:var(--surface)}
+.nmock .doc.warn{--lvl:var(--warn)}
+.nmock .doc.err{--lvl:var(--err)}
+.nmock .doc .row{display:flex;align-items:center;gap:10px;padding:4px 6px 4px 10px;font-size:12.5px;color:var(--ink)}
+.nmock .doc .dot{flex:none;width:7px;height:7px;border-radius:50%;background:var(--lvl);box-shadow:0 0 0 3px color-mix(in srgb,var(--lvl) 18%,transparent)}
+.nmock .doc .sum{flex:1;min-width:0}
+.nmock .doc .sum b{font-weight:500;color:var(--lvl)}
+.nmock .doc .run{flex:none;font-family:var(--font-mono);font-size:11.5px;background:var(--lvl);color:var(--on-accent);border:0;border-radius:var(--r);padding:4px 10px;cursor:pointer}
+.nmock .doc .more{flex:none;background:none;border:0;color:var(--faint);cursor:pointer;font-size:12px;padding:4px 6px;transition:transform .15s}
+.nmock .doc .more:hover{color:var(--strong)}
+.nmock .doc.open .more{transform:rotate(90deg)}
+.nmock .doc ul{list-style:none;margin:0;padding:2px 12px 8px 27px;border-top:1px solid var(--rule)}
+.nmock .doc li{font-family:var(--font-ui);font-size:12.5px;line-height:1.45;margin:7px 0 0;max-width:none;color:var(--ink)}
+.nmock .doc li .w{display:block;font-family:var(--font-mono);font-size:10.5px;color:var(--faint)}
+.nmock .doc li.err .w::before{content:"error · ";color:var(--err)}
+.nmock .doc li.warn .w::before{content:"warning · ";color:var(--warn)}
+.nmock .doc li.tail{font-size:11.5px;color:var(--muted)}
+.nmock .doc li.tail a{cursor:pointer}
 .nmock .tick{margin-top:6px;border-top:1px solid var(--rule);padding-top:6px}
 .nmock .tick .go{transition:opacity .3s}
 .nmock .tick .go.fade{opacity:0}
@@ -176,9 +191,9 @@ svg text{font-family:var(--font-mono)}
 <tr><td>Click on a hint <span class="who">maintainer</span></td><td>Opens the Help tab at the hint's page or section.</td><td class="why">A hint is a door into the help, not a command.</td></tr>
 <tr><td>Motion <span class="who">maintainer</span></td><td>One hint at a time, replaced every 8 s with a 0.3 s fade. Not a scrolling ticker.</td><td class="why">A sentence that moves sideways cannot be read or clicked; a rotating one can, on a phone too.</td></tr>
 <tr><td>Actions <span class="who">maintainer</span></td><td><code>/tutorial</code> and <code>/whats-new</code> keep hiding when done or dismissed, as now. <code>/feedback</code> is always shown, with no cross.</td><td class="why">Feedback is never done; the other two are.</td></tr>
-<tr><td>Doctor on the tab <span class="who">maintainer</span></td><td>A short line when the doctor finds a warning or an error, such as an outdated Claude Code or an agent naming a harness that does not exist.</td><td class="why">A broken setup shows up today only when a spawn fails or someone opens Settings.</td></tr>
+<tr><td>Doctor on the tab <span class="who">maintainer</span></td><td>One row with a count, "This server's setup has 2 errors and 1 warning", and a <code>/doctor</code> button. The findings stay folded under a chevron, each as a plain sentence under the name of the thing it is about.</td><td class="why">A broken setup shows up today only when a spawn fails or someone opens Settings. The doctor's raw <code>where: message</code> lines read as a log and looked unlike the rest of the tab.</td></tr>
 <tr><td><code>/doctor</code> <span class="who">maintainer</span></td><td>Runs what <code>aegis doctor</code> runs and starts a session with its report, to fix the findings with the agent. Listed only when there is something to fix.</td><td class="why">The CLI prints the problems; the session gets them fixed.</td></tr>
-<tr><td><code>/doctor</code> on warnings <span class="who q">open</span></td><td>Listed on a warning too, not only on an error.</td><td class="why">The motivating example, an outdated Claude Code, is a warning. See <a href="#nongoals">open questions</a>.</td></tr>
+<tr><td><code>/doctor</code> on warnings <span class="who">maintainer</span></td><td>Offered on a warning as well as on an error.</td><td class="why">An outdated Claude Code is a warning, and it is worth fixing with the agent.</td></tr>
 <tr><td>Who sees the doctor <span class="who">agent</span></td><td>An admin principal only: the line, the action and the command.</td><td class="why">Only an admin can change <code>.aegis.yaml</code> or the service; a line nobody can act on is noise.</td></tr>
 <tr><td>When the doctor runs <span class="who">agent</span></td><td>In the background at start, when <code>.aegis.yaml</code> changes, every 6 h, and fresh on <code>/doctor</code>.</td><td class="why">A run probes each harness, 0.5 s to 20 s. Harness upgrades happen outside aegis, so a timer catches them.</td></tr>
 <tr><td>Hint format <span class="who">agent</span></td><td>A <code>hints:</code> list in front matter, each item a sentence and an optional trailing <code>#section</code>.</td><td class="why">The parser stays line-based; <code>make lint-docs</code> checks length and that the section exists.</td></tr>
@@ -236,13 +251,15 @@ hints:
 <p><code>help.state</code> returns every hint as <code>{text, ref}</code>. <code>help.pages</code> is unchanged; agents never see hints, since <code>help_search</code> already finds the page.</p>
 
 <h2 id="tab"><span class="n">05</span>The new tab</h2>
-<p>The rows under the chips, top to bottom: the doctor line, the actions, then a rule and the rotating hint. The mockup below uses the client's own rules for these rows. The hints in it are samples.</p>
+<p>The rows under the chips, top to bottom: the doctor row, the actions, then a rule and the rotating hint. The mockup below uses the client's own rules for these rows. The hints in it are samples.</p>
 <div class="nmock" id="mock">
   <div class="comp">What should the agent do?</div>
   <div class="chips"><span class="chip">opus</span><span class="chip">claude-code</span><span class="chip">medium</span><span class="chip">full</span></div>
   <div class="hints">
-    <div class="hint doc" id="m-doc" hidden><button class="go" id="m-doc-go" type="button"></button></div>
-    <div class="hint" id="m-doctor" hidden><button class="go" type="button" data-to="a new session fixing the setup">Run <code>/doctor</code> to fix it with an agent.</button></div>
+    <div class="doc" id="m-doc" hidden>
+      <div class="row"><span class="dot"></span><span class="sum" id="m-doc-sum"></span><button class="run" type="button" data-to="a new session fixing the setup with the agent">/doctor</button><button class="more" id="m-doc-more" type="button" aria-expanded="false" aria-label="Show what the doctor found">▸</button></div>
+      <ul id="m-doc-list" hidden></ul>
+    </div>
     <div class="hint" id="m-tut"><button class="go" type="button" data-to="a tutorial session">Run <code>/tutorial</code> for a quick guide.</button><button class="x" type="button" data-x="m-tut" aria-label="Dismiss">✕</button></div>
     <div class="hint" id="m-new"><button class="go" type="button" data-to="a tour of the release notes">Run <code>/whats-new</code> to learn what's new in 2.31.0.</button><button class="x" type="button" data-x="m-new" aria-label="Dismiss">✕</button></div>
     <div class="hint"><button class="go" type="button" data-to="a session drafting an issue">Run <code>/feedback</code> to report a bug or ask for a feature.</button></div>
@@ -258,8 +275,8 @@ hints:
 <ul>
 <li>The tip row is always there while the server has hints. It shows one hint, replaced every 8 s. Hovering it, focusing it with the keyboard, or hiding the tab pauses the timer.</li>
 <li>Under <code>prefers-reduced-motion</code> the hint still changes, without the fade.</li>
-<li>On a new tab aimed at a linked server, the tip row stays: the help pages are this server's, and the Help tab opens here. The actions hide, as they do today, and so does the doctor line.</li>
-<li>On a phone the rows keep their 44 px touch height. A long hint or doctor line ends in an ellipsis, and the full text is in its <code>title</code>.</li>
+<li>On a new tab aimed at a linked server, the tip row stays: the help pages are this server's, and the Help tab opens here. The actions hide, as they do today, and so does the doctor row.</li>
+<li>On a phone the rows keep their 44 px touch height. A long hint ends in an ellipsis, with the full text in its <code>title</code>. The doctor's summary wraps, and its findings are sentences that wrap.</li>
 </ul>
 
 <h2 id="feedback"><span class="n">06</span>/feedback from the new tab</h2>
@@ -274,16 +291,15 @@ hints:
 <li>and fresh when someone runs <code>/doctor</code>.</li>
 </ul>
 <p>Only one run happens at a time, and a run asked for during another one waits for it. <code>config.doctor</code>, used by Settings, keeps running fresh and also refreshes the cache.</p>
-<p>For an admin, <code>help.state</code> adds <code>doctor: {errors, warns, first}</code>, where <code>first</code> is the first error, or the first warning when there is no error, as <code>where: message</code>. For anyone else, or when every finding is ok, <code>doctor</code> is null. The line reads, for example:</p>
-<pre>⚠ harness.claude-code: Claude Code 2.4.1 is older than the oldest version aegis has tested (2.6.0)  +2 more
-✕ agents.ds.harness: names harness "deepsek", which does not exist  +1 more</pre>
-<p>It is coloured by its level. Clicking it opens Settings, where each finding already marks its row. It has no cross: it hides when the doctor stops finding the problem.</p>
+<p>For an admin, <code>help.state</code> adds <code>doctor: {errors, warns, findings}</code>, where <code>findings</code> holds every warning and error as <code>{level, subject, message}</code>. For anyone else, or when every finding is ok, <code>doctor</code> is null.</p>
+<p>The row is a single summary: a dot and a left border in the worst level's colour, the sentence "This server's setup has 2 errors and 1 warning. Fix them with", and a <code>/doctor</code> button. The chevron unfolds the findings in place. Each one is the doctor's message as a sentence, under a small label for the thing it is about: "Agent ds", "Queue cheap", "Claude Code", "The service". A last line points to Settings, where each finding is already marked on its row. The row has no cross. It hides when the doctor stops finding a problem.</p>
+<p>The label comes from <code>Finding.where</code> in the client, through a small table: <code>agents.&lt;name&gt;…</code> becomes "Agent &lt;name&gt;", <code>queues.&lt;name&gt;</code> "Queue &lt;name&gt;", <code>harness.&lt;h&gt;</code> the harness's label, <code>file</code> ".aegis.yaml". Any other key falls back to the raw <code>where</code>. The doctor's messages are not rewritten. A message that reads badly as a sentence is fixed in <code>doctor.py</code>, where the CLI and Settings benefit too.</p>
 
 <h2 id="cmd"><span class="n">08</span>The /doctor command</h2>
 <p>A new entry in <code>commands.AEGIS</code>: <code>/doctor</code>, "Check this server's setup and fix what is wrong with an agent". It is admin-only.</p>
 <ul>
-<li><code>commands.list</code> leaves it out unless the caller is an admin and the cached result has a problem. The new tab shows it as an action row under the same rule.</li>
-<li>Running it, from the composer or from the action, calls <code>help.guide</code> with kind <code>doctor</code>. That runs the doctor fresh. When nothing is wrong any more it refuses with <code>nothing_to_fix</code>, "aegis doctor finds nothing wrong", and the row hides.</li>
+<li><code>commands.list</code> leaves it out unless the caller is an admin and the cached result has a warning or an error. On the new tab it is the button on the doctor row.</li>
+<li>Running it, from the composer or from the action, calls <code>help.guide</code> with kind <code>doctor</code>. That runs the doctor fresh. When nothing is wrong any more it refuses with <code>nothing_to_fix</code>, "aegis doctor finds nothing wrong", and the doctor row hides.</li>
 <li>Otherwise it spawns a session in the config root, on <code>default_agent</code> from the composer or on the chips from the new tab. The session is titled <code>Doctor: 2 errors, 1 warning</code>. Its first message is the report, rendered by the function the CLI uses (moved from <code>cli._report</code> into <code>doctor.render</code>), and these instructions:</li>
 </ul>
 <pre>aegis doctor found these problems on this server:
@@ -331,7 +347,6 @@ service. When you are done, run `aegis doctor` and show its last line.</pre>
 </ul>
 <h3>Open questions</h3>
 <ul>
-<li><code>/doctor</code> on a warning: the request said "only when there are errors", but its example, an outdated Claude Code, is a warning. This spec lists <code>/doctor</code> on either and colours the line by level. The alternative is to list it on errors only, so a warning shows the line but offers no session.</li>
 <li>Should a person be able to turn the tip row off in Settings? Not in this change unless asked.</li>
 </ul>
 </main>
@@ -349,11 +364,17 @@ const $ = (id) => document.getElementById(id);
     ["Link a laptop's aegis to this one and spawn sessions across both.", "links#what-people-here-can-do-there"],
     ["Schedule a prompt to run every morning in its own session.", "schedules"],
   ];
+  const F_WARN = ["warn", "Claude Code", "Claude Code 2.4.1 is older than the oldest version aegis has tested, 2.6.0."];
   const DOC = {
     ok: null,
-    warn: {cls: "warn", text: "⚠ harness.claude-code: Claude Code 2.4.1 is older than the oldest version aegis has tested (2.6.0)"},
-    err: {cls: "err", text: "✕ agents.ds.harness: names harness \"deepsek\", which does not exist  +2 more"},
+    warn: [F_WARN],
+    err: [
+      ["err", "Agent ds", "Names the harness deepsek, which does not exist."],
+      ["err", "Queue cheap", "Uses the agent haiku, which is not defined."],
+      F_WARN,
+    ],
   };
+  const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
   let order = [], at = 0, timer = null, held = false;
   const where = (t) => ($("m-where").textContent = "→ " + t);
   function show() {
@@ -364,9 +385,15 @@ const $ = (id) => document.getElementById(id);
   }
   function tick() { if (!held && !document.hidden) { at++; show(); } }
   function drawDoctor() {
-    const d = $("m-who").value === "admin" ? DOC[$("m-state").value] : null;
-    $("m-doc").hidden = !d; $("m-doctor").hidden = !d;
-    if (d) { $("m-doc").className = "hint doc " + d.cls; $("m-doc-go").textContent = d.text; $("m-doc-go").title = d.text; }
+    const fs = $("m-who").value === "admin" ? DOC[$("m-state").value] : null;
+    $("m-doc").hidden = !fs;
+    if (!fs) return;
+    const errs = fs.filter((f) => f[0] === "err").length, warns = fs.length - errs;
+    const parts = [errs && plural(errs, "error"), warns && plural(warns, "warning")].filter(Boolean);
+    $("m-doc").className = "doc " + (errs ? "err" : "warn") + ($("m-doc").classList.contains("open") ? " open" : "");
+    $("m-doc-sum").innerHTML = `This server's setup has <b>${parts.join(" and ")}</b>. Fix ${fs.length === 1 ? "it" : "them"} with`;
+    $("m-doc-list").innerHTML = fs.map(([l, w, m]) => `<li class="${l}"><span class="w">${w}</span>${m}</li>`).join("")
+      + `<li class="tail">Each one is also marked on its row in <a data-to="Settings, with each finding on its row">Settings</a>.</li>`;
   }
   function reset() {
     order = HINTS.slice().sort(() => Math.random() - 0.5); at = 0;
@@ -380,7 +407,12 @@ const $ = (id) => document.getElementById(id);
   tickRow.addEventListener("focusin", () => (held = true));
   tickRow.addEventListener("focusout", () => (held = false));
   $("m-tick-go").addEventListener("click", (e) => where("Help tab at #help=" + e.currentTarget.dataset.ref));
-  $("m-doc-go").addEventListener("click", () => where("Settings, with each finding on its row"));
+  $("m-doc-more").addEventListener("click", () => {
+    const open = $("m-doc").classList.toggle("open");
+    $("m-doc-list").hidden = !open;
+    $("m-doc-more").setAttribute("aria-expanded", String(open));
+    where(open ? "the findings unfold in place" : "folded again");
+  });
   $("mock").addEventListener("click", (e) => {
     const x = e.target.closest("[data-x]");
     if (x) { $(x.dataset.x).hidden = true; where("dismissed; recorded as if run"); return; }
