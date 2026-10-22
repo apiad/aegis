@@ -142,6 +142,7 @@ function unit(u, metas, onOpen, onClose, stacks) {
   const needy = rest.filter((m) => m.mark === "needs_you");
   const s = el("div", `stack${needy.length ? " need" : ""}`);
   s.dataset.group = u.key;
+  s.dataset.members = u.members.map((m) => m.key).join(" ");
   s.style.setProperty("--g", hue);
   const c = card(u.head, onOpen, onClose);
   const row = el("div", "mrow");
@@ -165,7 +166,8 @@ function unit(u, metas, onOpen, onClose, stacks) {
 // in the needs-you group, changed and the caller must regroup with renderCards.
 export function patchCard(box, m, onOpen, order = "attention", onClose = () => {}) {
   const old = box.querySelector(`.card[data-id="${CSS.escape(m.key)}"]`);
-  if (!old) return true;
+  // A member hidden in a stack changes the stack.
+  if (!old) return !box.querySelector(`.stack[data-members~="${CSS.escape(m.key)}"]`);
   if (old.closest(".stack, .gopen")) return false; // a group redraws whole
   if (order === "attention" && (old.dataset.group !== group(m) || old.dataset.rank !== rank(m) || old.classList.contains("finished") !== finished(m))) return false;
   old.replaceWith(card(m, onOpen, onClose));

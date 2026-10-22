@@ -103,3 +103,18 @@ def test_a_stacks_head_menu_archives_the_group(server, page):  # noqa: F811
     page.click(f"#cards .stack .card[data-id='{a}']", button="right")
     page.wait_for_selector(".cmenu [data-id=archivegroup]")
     assert page.errors == []
+
+
+def test_a_hidden_members_question_reaches_a_stack_on_screen(server, page):  # noqa: F811
+    import json
+
+    a, b, c, d = three_and_one(page, server)
+    page.click(f"#tablist .tab[data-id='{c}']")
+    page.evaluate("document.hasFocus = () => false")
+    steps = [["sleep", 1.5], ["turn_end", {"attention": "needs_you", "line": "Which?"}]]
+    page.fill("#input", f"/script {json.dumps(steps)}")
+    page.press("#input", "Enter")
+    fleet(page)
+    page.wait_for_selector("#cards .stack:not(.need)")
+    page.wait_for_selector("#cards .stack.need", timeout=8000)
+    assert page.errors == []
