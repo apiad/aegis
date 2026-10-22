@@ -3,7 +3,7 @@
 
 import { glyph, icon, LABEL } from "./glyphs.js";
 import { idleFor } from "./lifecycle.js";
-import { hostRow, netRows, noteRow, providerLine, quotaHeading, quotaRow } from "./gauges.js";
+import { diskRows, hostRow, netRows, noteRow, providerLine, quotaHeading, quotaRow } from "./gauges.js";
 import { shownOwner } from "./me.js";
 import { dur, planTimes } from "./plantime.js";
 import { workflowLocked, workflowTitle } from "./entries.js";
@@ -329,7 +329,7 @@ export function renderBand(band, { metas, host, server, link = "", off = false, 
   if (host) {
     meters.push(hostRow("CPU", host.cpu, ""));
     meters.push(hostRow("RAM", host.ram.pct, `${host.ram.used_gb} / ${host.ram.total_gb} GB`));
-    if (host.disk) meters.push(hostRow("Disk", host.disk.pct, `${host.disk.used_gb} / ${host.disk.total_gb} GB`));
+    meters.push(...diskRows(host));
     meters.push(...netRows(host.net, Date.now() / 1000, off ? null : measure));
   }
   const live = metas.filter((m) => m.state !== "asleep" && m.context_window && m.context_tokens);

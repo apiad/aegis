@@ -51,6 +51,7 @@ network:
   timeout: 5
   speed_timeout: 20
   anchors: ["9.9.9.9:443"]
+host: {hide_mounts: [/srv/scratch], add_mounts: [/tank]}
 workflows: {max_agents: {total: 6, opus: 3}}
 harness_versions: {person: warn, agent: "off", startup: "off", accepted: {opencode: ["2.0.33"]}}
 nudges: {silent_s: false, plan_min: 20}
@@ -84,6 +85,7 @@ def reader_keys() -> list[str]:
         "context": list(config.CONTEXT_DEFAULTS),
         "nudges": list(config.NUDGES_DEFAULTS),
         "network": list(NET_KEYS),
+        "host": ["hide_mounts", "add_mounts"],
         "notices": notices,
         "recap": ["agent"],
         "btw": ["agent"],
