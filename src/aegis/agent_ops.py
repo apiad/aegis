@@ -198,7 +198,8 @@ class TurnEnd(_Strict):
         description="needs_you: your message asks the person something. review: it "
         "presents something for them to read, or reports a step while work or waiting "
         "remains. done: the whole task they gave you is over; it puts an archive "
-        "button on the card, and is refused while your plan has unfinished items."
+        "button on the card, and is refused while your plan has unfinished items "
+        "or a monitor, task or workflow will still wake you."
     )
     line: str = Field(
         min_length=1,
@@ -1137,6 +1138,15 @@ def register_agent_ops(app: App) -> None:
                 "unfinished items. If it is over, mark them done or drop them with "
                 "plan_update, then call turn_end again; if not, call turn_end with "
                 "review, or needs_you when you ask something.",
+            )
+        if p.attention == "done" and not p.close and (live := reg.wakers(s)):
+            raise OpError(
+                "still_waiting",
+                "done means the task is over, and this will still wake you: "
+                + ", ".join(live)
+                + ". If it is over, cancel or stop it (monitor_cancel, task_cancel) and "
+                "call turn_end again; if you are waiting on it, end the turn "
+                "without turn_end, or call turn_end with review.",
             )
         if p.close and p.attention != "done":
             raise OpError(

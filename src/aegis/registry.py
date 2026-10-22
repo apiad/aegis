@@ -234,13 +234,12 @@ class Registry(Host):
             frontier = {s.log_id for s in kids}
         return out[::-1]
 
-    def close_blockers(self, s: Session) -> list[str]:
-        """What keeps ``s`` and the sessions it started from closing once its
-        turn ends done (turn_end's close), one phrase each: its approved run,
-        monitors, background tasks and callback queue tasks, and each
-        descendant still working, waiting, or whose last turn did not end
-        done. Held messages are not here: they start a new turn, whose own
-        turn_end decides."""
+    def wakers(self, s: Session) -> list[str]:
+        """What will still wake ``s`` with a new turn, one phrase each: its
+        approved run, monitors, background tasks and callback queue tasks.
+        turn_end refuses done while any is live (#608): the task is not over.
+        Its children are not here; they do not wake it, and one spawned for the
+        person may outlive the task that started it."""
         n_mon = len(self.monitors.of(s.log_id)) if self.monitors is not None else 0
         n_tasks = sum(1 for w in self._waiting_for(s) if w["kind"] == "task")
         counts = (
@@ -251,6 +250,15 @@ class Registry(Host):
         run = self._running(s)
         out = [f"workflow {run.run}"] if run is not None else []
         out += [f"{n} {noun}{'' if n == 1 else 's'}" for n, noun in counts if n]
+        return out
+
+    def close_blockers(self, s: Session) -> list[str]:
+        """What keeps ``s`` and the sessions it started from closing once its
+        turn ends done (turn_end's close), one phrase each: its wakers, and
+        each descendant still working, waiting, or whose last turn did not end
+        done. Held messages are not here: they start a new turn, whose own
+        turn_end decides."""
+        out = self.wakers(s)
         for kid in self.descendants(s.log_id):
             mark = self._attention(kid)["attention"]
             flow = kid.workflow["run"] if kid.workflow else None
