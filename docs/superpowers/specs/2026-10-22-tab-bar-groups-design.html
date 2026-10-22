@@ -333,6 +333,33 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 .mk-legend{display:flex;gap:14px;flex-wrap:wrap;font:11.5px 'Inter',sans-serif;color:var(--muted);margin:6px 0}
 .mk-legend span{display:inline-flex;align-items:center;gap:5px}
 .mk-legend svg{width:14px;height:14px}
+.mk-fleet{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:18px 16px}
+.mk-fc{position:relative;border:1px solid var(--rule);border-radius:10px;padding:10px 12px;background:var(--bg);cursor:pointer;font:12px/1.45 'JBM',monospace}
+.mk-fc:hover{border-color:var(--accent)}
+.mk-fc.need{border-color:var(--accent)}
+.mk-fc .top{display:flex;gap:8px;align-items:center}.mk-fc .h{font-weight:700}.mk-fc .stw{margin-left:auto;color:var(--muted)}
+.mk-fc .t{font:13px/1.35 'Inter',sans-serif;margin:5px 0 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mk-fc .m{color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mk-fc .pb{height:3px;background:var(--rule);border-radius:2px;margin-top:8px;position:relative;overflow:hidden}
+.mk-fc .pb::after{content:"";position:absolute;inset:0;width:var(--p);background:var(--accent)}
+.mk-fc .by{color:var(--muted);font-size:10.5px;margin-top:5px}
+.mk-stack{position:relative;margin:0 12px 12px 0;cursor:pointer}
+.mk-stack .gh1,.mk-stack .gh2{position:absolute;inset:0;border:1px solid var(--g);border-radius:10px;background:var(--bg);transition:transform .2s ease}
+.mk-stack .gh1{transform:translate(6px,6px);opacity:.75}.mk-stack .gh2{transform:translate(12px,12px);opacity:.45}
+.mk-stack:hover .gh1{transform:translate(8px,8px)}.mk-stack:hover .gh2{transform:translate(16px,16px)}
+.mk-stack.need .gh1,.mk-stack.need .gh2{border-color:var(--accent)}
+.mk-stack .mk-fc{border-color:var(--g);box-shadow:inset 3px 0 0 var(--g)}
+.mk-badge{position:absolute;top:-9px;right:-9px;z-index:2;font:600 11px 'JBM',monospace;background:var(--g);color:#111;border-radius:10px;padding:2px 7px}
+.mk-mrow{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px;padding-top:7px;border-top:1px dashed var(--rule);color:var(--muted);font-size:11px}
+.mk-mrow .alert{color:var(--accent)}
+.mk-grp{grid-column:1/-1;border:1px solid var(--g);border-radius:12px;padding:10px 12px 14px;background:color-mix(in srgb,var(--g) 6%,transparent)}
+.mk-grp .hd{display:flex;gap:10px;align-items:center;margin-bottom:10px;font:12.5px 'JBM',monospace;color:var(--muted)}
+.mk-grp .hd b{color:var(--ink)}
+.mk-grp .hd button{margin-left:auto;font:12px 'Inter',sans-serif;padding:4px 10px;border:1px solid var(--rule);border-radius:6px;background:var(--surface);color:var(--ink);cursor:pointer}
+.mk-grp .in{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.mk-grp .mk-fc{box-shadow:inset 3px 0 0 var(--g);animation:mkpop .22s ease both}
+@keyframes mkpop{from{opacity:0;transform:translateY(-6px) scale(.97)}}
+@media (prefers-reduced-motion:reduce){.mk-grp .mk-fc{animation:none}}
 @media (pointer:coarse){.mk-act{width:44px;height:44px}.mk-tab{min-height:44px}}
 </style>
 </head>
@@ -385,6 +412,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <a href="#overflow">Overflow</a>
   <a href="#card">The tab card</a>
   <a href="#phone">On a phone</a>
+  <a href="#fleet">The Fleet as stacks</a>
   <a href="#nudge">The rename nudge</a>
   <a href="#delivery">Delivery</a>
   <a href="#testing">Testing</a>
@@ -429,6 +457,8 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <tr><td>A folded group with a member that needs the person</td><td>The head's count blinks, as a tab's mark blinks today</td><td class="why"><span class="who">agent</span> Folding must not hide a question.</td></tr>
 <tr><td>Which actions the card shows</td><td>Exactly the items of <code>sessionMenu</code> (<code>client/js/app.js</code>), with the icons it already names</td><td class="why"><span class="who">agent</span> One list of actions, one set of rules for when each is offered or disabled.</td></tr>
 <tr><td>Right-click and long press</td><td>Right-click on a desktop tab keeps opening the context menu. A long press on a phone tab opens the card sheet, which holds the same actions</td><td class="why"><span class="who">agent</span> The desktop already has the hover card for reading; on a phone the sheet replaces the menu rather than competing with it.</td></tr>
+<tr><td>Groups in the Fleet</td><td>Each group of several sessions is a stack of cards that unfolds across the grid on a click</td><td class="why"><span class="who">maintainer</span> The Fleet shows every session as a card, so a director with five leads took six cells of the grid.</td></tr>
+<tr><td>Fleet and bar folding</td><td>Kept apart, both per browser</td><td class="why"><span class="who">agent</span> Folding a group in the bar to make room should not hide its cards in the overview.</td></tr>
 <tr><td>Terminals and other tool tabs</td><td>Never grouped</td><td class="why"><span class="who">agent</span> They have no spawner.</td></tr>
 </tbody>
 </table>
@@ -538,7 +568,19 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <li>The top row holds Fleet, the connection, Files, the bell and the menu button.</li>
 </ul>
 
-<h2 id="nudge"><span class="n">10</span>The rename nudge</h2>
+<h2 id="fleet"><span class="n">10</span>The Fleet as stacks</h2>
+<p><span class="try">try it</span>The same sample sessions. Click a stack to unfold it; click Stack to fold it again.</p>
+<div class="mk" id="mk-fleet"></div>
+<ul>
+<li>A group of one is today's card. A group of several is one stack in one grid cell: the head's card on top, the edges of two cards behind it offset down and right in the group's colour, a badge with the group's size, and under the head's card a row with each other member's state icon and <code>+N</code>.</li>
+<li>When a member needs the person, the stack's edges take the accent colour and the row names that member ("qa-lead needs you"). Under "Needs you first" a stack ranks by its most urgent member, so a group with a question rises even when its head is only waiting. Under "Tab order" the stacks follow the bar's blocks.</li>
+<li>A click on a stack unfolds it across the full width of the grid, in a frame tinted with the group's colour: a header with the head's handle, the number of sessions and how many are working, and a Stack button. Inside, the head's card comes first and every member's card says which session started it. A click on any unfolded card opens that session, as today.</li>
+<li>Which stacks are unfolded is kept per browser, apart from the bar's fold state: the Fleet is for scanning and the bar for switching, and one should not fold the other.</li>
+<li>The card's context menu (<code>cardMenu</code>) works on the head's card in a stack and on each unfolded card. On a stack, Archive group is added, as in the tab card.</li>
+<li>The Agents and Terminals filters apply to members: a stack whose members are all filtered out disappears, and a stack keeps only the members that pass.</li>
+</ul>
+
+<h2 id="nudge"><span class="n">11</span>The rename nudge</h2>
 <p>An agent is told to rename itself once its task settles, and often sets only the handle. The title then stays the one aegis drew from the first prompt (<code>names.default_title</code>), which is what the tab's second line and the card would show.</p>
 <ul>
 <li><code>Session</code> gains <code>handle_set</code>, set by <code>registry.rename</code> when a handle is given, the way <code>title_set</code> is set when a title is given. It is persisted in the meta. A meta written before this field is read as <code>handle_set: true</code>, so existing sessions are not nagged.</li>
@@ -548,27 +590,29 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <li>The <code>sessions</code> help page and the <code>session_rename</code> description say a rename sets both.</li>
 </ul>
 
-<h2 id="delivery"><span class="n">11</span>Delivery</h2>
+<h2 id="delivery"><span class="n">12</span>Delivery</h2>
 <div class="steps">
   <div class="step"><div class="n"></div><h4>Slice 1: the bar and the tab</h4><p>Icon buttons, the side toggle in the pill, two-line tabs that do not shrink, the scrolling strip with its overflow menu, the server name inside the tab. Fixes the spill on its own.</p></div>
   <div class="step"><div class="n"></div><h4>Slice 2: the card</h4><p>The hover card with its details and the <code>sessionMenu</code> actions; the phone sheet on long press.</p></div>
   <div class="step"><div class="n"></div><h4>Slice 3: groups</h4><p><code>group</code> on the spec and the wire, the person's spawn recording its parent, the cross-server group, then folding, heads and drag rules in the client.</p></div>
-  <div class="step"><div class="n"></div><h4>Slice 4: the rename nudge</h4><p><code>handle_set</code> and the <code>turn_end</code> reply. Independent of the others; may land first.</p></div>
+  <div class="step"><div class="n"></div><h4>Slice 4: the Fleet as stacks</h4><p>Stacks, unfolding, ranking by the most urgent member, filters. Needs slice 3's <code>group</code>.</p></div>
+  <div class="step"><div class="n"></div><h4>Slice 5: the rename nudge</h4><p><code>handle_set</code> and the <code>turn_end</code> reply. Independent of the others; may land first.</p></div>
 </div>
 <p>Each slice is its own issue and PR, with a changelog fragment, and gets the maintainer's guided smoke test before it is called done.</p>
 
-<h2 id="testing"><span class="n">12</span>Testing</h2>
+<h2 id="testing"><span class="n">13</span>Testing</h2>
 <ul>
 <li>Browser tests (Playwright, as the client's other tests) at 1280 px with 14 sessions, 6 on a linked server: no tab overlaps the next (each tab's right edge ≤ the next tab's left edge), every handle's full text is visible, and the strip scrolls. The same check at 390 px.</li>
 <li>Groups: a spawn chain A → B → C shows one group headed by A; archiving A makes B the head, with the group in place; a worker with a tab joins its enqueuer's group; a quiet worker shows nowhere; a terminal never joins.</li>
 <li>Alt+J: with a group folded and two of its hidden members needing the person, <code>Alt+J</code> visits both in <code>byNeed</code> order, unfolds the group and scrolls each tab into view; the visit order is the same with the group unfolded and with the bar reordered; <code>#nav-needs</code> shows the same count before and after.</li>
 <li>Drag: a head carries its members; a member cannot leave its group; order and fold survive a reload.</li>
 <li>Card: opens after the delay, stays while the pointer is on it, closes on leave and Esc; its buttons match <code>sessionMenu</code> for a working, an asleep, a quiet and a workflow-locked session, including disabled reasons.</li>
+<li>Fleet: a group of six shows as one stack with a badge of 6; a member that needs the person marks the stack and names itself; under "Needs you first" that stack ranks first; unfolding shows six cards in the group's frame; the state survives a reload and is independent of the bar's fold.</li>
 <li>Server: <code>group</code> is set at spawn for an agent spawn, a person's spawn from a session, a cross-server spawn and a worker; it survives a restart; an old meta loads without it.</li>
 <li>Nudge: <code>turn_end</code> on a fresh session returns the reminder; after a rename with only a handle it still does; after both it returns <code>noted</code>; a worker never gets it; an old meta does not.</li>
 </ul>
 
-<h2 id="nongoals"><span class="n">13</span>Non-goals and open questions</h2>
+<h2 id="nongoals"><span class="n">14</span>Non-goals and open questions</h2>
 <ul>
 <li>No nested groups, and no hierarchy drawn inside a group.</li>
 <li>No groups across browsers: the order and fold state stay per browser, as tab order is today.</li>
@@ -663,9 +707,30 @@ function render() {
   const pill = `<div class="mk-pane"><div class="mk-pill">${["sparkle","fold","up","down","latest"].map(i => `<button class="mk-ib">${g(i)}</button>`).join("")}<button class="mk-ib new" title="Session panel (Alt+B)" aria-label="Session panel"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="M10 2.5v11"/></svg></button></div></div>`;
   $("mk-desk").innerHTML = `<div id="mk-frame" style="width:${W}px;position:relative"><div class="mk-bar"><div class="mk-strip"><div class="mk-tab home">Fleet</div>${stripHtml()}<div class="mk-tab">+</div></div>${right}</div>${pill}</div>`;
   $("mk-frame").style.zoom = Math.min(1, $("mk-desk").clientWidth / W);
+  renderFleet();
   $("mk-phone").innerHTML = `<div class="mk-phone"><div class="r1"><div class="mk-tab home">Fleet</div><span style="flex:1"></span><span class="mk-conn"><span class="mk-dot"></span>laptop</span><button class="mk-ib" aria-label="Files">${g("folder")}</button><button class="mk-ib" aria-label="Notifications">${g("bell")}</button><button class="mk-ib" aria-label="Menu">☰</button></div><div class="r2">${stripHtml()}</div><div class="body">The transcript of ${esc(focus)}.</div><div class="mk-sheet" id="mk-sheet"></div></div>`;
 }
 
+const fleetOpen = new Set();
+function fcard(s, extra = "") {
+  const p = s.n ? Math.round(100 * s.d / s.n) : 0;
+  return `<div class="mk-fc${s.att === "needs_you" ? " need" : ""}" data-fopen="${s.h}"><div class="top"><span class="mk-ic ${s.att}"></span><span class="h">${esc(s.h)}</span><span class="stw">${STW[s.att]}</span></div><div class="t">${esc(s.t)}</div><div class="m">${s.model} · ${esc(s.cwd)}${s.srv ? " · " + s.srv : ""}</div>${s.n ? `<div class="pb" style="--p:${p}%"></div>` : ""}${extra}</div>`;
+}
+function renderFleet() {
+  const rankOf = k => Math.min(...members(k).map(m => URG.indexOf(m.att)));
+  const ks = blocks.filter(k => members(k).length).sort((a, b) => rankOf(a) - rankOf(b));
+  $("mk-fleet").innerHTML = `<div class="mk-fleet">${ks.map(k => {
+    const ms = members(k); if (ms.length === 1) return fcard(ms[0]);
+    const hd = head(k), rest = ms.filter(m => m !== hd), needs = rest.filter(m => m.att === "needs_you");
+    if (fleetOpen.has(k)) return `<div class="mk-grp" style="--g:${hue(k)}"><div class="hd"><span class="mk-ic ${hd.att}"></span><b>${esc(hd.h)}</b>· ${ms.length} sessions · ${ms.filter(m => m.att === "working").length} working<button data-fstack="${k}">Stack</button></div><div class="in">${fcard(hd)}${rest.map(m => fcard(m, `<div class="by">started by ${esc(m.by)}</div>`)).join("")}</div></div>`;
+    return `<div class="mk-stack${needs.length ? " need" : ""}" data-funfold="${k}" style="--g:${hue(k)}"><div class="gh2"></div><div class="gh1"></div><span class="mk-badge">${ms.length}</span>${fcard(hd, `<div class="mk-mrow">${rest.map(m => `<span class="mk-ic ${m.att}" title="${esc(m.h)}"></span>`).join("")}<span>+${rest.length}</span>${needs.map(m => `<span class="alert">${esc(m.h)} needs you</span>`).join("")}</div>`)}</div>`;
+  }).join("")}</div>`;
+}
+document.addEventListener("click", e => {
+  const u = e.target.closest("[data-funfold]"); if (u) { fleetOpen.add(u.dataset.funfold); renderFleet(); e.stopPropagation(); return; }
+  const st = e.target.closest("[data-fstack]"); if (st) { fleetOpen.delete(st.dataset.fstack); renderFleet(); e.stopPropagation(); return; }
+  const o = e.target.closest("[data-fopen]"); if (o) flash(`open ${o.dataset.fopen}`);
+}, true);
 const hc = document.createElement("div"); hc.className = "mk-hc mk-card"; hc.hidden = true; document.body.appendChild(hc);
 let hoverT, hideT, dragH = null;
 function hideCard() { clearTimeout(hoverT); clearTimeout(hideT); hc.hidden = true; }
