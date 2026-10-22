@@ -1,1 +1,0 @@
-- **A message longer than one line gets the box's whole width.** The attach, dictate and send buttons sat beside the text, so every line of it lost their width, about 150 px on a phone, and a message took nearly twice the lines it needed. Past one line the buttons now drop to a row of their own under the text, in a session's composer and on the new tab.

@@ -5,6 +5,129 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [2.14.0] - 2026-10-22
+
+### Added
+
+- **Cursor Agent is a fourth harness: `harness: cursor`.** aegis could run
+  Claude Code, OpenCode and Codex only, so a Cursor workspace had to be driven
+  in a terminal beside the rest. A cursor agent now runs through
+  `cursor-agent acp` with its own model catalog, its model, effort and
+  permission applied while it runs, the aegis MCP endpoint handed to each
+  session through `session/new` (each with its own token), permission requests
+  answered by the configured level and never "allow always", streamed text,
+  tools and the harness's own generated title in the transcript, prompts typed
+  mid-turn queued instead of cancelling the run, and an interrupt that closes
+  the turn and resumes the conversation with `session/load`. `aegis doctor`
+  probes its version and catalog like the other harnesses, and an untested
+  version is named with the command that installs a tested one. Cursor reports
+  no cost or token counts through ACP, so those sessions show neither.
+  help: config#add-an-agent
+
+- **Several people on one server, each as their own Linux user.** With `multi_user:` in `.aegis.yaml`, every token names a Linux user, and each person's harness, terminals, monitors, workflow steps and the git calls made for them run as that user with no capabilities, so git and GitHub record each person's own work. The server needs `CAP_SETUID`, `CAP_SETGID` and `CAP_SETPCAP` from its unit (`aegis service install --multi-user`), and `aegis doctor` checks the setup.
+  help: tokens#linux-users
+
+- **In multi-user mode, files are read and written as their person.** The Files view, Alt+O, the editor, downloads, `file_send`, attachments and artifact drafts open each file with the Linux credentials of the person it is for, so the kernel checks every access. A member's Files view shows their home, and their attachments and artifact drafts live under `~/.aegis` there, where their agent can reach them.
+  help: tokens#linux-users
+
+- **Secrets that never enter the transcript.** `secret_send` hands the person a password, token or key from a file: the server keeps a random pad in memory and only the XOR on the card, and the person reveals it once before it expires. `secret_request` asks the person for a secret in a password field on a card and writes it 0600 to a new file the agent uses by reference, removed when the session closes. Both work through linked servers, and the agent's priming steers it to them for credentials.
+  help: secrets
+
+- **An agent's browser docks beside its transcript.** `browser_open` places the browser in the session's canvas (`dock=`, right by default), where the person watches, takes over and gives it back without leaving the session; a browser the person gives to a session docks there too. When control reaches the person, the view they see fits the page's viewport to itself.
+  help: browsers#opening-one
+
+- **Browsers the agent and the person share.** A Chromium runs on the server, held like a terminal and streamed live into a tab. The person clicks and types into it; an agent reads and drives it with the `browser_*` tools, hands the page over for a captcha, a sign-in or a step to try, and is woken with what the person did when they give it back. Profiles keep sign-ins between opens. Needs the `browser` extra.
+  help: browsers
+
+- **In multi-user mode, a member sees only its own.** Its sessions, terminals, workflow runs, schedules, queue tasks, archive and journal are the only ones it or its agents can list or address, and someone else's answers as a thing that does not exist. An admin still sees everything; without `multi_user` nothing changes.
+  help: tokens#linux-users
+
+- **A dictated message tells the agent it was dictated.** Dictation gets about three words in ten wrong (29% WER, measured), and the agent read the result as if it were typed. Now a message whose box got dictated text carries a line asking the agent to read it by context and ask about what it cannot make sense of; the person's row shows a small "dictated" mark instead of that line.
+  help: sessions#dictate-a-message
+
+- **The Fleet shows a group of sessions as one stack.** A session and those it started take one cell: the head's card with the edges of two more behind it in the group's colour, a badge with the group's size, and a row with each member's state. A member that needs you marks the stack and is named on it, and under "Needs you first" the stack ranks by its most urgent member. A click unfolds the group across the grid with every member's card and who started it; Stack folds it again. Queue workers and quiet sessions keep cards of their own, and the Fleet's unfolding is kept apart from the bar's folds.
+  help: sessions
+
+- **A session tab shows its card on hover.** Resting the pointer on a tab opens that session's Fleet card under it, with the tab menu's actions as icon buttons (open, quiet, interrupt, sleep, restart, hand off, rename, archive), and the pointer can move onto it. On a phone a long press on a tab opens the same card as a sheet from the bottom edge; cards in the Fleet keep their menu.
+  help: sessions
+
+- **Sessions started from another session gather in one group.** A session spawned by an agent, a queue worker, a session an agent started on a linked server, and a session a person started from another one's transcript or with `/spawn` all join the group of the session that started the chain, fixed at spawn so it outlives that session. The tab bar draws each group as one block in its own colour, headed by its oldest open member, whose count folds the group to one tab and blinks when a hidden member needs you. Dragging a head moves its group, a member moves only inside its group, and Alt+J unfolds a group to reach a hidden member. A head's menu archives the whole group after one question.
+  help: sessions
+
+`turn_end` takes `close`: an agent the person told to close when it finishes ends its last turn done with `close: true`, and aegis archives it and every session it or they started once the turn ends. It is refused, with what still runs, while a monitor, background task, queue task, workflow run or any session in that tree is not finished.
+  help: handoffs#close-yourself-when-you-finish
+
+- **Alt+Q quiets the session in front.** It runs the Quiet button, so the tab hides until the turn ends, only for a working or waiting session; it works from the message box and shows in the ? list and the palette.
+  help: sessions
+
+- **`/multiuser` walks you through setting up several people.** An admin types it, and the session's agent reads the new help page multi-user, looks at the host, asks who the people are and which folders they share, and shows every command (users, groups, the pool file, the unit, the tokens) before it runs one. On a server already in the mode, it starts at adding a person.
+  help: multi-user
+
+- **Alt+A archives the session in front.** It runs the Archive button, so a session that is not done still asks first; it works from the message box and shows in the ? list and the palette.
+  help: sessions
+
+- **Phone width for every artifact.** Each artifact's bar, on its card, in the viewer and in a docked pane, has a Phone width button that narrows the page to 390 px, so you can see on a desktop how it looks on a phone. Agents are told to lay every page out for both widths.
+  help: artifacts
+
+- **An agent can suggest a change to `.aegis.yaml` that you apply from a card.** `config_suggest` puts the diff in the transcript with Apply and Not now; Apply writes exactly that text, and a file changed since makes the card stale instead of overwriting it. Only an admin applies.
+  help: config
+
+- **`/setup` moves how you already work into aegis.** Type it in any session: the agent reads your harnesses, skills, instruction files, cron jobs and, after you say yes, your past transcripts, proposes on one page what each becomes (agents, queues, schedules, workflows), and applies what you tick. Run it again whenever you like; it proposes only what is new since the last run.
+  help: setup
+
+- **A busy agent learns who is waiting, and an urgent handoff reaches it mid-turn.** A message held for a working session's turn to end is now announced on its next aegis tool result, with its sender and first line, so the agent can finish early when it changes the work. `peer_handoff(urgent=true)` skips the wait on Claude Code and Codex and reaches the running turn at its next tool step, marked `steered in` in the transcript; the reply says `steered into`.
+  help: handoffs#hand-work-over
+
+### Changed
+
+- **The Host rows list every disk the server mounts.** They showed only the filesystem holding aegis, so a second disk with room to spare (`/mnt/data` beside a full `/`) was invisible. Each disk now has its own row in the Fleet band and the session sidebar, the `disk` tile shows the fullest, and a `host:` block hides mount points or adds ZFS and NFS ones.
+  help: config#disks
+
+- **`plan_update` answers with the plan it saved.** The reply lists each item with its state and reminds the agent to call again when an item starts or finishes or the work changes, so the plan on the card stays true without waiting for the stale-plan nudge.
+  help: sessions
+
+- **Recaps and side notes work with every configured harness.** `recap:` and
+  `btw:` no longer require Claude Code; they use the selected Claude Code,
+  OpenCode or Codex agent through a read-only one-shot call.
+  help: config#recaps
+
+- **The quota warns only when you are over pace.** A window turns amber, and sessions get the quota notice, when its spend projects past 100% at reset with half of it already spent; it turns red at 90% spent. Before, a projection of 80% was already a warning, so a week ending with 15% unused told every agent to cut back.
+  help: sessions#notices
+
+- **Agents are primed for browsers only where browsers run, and told to point the person at the tab.** The primer's browser paragraph now appears only when the `browser` extra is installed and the server is not in multi-user mode. It tells the agent that a new browser is a tab the person has to open, and to read what the person did with `browser_events`. The help page adds how to smoke-test a page with the person and how to turn a session they clicked through into a Playwright script.
+  help: browsers#turning-a-session-into-a-test
+
+- **After filing feedback, the agent offers to start on the fix.** A filed bug, feature or docs issue now ends with one question, "fix it now" or "later", and a yes starts the change in the aegis repository from that issue.
+  help: feedback#offer-the-fix
+
+- **A card of several files pages with a swipe and goes round.** On a touch screen a sideways swipe across the card or the viewer shows the next or previous file, and the pager wraps: Next on the last file shows the first, Previous on the first shows the last, where the buttons used to disable at the ends.
+  help: artifacts#send-a-file-instead
+
+- **`turn_end` reminds an agent to set both its handle and its title.** Agents often renamed the handle and kept the title aegis drew from the first prompt, so the tab and the card read the prompt instead of the work. Until both are set, `turn_end` answers with one line asking for a `session_rename` with both. Workers never get it, and sessions from before this release count as named.
+  help: sessions#rename-it
+
+- **The tab bar reads with a dozen sessions open.** Each tab shows its session's whole handle, with the title under it in smaller text, and never shrinks; a full strip scrolls sideways, and a button at its end lists every open session. A linked server's name now sits inside its tab instead of in a badge that spilled over the next one. The header's buttons are bare icons, Files shows on a phone too, and the session panel's toggle moved into the transcript's navigation pill (on a phone it stays in the header, above the drawer).
+  help: sessions
+
+- **The Repos row lists each repo once.** A session's main checkout and worktrees of one repo sit inside one section, and each other session that wrote there is named once with its checkouts under it, where the card used to repeat the repo per worktree and every peer on every one. The sidebar line sums a repo's checkouts into one line.
+  help: sessions#the-repos-a-session-works-in
+
+- **Archiving the open tab opens the next one.** As with Quiet, the view moves to the next tab, or the nearest one before it, and to the Fleet only when no tab is left; this holds when the archive came from another browser or an agent.
+  help: sessions
+
+- **`turn_end` refuses done while something will still wake the agent.** A live monitor, a callback queue task, a background task or an approved workflow run starts another turn when it ends, so a done card with its Archive button was wrong. The refusal names what is live and tells the agent to cancel it, end the turn without `turn_end` to wait, or pass review.
+  help: sessions
+
+### Fixed
+
+- **A session's token no longer shows in the harness's command line.** Claude Code got its aegis token inside `--mcp-config` on its argv, which every user on the host can read from `/proc`; the config now names `${AEGIS_SESSION_TOKEN}` and Claude Code reads it from its environment.
+
+- **A slash command typed in the new tab runs as a command.** `/effort low` or `/help` there started a session and sent the line to the agent as plain text; it now runs in the new session as it would typed in its own box.
+
+- **A message longer than one line gets the box's whole width.** The attach, dictate and send buttons sat beside the text, so every line of it lost their width, about 150 px on a phone, and a message took nearly twice the lines it needed. Past one line the buttons now drop to a row of their own under the text, in a session's composer and on the new tab.
+
+- **The "continue fresh" chip hands off at once.** It opened the brief panel first; a tap now starts the fresh session with the brief straight away.
+
 ## [2.13.1] - 2026-10-21
 
 ### Fixed
