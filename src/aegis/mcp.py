@@ -336,7 +336,9 @@ skeleton and returns its path; edit it with your Edit tool; artifact_send lands 
 it in the transcript after running it hidden in their browser (when they have \
 the transcript open; `started: null` when no browser was open, or none answered \
 within 3 s, and it landed untried), and refuses a \
-page that throws, so edit and send again until it lands. Only then write your \
+page that throws, so edit and send again until it lands. Lay every page out \
+for a desktop and a phone alike: the person sees it at both widths, on a phone \
+or through the Phone width button on its bar. Only then write your \
 message, which may refer to the card above it, and end the turn with \
 turn_end(needs_you) when the page asks something. The caption is the one line \
 they read before the card; a lesson whose text belongs beside its controls \
