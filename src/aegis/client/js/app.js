@@ -2891,6 +2891,7 @@ function spawnGrow() {
   const t = $("sp-text");
   const view = t.closest(".view");
   if (!view.clientHeight) return;
+  stackActs(t);
   t.style.height = "";
   const css = getComputedStyle(view);
   const pad = parseFloat(css.paddingTop) + parseFloat(css.paddingBottom);
@@ -3259,7 +3260,29 @@ $("sp-mic").addEventListener("click", () => !offline() && dictation.toggle(spawn
 const touch = matchMedia("(pointer: coarse)");
 if (touch.matches) $("sp-text").placeholder = "What should the agent do?";
 
+// The buttons sit beside one line of text and drop under a longer one, so its
+// lines get the box's whole width (#575). It measures at the narrow width every
+// time: measured wide, a text that fits there would flip back and forth. A
+// placeholder never stacks: an empty box keeps its height. The measure is a
+// hidden copy: resizing the box itself to measure lays out the whole transcript
+// again, seconds for a long message.
+const ruler = document.createElement("textarea");
+ruler.ariaHidden = "true";
+ruler.tabIndex = -1;
+ruler.style.cssText = "position:absolute;left:-9999px;top:0;visibility:hidden;height:0;padding-top:0;padding-bottom:0;border:0;overflow:hidden;box-sizing:border-box";
+document.body.append(ruler);
+function stackActs(t) {
+  const box = t.closest(".box");
+  if (!t.value || !box.clientWidth) return box.classList.remove("stacked");
+  const css = getComputedStyle(t);
+  for (const k of ["fontFamily", "fontSize", "fontWeight", "lineHeight", "letterSpacing", "paddingLeft", "paddingRight"]) ruler.style[k] = css[k];
+  ruler.style.width = `${box.clientWidth - box.querySelector(".acts").offsetWidth}px`;
+  ruler.value = t.value;
+  box.classList.toggle("stacked", ruler.scrollHeight > parseFloat(css.lineHeight) * 1.5);
+}
+
 function autosize() {
+  stackActs(input);
   input.style.height = "auto";
   input.style.height = `${Math.min(input.scrollHeight, window.innerHeight * 0.4)}px`;
 }
