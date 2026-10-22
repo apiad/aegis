@@ -1294,6 +1294,27 @@ async def test_session_list_reads_an_old_servers_states_as_asleep(
         await alpha.stop()
 
 
+async def test_an_agents_far_spawn_joins_its_group(pair):
+    alpha, beta = pair
+    await member_link(alpha, beta, OPEN)
+    here = await alpha.spawn(permission="write")
+    out = await turn(here, mcp("session_spawn", agent="opus@beta", prompt="hi"))
+    assert out.startswith("mcp ok:"), out
+    (far,) = beta.app.sessions.sessions.values()
+    assert far.meta()["group"] == f"{here.log_id}@alpha"
+
+
+async def test_a_far_server_without_groups_still_takes_the_spawn(pair):
+    alpha, beta = pair
+    await member_link(alpha, beta, OPEN)
+    alpha.app.links.get("beta").remote.pop("groups", None)  # as a server before #586
+    here = await alpha.spawn(permission="write")
+    out = await turn(here, mcp("session_spawn", agent="opus@beta", prompt="hi"))
+    assert out.startswith("mcp ok:"), out
+    (far,) = beta.app.sessions.sessions.values()
+    assert far.meta().get("group") is None
+
+
 async def test_an_urgent_handoff_through_a_link_is_steered_into_the_far_turn(pair):
     from .test_agents import busy
 

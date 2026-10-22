@@ -661,6 +661,9 @@ def build_web(
                 "t": "welcome",
                 "proto": PROTO,
                 "server": app.server_name,
+                # A spawn through a link may say its group (#586): a link
+                # sends it only to a server that says this.
+                "groups": True,
                 "native": desktop,
                 "me": {
                     "name": principal.name,
