@@ -35,6 +35,9 @@ that asks), ``workflow:<run>`` (one run whole, for its card; patches ``set``),
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as pkg_version
+
 import asyncio
 import base64
 import binascii
@@ -56,7 +59,7 @@ from pydantic import BaseModel, Field, model_validator
 from pydantic.json_schema import SkipJsonSchema
 
 from . import archive, attachments as att, commands, dictation, files, restarts
-from . import feedback, harness_versions, multiuser
+from . import feedback, harness_versions, multiuser, setup
 from . import workflow_store
 from .agent_ops import (
     far_error,
@@ -568,6 +571,7 @@ class App:
         register_agent_ops(self)
         register_config_ops(self)
         register_config_suggest(self)
+        self.setup_records = setup.register_setup(self)
         register_artifact_ops(self)
         self.secrets = self.sessions.secrets = register_secret_ops(self)
         register_layout_ops(self)
@@ -1281,6 +1285,21 @@ class App:
                 )
             on = self.multi_user is not None
             await s.deliver(*multiuser.turn(arg, on, multiuser.facts(on), iso_now()))
+            return {"status": "delivered"}
+        if name == "setup":
+            # The agent moves the person's habits into aegis from the help
+            # page setup; anyone may run it, for what they own.
+            cfg = self.config.current()
+            try:
+                ver = pkg_version("aegis-harness")
+            except PackageNotFoundError:
+                ver = "unknown"
+            found = await self.registry.call("config.detect", {})
+            line = setup.facts(
+                ver, found, [a.name for a in cfg.agents], list(cfg.queues)
+            )
+            rec = self.setup_records.get(self.who(caller).name)
+            await s.deliver(*setup.turn(arg, line, rec, iso_now()))
             return {"status": "delivered"}
         if name in ("workflow", "loop"):
             # A person's line launches a saved workflow: the only path, beside

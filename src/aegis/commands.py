@@ -71,6 +71,12 @@ AEGIS: dict[str, Command] = {
             "the agent guides it",
         ),
         Command(
+            "setup",
+            "[text]",
+            "Look at how you work now and move it into aegis; the agent "
+            "proposes, you tick, it applies",
+        ),
+        Command(
             "workflow",
             "[id] [text]",
             "Run a saved workflow now, its args made from your text; alone, list them",
