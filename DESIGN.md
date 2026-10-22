@@ -1158,6 +1158,14 @@ guide it may be starting spawns a session of its own. The release notes ship in
 the wheel beside the pages (`changelog_read.py`), and every added or changed
 entry ends with the help page that shows it, so `/whats-new` tours the notes
 of the code it runs and its guide opens the right page for each.
+Each page also declares one to three hints in its front matter, which the new
+tab rotates one at a time and which open the page when clicked; a page without
+them does not load, so a new page cannot skip them. The new tab's doctor row
+reads the last run of `doctor_watch.py`, which runs the same checks as
+`aegis doctor` in the background (after the start, on every change to
+`.aegis.yaml`, every 6 hours), because a run probes each harness for up to
+20 seconds and opening a tab must not wait on that. `/doctor` asks for a
+fresh run and starts a session with its report.
 
 **Performance is measured on every PR and never gates.** `scripts/bench.py`
 replays a recorded transcript through the fake harness in

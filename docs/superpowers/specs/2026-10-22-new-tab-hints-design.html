@@ -151,7 +151,7 @@ svg text{font-family:var(--font-mono)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · new-tab hints and doctor</span>
-  <span class="st"><span class="pill acc">draft</span><span class="pill">2026-10-22</span></span>
+  <span class="st"><span class="pill acc">approved</span><span class="pill">2026-10-22</span></span>
 </div>
 
 <div class="wrap">
@@ -171,7 +171,7 @@ svg text{font-family:var(--font-mono)}
 
 <main>
 <h1>New-tab hints, /feedback and /doctor</h1>
-<div class="meta"><span>spec</span><span>·</span><span>status: draft, waiting for approval</span><span>·</span><span>branch help-hints</span></div>
+<div class="meta"><span>spec</span><span>·</span><span>status: approved; built on branch help-hints</span><span>·</span><span>branch help-hints</span></div>
 <p class="lede">The new tab's bottom rows become three things: the actions that apply to this person now (<code>/tutorial</code>, <code>/whats-new</code>, a new <code>/feedback</code>, and <code>/doctor</code> when the setup has problems), one short line naming what the doctor found, and a rotating hint taken from the help pages that opens its page when clicked. A person learns one feature at a time from the tab they open most, and learns about a broken setup before a session fails on it.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
@@ -290,7 +290,7 @@ hints:
 <li>every 6 h, to catch a harness upgraded outside aegis;</li>
 <li>and fresh when someone runs <code>/doctor</code>.</li>
 </ul>
-<p>Only one run happens at a time, and a run asked for during another one waits for it. <code>config.doctor</code>, used by Settings, keeps running fresh and also refreshes the cache.</p>
+<p>Only one run happens at a time, and a run asked for during another one waits for it. <code>config.doctor</code>, used by Settings, keeps running fresh on its own. A change to <code>.aegis.yaml</code> runs the watch at once, even during its first 10 s.</p>
 <p>For an admin, <code>help.state</code> adds <code>doctor: {errors, warns, findings}</code>, where <code>findings</code> holds every warning and error as <code>{level, subject, message}</code>. For anyone else, or when every finding is ok, <code>doctor</code> is null.</p>
 <p>The row is a single summary: a dot and a left border in the worst level's colour, the sentence "This server's setup has 2 errors and 1 warning. Fix them with", and a <code>/doctor</code> button. The chevron unfolds the findings in place. Each one is the doctor's message as a sentence, under a small label for the thing it is about: "Agent ds", "Queue cheap", "Claude Code", "The service". A last line points to Settings, where each finding is already marked on its row. The row has no cross. It hides when the doctor stops finding a problem.</p>
 <p>The label comes from <code>Finding.where</code> in the client, through a small table: <code>agents.&lt;name&gt;…</code> becomes "Agent &lt;name&gt;", <code>queues.&lt;name&gt;</code> "Queue &lt;name&gt;", <code>harness.&lt;h&gt;</code> the harness's label, <code>file</code> ".aegis.yaml". Any other key falls back to the raw <code>where</code>. The doctor's messages are not rewritten. A message that reads badly as a sentence is fixed in <code>doctor.py</code>, where the CLI and Settings benefit too.</p>
