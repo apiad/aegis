@@ -264,7 +264,9 @@ body{background:#000}
 .a2 .spawn .doc li.warn .w::before{content:"warning · ";color:var(--warn)}
 .a2 .spawn .doc li.tail{font-size:11.5px;color:var(--muted)}
 .a2 .spawn .doc li.tail a{color:var(--accent)}
-/* The tip: one help-page hint at a time (app.js rotateTip). */
+/* The tip: one help-page hint at a time (app.js rotateTip). It and /feedback
+   give their room to the first message once it has text. */
+.a2 .spawn .hints[data-typing] :is(.tip,#hint-feedback){display:none}
 .a2 .spawn .hint.tip{margin-top:4px;border-top:1px solid var(--rule);padding-top:4px}
 .a2 .spawn .hint.tip .lab{flex:none;display:flex;color:var(--faint)}
 .a2 .spawn .hint.tip .lab .ic{width:12px;height:12px}

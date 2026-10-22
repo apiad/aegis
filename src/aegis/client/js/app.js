@@ -2881,6 +2881,8 @@ $("sp-text").addEventListener("keydown", (ev) => {
 // changes with the window and with what sits around the box (files, hints, an
 // error), so those are watched too. A hidden view has no height to fill.
 function spawnGrow() {
+  // The tip and /feedback rows give way to a first message (base.css).
+  $("sp-hints").toggleAttribute("data-typing", $("sp-text").value !== "");
   const t = $("sp-text");
   const view = t.closest(".view");
   if (!view.clientHeight) return;
