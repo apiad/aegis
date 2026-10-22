@@ -259,4 +259,4 @@ def open_natively(path: Path) -> subprocess.Popen:
     cmd = opener()
     if cmd is None:
         raise FileError("no_desktop", "this server has no desktop to open files on")
-    return launch.detach([*cmd, str(path)])
+    return launch.detach([*cmd, str(path)], user=None)

@@ -62,6 +62,7 @@ def prs(top: str, branch: str) -> list[dict] | None:
                 text=True,
                 errors="replace",
                 timeout=TIMEOUT,
+                user=None,
             )
             if r.returncode == 0:
                 found = [

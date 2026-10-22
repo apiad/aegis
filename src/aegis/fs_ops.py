@@ -237,6 +237,7 @@ def _git_ignored(top: Path, paths: list[Path]) -> set[Path]:
             ["git", "-C", str(top), "check-ignore", "--stdin", "-z"],
             input="\0".join(rels).encode("utf-8", "surrogateescape"),
             timeout=30,
+            user=None,
         )
     except (OSError, subprocess.TimeoutExpired):
         return set()

@@ -121,7 +121,7 @@ class Terminal:
         os.set_blocking(master, False)
         try:
             self.proc = await launch.pty(
-                argv, tty=slave, cwd=cwd, env=env, cgroup=cgroup
+                argv, tty=slave, cwd=cwd, env=env, cgroup=cgroup, user=None
             )
         except BaseException:
             os.close(master)

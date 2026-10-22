@@ -19,6 +19,15 @@ logic:
 - ``browser``: a URL handed to the desktop's browser through ``webbrowser``,
   which starts its own process.
 
+Every shape takes ``user``, the Linux user the process acts for, or None for
+the server itself. It is required, so a new call site has to say. Outside the
+multi-user mode it changes nothing. Once ``configure`` turns the mode on (at
+boot, app.py), every process starts behind ``setpriv``, which drops every
+capability, and a process with a user is switched to it with that user's own
+environment, what the caller added and the pool file (users.py). ``detach``
+and ``browser`` open things on the server's desktop, which a shared server
+does not have, and are refused in the mode.
+
 ``asyncio.create_subprocess_exec`` and ``subprocess.run``/``Popen`` are looked
 up on their modules at each call, so a test that patches them reaches every
 process.
@@ -27,10 +36,13 @@ process.
 from __future__ import annotations
 
 import asyncio
+import pwd
+import shutil
 import subprocess
 import webbrowser
 from pathlib import Path
 
+from . import users
 from .cgroups import wrap
 from .harness import raise_oom_score
 
@@ -40,10 +52,58 @@ STDOUT = asyncio.subprocess.STDOUT
 # asyncio.create_subprocess_exec's own default for a pipe's line limit.
 LIMIT = 2**16
 
+# The multi-user mode: its pool, setpriv's path and a login's PATH; None off.
+_mode: tuple[users.Pool, str, str] | None = None
+
+
+def configure(mu: users.MultiUser | None) -> None:
+    """Turn the multi-user mode on for every process from now on, or off."""
+    global _mode
+    if mu is None:
+        _mode = None
+        return
+    setpriv = shutil.which("setpriv") or "setpriv"
+    _mode = (users.Pool(mu.env_file), setpriv, users.env_path())
+
+
+def _as(
+    user: str | None, argv: list[str], env: dict[str, str] | None
+) -> tuple[list[str], dict[str, str] | None]:
+    """``argv`` and ``env`` as the process runs them: unchanged outside the
+    multi-user mode; in it, behind setpriv, which drops every capability and,
+    for a user, switches to it with that user's own environment. A bare
+    program name is found in the server's PATH, since a login's PATH lacks
+    the directories harnesses install to."""
+    if _mode is None:
+        return argv, env
+    pool, setpriv, path = _mode
+    pw = None
+    if user is not None:
+        try:
+            pw = pwd.getpwnam(user)
+        except KeyError:
+            raise PermissionError(f"Linux user {user} does not exist") from None
+    exe = argv[0]
+    if "/" not in exe:
+        found = shutil.which(exe)
+        if found is None:
+            raise FileNotFoundError(exe)
+        exe = found
+    out = [*users.setpriv_argv(pw, setpriv), exe, *argv[1:]]
+    if pw is None:
+        return out, env
+    return out, users.user_env(pw, users.added(env), pool.get(), path)
+
+
+def _refused(what: str) -> None:
+    if _mode is not None:
+        raise PermissionError(f"{what} is off in multi-user mode")
+
 
 async def child(
     argv: list[str],
     *,
+    user: str | None,
     cwd: str | Path | None = None,
     env: dict[str, str] | None = None,
     stdin=None,
@@ -57,6 +117,7 @@ async def child(
     """``argv`` started inside ``cgroup`` when there is one. ``env`` None is
     the server's environment. Raises FileNotFoundError for a missing binary,
     with or without the cgroup."""
+    argv, env = _as(user, argv, env)
     proc = await asyncio.create_subprocess_exec(
         *wrap(cgroup, argv),
         cwd=cwd,
@@ -75,6 +136,7 @@ async def child(
 async def pty(
     argv: list[str],
     *,
+    user: str | None,
     tty: int,
     cwd: str | Path,
     env: dict[str, str] | None,
@@ -83,6 +145,7 @@ async def pty(
     """``argv`` on the terminal ``tty``, as its controlling terminal
     (``setsid --ctty``: a preexec_fn is unsafe in a threaded server), in
     ``cgroup`` when there is one, with the OOM score raised."""
+    argv, env = _as(user, argv, env)
     proc = await asyncio.create_subprocess_exec(
         *wrap(cgroup, ["setsid", "--ctty", *argv]),
         stdin=tty,
@@ -98,6 +161,7 @@ async def pty(
 def run(
     argv: list[str],
     *,
+    user: str | None,
     cwd: str | Path | None = None,
     env: dict[str, str] | None = None,
     input: bytes | str | None = None,
@@ -107,6 +171,7 @@ def run(
 ) -> subprocess.CompletedProcess:
     """``argv`` run to its end with its output captured. OSError and
     subprocess.TimeoutExpired reach the caller, as from subprocess.run."""
+    argv, env = _as(user, argv, env)
     return subprocess.run(
         argv,
         cwd=cwd,
@@ -122,11 +187,13 @@ def run(
 def detach(
     argv: list[str],
     *,
+    user: str | None,
     cwd: str | Path | None = None,
     stdout=subprocess.DEVNULL,
     stderr=subprocess.DEVNULL,
 ) -> subprocess.Popen:
     """``argv`` in a session of its own, with no stdin, not waited for."""
+    _refused("starting a program on the server's desktop")
     return subprocess.Popen(
         argv,
         stdin=subprocess.DEVNULL,
@@ -137,7 +204,8 @@ def detach(
     )
 
 
-def browser(url: str) -> None:
+def browser(url: str, *, user: str | None) -> None:
     """``url`` opened by ``webbrowser``, which picks the desktop's browser and
-    starts it itself."""
+    starts it itself. ``user`` is for symmetry: refused in the mode."""
+    _refused("opening a browser on the server's desktop")
     webbrowser.open(url)

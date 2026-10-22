@@ -14,6 +14,7 @@ import os
 import pwd
 import re
 import shutil
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -217,3 +218,51 @@ def boot_problems(
                     "the server's user"
                 )
     return out
+
+
+def setpriv_argv(pw: pwd.struct_passwd | None, setpriv: str = "setpriv") -> list[str]:
+    """The prefix that drops every capability, and switches to ``pw`` when
+    there is one (None keeps the server's user). Dropping the bounding set
+    needs CAP_SETPCAP, which is why the unit carries it."""
+    switch = (
+        [f"--reuid={pw.pw_uid}", f"--regid={pw.pw_gid}", "--init-groups"] if pw else []
+    )
+    return [
+        setpriv,
+        *switch,
+        "--inh-caps=-all",
+        "--ambient-caps=-all",
+        "--bounding-set=-all",
+        "--no-new-privs",
+    ]
+
+
+def added(
+    env: Mapping[str, str] | None, base: Mapping[str, str] = os.environ
+) -> dict[str, str]:
+    """What a caller put in ``env`` beyond the server's own environment: the
+    variables a switched child still gets."""
+    if env is None:
+        return {}
+    return {k: v for k, v in env.items() if base.get(k) != v}
+
+
+def user_env(
+    pw: pwd.struct_passwd,
+    added: Mapping[str, str],
+    pool: Mapping[str, str],
+    path: str,
+) -> dict[str, str]:
+    """A switched child's whole environment: its user's own, as a login gets
+    it, then what aegis adds, then the pool. Built here and handed to the
+    process, never put in its argv, which every user can read."""
+    env = {
+        "HOME": pw.pw_dir,
+        "SHELL": pw.pw_shell or "/bin/sh",
+        "USER": pw.pw_name,
+        "LOGNAME": pw.pw_name,
+        "PATH": path,
+    }
+    if "TERM" in os.environ:
+        env["TERM"] = os.environ["TERM"]
+    return env | dict(added) | dict(pool)

@@ -72,7 +72,7 @@ class Found:
 
 
 async def _version(bin: str) -> str:
-    proc = await launch.child([bin, "--version"], stdout=PIPE, stderr=STDOUT)
+    proc = await launch.child([bin, "--version"], stdout=PIPE, stderr=STDOUT, user=None)
     try:
         out, _ = await asyncio.wait_for(proc.communicate(), VERSION_TIMEOUT_S)
     except TimeoutError:

@@ -77,7 +77,11 @@ async def run_bash(
     and a schedule's check both run through here."""
     try:
         proc = await launch.child(
-            ["bash", "-c", cmd], cwd=cwd, stdout=launch.PIPE, stderr=launch.PIPE
+            ["bash", "-c", cmd],
+            cwd=cwd,
+            stdout=launch.PIPE,
+            stderr=launch.PIPE,
+            user=None,
         )
     except OSError as e:
         return None, "", str(e)

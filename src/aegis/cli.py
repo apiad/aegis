@@ -178,7 +178,7 @@ def _detach(
         log.write(f"== {time.strftime('%Y-%m-%dT%H:%M:%S%z')} aegis serve --detach\n")
         log.flush()
         child = launch.detach(
-            cmd, cwd=roots.config_root, stdout=log, stderr=subprocess.STDOUT
+            cmd, cwd=roots.config_root, stdout=log, stderr=subprocess.STDOUT, user=None
         )
     pid_path.write_text(f"{child.pid}\n")
     deadline = time.monotonic() + DETACH_BOOT_S

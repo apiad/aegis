@@ -195,6 +195,7 @@ class ClaudeProcess:
             limit=LINE_LIMIT,
             cgroup=self.cgroup,
             oom=True,
+            user=None,
         )
         err = asyncio.create_task(self._pump_stderr())
         self._tasks = [err, asyncio.create_task(self._pump_stdout(err))]

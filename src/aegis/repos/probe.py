@@ -48,6 +48,7 @@ def git(top: str, *args: str) -> str | None:
             errors="surrogateescape",  # a path git prints may not be UTF-8
             timeout=TIMEOUT,
             env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
+            user=None,
         )
     except (OSError, subprocess.TimeoutExpired, ValueError):
         return None

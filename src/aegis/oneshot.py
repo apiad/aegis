@@ -131,6 +131,7 @@ async def run(argv: list[str], cwd: Path, timeout: float) -> str:
             stdin=launch.DEVNULL,
             stdout=launch.PIPE,
             stderr=launch.DEVNULL,
+            user=None,
         )
     except OSError as e:
         raise OneshotError(str(e)) from e
