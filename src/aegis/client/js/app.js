@@ -3254,14 +3254,22 @@ if (touch.matches) $("sp-text").placeholder = "What should the agent do?";
 // The buttons sit beside one line of text and drop under a longer one, so its
 // lines get the box's whole width (#575). It measures at the narrow width every
 // time: measured wide, a text that fits there would flip back and forth. A
-// placeholder never stacks: an empty box keeps its height.
+// placeholder never stacks: an empty box keeps its height. The measure is a
+// hidden copy: resizing the box itself to measure lays out the whole transcript
+// again, seconds for a long message.
+const ruler = document.createElement("textarea");
+ruler.ariaHidden = "true";
+ruler.tabIndex = -1;
+ruler.style.cssText = "position:absolute;left:-9999px;top:0;visibility:hidden;height:0;padding-top:0;padding-bottom:0;border:0;overflow:hidden;box-sizing:border-box";
+document.body.append(ruler);
 function stackActs(t) {
   const box = t.closest(".box");
-  box.classList.remove("stacked");
-  t.style.height = "0";
+  if (!t.value || !box.clientWidth) return box.classList.remove("stacked");
   const css = getComputedStyle(t);
-  const line = parseFloat(css.lineHeight) + parseFloat(css.paddingTop) + parseFloat(css.paddingBottom);
-  box.classList.toggle("stacked", !!t.value && t.scrollHeight > line + 1);
+  for (const k of ["fontFamily", "fontSize", "fontWeight", "lineHeight", "letterSpacing", "paddingLeft", "paddingRight"]) ruler.style[k] = css[k];
+  ruler.style.width = `${box.clientWidth - box.querySelector(".acts").offsetWidth}px`;
+  ruler.value = t.value;
+  box.classList.toggle("stacked", ruler.scrollHeight > parseFloat(css.lineHeight) * 1.5);
 }
 
 function autosize() {
