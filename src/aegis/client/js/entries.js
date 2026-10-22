@@ -1509,7 +1509,10 @@ const RENDERERS = {
   inbox(e) {
     // A monitor wake, a queue result, a handoff: the header is the title.
     const body = el("div", "body");
-    body.append(el("div", "from", e.title));
+    const from = el("div", "from", e.title);
+    // An urgent handoff sent into the running turn, not after it.
+    if (e.detail?.steered) from.append(el("span", "steered", "steered in"));
+    body.append(from);
     const text = (e.md || "").split("\n").filter((l) => !l.startsWith("> from ")).join("\n");
     body.append(markdown(text));
     return row(e, "inbox", body);

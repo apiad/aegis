@@ -35,10 +35,21 @@ turn headed:
 ```
 
 The receiver treats the body as an instruction. If it is busy, the message is
-held and arrives when its turn ends; `interrupt=true` cuts its current turn
-first. The reply says whether the message landed or was held. A handoff to an
-archived session is refused, and a member's agent can hand off only to
-sessions its owner owns.
+held and arrives when its turn ends; meanwhile its next aegis tool result tells
+it who waits and quotes your message's first line, so make that line say what
+changes. Two flags change the timing:
+
+- `urgent=true` reaches a busy receiver inside its turn, at its next tool step,
+  the way a person's typing does. Use it for a correction that changes its work
+  now: stop, a cut in scope, don't do X. Its row shows `steered in`. Claude Code
+  and Codex take it; on another harness it is held like any message.
+- `interrupt=true` cuts the receiver's current turn first. It cannot be combined
+  with `urgent`.
+
+The reply says what happened: `landed at <handle>` (it was idle), `held for
+<handle>` (with the reason when its harness cannot take an urgent message), or
+`steered into <handle>`. A handoff to an archived session is refused, and a
+member's agent can hand off only to sessions its owner owns.
 
 A handoff does not report back. If you need the answer, say in the context
 how to give it to you, for example by handing off back to your handle.

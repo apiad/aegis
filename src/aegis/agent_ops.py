@@ -100,10 +100,32 @@ class TaskId(_Strict):
     task_id: str
 
 
+URGENT_AND_INTERRUPT = (
+    "urgent and interrupt together: interrupt ends the turn, so there is no "
+    "turn to steer into. Pick one."
+)
+
+
+def handoff_reply(did: str, to: str, cannot_steer: bool) -> str:
+    """What peer_handoff tells its sender (Session.deliver's outcome)."""
+    if did == "steered":
+        return f"steered into {to}"
+    if did == "held":
+        why = " (its harness cannot take a message mid-turn)" if cannot_steer else ""
+        return f"held for {to}{why}"
+    return f"landed at {to}"
+
+
 class Handoff(_Strict):
     target: str = Field(description="The receiving session's handle.")
     context: str = Field(min_length=1)
     interrupt: bool = Field(False, description="Cut the target's current turn first.")
+    urgent: bool = Field(
+        False,
+        description="Reach a working target inside its current turn, at its next "
+        "tool step, instead of when the turn ends. For a correction that changes "
+        "its work now: stop, a cut in scope, don't do X.",
+    )
 
 
 class Sender(_Strict):
@@ -116,6 +138,7 @@ class Deliver(_Strict):
     target: str
     context: str = Field(min_length=1)
     interrupt: bool = False
+    urgent: bool = False
     sender: Sender
 
 
@@ -755,9 +778,13 @@ def register_agent_ops(app: App) -> None:
     @r.op("peer.handoff", Handoff, agent=True)
     async def peer_handoff(p: Handoff, caller):
         """Give another session context or an instruction; it arrives as a user turn
-        headed `> from agent:<you>`. A busy target gets it when its turn ends, unless
-        interrupt cuts that turn first. `handle@server` reaches a session on a
-        server this one links; nothing there can reach you back."""
+        headed `> from agent:<you>`. A busy target gets it when its turn ends, and
+        is told meanwhile who waits; urgent reaches it inside the turn instead, at
+        its next tool step, and interrupt cuts that turn first. `handle@server`
+        reaches a session on a server this one links; nothing there can reach you
+        back."""
+        if p.urgent and p.interrupt:
+            raise OpError("bad_params", URGENT_AND_INTERRUPT)
         handle, server = split_address(p.target, app.server_name)
         who = app.who(caller)
         if server is not None:
@@ -786,14 +813,15 @@ def register_agent_ops(app: App) -> None:
         )
         if p.interrupt and to.status == "working":
             await to.interrupt()
-        before = len(to.held)
         try:
-            await to.deliver(f"> from {sender} · {iso_now()}", p.context)
+            did = await to.deliver(
+                f"> from {sender} · {iso_now()}", p.context, urgent=p.urgent
+            )
         except Archived as e:
             raise OpError("archived", f"{p.target} is archived") from e
-        # Held mid-turn, or by its owner's quota gate.
-        held = len(to.held) > before
-        return f"{'held for' if held else 'landed at'} {to.handle}"
+        return handoff_reply(
+            did, to.handle, p.urgent and not to.harness.steers_mid_turn
+        )
 
     async def far_handoff(handle: str, server: str, p: Handoff, caller: Caller):
         link = app.links.get(server)
@@ -814,6 +842,9 @@ def register_agent_ops(app: App) -> None:
                     "target": handle,
                     "context": p.context,
                     "interrupt": p.interrupt,
+                    # Only when set: a linked server from before urgent refuses
+                    # a field it does not know.
+                    **({"urgent": True} if p.urgent else {}),
                     "sender": sender,
                 },
             )
@@ -823,8 +854,9 @@ def register_agent_ops(app: App) -> None:
                     e.code, FAR_ERRORS[e.code].format(handle=handle, server=server)
                 ) from None
             raise OpError("far_error", f"{server} refused the handoff") from None
-        held = isinstance(r, dict) and r.get("held") is True
-        return f"{'held for' if held else 'landed at'} {handle}@{server}"
+        r = r if isinstance(r, dict) else {}
+        did = "steered" if r.get("steered") else "held" if r.get("held") else "sent"
+        return handoff_reply(did, f"{handle}@{server}", r.get("cannot_steer") is True)
 
     @r.op("peer.deliver", Deliver)
     async def peer_deliver(p: Deliver, caller):
@@ -850,15 +882,22 @@ def register_agent_ops(app: App) -> None:
                 "not_owner",
                 f"{to.handle} belongs to {owner}; a handoff cannot reach it",
             )
+        if p.urgent and p.interrupt:
+            raise OpError("bad_params", URGENT_AND_INTERRUPT)
         if p.interrupt and to.status == "working":
             await to.interrupt()
-        before = len(to.held)
         who = f"agent:{p.sender.handle}@{p.sender.server} ({p.sender.user})"
         try:
-            await to.deliver(f"> from {who} · {iso_now()}", p.context)
+            did = await to.deliver(
+                f"> from {who} · {iso_now()}", p.context, urgent=p.urgent
+            )
         except Archived as e:
             raise OpError("archived", f"{p.target} is archived") from e
-        return {"held": len(to.held) > before}
+        return {
+            "held": did == "held",
+            "steered": did == "steered",
+            "cannot_steer": p.urgent and not to.harness.steers_mid_turn,
+        }
 
     def readable(handle: str, caller) -> list[dict]:
         """A transcript peer_read may read: an open session's, or the archived

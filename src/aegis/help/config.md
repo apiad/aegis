@@ -248,6 +248,7 @@ notices:
   plan:     {stale_min: 10}
   monitors: {stall_min: 15, broken_checks: 3, overdue_min: 10, wake: true}
   queues:   true
+  held:     true
   status:   {lines: 5}
 ```
 
@@ -256,7 +257,7 @@ agent is warned. `monitors.stall_min` is the minutes a monitor's progress may
 sit still (and at least three intervals), `monitors.broken_checks` how many intervals a
 check may fail to run, and `monitors.overdue_min` how far past its ETA a monitor may
 run, before its owner is warned; with `wake: true` the warning wakes an idle
-owner. `status.lines` caps the status block. Minutes may be fractions.
+owner. `held` warns a busy agent of each message held for its turn's end. `status.lines` caps the status block. Minutes may be fractions.
 `false` in place of a source turns it off; `status: false` drops the status
 block and keeps the warnings. A name no installed source declares is ignored,
 and `aegis doctor` warns about it.

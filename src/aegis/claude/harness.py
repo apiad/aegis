@@ -102,6 +102,7 @@ class ClaudeCode:
     name = "claude-code"
     src = "claude"
     label = "Claude Code"
+    steers_mid_turn = True  # a user message read at the next tool boundary
     tool_prefix = "mcp__aegis__"
 
     def __init__(self, bin: str) -> None:

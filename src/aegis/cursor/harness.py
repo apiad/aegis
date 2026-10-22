@@ -15,6 +15,7 @@ class Cursor:
     name = "cursor"
     src = "cursor"
     label = LABEL
+    steers_mid_turn = False  # the process queues mid-turn input itself
     # Cursor shows MCP tools under their bare name (measured: ``meta``), so
     # the fold strips aegis's prefix from what it prefixes.
     tool_prefix = f"mcp__{SERVER}__"

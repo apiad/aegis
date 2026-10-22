@@ -136,7 +136,7 @@ svg text{font-family:var(--font-mono)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · held messages and urgent handoffs</span>
-  <span class="st"><span class="pill acc">draft</span><span class="pill">2026-10-22</span><span class="pill">spike/held-notice</span></span>
+  <span class="st"><span class="pill acc">approved</span><span class="pill">2026-10-22</span><span class="pill">#622</span></span>
 </div>
 
 <div class="wrap">
@@ -155,7 +155,7 @@ svg text{font-family:var(--font-mono)}
 
 <main>
 <h1>Held messages and urgent handoffs</h1>
-<div class="meta"><span>spec</span><span>·</span><span>status: draft, awaiting review</span><span>·</span><span>spike on branch <code>spike/held-notice</code></span></div>
+<div class="meta"><span>spec</span><span>·</span><span>status: approved; built on branch <code>spike/held-notice</code></span><span>·</span><span>issue <a href="https://github.com/apiad/aegis/issues/622">#622</a></span></div>
 <p class="lede">A message for a busy session still waits for its turn to end, but the busy agent now learns at its next aegis tool call who is waiting and what each message opens with, so it can finish early. An agent whose message must change another agent's work right now marks the handoff urgent, and it reaches that agent inside the running turn, at its next tool step, the way a person's typing does.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
@@ -181,7 +181,7 @@ svg text{font-family:var(--font-mono)}
 <thead><tr><th>Decision</th><th>Choice</th><th>Why</th></tr></thead>
 <tbody>
 <tr><td>Default delivery <span class="who">maintainer</span></td><td>Unchanged: a message for a busy session is held and sent as one user turn when the turn ends.</td><td class="why">Instructions belong in user turns. Moving them into tool results would read as prompt injection, and most holds are harmless.</td></tr>
-<tr><td>Held notice <span class="who">maintainer</span></td><td>While messages are held, the busy session's next aegis tool result (or prompt) carries a <code>held</code> warning naming each sender and quoting each message's first line.</td><td class="why">The agent can judge whether to finish early. The first line is the cheapest signal; the full message still arrives as a user turn.</td></tr>
+<tr><td>Held notice <span class="who">maintainer</span></td><td>While messages are held, the busy session's next aegis tool result (or prompt) carries one <code>held</code> warning per message, naming its sender and quoting its first line.</td><td class="why">The agent can judge whether to finish early. The first line is the cheapest signal; the full message still arrives as a user turn.</td></tr>
 <tr><td>Who decides urgency <span class="who">maintainer</span></td><td>The sender, per message: <code>peer_handoff(urgent=true)</code>.</td><td class="why">Only the sender knows the message changes the receiver's work.</td></tr>
 <tr><td>Who may send urgent <span class="who">maintainer</span></td><td>Agents only, wherever <code>interrupt</code> is already allowed (any session the sender may hand off to).</td><td class="why">Urgent is milder than interrupt, which cuts the turn; restricting the milder one more makes no sense.</td></tr>
 <tr><td>Visible in the transcript <span class="who">maintainer</span></td><td>A steered message's row carries a <code>steered in</code> mark.</td><td class="why">In a session a person is steering, it tells their message from a peer's.</td></tr>
@@ -191,7 +191,7 @@ svg text{font-family:var(--font-mono)}
 <tr><td>The reply <span class="who">agent</span></td><td><code>landed at X</code>, <code>held for X</code> (as today) or <code>steered into X</code>.</td><td class="why">The sender knows which happened.</td></tr>
 <tr><td>Urgent with interrupt <span class="who">agent</span></td><td>Refused as <code>bad_params</code>.</td><td class="why">Interrupt ends the turn, so there is nothing to steer into; accepting both would hide a misunderstanding.</td></tr>
 <tr><td>Linked servers <span class="who">agent</span></td><td><code>urgent</code> travels in <code>peer.deliver</code> like <code>interrupt</code>.</td><td class="why">Same rule on both sides of a link.</td></tr>
-<tr><td>After a restart <span class="who">agent</span></td><td>The <code>held</code> items are recomputed from each session's stored held list when the registry loads it.</td><td class="why">Notice items live in memory; the held list is in the session's meta.</td></tr>
+<tr><td>After a restart <span class="who">agent</span></td><td>Not recomputed. No turn runs after a restart, and the stored held messages go out with the session's continue, as before.</td><td class="why">A warning would claim a turn that is not running. Built as first written, it would have.</td></tr>
 <tr><td>Urgent during a flush <span class="who">agent</span></td><td>Joins the held batch being sent.</td><td class="why">The batch is about to arrive anyway; steering into a turn that has not started would race it.</td></tr>
 <tr><td>A person's urgent handoff <span class="who">agent</span></td><td>Allowed when the caller is a person (<code>aegis call peer_handoff</code> from their shell).</td><td class="why">A person can already type into the turn; refusing them the flag protects nothing.</td></tr>
 <tr><td>Sender label <span class="who">agent</span></td><td>The header with its <code>&gt; from </code> prefix and trailing timestamp removed (<code>agent:director</code>, <code>monitor:mon-5e1f · fail</code>).</td><td class="why">Every inbox kind writes its own header; the label keeps what tells them apart.</td></tr>
@@ -245,16 +245,16 @@ svg text{font-family:var(--font-mono)}
 <h2 id="heads-up"><span class="n">04</span>The held notice</h2>
 <p>A new per-session notice source, <code>held</code>, declared with <code>notice_sources.declare("held", {})</code>, so <code>notices: {held: false}</code> turns it off. The registry sets its items from the session's held list every time that list changes (<code>status_changed</code>, which <code>_hold</code> already calls), and clears them in <code>_flush_held</code> before the batch is sent, so the warning never rides on the message it announces.</p>
 <ul>
-<li>One item at level <code>warn</code>, so it rides on the next aegis tool result as well as the next prompt, whichever comes first. Info items ride only on prompts and would arrive too late.</li>
-<li>Its key counts the turn-held messages (<code>held:n1</code>, <code>held:n2</code>): each new message is told again; a text change alone is not.</li>
-<li>One line per message: the sender from its header and the first non-empty line of its body, cut at 120 characters.</li>
+<li>One item per held message at level <code>warn</code>, so it rides on the next aegis tool result as well as the next prompt, whichever comes first. Info items ride only on prompts and would arrive too late.</li>
+<li>Keyed by the message's arrival (<code>held:m&lt;ms&gt;</code>): each new message is told once, and the ones already told are not repeated.</li>
+<li>The sender from its header and the first non-empty line of its body, cut so the whole item fits a notice's one line of 160 characters (<code>notices.TEXT_MAX</code>). The draft listed every message in one block with 120 characters each; notices are flattened to one line, so one item each it is.</li>
 <li>It ends silently when the batch goes out. The messages themselves are the follow-up.</li>
 </ul>
-<pre>&gt; from aegis:notice · held:n2 · warn · 2026-10-22T12:04:11
-2 messages wait for your turn to end:
-- agent:director: "Scope changed: do #47 only, then end with done."
-- monitor:mon-5e1f · fail: "CI on #48 failed after 3m12s."
-They arrive as a user turn when it ends. If they may change what you are doing, finish the current step and end your turn.</pre>
+<pre>&gt; from aegis:notice · held:m1792684879882 · warn · 2026-10-22T12:04:11
+agent:director waits for your turn to end: "Scope changed: do #47 only, then end with done." End your turn early if it changes your work.
+
+&gt; from aegis:notice · held:m1792684881305 · warn · 2026-10-22T12:04:13
+monitor:mon-5e1f · fail waits for your turn to end: "CI on #48 failed after 3m12s." End your turn early if it changes your work.</pre>
 <p>A harness that never calls an aegis tool mid-turn sees the notice only on its next prompt, which is the same moment the messages arrive. The notice adds nothing there and costs nothing.</p>
 
 <h3>Try it</h3>
@@ -298,7 +298,7 @@ They arrive as a user turn when it ends. If they may change what you are doing, 
 <thead><tr><th>Where</th><th>Change</th></tr></thead>
 <tbody>
 <tr><td>session.py</td><td><code>deliver(urgent=)</code>; clear the held items before the flushed send (in the spike).</td></tr>
-<tr><td>registry.py</td><td>The <code>held</code> source and <code>held_items</code>, now with first lines (in the spike, senders only).</td></tr>
+<tr><td>registry.py</td><td>The <code>held</code> source, <code>held_items</code> and <code>held_label</code>.</td></tr>
 <tr><td>harness classes</td><td><code>steers_mid_turn</code>, replacing the spike's <code>STEERS</code> tuple.</td></tr>
 <tr><td>agent_ops.py</td><td><code>Handoff.urgent</code>, <code>Deliver.urgent</code>, the refusal with interrupt, the third reply.</td></tr>
 <tr><td>transcript fold, client</td><td>The <code>steered</code> flag and its pill.</td></tr>
@@ -351,11 +351,8 @@ const $ = (id) => document.getElementById(id);
   function hold(k) { held.push(SAMPLE[k]); draw(); }
   function callTool() {
     rows.push(tool("plan_update", "3 of 5", "plan saved"));
-    if (held.length && held.length !== told) {
-      const lines = held.map(([f, b]) => `- ${esc(f)}: "${esc(b)}"`).join("<br>");
-      rows.push(inbox(`from aegis:notice · held:n${held.length} · warn`, `${held.length} message${held.length > 1 ? "s wait" : " waits"} for your turn to end:<br>${lines}<br>If they may change what you are doing, finish the current step and end your turn.`, true));
-      told = held.length;
-    }
+    held.slice(told).forEach(([f, b], i) => rows.push(inbox(`from aegis:notice · held:m${told + i + 1} · warn`, `${esc(f)} waits for your turn to end: "${esc(b)}" End your turn early if it changes your work.`, true)));
+    told = held.length;
     draw();
   }
   function endTurn() {
