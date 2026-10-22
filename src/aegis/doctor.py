@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import platform
 import shlex
 import shutil
 import tempfile
@@ -494,11 +495,24 @@ def _multi_user(
     entries: list[dict],
     unit: dict[str, str] | None,
     bins: dict[str, str],
+    machine: str | None = None,
 ) -> list[Finding]:
-    """The multi-user mode's rows: the unit's capabilities, each member
-    token's Linux user, the state directory, the pool file, and whether every
-    user can run each harness. Reads only."""
+    """The multi-user mode's rows: the machine, the unit's capabilities, each
+    member token's Linux user, the state directory, the pool file, and
+    whether every user can run each harness. Reads only."""
     out = []
+    machine = machine or platform.machine()
+    if machine not in users.SETGROUPS:
+        # as_user.py opens a person's files with a per-thread setgroups,
+        # whose syscall number is known for these machines only.
+        out.append(
+            Finding(
+                "error",
+                "multi_user.files",
+                f"multi_user supports {' and '.join(users.SETGROUPS)}; "
+                f"this machine is {machine}",
+            )
+        )
     if unit is None:
         out.append(
             Finding("warn", "multi_user.unit", "no installed unit runs aegis serve")
