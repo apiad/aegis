@@ -1,0 +1,146 @@
+"""The rules of the multi-user mode (#548): which Linux user a token may name,
+the ``multi_user`` block of ``.aegis.yaml``, and the pool file whose variables
+every person's harness gets.
+
+Pure functions and one small reader: nothing here starts a process
+(``launch.py`` does, with what this module builds). The design is
+docs/superpowers/specs/2026-10-21-linux-users-design.html, sections 04 to 06.
+"""
+
+from __future__ import annotations
+
+import logging
+import pwd
+import re
+from dataclasses import dataclass
+from pathlib import Path
+
+from .ops import OpError
+
+log = logging.getLogger("aegis.users")
+
+LOGIN_DEFS = Path("/etc/login.defs")
+UID_MIN_DEFAULT = 1000
+ENV_PATH_DEFAULT = "/usr/local/bin:/usr/bin:/bin"
+ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _login_defs(path: Path) -> dict[str, str]:
+    """The ``KEY value`` lines of login.defs; {} when it cannot be read."""
+    try:
+        text = path.read_text()
+    except OSError:
+        return {}
+    out = {}
+    for line in text.splitlines():
+        parts = line.split(None, 1)
+        if len(parts) == 2 and not parts[0].startswith("#"):
+            out[parts[0]] = parts[1].strip()
+    return out
+
+
+def uid_min(login_defs: Path = LOGIN_DEFS) -> int:
+    """The lowest uid of a regular account on this host."""
+    try:
+        return int(_login_defs(login_defs)["UID_MIN"])
+    except (KeyError, ValueError):
+        return UID_MIN_DEFAULT
+
+
+def env_path(login_defs: Path = LOGIN_DEFS) -> str:
+    """The PATH a regular user's login gets on this host."""
+    v = _login_defs(login_defs).get("ENV_PATH", "")
+    return v.removeprefix("PATH=") or ENV_PATH_DEFAULT
+
+
+def allowed(
+    name: str, *, server_uid: int, login_defs: Path = LOGIN_DEFS
+) -> pwd.struct_passwd:
+    """``name``'s account, when a token may run as it: an existing regular
+    account that is neither root nor the server's own user, which can read
+    every token."""
+    try:
+        pw = pwd.getpwnam(name)
+    except KeyError:
+        raise OpError("no_such_user", f"no Linux user named {name}") from None
+    if pw.pw_uid == 0:
+        raise OpError("user_not_allowed", f"{name} is root")
+    if pw.pw_uid == server_uid:
+        raise OpError("user_not_allowed", f"{name} is the server's own user")
+    low = uid_min(login_defs)
+    if pw.pw_uid < low:
+        raise OpError(
+            "user_not_allowed", f"{name} has uid {pw.pw_uid}, below UID_MIN ({low})"
+        )
+    return pw
+
+
+@dataclass(frozen=True)
+class MultiUser:
+    """``multi_user:`` in .aegis.yaml. Its presence turns the mode on."""
+
+    env_file: Path | None = None
+
+
+def multi_user_from(data: dict) -> tuple[MultiUser | None, str | None]:
+    """The mode from the whole document: ``multi_user:`` with nothing after it
+    is YAML null, and still turns the mode on."""
+    if "multi_user" not in data:
+        return None, None
+    raw = data["multi_user"]
+    if raw is None:
+        return MultiUser(), None
+    if not isinstance(raw, dict):
+        return (
+            None,
+            "multi_user is a map, e.g. multi_user: {env_file: /etc/aegis/pool.env}",
+        )
+    for k in raw:
+        if k != "env_file":
+            return None, f"multi_user: unknown key {k}"
+    env_file = raw.get("env_file")
+    if env_file is None:
+        return MultiUser(), None
+    if not isinstance(env_file, str) or not Path(env_file).is_absolute():
+        return None, "multi_user.env_file must be an absolute path"
+    return MultiUser(env_file=Path(env_file)), None
+
+
+def parse_env(text: str) -> dict[str, str]:
+    """``NAME=value`` lines. Blank and ``#`` lines are ignored, one pair of
+    matching quotes around a value is stripped, and any other line is logged
+    by number and skipped."""
+    out = {}
+    for n, line in enumerate(text.splitlines(), 1):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        name, eq, value = line.partition("=")
+        if not eq or not ENV_NAME.match(name):
+            log.warning("aegis: pool file line %d is not NAME=value; skipped", n)
+            continue
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        out[name] = value
+    return out
+
+
+class Pool:
+    """The pool file's variables, read again when its mtime changes."""
+
+    def __init__(self, path: Path | None) -> None:
+        self.path = path
+        self._seen: int | None = None
+        self._vars: dict[str, str] = {}
+
+    def get(self) -> dict[str, str]:
+        if self.path is None:
+            return {}
+        try:
+            m = self.path.stat().st_mtime_ns
+            if m != self._seen:
+                self._vars = parse_env(self.path.read_text())
+                self._seen = m
+        except OSError:
+            self._seen, self._vars = None, {}
+        return dict(self._vars)

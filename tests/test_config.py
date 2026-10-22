@@ -232,3 +232,15 @@ def test_the_nudges_block():
         assert got["silent_s"] == 2 and got["plan_min"] == 15
         assert key in got["error"], raw
     assert "error" in nudges_from(3)
+
+
+def test_multi_user_is_a_known_key_and_parses(tmp_path):
+    from aegis.users import MultiUser
+
+    cfg, _ = config(tmp_path, "multi_user:\n  env_file: /etc/aegis/pool.env\n")
+    snap = cfg.current()
+    assert snap.multi_user == MultiUser(Path("/etc/aegis/pool.env"))
+    assert snap.multi_user_error is None
+    assert "multi_user" not in snap.unknown_keys
+    cfg, _ = config(tmp_path, "agents: {}\n")
+    assert cfg.current().multi_user is None
