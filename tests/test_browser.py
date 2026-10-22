@@ -6886,6 +6886,14 @@ def test_enter_while_dictating_sends_what_was_said(dict_server, mic_page):
     assert pg.get_attribute("#mic", "data-state") == "idle"
     assert pg.input_value("#input") == ""
     assert pg.locator(".row", has_text="kw=").count() >= 1, "the dictated text was sent"
+    # The agent read the note (#579); the person's row shows a mark instead.
+    row = pg.locator(".row.user", has_text="kw=")
+    assert row.locator(".dictated").count() == 1
+    assert "dictated by voice" not in row.inner_text()
+    pg.fill("#input", "typed")
+    pg.press("#input", "Enter")
+    turns_done(pg, 2)
+    assert pg.locator(".row.user", has_text="typed").locator(".dictated").count() == 0
 
 
 def test_alt_m_dictates_and_a_tab_switch_sends_late_text_to_its_own_draft(
@@ -6921,6 +6929,10 @@ def test_the_new_tab_box_dictates_too(dict_server, mic_page):
     pg.wait_for_selector("#sp-mic[data-state=idle]", timeout=10000)
     assert "kw=" in pg.input_value("#sp-text")
     assert pg.get_attribute("#mic", "data-state") == "idle"
+    pg.click("#sp-go")
+    turns_done(pg, 1)
+    assert pg.locator(".row.user", has_text="kw=").locator(".dictated").count() == 1
+    assert pg.errors == []
 
 
 def test_the_mic_is_disabled_without_a_microphone_api(dict_server, page):

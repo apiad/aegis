@@ -93,6 +93,21 @@ ends. Esc interrupts the turn.
 `/model`, `/effort` and `/permission` switch those for this session; clicking
 the chips under the box does the same.
 
+## Dictate a message
+
+The mic button in a session's box and in the new-tab box, or Alt+M, records
+you and writes what you say into the box. Speech is transcribed in your
+browser, and nothing is sent until you press Enter, which first finishes the
+words still being transcribed.
+
+Dictation mishears words, names and terms. A message whose box got dictated
+text since your last send tells the agent so: after your text it reads a line
+saying that part of the message was dictated and may contain transcription
+errors, so it reads by context and asks about what it cannot make sense of.
+Your row in the transcript shows "🎙 dictated" in place of that line. Emptying
+the box forgets the mark. A message to a session on a linked server, or one
+queued while offline, goes without the line.
+
 ## Rename it
 
 A session has a handle, two or three lowercase words joined by hyphens, unique

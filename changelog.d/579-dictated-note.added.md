@@ -1,0 +1,2 @@
+- **A dictated message tells the agent it was dictated.** Dictation gets about three words in ten wrong (29% WER, measured), and the agent read the result as if it were typed. Now a message whose box got dictated text carries a line asking the agent to read it by context and ask about what it cannot make sense of; the person's row shows a small "dictated" mark instead of that line.
+help: sessions#dictate-a-message

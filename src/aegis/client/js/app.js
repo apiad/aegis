@@ -2819,9 +2819,11 @@ async function spawnFromComposer() {
   await dictation.finish($("sp-text"));
   const text = $("sp-text").value.trim();
   const params = { agent: a.name, cwd: $("sp-cwd").value.trim() || null, ...overrides() };
-  // With files, the session starts empty: they upload into its inbox and go
-  // out with the text as its first message (sendFirst).
-  const held = spAtts.list("spawn").length > 0;
+  // With files or dictated text, the session starts empty: the files upload
+  // into its inbox and go out with the text as its first message (sendFirst),
+  // which carries the dictated mark a spawn's prompt has no field for.
+  const dictated = spoken.has("spawn") && !spServer; // a linked server may predate the field
+  const held = spAtts.list("spawn").length > 0 || dictated;
   // A / line runs as a command in the new session, as typed there (#570):
   // as spawn's prompt the harness would get it as plain text.
   const command = text.startsWith("/") && !text.startsWith("//");
@@ -2838,7 +2840,8 @@ async function spawnFromComposer() {
     pickAgent(a.name);
     const key = keyOf(spServer, r.log_id);
     go(`#s=${key}`);
-    if (held) sendFirst(key, text, spAtts.take("spawn"));
+    spoken.delete("spawn");
+    if (held) sendFirst(key, text, spAtts.take("spawn"), dictated);
     else if (command) {
       // The session's patch lands before spawn's reply; a far one may not have.
       const s = sessions.get(key);
@@ -3245,8 +3248,14 @@ const dictation = new Dictation({
 });
 // A session's box holds that session's draft, so text that lands after the
 // box moved to another session goes to the draft it started in.
-const sessionTarget = () => ({ el: input, key: `aegis.draft.${shown}`, current: () => `aegis.draft.${shown}` });
-const spawnTarget = () => ({ el: $("sp-text"), key: null, current: () => null });
+// The drafts that got dictated text since their last send, by draft key and
+// "spawn": their send tells the server, which adds a note for the agent (#579).
+const spoken = new Set();
+const sessionTarget = () => {
+  const key = `aegis.draft.${shown}`;
+  return { el: input, key, current: () => `aegis.draft.${shown}`, heard: () => spoken.add(key) };
+};
+const spawnTarget = () => ({ el: $("sp-text"), key: null, current: () => null, heard: () => spoken.add("spawn") });
 if (!navigator.mediaDevices) {
   for (const [b] of mics()) {
     b.disabled = true;
@@ -3511,7 +3520,10 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
   const rev = shown === s.key ? transcript.rev : -1;
   const waitAsDraft = async (nonce) => {
     await queue(s.key, text, rev, nonce);
-    if (fromComposer) localStorage.removeItem(`aegis.draft.${s.key}`);
+    if (fromComposer) {
+      localStorage.removeItem(`aegis.draft.${s.key}`);
+      spoken.delete(`aegis.draft.${s.key}`); // the outbox keeps no mark
+    }
     if (fromComposer && shown === s.key) {
       input.value = "";
       autosize();
@@ -3531,12 +3543,15 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
   const params = attachments.length ? { text, attachments } : { text };
   // A linked server older than nonces would refuse the field.
   if (fromComposer && !forKey(s.key).server) params.nonce = nonceFor(s.key, JSON.stringify([text, attachments]));
+  // Only to this server, like the nonce: a linked one older than the field would refuse it.
+  if (fromComposer && !forKey(s.key).server && spoken.has(`aegis.draft.${s.key}`)) params.dictated = true;
   const call = callFor(s.key, "session.send", params);
   const sent = (r) => {
     unconfirmed.delete(s.key);
     if (/^\/model\s/.test(text)) catalogs.delete(s.key); // its efforts may differ
     if (fromComposer) {
       localStorage.removeItem(`aegis.draft.${s.key}`);
+      spoken.delete(`aegis.draft.${s.key}`);
       atts.clear(s.key);
     }
     if (fromComposer && shown === s.key) {
@@ -3613,7 +3628,7 @@ const waiting = new Set();
 
 // A new tab's first message when it carried files: they upload into the
 // session just started, then go out with the text, as a composer send would.
-async function sendFirst(key, text, files) {
+async function sendFirst(key, text, files, dictated) {
   atts.add(files, key);
   waiting.add(key);
   try {
@@ -3627,7 +3642,7 @@ async function sendFirst(key, text, files) {
     return;
   }
   try {
-    await callFor(key, "session.send", { text, attachments: ready.ids });
+    await callFor(key, "session.send", { text, attachments: ready.ids, ...(dictated && text && { dictated }) });
     atts.clear(key);
   } catch (e) {
     toast(e.message, { kind: "error" });
@@ -3816,6 +3831,7 @@ input.addEventListener("input", async () => {
   warmIfParked();
   autosize();
   if (shown) localStorage.setItem(`aegis.draft.${shown}`, input.value);
+  if (!input.value.trim()) spoken.delete(`aegis.draft.${shown}`); // a box emptied by hand starts over
   const v = input.value;
   if (v.startsWith("/") && !v.startsWith("//")) {
     if (menu.isOpen) menu.refresh();

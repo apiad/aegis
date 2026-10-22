@@ -1,4 +1,5 @@
-"""The server's half of dictation: the pinned engine and model, and the keywords.
+"""The server's half of dictation: the pinned engine and model, the keywords,
+and the note a dictated message carries to the agent.
 
 Speech is transcribed in the browser (DESIGN.md, "Audio never leaves the
 browser"). The server keeps Cactus Whistle's browser build on disk, verified
@@ -48,6 +49,29 @@ PINS = (
         "b6e02f048568ac5d01a2042556c658061e699acbc0aa2a1439f52f3d461dffeb",
     ),
 )
+
+# The line a message carries when its box got dictated text since the last send
+# (#579). Whistle gets about 29% of words wrong (dictation.js), so the agent
+# is told to read by context and ask, not to take each word at face value. The
+# transcript strips it back off the person's row and shows a mark instead
+# (transcript/entries.py), so it must stay one exact string.
+NOTE = (
+    "(aegis: part of this message was dictated by voice and may contain "
+    "transcription errors, such as misheard words, names or terms. Read it by "
+    "its context, and ask about anything you cannot make sense of.)"
+)
+
+
+def with_note(text: str) -> str:
+    """``text`` as the agent reads it when it was dictated."""
+    return f"{text}\n\n{NOTE}" if text.strip() else text
+
+
+def without_note(text: str) -> tuple[str, bool]:
+    """``text`` without the dictation note, and whether it carried one."""
+    tail = f"\n\n{NOTE}"
+    return (text.removesuffix(tail), True) if text.endswith(tail) else (text, False)
+
 
 # Words of agent work that Whistle misses inside Spanish speech without a hint.
 VOCABULARY = (

@@ -26,6 +26,7 @@ from typing import Any
 from .. import files
 from .. import layout as canvas
 from ..artifacts import EVENTS_KEPT
+from ..dictation import without_note
 from ..claude.stream import (
     CommandEcho,
     CommandOutput,
@@ -88,6 +89,11 @@ def _entry(
     md: str | None = None,
     detail: dict | None = None,
 ) -> dict:
+    if kind == "user" and md:
+        # A dictated message's note is for the agent; the row shows a mark.
+        md, dictated = without_note(md)
+        if dictated:
+            detail = {**(detail or {}), "dictated": True}
     return {
         "id": id,
         "kind": kind,
@@ -514,7 +520,7 @@ class Fold:
             text = str(rec.get("text", ""))
             head, notices = split_notices(text)
             attached = [_sent_file(f) for f in rec.get("files") or []]
-            if attached or notices:
+            if attached or notices or without_note(head)[1]:
                 self._said[pid] = text
             return folded + self._upsert(
                 _entry(
@@ -1113,7 +1119,7 @@ class Fold:
                         ts,
                         d.USER_GLYPH,
                         md=carried["md"],
-                        detail={"files": attached},
+                        detail=carried["detail"],
                     )
                 )
             elif typed is not None:
