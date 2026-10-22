@@ -1,19 +1,26 @@
 """Record aegis itself, for the landing page and the help pages.
 
-The director boots a real ``aegis serve`` in a temporary root whose agents run
-the real Claude Code against the canary's fake model
+The director runs a real aegis in its own process, in a fixed root, whose
+agents run the real Claude Code against the canary's fake model
 (``tests/canary/fakemodel.py``), so every tab, card and pane on screen is
-aegis's own code and no model quota is spent. A beat (``beats/*.py``) scripts
+aegis's own code and no model quota is spent. What aegis reads of the machine
+(host, quotas, version) comes from a scripted ``World`` (world.py). A beat (``beats/*.py``) scripts
 the fake with ``Rule``s and drives the real client through Playwright, as a
 person does: it types, clicks, opens tabs.
 
-On top, ``stage.js`` adds a camera (a 3D transform on the client's root) and
-overlays the camera does not move: a title card, captions, callouts that point
-at a real element, a lower third, a cursor and a ring where it clicks.
+On top, ``stage.js`` adds a camera (a 3D transform on the client's root) that
+drifts, tilts and zooms, a spotlight that dims all but one element, a lift
+that brings one forward, and overlays the camera does not move: a title card,
+captions, callouts that point at a real element, a lower third, a cursor and a
+ring where it clicks.
 
 Frames come from the CDP screencast, which sends one when the page changes,
 with its timestamp; each is written to ffmpeg as often as the fixed output
-rate needs, so the video runs at real time. Narration clips are cached by the
+rate needs. A machine that draws the client at 10 frames a second cannot
+film motion at 30, so the world runs ``--slow`` times slower than the video:
+the page's animations (CDP ``Animation.setPlaybackRate``), the camera, the
+typing, the fake model and every wait, while the video's clock runs that much
+faster. Only the client's own clocks (a turn's elapsed seconds) are not slowed. Narration clips are cached by the
 hash of their line, mixed at the time the beat cued them, and the same lines
 and times go into a WebVTT file.
 
@@ -45,11 +52,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(ROOT / "src"))  # this tree's aegis, not the venv's
 
 from tests.canary.fakemodel import Call, FakeModel, Reply, Rule, Say  # noqa: E402
 from tests.canary.fakemodel import Shell as _Shell  # noqa: E402
+from world import Server, World  # noqa: E402
 
-__all__ = ["Call", "Rule", "Say", "Shell", "Stage"]
+__all__ = ["Call", "Rule", "Say", "Shell", "Stage", "World"]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -67,6 +76,7 @@ W, H, SCALE = 1280, 720, 1.5
 # long after it: a voice that starts on the cut, or a cut on its last word,
 # sounds clipped.
 LEAD, TAIL = 0.8, 1.6
+SLOW = 3.0
 
 
 def _free_port() -> int:
@@ -84,7 +94,8 @@ class DemoModel(FakeModel):
 
     def __init__(self) -> None:
         super().__init__()
-        self.pace = 0.8
+        self.pace = 0.8  # video seconds per step
+        self.slow = 1.0
         self.titles: dict[str, str] = {}
         self.descs: dict[str, str] = {}
 
@@ -111,7 +122,8 @@ class DemoModel(FakeModel):
             for head, desc in self.descs.items():
                 if cmd.startswith(head):
                     args = {**args, "description": desc}
-        return dataclasses.replace(r, args=args, delay=max(r.delay, self.pace))
+        delay = max(r.delay, self.pace) * self.slow
+        return dataclasses.replace(r, args=args, delay=delay)
 
 
 def _fill_results(value, results: list[str]):
@@ -174,7 +186,6 @@ def _harness_env(home: Path, base: str) -> dict[str, str]:
         "CLAUDE_CONFIG_DIR": str(home / "claude"),
         "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
         "DISABLE_AUTOUPDATER": "1",
-        "PYTHONPATH": str(ROOT / "src"),
         # Nothing of the machine's own: no login, no quota reading, no probes.
         "CLAUDE_CREDS": str(home / "none" / "credentials.json"),
         "CLAUDE_CONFIG": str(home / "none" / "claude.json"),
@@ -208,13 +219,12 @@ class Cue:
 
 
 class Capture:
-    """Screencast frames into ffmpeg at a fixed rate, in real time, except
-    while ``step`` holds the clock: then each frame is written once, so a
-    camera move renders at the full rate on a machine too slow to draw it
-    live, and the wall time it took is left out of the video."""
+    """Screencast frames into ffmpeg at a fixed rate. The video's clock runs
+    ``slow`` times faster than the wall's, as the world runs that much
+    slower."""
 
-    def __init__(self, cdp, ffmpeg: str, out: Path) -> None:
-        self.cdp, self.out = cdp, out
+    def __init__(self, cdp, ffmpeg: str, out: Path, slow: float) -> None:
+        self.cdp, self.out, self.slow = cdp, out, slow
         self.proc = subprocess.Popen(
             [ffmpeg, "-loglevel", "error", "-y", "-f", "image2pipe", "-c:v", "mjpeg",
              "-framerate", str(FPS), "-i", "-", "-c:v", "libx264", "-preset", "veryfast",
@@ -225,38 +235,16 @@ class Capture:
         self.last: bytes | None = None
         self.written = 0
         self.frames = 0
-        self.skip = 0.0  # wall seconds held out of the video
-        self.held = False
         cdp.on("Page.screencastFrame", self._frame)
         cdp.send(
             "Page.startScreencast",
-            {
-                "format": "jpeg",
-                "quality": 85,
-                "maxWidth": int(W * SCALE),
-                "maxHeight": int(H * SCALE),
-            },
-        )
+            {"format": "jpeg", "quality": 85, "maxWidth": int(W * SCALE),
+             "maxHeight": int(H * SCALE)},
+        )  # fmt: skip
 
     def now(self) -> float:
         """Seconds of video so far."""
-        return 0.0 if self.t0 is None else time.time() - self.t0 - self.skip
-
-    def step(self, page, frames: list) -> None:
-        """Hold the clock and write one frame per state: ``frames`` are
-        callables that each put the page in its next state."""
-        self.held = True
-        for put in frames:
-            seen = self.frames
-            put()
-            deadline = time.monotonic() + 0.5
-            while self.frames == seen and time.monotonic() < deadline:
-                page.wait_for_timeout(5)
-            self.proc.stdin.write(self.last)
-            self.written += 1
-        # The live clock resumes where the written frames end.
-        self.skip = time.time() - self.t0 - self.written / FPS
-        self.held = False
+        return 0.0 if self.t0 is None else (time.time() - self.t0) / self.slow
 
     def _fill(self, until: float) -> None:
         if self.last is None:
@@ -271,8 +259,7 @@ class Capture:
         ts = ev["metadata"].get("timestamp") or time.time()
         if self.t0 is None:
             self.t0 = ts
-        if not self.held:
-            self._fill(ts - self.t0 - self.skip)
+        self._fill((ts - self.t0) / self.slow)
         self.last = base64.b64decode(ev["data"])
         self.frames += 1
 
@@ -287,14 +274,14 @@ class Capture:
 class Stage:
     """What a beat drives: the fake model, the page, the camera, the overlays."""
 
-    def __init__(
-        self, model: DemoModel, page, root: Path, audio: Path, tts: str | None
-    ):
+    def __init__(self, model: DemoModel, page, root: Path, audio: Path,
+                 tts: str | None, server: Server, slow: float):  # fmt: skip
         self.model, self.page, self.root = model, page, root
         self.audio, self.tts = audio, tts
+        self.server, self.slow = server, slow
         self.cues: list[Cue] = []
         self.capture: Capture | None = None
-        self.cam = dict(self.REST)
+        model.slow = slow
 
     # -- the model --
     def script(self, *rules: Rule, titles: dict[str, str] | None = None) -> None:
@@ -302,15 +289,25 @@ class Stage:
         self.model.titles = titles or {}
 
     def pace(self, seconds: float) -> None:
-        """How long the fake takes over each step of a turn."""
+        """How long the fake takes over each step of a turn, in video seconds."""
         self.model.pace = seconds
+
+    # -- the world --
+    def world(self, **readings) -> None:
+        """Change what aegis reads of the machine: ``cpu``, ``ram``, ``disk``
+        (percent), ``claude`` or ``opencode`` (percent per window), ``version``."""
+        for k, v in readings.items():
+            assert hasattr(self.server.world, k), f"no reading {k!r}"
+            setattr(self.server.world, k, v)
+        self.server.changed()
 
     # -- time --
     def now(self) -> float:
         return self.capture.now() if self.capture else 0.0
 
     def wait(self, seconds: float) -> None:
-        self.page.wait_for_timeout(int(seconds * 1000))
+        """Wait this many seconds of video."""
+        self.page.wait_for_timeout(int(seconds * self.slow * 1000))
 
     def until(self, selector: str, timeout: float = 90) -> None:
         self.page.wait_for_selector(selector, timeout=timeout * 1000)
@@ -326,19 +323,24 @@ class Stage:
         self.js("demo.point", x, y)
         self.wait(move)
         self.js("demo.ring", x, y)
-        self.page.locator(selector).first.click()
+        self.js("demo.shield", False)
+        self.page.locator(selector).first.click(force=True)
         self.park()
 
     def park(self) -> None:
-        """Move the real mouse off the UI: a hovered row opens its popover."""
+        """Move the real mouse off the UI and raise the shield: a hovered row
+        opens its popover."""
         self.page.mouse.move(2, H - 2)
+        self.js("demo.shield", True)
 
     def type(
         self, selector: str, text: str, cps: float = 28, enter: bool = True
     ) -> None:
         loc = self.page.locator(selector).first
-        loc.click()
-        loc.press_sequentially(text, delay=1000 / cps)
+        self.js("demo.shield", False)
+        loc.click(force=True)
+        self.park()
+        loc.press_sequentially(text, delay=1000 * self.slow / cps)
         if enter:
             self.wait(0.4)
             loc.press("Enter")
@@ -352,7 +354,8 @@ class Stage:
         self.js("demo.point", x, y)
         self.wait(move)
         self.js("demo.ring", x, y)
-        loc.click()
+        self.js("demo.shield", False)
+        loc.click(force=True)
         self.park()
 
     def attach(self, button: str, path: Path) -> None:
@@ -361,8 +364,9 @@ class Stage:
         self.js("demo.point", x, y)
         self.wait(0.6)
         self.js("demo.ring", x, y)
+        self.js("demo.shield", False)
         with self.page.expect_file_chooser() as fc:
-            self.page.locator(button).first.click()
+            self.page.locator(button).first.click(force=True)
         fc.value.set_files(str(path))
         self.park()
 
@@ -385,35 +389,33 @@ class Stage:
     REST = {"rx": 0.0, "ry": 0.0, "rz": 0.0, "s": 1.0, "x": 0.0, "y": 0.0}
 
     def camera(self, ms: int = 1200, **to: float) -> None:
-        """Move to ``rx``, ``ry``, ``rz`` (degrees), ``s`` (scale), ``x``, ``y``
-        (px); what is not named returns to rest. One frame per output frame."""
-        start, end = dict(self.cam), {**self.REST, **to}
-        n = max(1, round(ms / 1000 * FPS))
-
-        def ease(t: float) -> float:
-            return 4 * t**3 if t < 0.5 else 1 - (-2 * t + 2) ** 3 / 2
-
-        def put(k: int):
-            e = ease(k / n)
-            state = {key: start[key] + (end[key] - start[key]) * e for key in end}
-            return lambda: self.page.evaluate("(c) => demo.set(c)", state)
-
-        if self.capture:
-            self.capture.step(self.page, [put(k) for k in range(1, n + 1)])
-        else:
-            put(n)()
-        self.cam = end
+        """Move, over ``ms`` of video, to ``rx``, ``ry``, ``rz`` (degrees),
+        ``s`` (scale), ``x``, ``y`` (px); what is not named returns to rest.
+        Returns at once: the beat waits as long as it wants the shot."""
+        self.js("demo.camera", {**self.REST, **to}, ms)
 
     def focus(
         self, selector: str, s: float = 1.6, ms: int = 1400, **tilt: float
     ) -> None:
-        """Zoom ``s`` times on an element, from wherever the camera is: its
-        centre moves to the screen's. The element is measured flat."""
+        """Zoom ``s`` times on an element: its centre moves to the screen's.
+        The element is measured with the camera at rest."""
         x, y = self.page.evaluate(
-            """(sel) => { const r = demo.flat(sel); return [r.x + r.width / 2, r.y + r.height / 2]; }""",
+            "(sel) => { const r = demo.flat(sel); return [r.x + r.width / 2, r.y + r.height / 2]; }",
             selector,
         )
         self.camera(ms, s=s, x=(W / 2 - x) * s, y=(H / 2 - y) * s, **tilt)
+
+    def drift(self, amount: float = 1.0) -> None:
+        """A slow sway on top of every move, so no shot is ever still; 0 stops it."""
+        self.js("demo.drift", amount)
+
+    def spotlight(self, selector: str | None = None) -> None:
+        """Dim everything but this element; None lifts the dimming."""
+        self.js("demo.spotlight", selector)
+
+    def lift(self, selector: str | None = None) -> None:
+        """Bring this element forward, off the window's plane; None sets it back."""
+        self.js("demo.lift", selector)
 
     def title(self, kicker: str = "", head: str = "", sub: str = "") -> None:
         self.js("demo.title", kicker, head, sub)
@@ -498,6 +500,17 @@ def _mux(video: Path, cues: list[Cue], out: Path, length: float) -> None:
     subprocess.run(args, check=True)
 
 
+def _report(model: DemoModel, server: Server) -> None:
+    """Why a beat stalled: the fake's last answers, each session's last rows."""
+    for e in model.log[-8:]:
+        print("model:", e.get("last_person", "")[-80:].replace("\n", " "), "->",
+              e.get("reply"))  # fmt: skip
+    for sess in server.app.sessions.sessions.values():
+        print(f"session {sess.handle} {sess.status}:")
+        for e in sess.entries()[-8:]:
+            print("  ", e["kind"], (e.get("title") or e.get("md") or "")[:100])
+
+
 def _vtt(cues: list[Cue], out: Path) -> None:
     def ts(s: float) -> str:
         return f"{int(s // 3600):02d}:{int(s % 3600 // 60):02d}:{s % 60:06.3f}"
@@ -523,6 +536,9 @@ def main() -> None:
     )
     ap.add_argument("--claude", default=shutil.which("claude"))
     ap.add_argument("--root", default="/tmp/acme-shop", help="the session's directory")
+    ap.add_argument(
+        "--slow", type=float, default=SLOW, help="world time per video second"
+    )
     ap.add_argument("--keep", action="store_true", help="keep the temporary files")
     a = ap.parse_args()
     assert a.ffmpeg, "no ffmpeg: pass --ffmpeg or set FFMPEG"
@@ -551,25 +567,15 @@ def main() -> None:
     model = DemoModel()
     fport, port = _free_port(), _free_port()
     _serve_fake(model, fport)
+    # The sessions aegis starts inherit this process's environment.
     env = _harness_env(tmp / "homes", f"http://127.0.0.1:{fport}")
-    (tmp / "pypi.json").write_text("{}")
-    env["AEGIS_RELEASES_URL"] = (tmp / "pypi.json").as_uri()
-    log = open(tmp / "serve.log", "w")
-    serve = subprocess.Popen(
-        [sys.executable, "-m", "aegis", "serve", "--root", str(root), "--port", str(port),
-         "--claude", a.claude, "--log-level", "info"],
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env,
-    )  # fmt: skip
-    url = ""
-    deadline = time.monotonic() + 30
-    while not url and time.monotonic() < deadline:
-        line = serve.stdout.readline()
-        log.write(line)
-        if m := re.search(r"open (http://\S+)", line):
-            url = m.group(1)
-    assert url, f"aegis serve printed no URL; see {tmp / 'serve.log'}"
-    threading.Thread(target=lambda: [log.write(x) or log.flush() for x in serve.stdout],
-                     daemon=True).start()  # fmt: skip
+    os.environ.clear()
+    os.environ.update(env)
+    world = getattr(beat, "WORLD", World())
+    (tmp / "pypi.json").write_text(json.dumps({"info": {"version": world.version}}))
+    os.environ["AEGIS_RELEASES_URL"] = (tmp / "pypi.json").as_uri()
+    server = Server(root, a.claude, port, world)
+    server.start()
 
     from playwright.sync_api import sync_playwright
 
@@ -580,22 +586,29 @@ def main() -> None:
             # in CSS pixels under the latter.
             browser = p.chromium.launch(args=[f"--force-device-scale-factor={SCALE}"])
             page = browser.new_page(viewport={"width": W, "height": H})
+            page.add_init_script(f"window.__demoSlow = {a.slow};")
             page.add_init_script(path=str(Path(__file__).with_name("stage.js")))
-            stage = Stage(model, page, root, audio, a.tts)
+            stage = Stage(model, page, root, audio, a.tts, server, a.slow)
             _speak_missing(beat, stage)
-            page.goto(url)
+            page.goto(server.url)
             page.wait_for_selector("#a2:not([data-view=boot])", timeout=30000)
             if hasattr(beat, "setup"):
                 beat.setup(stage)
-            stage.capture = Capture(page.context.new_cdp_session(page), a.ffmpeg, raw)
+            cdp = page.context.new_cdp_session(page)
+            cdp.send("Animation.enable")
+            cdp.send("Animation.setPlaybackRate", {"playbackRate": 1 / a.slow})
+            stage.capture = Capture(cdp, a.ffmpeg, raw, a.slow)
             stage.wait(0.3)
-            beat.run(stage)
+            try:
+                beat.run(stage)
+            except Exception:
+                _report(model, server)
+                raise
             stage.wait(TAIL)
             length = stage.capture.stop()
             browser.close()
     finally:
-        serve.terminate()
-        serve.wait(timeout=20)
+        server.stop()
         if not a.keep:
             shutil.rmtree(tmp, ignore_errors=True)
             shutil.rmtree(root, ignore_errors=True)

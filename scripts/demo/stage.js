@@ -43,6 +43,11 @@ const boot = () => {
           transition: opacity .35s ease; }
     .d-arrow { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; opacity: 0;
           transition: opacity .35s ease; }
+    .d-spot { position: absolute; border-radius: 12px; opacity: 0;
+          box-shadow: 0 0 0 200vmax rgba(5,6,8,.62); transition: opacity .6s ease; }
+    .d-lifted { position: relative; z-index: 50; transform: scale(1.045) translateY(-4px);
+          box-shadow: 0 24px 60px rgba(0,0,0,.6), 0 0 0 1px rgba(224,164,88,.5);
+          border-radius: 10px; }
     .d-ring { position: absolute; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%;
           border: 4px solid #e0a458; animation: d-ring .7s ease-out forwards; }
     @keyframes d-ring { from { transform: scale(.3); opacity: 1 } to { transform: scale(1.6); opacity: 0 } }
@@ -67,15 +72,28 @@ const boot = () => {
   const show = (d, on) => { d.style.opacity = on ? 1 : 0; };
 
   // -- camera ---------------------------------------------------------------
+  // The world runs SLOW times slower than the video (director.py), so every
+  // duration here is in video time and the clock is the page's divided by it.
+  const SLOW = window.__demoSlow || 1;
+  const clock = () => performance.now() / SLOW;
+  const later = (fn, ms) => setTimeout(fn, ms * SLOW);
   const cam = { rx: 0, ry: 0, rz: 0, s: 1, x: 0, y: 0 };
-  let tween = null;
+  let tween = null, sway = 0, swayTo = 0;
   const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
   const root = () => document.getElementById("a2");
+  // The sway: slow, out-of-step sines on tilt and scale, so a held shot still
+  // breathes. Its amount eases toward the asked one instead of jumping.
   const apply = () => {
     const r = root();
-    if (r) r.style.transform =
-      `translate(${cam.x}px, ${cam.y}px) scale(${cam.s}) ` +
-      `rotateX(${cam.rx}deg) rotateY(${cam.ry}deg) rotateZ(${cam.rz}deg)`;
+    if (!r) return;
+    sway += (swayTo - sway) * 0.03;
+    const t = clock() / 1000;
+    const rx = cam.rx + sway * 1.4 * Math.sin(t * 0.45);
+    const ry = cam.ry + sway * 2.2 * Math.sin(t * 0.31 + 1.3);
+    const s = cam.s * (1 + sway * 0.012 * Math.sin(t * 0.23 + 0.4));
+    r.style.transform =
+      `translate(${cam.x}px, ${cam.y}px) scale(${s}) ` +
+      `rotateX(${rx}deg) rotateY(${ry}deg) rotateZ(${cam.rz}deg)`;
   };
 
   // -- callouts, measured every frame -----------------------------------------
@@ -111,7 +129,20 @@ const boot = () => {
     show(c.box, c.on); show(c.label, c.on); show(c.arrow, c.on);
   }
 
-  function frame(now) {
+  // -- spotlight and lift ------------------------------------------------------
+  let spotSel = null, lifted = null;
+  function placeSpot() {
+    const t = spotSel && document.querySelector(spotSel);
+    if (!t) { spot.style.opacity = 0; return; }
+    const r = t.getBoundingClientRect(), p = 8;
+    Object.assign(spot.style, {
+      left: r.left - p + "px", top: r.top - p + "px",
+      width: r.width + 2 * p + "px", height: r.height + 2 * p + "px", opacity: 1,
+    });
+  }
+
+  function frame() {
+    const now = clock();
     if (tween) {
       const k = Math.min(1, (now - tween.t0) / tween.ms);
       const e = ease(k);
@@ -119,12 +150,19 @@ const boot = () => {
       if (k >= 1) tween = null;
     }
     apply();
+    placeSpot();
     for (const c of callouts.values()) place(c);
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
 
   let n = 0, capN = 0;
+  // The camera moves the UI under the resting mouse, which would hover rows
+  // and open their popovers: this catches the mouse except while clicking.
+  const shield = document.createElement("div");
+  shield.style.cssText = "position:fixed;inset:0;z-index:2147483646;background:transparent";
+  document.body.appendChild(shield);
+  const spot = el("d-spot");
   const cap = el("d-cap d-fade");
   const lower = el("d-lower d-fade", `<div class="l1"></div><div class="l2"></div>`);
   const title = el("d-title d-fade", `<div class="in"><div class="k"></div><div class="h"></div><div class="s"></div></div>`);
@@ -143,13 +181,26 @@ const boot = () => {
       return box;
     },
     camera(to, ms = 1200) {
-      tween = { t0: performance.now(), ms: Math.max(1, ms), from: { ...cam }, to };
+      tween = { t0: clock(), ms: Math.max(1, ms), from: { ...cam }, to };
+    },
+    drift(amount) { swayTo = amount; },
+    shield(on) { shield.style.display = on ? "block" : "none"; },
+    spotlight(sel) { spotSel = sel; },
+    lift(sel) {
+      if (lifted) { lifted.classList.remove("d-lifted"); lifted = null; }
+      const t = sel && document.querySelector(sel);
+      if (t) {
+        lifted = t;
+        // Kept after the lift ends, so the element also eases back.
+        t.style.transition = "transform .5s ease, box-shadow .5s ease";
+        t.classList.add("d-lifted");
+      }
     },
     caption(text, ms) {
       if (text) cap.textContent = text;
       show(cap, !!text);
       const mine = ++capN;
-      if (text && ms) setTimeout(() => { if (capN === mine) show(cap, 0); }, ms);
+      if (text && ms) later(() => { if (capN === mine) show(cap, 0); }, ms);
     },
     lower(l1, l2) {
       if (l1 !== undefined && l1 !== null) {
@@ -187,13 +238,13 @@ const boot = () => {
       const c = callouts.get(id);
       if (!c) return;
       c.on = 0;
-      setTimeout(() => { callouts.delete(id); c.box.remove(); c.label.remove(); c.arrow.remove(); }, 400);
+      later(() => { callouts.delete(id); c.box.remove(); c.label.remove(); c.arrow.remove(); }, 400);
     },
     point(x, y) { cursor.style.left = x + "px"; cursor.style.top = y + "px"; },
     ring(x, y) {
       const r = el("d-ring");
       r.style.left = x + "px"; r.style.top = y + "px";
-      setTimeout(() => r.remove(), 800);
+      later(() => r.remove(), 800);
     },
   };
 };

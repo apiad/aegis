@@ -1,7 +1,7 @@
 """Rung 2: one agent, done right. A plan in the panel, a monitor on a real
 build, a page the person answers, a file dropped in the composer."""
 
-from director import Call, Rule, Say, Shell
+from director import Call, Rule, Say, Shell, World
 
 VOICE = "jim"
 LINES = [
@@ -12,6 +12,7 @@ LINES = [
     "And you can hand it a file, or simply talk to it.",
 ]
 PROMPT = "Add a dark mode to the settings page."
+WORLD = World(cpu=14, ram=38, disk=34, claude={"session": 21, "weekly_all": 37})
 FILE = "phone.png"
 
 PLAN = [
@@ -68,7 +69,7 @@ PHONE = """<body style="margin:0;background:#17130f;font:15px system-ui;color:#f
 
 BUILD = (
     "date +%s > .build-start && "
-    "(nohup sh -c 'sleep 18; echo ok > .build-ok' >/dev/null 2>&1 &)"
+    "(nohup sh -c 'sleep 30; echo ok > .build-ok' >/dev/null 2>&1 &)"
 )
 
 
@@ -88,7 +89,7 @@ def run(stage):
                     {
                         "description": "npm run build",
                         "done": "test -f .build-ok",
-                        "progress": "echo $(( ($(date +%s) - $(cat .build-start)) * 100 / 18 ))",
+                        "progress": "echo $(( ($(date +%s) - $(cat .build-start)) * 100 / 30 ))",
                         "interval_s": 1,
                     },
                 ),
@@ -132,43 +133,64 @@ def run(stage):
         titles={PROMPT[:30]: "Dark mode for settings"},
     )
 
+    # The window floats in, tilted, and turns to face the viewer.
+    stage.camera(1, rx=16, ry=-24, s=0.72, y=30)
+    stage.drift(1)
     stage.title("Rung 2", "One agent, done right")
-    stage.wait(2.4)
+    stage.wait(0.3)
+    stage.camera(2600, rx=4, ry=-6, s=0.94)
+    stage.wait(2.2)
     stage.title()
     stage.say(LINES[0])
     stage.click("#tab-add")
     stage.type("#sp-text", PROMPT)
+    stage.camera(1600)
+    stage.world(cpu=46, claude={"session": 23, "weekly_all": 37})
 
     stage.until("#s-plan li, #s-plan .item, #s-plan > *", timeout=120)
     stage.say(LINES[1])
-    stage.focus("#s-plan", s=1.9, ry=-6)
+    stage.focus("#s-plan", s=1.9, ry=-7, rx=3)
+    stage.spotlight("#s-plan")
     c = stage.callout("#s-plan", "the plan")
-    stage.wait(3.4)
+    stage.wait(3.2)
     stage.uncallout(c)
 
     stage.until("#s-monitors :text('npm run build')", timeout=60)
     stage.say(LINES[2])
-    stage.focus("#s-monitors", s=2.2, rx=6)
+    stage.spotlight("#s-monitors")
+    stage.focus("#s-monitors", s=2.2, rx=7, ry=-4)
     c = stage.callout("#s-monitors", "a monitor, not a poll")
+    stage.world(cpu=71, claude={"session": 26, "weekly_all": 38})
     stage.wait(3.6)
     stage.uncallout(c)
-    stage.camera(1200)
+    stage.spotlight()
+    stage.camera(1800, rx=3, ry=5, s=0.96)
 
-    stage.until("iframe", timeout=90)
-    stage.wait(1)
+    stage.until("iframe", timeout=120)
+    stage.wait(0.8)
     stage.say(LINES[3])
-    stage.focus("iframe", s=1.5, ry=8)
-    stage.wait(2.4)
-    stage.camera(1000)
-    stage.wait(1.1)
+    stage.lift("iframe")
+    stage.spotlight("iframe")
+    stage.focus("iframe", s=1.5, ry=9, rx=2)
+    stage.wait(2.6)
+    stage.camera(1200, s=1.15, y=-40)
+    stage.wait(1.0)
     stage.click_frame("iframe", "#warm")
-    stage.wait(2.5)
+    stage.lift()
+    stage.spotlight()
+    stage.wait(1.0)
+    stage.camera(1600, rx=-3, ry=-5, s=0.97)
+    stage.world(cpu=22, claude={"session": 29, "weekly_all": 39})
+    stage.wait(1.6)
 
     stage.say(LINES[4])
     stage.attach("#attach", stage.root / FILE)
+    stage.spotlight("#composer")
     c = stage.callout("#mic", "or dictate")
     stage.wait(1.6)
     stage.uncallout(c)
     stage.type("#input", "The Save button is cut off on my phone.")
-    stage.until("text=it fits now", timeout=60)
-    stage.wait(2.5)
+    stage.spotlight()
+    stage.until("text=it fits now", timeout=90)
+    stage.camera(2400, rx=10, ry=16, s=0.8)
+    stage.wait(2.6)
