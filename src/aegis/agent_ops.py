@@ -1169,7 +1169,7 @@ def register_agent_ops(app: App) -> None:
         from .mcp import primer
 
         tools = ", ".join(op.tool_name for op in r.agent_ops())
-        browsers = available() and not reg.multi_user
+        browsers = not reg.multi_user and available()
         head = (
             primer(s, reg.server_name, reg.roots.config_root, browsers=browsers)
             if s

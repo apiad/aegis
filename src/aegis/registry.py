@@ -142,7 +142,7 @@ class Registry(Host):
             session,
             self.server_name,
             self.roots.config_root,
-            browsers=available() and not self.multi_user,
+            browsers=not self.multi_user and available(),
         )
         if priming:
             prompt += "\n\n" + priming
