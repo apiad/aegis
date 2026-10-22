@@ -16,6 +16,9 @@ export function attachTabCard(list, { meta, card, items }) {
   let key = null;
   let tab = null;
   let asSheet = false;
+  // A tab pressed: the person chose it, so no card for it until the pointer
+  // leaves the bar, or it would open over the transcript just shown.
+  let pressed = null;
   let openT = null;
   let closeT = null;
 
@@ -79,12 +82,23 @@ export function attachTabCard(list, { meta, card, items }) {
     }, CLOSE_MS);
   };
 
+  list.addEventListener("pointerdown", (ev) => {
+    const t = ev.target.closest(".tab[data-id]");
+    if (t && ev.pointerType === "mouse") {
+      pressed = t.dataset.id;
+      hide();
+    }
+  });
   list.addEventListener("pointerover", (ev) => {
     const t = ev.target.closest(".tab[data-id]");
+    if (t && t.dataset.id === pressed) return;
     if (t && ev.pointerType === "mouse" && t.dataset.id !== key) show(t);
     else if (t) clearTimeout(closeT);
   });
-  list.addEventListener("pointerleave", leave);
+  list.addEventListener("pointerleave", () => {
+    pressed = null;
+    leave();
+  });
   list.addEventListener("focusin", (ev) => {
     const t = ev.target.closest(".tab[data-id]");
     if (t) show(t);
