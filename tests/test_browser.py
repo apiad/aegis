@@ -8363,6 +8363,21 @@ def test_a_new_tab_with_files_and_no_text_starts_and_sends_them(server, page, tm
     assert page.errors == []
 
 
+def test_a_new_tabs_slash_line_runs_as_a_command_in_the_new_session(server, page):
+    # As spawn's prompt it reached the harness as plain text (#570).
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    open_new_tab(page)
+    page.fill("#sp-text", "/effort low")
+    page.press("#sp-text", "Enter")
+    page.wait_for_selector("#a2[data-view=session]")
+    page.wait_for_function(
+        "document.querySelector('#chip-effort').textContent === 'low effort'"
+    )
+    assert page.locator(".row.user").count() == 0
+    assert page.errors == []
+
+
 # -- tokens and owners (#311) -------------------------------------------------------
 def member_page(browser, server, name="ben", policy=None):
     """A second browser, signed in with a member token minted by the CLI, and
