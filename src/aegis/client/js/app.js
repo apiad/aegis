@@ -3878,6 +3878,7 @@ new ResizeObserver(() => root.style.setProperty("--hdr", `${header.getBoundingCl
 // The navigator floats just above the composer, which grows with its lines.
 new ResizeObserver(() => root.style.setProperty("--composer-h", `${$("composer").offsetHeight}px`)).observe($("composer"));
 $("side-btn").addEventListener("click", toggleSide);
+$("nav-side").addEventListener("click", toggleSide);
 // The dimmed transcript is the session view's own ::after, so a tap on it
 // lands on the view itself and goes no further.
 document.querySelector(".v-session").addEventListener("click", (ev) => {

@@ -45,10 +45,12 @@ body{background:#000}
 #a2 .tab.dragging{opacity:.35}
 #a2 .tab.drop{box-shadow:inset 2px 0 0 var(--accent)}
 #a2 .tabs .servers{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--faint);padding:0 10px}
-#a2 .keys-btn{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);color:var(--faint);font-family:var(--font-mono);font-size:11.5px;padding:1px 7px;margin:0 6px 6px;cursor:pointer}
-#a2 .keys-btn:hover{color:var(--strong)}
+/* The header's buttons are bare icons at every width (#586): no box, a tint on hover. */
+#a2 .keys-btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:30px;height:28px;background:none;border:1px solid transparent;border-radius:var(--r);color:var(--muted);font-family:var(--font-mono);font-size:11.5px;padding:0 4px;margin:0 1px 6px;cursor:pointer}
+#a2 .keys-btn:hover{color:var(--strong);background:color-mix(in srgb,var(--ink) 7%,transparent)}
 #a2 .bell[data-state=granted]{color:var(--accent)}
-#a2 .set-btn .ic{display:none}
+#a2 .set-btn .lbl{display:none}
+#a2 .set-btn .ic{width:15px;height:15px}
 #a2 .keymap{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:rgba(0,0,0,.45)}
 #a2 .keymap[hidden]{display:none}
 #a2 .keymap .panel{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);padding:6px 22px 14px;max-height:85vh;overflow:auto;font-size:12.5px;display:grid;grid-template-columns:auto auto;column-gap:36px;align-items:start}
@@ -1316,7 +1318,7 @@ body{background:#000}
 #a2 .set-empty{width:min(520px,100%);margin:12vh auto 0;padding:0 24px;display:grid;gap:14px;justify-items:start;font-size:14px;line-height:1.55;color:var(--ink)}
 #a2 .set-empty p{margin:0}
 #a2 .set-empty code{font-family:var(--font-mono);font-size:12.5px;color:var(--strong)}
-#a2 #settings-btn.on,#a2 #journal-btn.on,#a2 #help-btn.on{color:var(--strong);border-color:var(--accent)}
+#a2 #settings-btn.on,#a2 #journal-btn.on,#a2 #files-btn.on,#a2 #schedules-btn.on,#a2 #help-btn.on{color:var(--accent)}
 @media (max-width:640px){#a2 .set-agent{grid-template-columns:1fr}#a2 .set-card-foot,#a2 .set-agent > .set-why{grid-column:1}#a2 .set-findings li{grid-template-columns:1fr;gap:2px}}
 
 /* the Files view (js/files.js): a bar with the path and Save, the folder tree
@@ -1591,9 +1593,14 @@ body{background:#000}
 /* narrow and touch: last, so these win over the rules above */
 /* the panel's button: collapses it on a desktop, opens the drawer on a phone */
 /* the Journal's button: the same icon button, in every view */
-#a2 .side-btn,#a2 .jr-btn{display:grid;place-items:center;width:30px;padding:0;margin:0 4px 6px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);color:var(--muted);cursor:pointer}
+#a2 .jr-btn{display:grid;place-items:center;width:30px;height:28px;padding:0;margin:0 1px 6px;background:none;border:1px solid transparent;border-radius:var(--r);color:var(--muted);cursor:pointer}
+#a2 .jr-btn:hover{background:color-mix(in srgb,var(--ink) 7%,transparent)}
 #a2 .side-btn{display:none}
-#a2[data-view=session] .side-btn{display:grid}
+/* The panel's toggle (#586): the navigation pill's last button where the panel
+   sits beside the transcript; in the drawer layout the header keeps it, since
+   the open drawer covers the pill and the pill has no width to spare. */
+#a2 .nav .side-btn{display:grid}
+@media (max-width:760px){#a2[data-view=session] .nav .side-btn{display:none}#a2[data-view=session] .tabs .side-btn{display:grid}}
 #a2 .side-btn svg,#a2 .jr-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
 #a2 .side-btn:hover,#a2 .jr-btn:hover{color:var(--strong)}
 #a2 .grip{display:none}
@@ -1630,8 +1637,6 @@ body{background:#000}
   #a2 .set-btn .lbl{display:none}
   #a2 .set-btn .ic{display:inline-block}
   #a2 .journal{padding:12px 12px 24px}
-  /* Files has no header button here: the Journal view carries its way in. */
-  #a2 .tabs #files-btn{display:none}
   #a2 .jfiles{display:inline-flex;align-items:center;gap:8px;min-height:44px;margin:0 0 8px;padding:0 14px;font-family:var(--font-mono);font-size:12px;color:var(--muted);border:1px solid var(--rule);border-radius:999px;text-decoration:none}
   #a2 .jfiles .ic{width:15px;height:15px}
   #a2 .jfiles:hover,#a2 .jfiles:focus-visible{color:var(--strong);border-color:var(--faint);outline:none}

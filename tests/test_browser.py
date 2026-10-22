@@ -6118,7 +6118,7 @@ def test_the_navigator_fits_a_phone_and_keeps_its_touch_targets(server, browser)
     assert box["x"] >= 60 and box["x"] + box["width"] <= 390, box
     # A tap 4 px above the pill still lands on each button.
     hits = page.evaluate(
-        """() => [...document.querySelectorAll('#nav button')].map(b => {
+        """() => [...document.querySelectorAll('#nav button')].filter(b => b.offsetWidth).map(b => {
           const r = b.getBoundingClientRect();
           const at = document.elementFromPoint(r.x + r.width / 2, r.top - 4);
           return [b.id, at?.closest('button') === b];
@@ -6398,7 +6398,7 @@ def test_a_phone_in_landscape_gets_the_desktop_layout_with_touch_targets(
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page)
-    assert page.is_visible(".side") and page.is_visible("#side-btn")
+    assert page.is_visible(".side") and page.is_visible("#nav-side")
     assert page.locator("#send").bounding_box()["height"] >= 44
     assert errors == []
 
