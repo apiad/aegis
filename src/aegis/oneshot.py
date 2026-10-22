@@ -24,6 +24,10 @@ from .agents import ConfigError, load_agents, read_config
 T = TypeVar("T", bound=BaseModel)
 
 
+# The harnesses ``argv`` can make a one-shot call with.
+HARNESSES = ("claude-code", "opencode", "codex")
+
+
 class OneshotError(Exception):
     """Why a call left nothing to parse, in words a person reads."""
 
@@ -44,6 +48,11 @@ def load_generator(config_root: Path, key: str) -> dict | None:
         return {"error": f"{key}: names agent {name!r}, which agents: does not define"}
     if agent.error:
         return {"error": f"{key}: agent {name!r}: {agent.error}"}
+    if agent.harness not in HARNESSES:
+        return {
+            "error": f"{key}: agent {name!r} runs on {agent.harness}, which has no "
+            f"one-shot calls; use one on {', '.join(HARNESSES)}"
+        }
     return {"agent": name, "harness": agent.harness, "model": agent.model}
 
 

@@ -39,6 +39,14 @@ def test_load_generator_reads_any_key_and_names_it_in_errors(tmp_path):
     }
 
 
+def test_a_generator_on_a_harness_without_one_shot_calls_is_refused(tmp_path):
+    (tmp_path / ".aegis.yaml").write_text(
+        "agents:\n  cur: {harness: cursor, model: fake-pro, effort: medium, permission: read}\nrecap: {agent: cur}\n"
+    )
+    got = oneshot.load_generator(tmp_path, "recap")
+    assert got is not None and "cursor" in got["error"]
+
+
 def test_argv_carries_the_given_schema_and_system_and_never_the_prompt():
     a = oneshot.argv("/bin/claude", "m", Out, "be brief")
     assert "--" not in a and a[-1] == "--strict-mcp-config"
