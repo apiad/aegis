@@ -92,7 +92,11 @@ TABS = """() => [...document.querySelectorAll('#tablist .tab')].map(t => {
           inside: !w || (wr.left >= r.left - 0.5 && wr.right <= r.right + 0.5)}; })"""
 
 
-def test_fourteen_tabs_do_not_overlap_keep_whole_handles_and_scroll(linked, browser, page):  # noqa: F811
+def test_fourteen_tabs_do_not_overlap_keep_whole_handles_and_scroll(
+    linked,  # noqa: F811
+    browser,  # noqa: F811
+    page,
+):
     other = browser.new_page()
     spawn_on(other, linked.beta.url, 6)
     other.close()
@@ -138,4 +142,42 @@ def test_a_long_handle_on_a_phone_keeps_the_page_its_width(server, browser):  # 
     assert pg.evaluate("document.documentElement.scrollWidth") <= 390
     pg.locator(tab).scroll_into_view_if_needed()
     assert pg.locator(tab).is_visible()
+    pg.close()
+
+
+def test_the_more_button_shows_only_when_the_strip_overflows(server, browser):  # noqa: F811
+    pg = browser.new_page(viewport={"width": 900, "height": 700})
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    spawn(pg)
+    assert pg.is_hidden("#tab-more")
+    for _ in range(5):
+        spawn(pg)
+    pg.wait_for_selector("#tab-more:visible")
+    assert pg.inner_text("#tab-more") == "6 ▾"
+    pg.close()
+
+
+def test_choosing_a_row_opens_its_session_and_scrolls_its_tab_into_view(
+    server,  # noqa: F811
+    browser,  # noqa: F811
+):
+    pg = browser.new_page(viewport={"width": 900, "height": 700})
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    keys = [spawn(pg) for _ in range(6)]
+    pg.goto(server.url.split("#")[0] + "#fleet")
+    pg.click("#tab-more")
+    rows = pg.eval_on_selector_all(
+        ".cmenu [data-id]", "els => els.map(e => e.dataset.id)"
+    )
+    assert rows == keys
+    pg.click(f".cmenu [data-id='{keys[-1]}']")
+    pg.wait_for_function(f"location.hash === '#s={keys[-1]}'")
+    inside = pg.evaluate(
+        f"""() => {{ const t = document.querySelector("#tablist .tab[data-id='{keys[-1]}']").getBoundingClientRect();
+              const l = document.getElementById('tablist').getBoundingClientRect();
+              return t.left >= l.left - 1 && t.right <= l.right + 1; }}"""
+    )
+    assert inside
     pg.close()

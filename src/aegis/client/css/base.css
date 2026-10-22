@@ -36,6 +36,9 @@ body{background:#000}
 #a2 .tabs{min-width:0}
 #a2 .tablist{display:flex;gap:2px;flex:0 1 auto;min-width:0;overflow-x:auto;scrollbar-width:none}
 #a2 .tablist::-webkit-scrollbar{display:none}
+#a2 .tab-more{flex:none;align-self:center;margin:0 4px 6px;padding:2px 8px;font:12px var(--font-chrome);color:var(--muted);background:none;border:1px solid transparent;border-radius:var(--r);cursor:pointer}
+#a2 .tab-more:hover{color:var(--strong);background:color-mix(in srgb,var(--ink) 7%,transparent)}
+#a2 .tab-more[hidden]{display:none}
 #a2 .tab{cursor:pointer;user-select:none}
 #a2 .tab .tname{max-width:22ch;overflow:hidden;text-overflow:ellipsis}
 #a2 .tab.home{font-weight:500}

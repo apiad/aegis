@@ -1,0 +1,2 @@
+- **The tab bar reads with a dozen sessions open.** Each tab shows its session's whole handle, with the title under it in smaller text, and never shrinks; a full strip scrolls sideways, and a button at its end lists every open session. A linked server's name now sits inside its tab instead of in a badge that spilled over the next one. The header's buttons are bare icons, Files shows on a phone too, and the session panel's toggle moved into the transcript's navigation pill (on a phone it stays in the header, above the drawer).
+help: sessions
