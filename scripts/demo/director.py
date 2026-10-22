@@ -291,11 +291,15 @@ class Stage:
         self.model.script(*rules)
         self.model.titles |= titles or {}
 
-    def spawn(self, cwd: str, prompt: str, agent: str | None = None) -> dict:
+    def spawn(
+        self, cwd: str, prompt: str, agent: str | None = None, parent: str | None = None
+    ) -> dict:
         """Start a session off camera, as session_spawn does; returns its
-        ``log_id`` and ``handle``. Its tab opens in the client."""
+        ``log_id`` and ``handle``. Its tab opens in the client. With ``parent``
+        (a log id) it joins that session's group, as one spawned from its tab."""
         Path(cwd).mkdir(parents=True, exist_ok=True)
         params = {"cwd": cwd, "prompt": prompt} | ({"agent": agent} if agent else {})
+        params |= {"from_session": parent} if parent else {}
         r = self.server.call("session.spawn", params)
         return {"log_id": r["log_id"], "handle": r.get("handle", "")}
 
