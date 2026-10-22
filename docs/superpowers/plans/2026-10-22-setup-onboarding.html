@@ -149,7 +149,7 @@ details.task ol{padding-left:20px}
 
 <main>
 <h1 id="head">/setup and config_suggest: implementation plan</h1>
-<div class="meta"><span>docs/superpowers/plans/2026-10-22-setup-onboarding.html</span><span>·</span><span>spec: <a href="../specs/2026-10-22-setup-onboarding-design.html">2026-10-22-setup-onboarding-design.html</a></span><span>·</span><span>execution: to choose</span></div>
+<div class="meta"><span>docs/superpowers/plans/2026-10-22-setup-onboarding.html</span><span>·</span><span>spec: <a href="../specs/2026-10-22-setup-onboarding-design.html">2026-10-22-setup-onboarding-design.html</a></span><span>·</span><span>execution: native, in one session</span></div>
 <div class="prog"><div class="pbar"><i id="pfill"></i></div><span id="ptext"></span></div>
 
 <p><b>Goal.</b> A person types <code>/setup</code>; the agent reads how they already work, proposes on one page, and applies what they tick, including changes to <code>.aegis.yaml</code> through a card the person applies.</p>
@@ -196,7 +196,7 @@ details.task ol{padding-left:20px}
 
 <h2 id="tasks"><span class="n">04</span>Tasks</h2>
 
-<details class="task" id="task-0" data-state="pending">
+<details class="task" id="task-0" data-state="done">
 <summary><span class="tn">0</span><span class="tt">Issue and branch</span><span class="tf">GitHub, worktree</span><span class="ts"></span></summary>
 <ol>
   <li>File the issue: what /setup and config_suggest are, linking both spec paths. Note its number as <code>N</code>.</li>
@@ -205,7 +205,7 @@ details.task ol{padding-left:20px}
 </ol>
 </details>
 
-<details class="task" id="task-1" data-state="pending">
+<details class="task" id="task-1" data-state="done">
 <summary><span class="tn">1</span><span class="tt">config_suggest on the server</span><span class="tf">config_suggest.py, config.py, session.py, transcript/entries.py, app.py</span><span class="ts"></span></summary>
 <p><b>Interfaces.</b> Produces: the agent tool <code>config_suggest(yaml: str, why: str)</code> returning <code>{"id": str, "diff": str}</code>; person ops <code>config.suggestion.apply</code> and <code>config.suggestion.decline</code>, params <code>{"log_id": str, "id": str}</code>, returning <code>"ok"</code>; transcript records <code>{"kind": "config_suggest", "suggest_id", "why", "yaml", "diff", "stamp"}</code> and <code>{"kind": "config_suggest_done", "suggest_id", "outcome": "applied"|"declined"|"stale", "by"}</code>; a folded entry of kind <code>config</code> whose <code>status</code> is <code>pending|applied|declined|stale</code> and whose <code>detail</code> holds <code>why, diff, yaml</code>.</p>
 <ol>
@@ -250,7 +250,7 @@ async def test_a_member_cannot_apply(world): ...
 <div class="verify"><b>verify</b> <code>uv run pytest tests/test_config_suggest.py tests/test_config_ops.py tests/test_secrets.py -q</code>, all pass.</div>
 </details>
 
-<details class="task" id="task-2" data-state="pending">
+<details class="task" id="task-2" data-state="done">
 <summary><span class="tn">2</span><span class="tt">The config card in the client</span><span class="tf">client/js/entries.js, client/css/base.css, app.js</span><span class="ts"></span></summary>
 <p><b>Interfaces.</b> Consumes the <code>config</code> entry from task 1 and the two ops. The card's class is <code>.ccard</code> inside <code>.row.config</code>.</p>
 <ol>
@@ -274,7 +274,7 @@ def test_a_member_sees_no_apply_button(page, ...): ...
 <div class="verify"><b>verify</b> <code>uv run pytest tests/test_config_suggest_browser.py -q -m browser</code>, all pass; then the card is looked at in a browser against an <code>aegis serve</code> started after the change.</div>
 </details>
 
-<details class="task" id="task-3" data-state="pending">
+<details class="task" id="task-3" data-state="done">
 <summary><span class="tn">3</span><span class="tt">/setup and its record</span><span class="tf">setup.py, app.py, commands.py</span><span class="ts"></span></summary>
 <p><b>Interfaces.</b> Produces <code>setup.turn(typed: str, facts: str, record: dict | None, now: str) -&gt; tuple[str, str]</code>, <code>setup.facts(app) -&gt; str</code>, <code>setup.Records(root: Path)</code> with <code>.get(principal: str) -&gt; dict | None</code> and <code>.put(principal: str, rec: dict) -&gt; None</code>, and the agent tool <code>setup_record(applied: list[str], declined: list[Declined], sources_until: str)</code> where <code>Declined = {key: str, evidence: int}</code>. A key is <code>&lt;kind&gt;:&lt;name&gt;</code>, such as <code>schedule:weekly-pr-summary</code>.</p>
 <ol>
@@ -317,7 +317,7 @@ async def test_setup_record_is_kept_per_principal(world): ...
 <div class="verify"><b>verify</b> <code>uv run pytest tests/test_setup_command.py tests/test_commands.py tests/test_multiuser_command.py -q</code>, all pass.</div>
 </details>
 
-<details class="task" id="task-4" data-state="pending">
+<details class="task" id="task-4" data-state="done">
 <summary><span class="tn">4</span><span class="tt">The help page and the docs</span><span class="tf">help/setup.md, help/config.md, help/getting-started.md, DESIGN.md, changelog.d/</span><span class="ts"></span></summary>
 <ol>
 <li>Write <code>src/aegis/help/setup.md</code> (<code>kind: howto</code>, a <code>when:</code> line), written for the agent like <code>multi-user.md</code>, with a section per step whose slugs match what the turn names: <code>look</code>, <code>sources</code> (the spec's table 04, per harness), <code>summarise</code>, <code>propose</code> (the mapping table 05 and the artifact's shape: groups, one row per proposal with evidence, a checkbox each, a submit), <code>apply</code>, <code>record</code> (the key format), <code>check</code>.</li>
@@ -330,7 +330,7 @@ async def test_setup_record_is_kept_per_principal(world): ...
 <div class="verify"><b>verify</b> <code>make lint-docs</code> clean; <code>/tutorial setup</code> in a fresh server opens the page.</div>
 </details>
 
-<details class="task" id="task-5" data-state="pending">
+<details class="task" id="task-5" data-state="doing">
 <summary><span class="tn">5</span><span class="tt">The live case</span><span class="tf">tests/test_live.py</span><span class="ts"></span></summary>
 <ol>
 <li>Add <code>test_setup_proposes_from_a_home</code> to <code>tests/test_live.py</code>: a fake <code>HOME</code> with three Claude transcripts that each ask "summarise last week's PRs" on Mondays, a skill under <code>.claude/skills/release/SKILL.md</code> with numbered steps, and a crontab stub; send <code>/setup</code>, answer yes to transcripts, wait for an artifact. Assert the artifact's text names a Monday schedule and a <code>release</code> workflow; submit both rows; assert one paused schedule exists and a saved workflow named <code>release</code>.</li>

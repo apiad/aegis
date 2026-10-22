@@ -151,3 +151,17 @@ async def test_the_tool_is_for_agents_and_the_ops_are_not(world):
     tools = {t["name"] for t in r.json()["result"]["tools"]}
     assert "config_suggest" in tools
     assert not {"config_suggestion_apply", "config_suggestion_decline"} & tools
+
+
+async def test_two_applies_at_once_write_once_and_the_card_stays_applied(world):
+    import asyncio
+
+    a = await world.spawn()
+    id = (await suggest(a, BASE + QUEUE))["id"]
+    got = await asyncio.gather(
+        apply(world, a, id), apply(world, a, id), return_exceptions=True
+    )
+    assert sorted(str(type(g).__name__) for g in got) == ["OpError", "str"], got
+    (err,) = [g for g in got if isinstance(g, OpError)]
+    assert err.code == "gone"
+    assert card(a, id)["status"] == "applied"
