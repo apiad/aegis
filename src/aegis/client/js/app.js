@@ -1066,15 +1066,26 @@ const tabbed = () => ordered.filter((m) => !m.quiet);
 const quietSeen = new Map(); // key -> whether it was quiet when last drawn
 const quietChanged = () => ordered.some((m) => !!m.quiet !== (quietSeen.get(m.key) ?? !!m.quiet));
 
-function leaveIfQuieted(r) {
-  const fresh = r.view === "session" && sessions.get(r.id)?.quiet && quietSeen.get(r.id) === false;
+// Archiving the open tab, here or elsewhere, leaves it the same way: to the next
+// tab, not to the Fleet. The order is the one last drawn, which still holds it.
+// Whether the list that would hold this key has arrived: a far session's
+// server's, or this server's live one rather than the device's saved list.
+function settled(key) {
+  const far = forKey(key).server;
+  return far ? linksLoaded && !(linkOf(far) && !remote.get(far)?.loaded) : homeLive;
+}
+
+function leaveIfGone(r) {
+  const id = tabFocus(r);
+  const was = [...quietSeen.keys()];
+  const drawn = id && quietSeen.get(id) === false;
+  const fresh = drawn && (sessions.get(id) ? r.view === "session" && sessions.get(id).quiet : settled(id));
   quietSeen.clear();
   for (const m of ordered) quietSeen.set(m.key, !!m.quiet);
   if (!fresh) return false;
-  const all = ordered.map((m) => m.key);
-  const at = all.indexOf(r.id);
-  const next = all.slice(at + 1).concat(all.slice(0, at).reverse()).find((k) => !quietSeen.get(k));
-  go(next ? `#s=${next}` : "#fleet");
+  const at = was.indexOf(id);
+  const next = was.slice(at + 1).concat(was.slice(0, at).reverse()).find((k) => quietSeen.get(k) === false);
+  go(next ? hashOf(next) : "#fleet");
   return true;
 }
 
@@ -1128,7 +1139,7 @@ function render() {
   }
   if (r.view !== "term") closeTerm();
   if (r.view !== "browser") closeBrowser();
-  if (leaveIfQuieted(r)) return;
+  if (leaveIfGone(r)) return;
   // A session's link to a terminal, or the reverse, opens the right view.
   if ((r.view === "session" || r.view === "term" || r.view === "browser") && sessions.has(r.id) && `#${r.view[0]}=${r.id}` !== hashOf(r.id)) {
     history.replaceState(null, "", hashOf(r.id));
@@ -1151,13 +1162,11 @@ function render() {
     return;
   }
   if ((r.view === "session" || r.view === "term") && !sessions.has(r.id)) {
-    const far = forKey(r.id).server;
-    // A far session whose server's list has not arrived yet: wait for it.
-    if (far && (!linksLoaded || (linkOf(far) && !remote.get(far)?.loaded))) return;
-    // Likewise a home session while only the device's saved list is drawn: a
-    // notification's tap or a link opens a session the saved list may predate.
-    if (!far && !homeLive) return;
-    go("#fleet"); // closed here or elsewhere
+    // A far session whose server's list has not arrived yet waits for it; a
+    // home one waits for the live list, since a notification's tap or a link
+    // opens a session the device's saved list may predate.
+    if (!settled(r.id)) return;
+    go("#fleet"); // a link to a session no tab held: gone before this page drew it
     return;
   }
   renderTabs($("tablist"), tabbed(), tabFocus(r), tabActions);
