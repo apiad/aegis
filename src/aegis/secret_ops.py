@@ -91,7 +91,7 @@ def header(id: str, kind: str) -> str:
     return f"> from secret:{id} · {kind} · {iso_now()}"
 
 
-def register_secret_ops(app: App) -> None:
+def register_secret_ops(app: App) -> ss.SecretStore:
     r, reg = app.registry, app.sessions
 
     def own(caller: Caller):
@@ -202,7 +202,11 @@ def register_secret_ops(app: App) -> None:
         e = next((x for x in s.entries() if x["id"] == id), None)
         if e is None:
             raise OpError("no_secret", f"no secret {id!r} in this session")
-        return e["status"] if e["status"] in ("revealed", "expired", "provided") else "restarted"
+        return (
+            e["status"]
+            if e["status"] in ("revealed", "expired", "provided")
+            else "restarted"
+        )
 
     @r.op("secret.reveal", SecretRef, owned="log_id")
     async def reveal(p: SecretRef, caller):
@@ -211,7 +215,12 @@ def register_secret_ops(app: App) -> None:
         if pad is None:
             return {"gone": gone_why(s, p.id)}
         s.record_secret(
-            {"kind": "secret_gone", "secret_id": p.id, "why": "revealed", "by": by(caller)}
+            {
+                "kind": "secret_gone",
+                "secret_id": p.id,
+                "why": "revealed",
+                "by": by(caller),
+            }
         )
         return {"pad": base64.b64encode(pad).decode()}
 

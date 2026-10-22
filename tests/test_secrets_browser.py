@@ -1,3 +1,4 @@
+# ruff: noqa: F811  (pytest fixtures imported from other test modules)
 """Secret cards in a browser: reveal once, then "already viewed" on a reload
 and in another browser; a requested secret typed into its card lands in the
 file; both through a linked server too (secret_ops.py)."""
@@ -51,7 +52,9 @@ def test_a_secret_is_revealed_once_and_a_request_writes_its_file(server, page, b
     sid = spawn(page)
     value = secrets.token_urlsafe(24)
     (server.root / "pw").write_text(value + "\n")
-    mcp(page, 1, "secret_send", {"path": str(server.root / "pw"), "caption": "db admin"})
+    mcp(
+        page, 1, "secret_send", {"path": str(server.root / "pw"), "caption": "db admin"}
+    )
     page.wait_for_selector(CARD)
     assert value not in page.content()  # before the reveal, nowhere in the page
     shown = reveal_then_gone(page, browser, f"{server.url}#s={sid}")
@@ -60,7 +63,12 @@ def test_a_secret_is_revealed_once_and_a_request_writes_its_file(server, page, b
     page.wait_for_selector(f"{CARD}.gone")
     assert "Already viewed" in page.inner_text(CARD) and value not in page.content()
 
-    mcp(page, 2, "secret_request", {"path": str(server.root / "tok"), "prompt": "A GitHub token"})
+    mcp(
+        page,
+        2,
+        "secret_request",
+        {"path": str(server.root / "tok"), "prompt": "A GitHub token"},
+    )
     page.wait_for_selector(f"{ASK} input[type=password]")
     assert "A GitHub token" in page.inner_text(ASK)
     typed = secrets.token_urlsafe(24)
@@ -84,7 +92,9 @@ def test_secret_cards_work_on_a_linked_servers_session(linked, browser, page):  
     turns_done(page, 1)
     mcp(page, 2, "secret_send", {"path": str(root / "pw")})
     page.wait_for_selector(CARD)
-    assert reveal_then_gone(page, browser, f"{linked.alpha.url}#s=beta/{lid}").startswith(value)
+    assert reveal_then_gone(
+        page, browser, f"{linked.alpha.url}#s=beta/{lid}"
+    ).startswith(value)
     mcp(page, 3, "secret_request", {"path": str(root / "tok"), "prompt": "p"})
     page.wait_for_selector(f"{ASK} input[type=password]")
     typed = secrets.token_urlsafe(24)
