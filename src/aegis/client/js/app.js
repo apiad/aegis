@@ -2822,7 +2822,10 @@ async function spawnFromComposer() {
   // With files, the session starts empty: they upload into its inbox and go
   // out with the text as its first message (sendFirst).
   const held = spAtts.list("spawn").length > 0;
-  if (text && !held) params.prompt = text;
+  // A / line runs as a command in the new session, as typed there (#570):
+  // as spawn's prompt the harness would get it as plain text.
+  const command = text.startsWith("/") && !text.startsWith("//");
+  if (text && !held && !command) params.prompt = text;
   try {
     const r = await untestedRetry(
       () => conn.call("session.spawn", params, spServer),
@@ -2836,6 +2839,12 @@ async function spawnFromComposer() {
     const key = keyOf(spServer, r.log_id);
     go(`#s=${key}`);
     if (held) sendFirst(key, text, spAtts.take("spawn"));
+    else if (command) {
+      // The session's patch lands before spawn's reply; a far one may not have.
+      const s = sessions.get(key);
+      if (s) sendLine(text, false, [], s);
+      else sendFirst(key, text, []);
+    }
   } catch (e) {
     toast(e.message, { kind: "error" });
   } finally {
