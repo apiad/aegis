@@ -7,14 +7,14 @@ outlive a run."""
 from __future__ import annotations
 
 import json
+import os
 import secrets
 import shlex
-import subprocess
 
 import httpx
 import pytest
 
-from .conftest import MEMBERS, sudo, until
+from .conftest import CAPS, MEMBERS, sudo, until
 from .test_switch import send, spawn
 
 pytestmark = [pytest.mark.slow, pytest.mark.multiuser]
@@ -58,9 +58,11 @@ async def test_a_member_cannot_reach_another_home_through_its_view(mu_server):
     theirs = private(CARA, "cara's")
     link = f"to-cara-{secrets.token_hex(4)}"
     as_member(BEN, f"cd && ln -s /home/{CARA}/{theirs} {link}")
-    with pytest.raises(RuntimeError, match="outside"):
+    # Python 3.14 resolves the link and finds it leads out of the root;
+    # 3.13 raises when ben cannot enter cara's home. Both refuse.
+    with pytest.raises(RuntimeError, match="outside|forbidden"):
         await s.call(BEN, "fs.read", {"path": link})
-    with pytest.raises(RuntimeError, match="outside"):
+    with pytest.raises(RuntimeError, match="outside|forbidden"):
         await s.call(BEN, "fs.read", {"path": f"../{CARA}/{theirs}"})
 
 
@@ -95,7 +97,8 @@ async def test_a_members_agent_sends_its_own_file_and_not_anothers(mu_server):
     transcript = s.state / "transcripts" / f"{log_id}.jsonl"
     await until(
         lambda: (
-            path in transcript.read_text() and "not_found" in transcript.read_text()
+            path in (t := transcript.read_text())
+            and ("not_found" in t or "forbidden" in t)
         ),
         what="the refusal",
     )
@@ -155,8 +158,16 @@ async def test_a_members_artifact_draft_is_in_its_home_and_sends(mu_server):
 
 
 def test_the_runner_check_can_fail(host):
-    """Without the switch, the server's own thread cannot read a member's
-    private file: what the runner adds is real."""
+    """Without the switch, a process confined as the server is (its uid, its
+    three capabilities) cannot read a member's private file: what the
+    runner adds is real. The test's own shell may read more (a CI runner's
+    user can), so the check runs under the server's unit settings."""
     name = private(BEN, "x")
-    r = subprocess.run(["cat", f"/home/{BEN}/{name}"], capture_output=True)
-    assert r.returncode != 0
+    r = sudo(
+        "systemd-run", "--quiet", "--wait", "--pipe", "--collect",
+        f"--uid={os.getuid()}", f"--gid={os.getgid()}",
+        "-p", f"AmbientCapabilities={CAPS}", "-p", f"CapabilityBoundingSet={CAPS}",
+        "cat", f"/home/{BEN}/{name}",
+        check=False,
+    )  # fmt: skip
+    assert r.returncode != 0 and "x" not in r.stdout
