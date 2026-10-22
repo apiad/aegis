@@ -96,7 +96,9 @@ what a local run cannot.
    colours `--help` only when `GITHUB_ACTIONS` is set, see #7). If CI is red,
    find out whether `main` is red the same way *before* concluding it is yours —
    `gh run view <id> --log-failed` on both, and diff the failure lists.
-4. **Merge only on green**, and check the merge landed. `gh pr merge` run from
+4. **Merge on green, only on green.** The author merges its own PR once every
+   check passes, not only the required ones, without waiting to be asked; the
+   smoke test waits for the release. Check the merge landed. `gh pr merge` run from
    inside a worktree prints `fatal: 'main' is already used by worktree` after
    the merge has already succeeded on GitHub; read `gh pr view <n> --json state`
    rather than believing the error.
