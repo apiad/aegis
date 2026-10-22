@@ -580,6 +580,9 @@ class Fold:
                     # Only when the agent wrote one (#354), so a report without
                     # it keeps its old shape.
                     **({"handoff": h} if (h := rec.get("handoff")) else {}),
+                    # Only when asked: archive this session and the ones it
+                    # started once the turn ends (registry._close_when_finished).
+                    **({"close": True} if rec.get("close") else {}),
                 }
             )
             return []
@@ -966,6 +969,38 @@ class Fold:
                 )
             else:
                 status = str(rec.get("why"))
+            return self._upsert(
+                {**e, "status": status, "summary": status, "detail": det}
+            )
+        if kind == "config_suggest":
+            # A whole new .aegis.yaml an agent proposes (config_suggest.py):
+            # the text and the stamp live here, so the card applies after a
+            # restart.
+            det = {
+                "why": rec.get("why"),
+                "diff": rec.get("diff"),
+                "yaml": rec.get("yaml"),
+                "stamp": rec.get("stamp"),
+                "by": None,
+            }
+            return self._upsert(
+                _entry(
+                    str(rec.get("suggest_id")),
+                    "config",
+                    "pending",
+                    ts,
+                    d.SYSTEM_GLYPH,
+                    title="config · .aegis.yaml",
+                    summary="pending",
+                    detail=det,
+                )
+            )
+        if kind == "config_suggest_done":
+            e = self._entries.get(str(rec.get("suggest_id")))
+            if e is None:
+                return []
+            status = str(rec.get("outcome"))
+            det = {**e["detail"], "by": rec.get("by")}
             return self._upsert(
                 {**e, "status": status, "summary": status, "detail": det}
             )

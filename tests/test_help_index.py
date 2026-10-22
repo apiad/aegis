@@ -163,6 +163,14 @@ FIRST = [
     ("run a workflow every night", "workflow-recipes#a-saved-workflow-every-night"),
     ("poll until a deploy is live", "workflow-recipes#poll-until-something-is-true"),
     ("give the person a password I generated", "secrets#send-a-new-password"),
+    ("let several people use one server as their own linux users", "multi-user"),
+    ("add a person to a multi-user server", "multi-user#add-a-person"),
+    ("members cannot see each other's sessions", "multi-user"),
+    ("move my claude code skills and cron jobs into aegis", "setup"),
+    (
+        "suggest a config change the person applies from a card",
+        "config#suggested-changes-applied-from-a-card",
+    ),
     ("ask the person for an API token", "secrets"),
     (
         "have a judge agent check before publishing",

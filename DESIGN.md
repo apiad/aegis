@@ -217,6 +217,9 @@ the click, so the main agent's card falls through to waiting on the run, and
 the click wakes it once to tell the person where the run next stops (#474); its plan comes from `plan_update`. `turn_end` refuses done
 while the plan has an item not done, because a done card offers to archive the
 session and the person should not have to read it to learn the task goes on.
+For the same reason it refuses done while a monitor, a callback queue task, a
+background task or an approved run will still wake the session
+(`Registry.wakers`, #608); its children do not count, since they do not wake it.
 Both are aegis records in the
 store, so the fold derives a session's `standing` and a refold gives the same
 card; the meta keeps it, so boot still reads no store. `attention.py` holds the
@@ -366,7 +369,9 @@ exists, and asks git (`repos/probe.py`) and `gh` (`repos/gh.py`) only for the
 present state. Uncommitted counts only the files the session wrote. A worktree is
 probed at most every 10 s, in a thread; only sessions a browser subscribes to on
 `repos:<log_id>` are built and published, at most every 5 s and only on change
-(#526).
+(#526). The server sends one line per worktree; the browser groups them per repo
+(its main checkout) and names each peer once per repo with the checkouts it wrote
+in (#595).
 
 **The inbox holds messages until a turn ends.** A monitor's wake, a queue's result
 and a handoff reach a session as a user turn headed `> from <kind>:<name> · …`. An
@@ -553,10 +558,34 @@ spawning on a linked server are for admins. Each operation declares `admin` or
 the param that names the session it changes, and `ops.Registry.call` checks both
 in one place. An agent acts as its session's owner with the owner's current role,
 and a link acts as the token it presented. A token revoked while its socket is
-open is refused at its next message, and reads nothing more. Every harness runs as
-the server's Linux user, so a member's agent with shell access can read the admin
-token: roles stop accidents between colleagues, not a hostile member, until
-sessions run as separate users.
+open is refused at its next message, and reads nothing more. Outside the
+multi-user mode every harness runs as the server's Linux user, so a member's agent
+with shell access can read the admin token: roles stop accidents between
+colleagues, not a hostile member.
+
+**In the multi-user mode a principal is a Linux user.** With `multi_user:` in
+`.aegis.yaml`, each token names a Linux user (`users.py`), and the server, an
+unprivileged user holding `CAP_SETUID`, `CAP_SETGID` and `CAP_SETPCAP` from its
+unit, starts every process through one launcher (`launch.py`): behind `setpriv`,
+switched to the owner's user with every capability dropped, with the owner's
+environment and the pool file's variables. Files the server opens for a person,
+it opens on a thread switched to that person (`as_user.py`), so the kernel checks
+every access. The state directory is mode 0700, out of every member's reach. A
+member sees only what it owns: one rule, `App.sees`, hides another's sessions,
+runs, tasks, schedules, journal rows and toasts at the three places data leaves
+the server (an op's params in `Registry.call`, each channel subscriber's view in
+`member_view.py`, and the lists ops return), and something hidden answers like
+something missing. The host work the mode needs is the help page `multi-user`,
+which `/multiuser` hands to the admin's agent as one turn (`multiuser.py`)
+(`docs/superpowers/specs/2026-10-21-linux-users-design.html`).
+**An agent suggests the configuration; a person writes it.** `config_suggest`
+records a card with the whole new `.aegis.yaml`, its diff and the file's stamp
+in the transcript, so it survives a restart; an admin's Apply writes that text
+through the stamp check (`config.write_text`) and wakes the agent
+(`config_suggest.py`). `/setup` hands the help page `setup` to the session's
+agent as one turn with the caller's last run, and `setup_record` keeps one
+record per principal under the state directory, which a member's agent cannot
+write itself (`setup.py`, `docs/superpowers/specs/2026-10-22-setup-onboarding-design.html`).
 Closing is the one exception, and it asks for a second thought: `session_close`
 closes at once only a session the agent spawned, or a worker whose task it
 enqueued, whose attention is done. Anything else, the caller's own session
@@ -564,6 +593,11 @@ included, is refused with a prose account of that session (who started it, its
 state, attention, plan step and last activity) and a one-time token bound to the
 caller and the target; the same call with the token closes it, because a person
 may be reading that tab (`confirm.py`).
+An agent the person told to close when it finishes asks with `turn_end`'s
+`close` instead: the report carries it, and when that turn ends done with the
+session and its whole spawn tree finished, the registry archives the tree,
+deepest first (`registry._close_when_finished`). Like a handoff's retirement it
+keeps no state: the fold drops a report made in an earlier turn.
 Reading includes waiting: `monitor_sessions` watches other sessions' attention
 cards and wakes its owner when all have finished or one is blocked on the
 person, and `session_list` shows each card and plan. Neither changes the
@@ -1055,7 +1089,12 @@ a click mid-turn is held. A page lands only after the static checks and, when
 a browser has the transcript open, a hidden run there (`Board.probe`): a page
 that throws is a tool error, not a card; with no browser open it lands with
 `started` unset, and the first browser to mount it reports an error to the
-inbox.
+inbox. Every artifact's bar, on its card, in the viewer and in a pane, has a
+Phone width toggle (`entries.phoneButton`): it narrows the frame to 390 px so
+the page's own media queries answer as on a phone, and the choice is a
+per-tab set of artifact ids, so every frame of one page agrees and a redrawn
+stage keeps it. It is client-only; agents are told to lay pages out for both
+widths because the person will look at both.
 
 **A secret crosses between an agent and a person without a transcript holding
 it.** `secret.send` reads the agent's file on the server, keeps a random pad of

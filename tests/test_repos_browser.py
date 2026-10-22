@@ -34,8 +34,16 @@ def test_the_repos_row_follows_writes_commits_and_pushes(server, page):  # noqa:
     git(repo, "push", "-q", "-u", "origin", "main")
     wt = root / "proj-wt"
     git(repo, "worktree", "add", "-q", "-b", "topic", str(wt))
+    peer_wt = root / "proj-peer"
+    git(repo, "worktree", "add", "-q", "-b", "peer", str(peer_wt))
 
     page.goto(server.url)
+    # A peer that wrote in two checkouts of the same repo (#595).
+    spawn(page, f"/write {repo}/p.py => peer")
+    page.fill("#input", f"/write {peer_wt}/q.py => peer")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+
     spawn(page, f"/write {repo}/b.py => one")
     lines = page.locator("#s-repos .rp-line")
     lines.first.wait_for(timeout=10000)
@@ -44,10 +52,13 @@ def test_the_repos_row_follows_writes_commits_and_pushes(server, page):  # noqa:
     page.fill("#input", f"/write {wt}/c.py => two")
     page.press("#input", "Enter")
     turns_done(page, 2)
+    # Each repo is one line, its checkouts summed in it.
     page.wait_for_function(
-        "document.querySelectorAll('#s-repos .rp-line').length === 2", timeout=15000
+        "[...document.querySelectorAll('#s-repos .rp-line')]"
+        ".some(l => l.textContent.includes('2 checkouts') && l.textContent.includes('~2'))",
+        timeout=15000,
     )
-    assert "⑂ proj-wt" in lines.first.inner_text()
+    assert lines.count() == 1
 
     page.fill(
         "#input",
@@ -56,15 +67,18 @@ def test_the_repos_row_follows_writes_commits_and_pushes(server, page):  # noqa:
     )
     page.press("#input", "Enter")
     turns_done(page, 3)
-    # The commit's probe may wait out the 10 s window of the write's.
-    page.wait_for_function(
-        "[...document.querySelectorAll('#s-repos .rp-line')]"
-        ".some(l => l.textContent.includes('main') && l.textContent.includes('✓'))",
-        timeout=20000,
-    )
     page.hover("#p-repos")
     card = page.locator("#p-repos .pcard")
     card.wait_for(state="visible")
+    # The commit's probe may wait out the 10 s window of the write's.
+    page.wait_for_function(
+        "document.querySelector('#s-repos-all').textContent.includes('clean, pushed')",
+        timeout=20000,
+    )
     text = card.inner_text()
-    assert "add b" in text and "clean, pushed" in text and "worktree" in text
+    assert "add b" in text and "main checkout" in text and "worktree proj-wt" in text
+    assert card.locator("h5.rp-h").count() == 1
+    # The peer is named once, with both its checkouts under it.
+    assert text.count("is also here") == 1
+    assert "worktree proj-peer" in text
     assert page.errors == []

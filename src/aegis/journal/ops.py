@@ -82,7 +82,14 @@ def register_journal_ops(app: "App") -> None:
     r = app.registry
     root = str(app.roots.config_root)
 
-    def run(p: SearchParams, offset: int = 0, counts: bool = False, text: str = ""):
+    def run(
+        p: SearchParams,
+        offset: int = 0,
+        counts: bool = False,
+        text: str = "",
+        only: set[str] | None = None,
+    ):
+        """``only``: the log ids whose entries may be read; None for all."""
         con = db.open_read(app.journal.path)
         try:
             try:
@@ -101,6 +108,9 @@ def register_journal_ops(app: "App") -> None:
                 )
             except ValueError as e:
                 raise OpError("bad_params", str(e)) from None
+            if only is not None:
+                named = q.log_ids if q.log_ids is not None else only
+                q.log_ids = sorted(x for x in named if x in only)
             try:
                 if text.split():
                     found = matching(con, q, text, root)
@@ -124,7 +134,8 @@ def register_journal_ops(app: "App") -> None:
         entry names the session's handle when it was made; peer_read reads a
         session while it is open, under its current handle, which an entry
         made before a rename names as "(now ...)"."""
-        hits, cut, _, _ = await asyncio.to_thread(run, p)
+        only = app.own_log_ids(app.who(caller))
+        hits, cut, _, _ = await asyncio.to_thread(run, p, only=only)
         handles = {k: s.handle for k, s in app.sessions.sessions.items()}
         return render.text(hits, cut, root, handles)
 
@@ -133,8 +144,9 @@ def register_journal_ops(app: "App") -> None:
         """The Journal view's rows: what journal.search finds, narrowed by the
         fuzzy box q, as fields to draw, and the server's day, which the view
         shows until the person picks one."""
+        only = app.own_log_ids(app.who(caller))
         hits, cut, c, marks = await asyncio.to_thread(
-            run, p, p.offset, p.counts, p.q or ""
+            run, p, p.offset, p.counts, p.q or "", only
         )
         open_ids = set(app.sessions.sessions)
         out = {

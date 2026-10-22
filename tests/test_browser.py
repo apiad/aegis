@@ -886,9 +886,15 @@ def tab_ids(pg) -> list[str]:
 def close_session(pg) -> None:
     """Close the shown session: through the aegis dialog, which a done session
     skips (#268). The client decides from its state at the click, which a slow
-    runner paints into #s-status later, so wait for whichever outcome comes."""
+    runner paints into #s-status later, so wait for whichever outcome comes:
+    the dialog, or the view leaving the tab, for the next one or the Fleet."""
+    was = pg.evaluate("location.hash")
     pg.click("#close")
-    pg.wait_for_selector("#dialog .ok:visible, #a2:not([data-view=session])")
+    pg.wait_for_function(
+        "h => !!document.querySelector('#dialog .ok')?.checkVisibility()"
+        " || location.hash !== h",
+        arg=was,
+    )
     if pg.is_visible("#dialog .ok"):
         pg.click("#dialog .ok")
 
@@ -1073,6 +1079,30 @@ def test_close_in_one_browser_removes_the_tab_in_another(server, browser, page):
     assert errors == [] and page.errors == []
 
 
+def test_archiving_the_open_tab_opens_the_next_one_as_quiet_does(server, browser, page):
+    """Archiving the tab in front, here or in another browser, leaves it for
+    the next tab, as a quiet does, not for the Fleet; the last one left goes
+    back to the one before it."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a, b, c = spawn(page, "one"), spawn(page, "two"), spawn(page, "three")
+    errors: list = []
+    other = new_page(browser, errors)
+    other.goto(server.url + f"#s={b}")
+    other.wait_for_selector("#a2[data-view=session]")
+    page.click(f"#tablist .tab[data-id='{b}']")
+    hash_is(page, f"#s={b}")
+    close_session(page)
+    hash_is(page, f"#s={c}")
+    other.wait_for_function("id => location.hash === '#s=' + id", arg=c)
+    assert tab_ids(page) == [a, c] and tab_ids(other) == [a, c]
+    close_session(page)
+    hash_is(page, f"#s={a}")
+    close_session(page)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert errors == [] and page.errors == []
+
+
 HOLD = (
     '/mcp monitor_start {"description": "hold", "done": "false", '
     '"progress": null, "interval_s": 60}'
@@ -1111,6 +1141,38 @@ def test_quiet_is_disabled_on_an_idle_session(server, page):
     assert page.is_disabled("#quiet-session")
 
 
+def test_alt_q_quiets_a_working_session_and_leaves_an_idle_one(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a = spawn(page, "stays")
+    page.wait_for_selector("#s-status.at-done")
+    page.keyboard.press("Alt+q")
+    assert tab_ids(page) == [a]
+    b = spawn(page, HOLD)
+    page.wait_for_function("!document.querySelector('#quiet-session').disabled")
+    page.focus("#input")
+    page.keyboard.press("Alt+q")
+    page.wait_for_function("id => location.hash === '#s=' + id", arg=a)
+    assert tab_ids(page) == [a]
+    page.click("#tab-fleet")
+    page.wait_for_selector(f".card.quiet[data-id='{b}']")
+    assert page.errors == []
+
+
+def test_alt_a_archives_the_session_in_front(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a = spawn(page, "stays")
+    b = spawn(page, "goes")
+    page.wait_for_selector("#s-status.at-done")
+    page.focus("#input")
+    page.keyboard.press("Alt+a")
+    page.wait_for_function("id => location.hash === '#s=' + id", arg=a)
+    assert tab_ids(page) == [a]
+    assert b not in tab_ids(page)
+    assert page.errors == []
+
+
 def test_a_closed_session_is_in_the_archive_without_a_reload(server, page):
     """#160: the Fleet's archive was read before the Close and nothing read it
     again, so the closed session appeared only after a reload."""
@@ -1120,6 +1182,7 @@ def test_a_closed_session_is_in_the_archive_without_a_reload(server, page):
     spawn(page, "stays")
     b = spawn(page, "goes")
     close_session(page)
+    page.click("#tab-fleet")
     page.wait_for_selector("#a2[data-view=fleet]")
     page.wait_for_selector(f"#arch-list tr[data-id='{b}']", timeout=5000)
     assert page.errors == []
@@ -2643,6 +2706,7 @@ def test_fleet_cards_and_archive_rows_walk_with_j_and_open_with_enter(server, pa
     page.wait_for_selector("#a2[data-view=fleet]")
     a, b = spawn(page, "alpha"), spawn(page, "beta")
     close_session(page)  # b goes to the archive
+    page.click("#tab-fleet")
     page.wait_for_selector("#a2[data-view=fleet]")
     page.wait_for_selector(f"#arch-list tr[data-id='{b}']")
     sel = "document.querySelector('#cards .sel, #arch-list .sel')?.dataset.id ?? null"
