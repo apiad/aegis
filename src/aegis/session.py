@@ -1063,6 +1063,10 @@ class Session:
         """A record from the session's artifacts board (artifacts.py)."""
         self._record(record)
 
+    def record_secret(self, record: dict) -> None:
+        """A secret's card or its next state (secret_ops): never plaintext."""
+        self._record(record)
+
     def record_card(self, record: dict) -> None:
         """A card asking a person to approve what this session's agent made:
         a schedule now, a workflow next (schedule_ops, workflow_ops)."""
@@ -1127,6 +1131,7 @@ class Session:
             "peek",
             "artifact_state",
             "artifact_event",
+            "secret_gone",
             "name",
             "layout",
             "btw",

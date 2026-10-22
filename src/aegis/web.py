@@ -297,8 +297,9 @@ def _loggable(params: object) -> object:
     out = dict(params)
     data = out.get("data")
     out = {k: _capped(v) for k, v in out.items()}
-    if "token" in out:
-        out["token"] = "***"
+    for masked in ("token", "secret"):
+        if masked in out:
+            out[masked] = "***"
     if isinstance(data, str):
         out["data"] = f"<{len(data)} chars>"
     return out

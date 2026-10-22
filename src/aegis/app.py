@@ -66,6 +66,7 @@ from .agent_ops import (
     spawn_tail,
 )
 from .artifact_ops import register_artifact_ops
+from .secret_ops import register_secret_ops
 from .agents import (
     EFFORTS,
     HARNESSES,
@@ -534,6 +535,7 @@ class App:
         register_agent_ops(self)
         register_config_ops(self)
         register_artifact_ops(self)
+        self.secrets = self.sessions.secrets = register_secret_ops(self)
         register_layout_ops(self)
         self.fs_index, self.fs_tickets = register_fs_ops(self)
         register_term_ops(self)
