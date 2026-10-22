@@ -381,6 +381,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <a class="sub" href="#fold">Folding</a>
   <a class="sub" href="#drag">Dragging</a>
   <a class="sub" href="#wire">What the server sends</a>
+  <a class="sub" href="#altj">Alt+J</a>
   <a href="#overflow">Overflow</a>
   <a href="#card">The tab card</a>
   <a href="#phone">On a phone</a>
@@ -479,7 +480,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <ul>
 <li>The head shows a count chip. Unfolded it reads <code>−</code>; folded it reads <code>+N</code>, the number of hidden members. A click on the chip toggles the fold; a click elsewhere on the head opens the head's session.</li>
 <li>Folded, the head's state icon is the most urgent state among all members (needs you, then working, then waiting). If a hidden member needs the person, the chip blinks.</li>
-<li>Opening a hidden member from the overflow menu, from <code>Alt+J</code> or from a notification unfolds its group.</li>
+<li>Opening a hidden member from the overflow menu, from <code>Alt+J</code> or from a notification unfolds its group and scrolls its tab into view.</li>
 <li>Fold state is kept per browser in <code>localStorage</code>, beside the tab order.</li>
 </ul>
 
@@ -498,6 +499,15 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <li>A queue worker's group is set when its session starts, from its task's <code>enqueuer</code>.</li>
 <li><code>Session.wire()</code> sends <code>group</code> and <code>created_at</code>. The browser computes heads and blocks from those two fields alone.</li>
 <li>Sessions that exist before this ships have no <code>group</code> and show as lone tabs. Back-filling from <code>spawned_by</code> on load is cheap and is the builder's call.</li>
+</ul>
+
+<h3 id="altj">Alt+J keeps working</h3>
+<p><code>Alt+J</code> and the navigator's needs-you button (<code>#nav-needs</code>) walk <code>byNeed(ordered)</code> (<code>client/js/fleet.js</code>, <code>nextNeed</code> in <code>client/js/app.js</code>): every open session that needs the person, the longest waiting first. That list is built from the sessions, not from the tabs on screen, and this spec keeps it so:</p>
+<ul>
+<li>A folded member, or a tab scrolled out of the strip, is still in <code>ordered</code> and still in <code>Alt+J</code>'s walk, in the same order as today. Grouping, folding and dragging change no rank.</li>
+<li>When <code>Alt+J</code> lands on a folded member, its group unfolds and the strip scrolls its tab into view, so the person can see where they are.</li>
+<li><code>#nav-needs</code> and its count stay in the pill, in the same place; the panel toggle goes after the existing buttons, not between them.</li>
+<li>The shortcut stays global: an open tab card or phone sheet closes on <code>Alt+J</code> and does not swallow it.</li>
 </ul>
 
 <h2 id="overflow"><span class="n">07</span>Overflow</h2>
@@ -551,6 +561,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <ul>
 <li>Browser tests (Playwright, as the client's other tests) at 1280 px with 14 sessions, 6 on a linked server: no tab overlaps the next (each tab's right edge ≤ the next tab's left edge), every handle's full text is visible, and the strip scrolls. The same check at 390 px.</li>
 <li>Groups: a spawn chain A → B → C shows one group headed by A; archiving A makes B the head, with the group in place; a worker with a tab joins its enqueuer's group; a quiet worker shows nowhere; a terminal never joins.</li>
+<li>Alt+J: with a group folded and two of its hidden members needing the person, <code>Alt+J</code> visits both in <code>byNeed</code> order, unfolds the group and scrolls each tab into view; the visit order is the same with the group unfolded and with the bar reordered; <code>#nav-needs</code> shows the same count before and after.</li>
 <li>Drag: a head carries its members; a member cannot leave its group; order and fold survive a reload.</li>
 <li>Card: opens after the delay, stays while the pointer is on it, closes on leave and Esc; its buttons match <code>sessionMenu</code> for a working, an asleep, a quiet and a workflow-locked session, including disabled reasons.</li>
 <li>Server: <code>group</code> is set at spawn for an agent spawn, a person's spawn from a session, a cross-server spawn and a worker; it survives a restart; an old meta loads without it.</li>
