@@ -109,6 +109,7 @@ function dropBefore(t, x) {
   const box = t.closest(".tblock");
   if (dragging.member) {
     if (box.dataset.group !== dragging.group || !t.classList.contains("member")) return undefined;
+    if (dragging.keys.includes(t.dataset.id)) return undefined;
     if (!after) return t.dataset.id;
     const next = t.nextElementSibling?.dataset.id;
     return next ?? firstKey(box.nextElementSibling);
