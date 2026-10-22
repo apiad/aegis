@@ -70,7 +70,10 @@ class MemberView:
 
     def op(self, channel: str, op: dict) -> dict | None:
         if channel == "toasts":
-            source = op.get("toast", {}).get("from")
+            t = op.get("toast", {})
+            if "owner" in t and not self._app.sees(self._who, t["owner"]):
+                return None
+            source = t.get("from")
             return op if source is None or self._session(source["id"]) else None
         key = ROW_KEYS.get(channel)
         if key is None:

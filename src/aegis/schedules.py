@@ -615,7 +615,11 @@ class Schedules:
         self._save()
         self._event(name, "paused", by=by, **({"why": why} if why else {}))
         if by == "errors" or (by == APPROVAL and why):
-            self._app.toast(f"Schedule {name} is paused: {why}", "error")
+            self._app.toast(
+                f"Schedule {name} is paused: {why}",
+                "error",
+                owner=s.owner.get("principal"),
+            )
 
     def _get(self, name: str) -> Schedule:
         s = self.items.get(name)

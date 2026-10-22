@@ -141,6 +141,14 @@ class Channels:
     def subscribers(self, channel: str) -> int:
         return len(self._subs.get(channel, ()))
 
+    def reached(self, channel: str, op: dict) -> int:
+        """How many subscribers ``op`` reached: those whose view passes it."""
+        return sum(
+            1
+            for sub in self._subs.get(channel, ())
+            if sub.view is None or sub.view.op(channel, op) is not None
+        )
+
 
 class Throttle:
     """One channel's ops, merged by key and published at most once per ``every``.

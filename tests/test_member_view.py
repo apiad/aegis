@@ -205,3 +205,68 @@ async def test_a_members_archive_holds_its_own(world):
     assert mine in listed and theirs not in listed and got["total"] == len(listed)
     every = await call(world, "archive.list", {"limit": 50}, ADMIN)
     assert {mine, theirs} <= {m["log_id"] for m in every["items"]}
+
+
+async def test_a_schedule_cannot_fire_into_another_members_session(world):
+    ben = Caller("agent", log_id=await spawn(world, BEN))
+    theirs = await spawn(world, CARA)
+    handle = world.app.sessions.sessions[theirs].handle
+    fire = {"target": "existing", "session": handle}
+    d = {"name": "into-cara", "clock": {"every": "5m"}, "fire": fire, "prompt": "x"}
+    hidden = await refused(world, "schedule.create", d, ben)
+    gone = await refused(
+        world,
+        "schedule.create",
+        {**d, "fire": {**fire, "session": "no-such-one"}},
+        ben,
+    )
+    assert hidden.code == gone.code == "no_session"
+
+
+async def test_pushes_reach_only_the_devices_of_who_may_see(world):
+    sender = world.app.push.sender
+    theirs = await spawn(world, CARA)
+    rows = [
+        {"id": "dev-ben", "owner": "ben", "sources": ["needs_you"]},
+        {"id": "dev-cara", "owner": "cara", "sources": ["needs_you"]},
+        {"id": "dev-admin", "owner": world.app.user, "sources": ["needs_you"]},
+    ]
+    world.app.push.subscriptions.list = lambda: rows
+    sender._running = True
+    sender._lane = lambda sid: __import__("asyncio").sleep(0)
+    sender._queue_for("needs_you", {"key": theirs, "title": "t", "body": "b"})
+    assert set(sender._pending) == {"dev-cara", "dev-admin"}
+
+
+async def test_a_schedules_toast_reaches_its_owner_and_the_count_is_honest(world):
+    got_ben = watch(world, "toasts", BEN)
+    got_cara = watch(world, "toasts", CARA)
+    n = world.app.toast("Schedule x is paused", "error", owner="cara")
+    texts = lambda got: [o["toast"]["text"] for m in got for o in m.get("ops", [])]  # noqa: E731
+    assert texts(got_ben) == [] and texts(got_cara) == ["Schedule x is paused"]
+    assert n == 1
+
+
+async def test_a_member_cannot_hand_off_to_a_linked_server(world):
+    ben = Caller("agent", log_id=await spawn(world, BEN))
+    e = await refused(world, "peer.handoff", {"target": "x@far", "context": "hi"}, ben)
+    assert e.code == "not_for_members"  # as outside the mode
+
+
+FLOW = "id: {id}\ntitle: T\nsay: S.\nroot:\n  seq:\n    - {{sh: 'true', say: One.}}\n  say: Done.\n"
+
+
+async def test_who_saved_a_workflow_is_a_members_own_business(world):
+    ben = Caller("agent", log_id=await spawn(world, BEN))
+    cara = Caller("agent", log_id=await spawn(world, CARA))
+    for who, wid in ((ben, "bens-flow"), (cara, "caras-flow")):
+        await call(world, "workflow.save", {"definition": FLOW.format(id=wid)}, who)
+    rows = {r["id"]: r for r in await call(world, "workflow.list", {}, ben)}
+    assert "saved_by" in rows["bens-flow"] and "saved_by" not in rows["caras-flow"]
+    hidden = await refused(world, "workflow.delete", {"id": "caras-flow"}, ben)
+    missing = await refused(world, "workflow.delete", {"id": "no-such-flow"}, ben)
+    assert (hidden.code, hidden.message.replace("caras-flow", "?")) == (
+        missing.code,
+        missing.message.replace("no-such-flow", "?"),
+    )
+    await call(world, "workflow.delete", {"id": "bens-flow"}, ben)

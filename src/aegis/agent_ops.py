@@ -879,7 +879,7 @@ def register_agent_ops(app: App) -> None:
         peer_handoff."""
         out = []
         who = app.who(caller)
-        member = app.own_log_ids(who) is not None
+        member = app.multi_user is not None and not who.is_admin
         for s in reg.open_sessions():
             if not app.sees(who, app.owner_of(s.log_id)):
                 continue
