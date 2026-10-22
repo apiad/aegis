@@ -275,7 +275,7 @@ pre.code{background:var(--bg);border:1px solid var(--rule);border-radius:8px;pad
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">plan · tab bar, groups and the tab card</span>
-  <span class="st"><span class="pill acc">not started</span><span class="pill">2026-10-22</span><span class="pill">#586</span></span>
+  <span class="st"><span class="pill acc">built: PRs #599 #609 #613 #617 #621</span><span class="pill">2026-10-22</span><span class="pill">#586</span></span>
 </div>
 <div class="wrap">
 <nav class="toc" id="toc">
@@ -290,7 +290,7 @@ pre.code{background:var(--bg);border:1px solid var(--rule);border-radius:8px;pad
 </nav>
 <main>
 <h1 id="header">Tab bar, groups and the tab card: implementation plan</h1>
-<div class="meta"><span>docs/superpowers/plans/2026-10-22-tab-bar-groups.html</span><span>·</span><span>implements <a href="../specs/2026-10-22-tab-bar-groups-design.html">the spec</a></span><span>·</span><span>execution: not chosen yet</span></div>
+<div class="meta"><span>docs/superpowers/plans/2026-10-22-tab-bar-groups.html</span><span>·</span><span>implements <a href="../specs/2026-10-22-tab-bar-groups-design.html">the spec</a></span><span>·</span><span>execution: inline (native)</span></div>
 <div class="progress"><i id="pbar"></i></div><div class="ptext" id="ptext"></div>
 
 <p class="lede">Five slices, each its own issue and PR: the rename nudge (server only, lands first), the bar and the two-line tab, the hover card and the phone sheet, groups on the server and in the bar, and the Fleet as stacks. Each slice ships something usable; D needs B, E needs D.</p>
@@ -322,7 +322,7 @@ pre.code{background:var(--bg);border:1px solid var(--rule);border-radius:8px;pad
 <!-- ============================ SLICE A ============================ -->
 <h2 id="s5" class="slice"><span class="n">A</span>Slice A: the rename nudge</h2>
 
-<details class="task" id="task-1" data-state="pending">
+<details class="task" id="task-1" data-state="done">
 <summary><span class="num">A1</span><span class="ttl">handle_set on the session</span><span class="state"></span><span class="files">src/aegis/session.py · src/aegis/registry.py · tests/test_rename_nudge.py</span></summary>
 <div class="body">
 <p class="iface">Produces: <code>Session.handle_set: bool</code>, in <code>Session.meta()</code> beside <code>title_set</code>; <code>Registry.rename()</code> sets it when <code>handle</code> is given. A meta without the key loads as <code>True</code>; a new session starts <code>False</code>.</p>
@@ -353,7 +353,7 @@ The third test builds the old meta by popping <code>handle_set</code> from a wri
 </ol>
 </div></details>
 
-<details class="task" id="task-2" data-state="pending">
+<details class="task" id="task-2" data-state="done">
 <summary><span class="num">A2</span><span class="ttl">turn_end reminds until both are set</span><span class="state"></span><span class="files">src/aegis/agent_ops.py · src/aegis/help/sessions.md · tests/test_rename_nudge.py · changelog.d/</span></summary>
 <div class="body">
 <p class="iface">Consumes: <code>Session.handle_set</code>, <code>Session.title_set</code>, <code>Session.worker</code>. Produces: the reply of <code>turn.end</code>.</p>
@@ -384,7 +384,7 @@ async def test_a_worker_never_gets_it(world): ...  # enqueue on a queue, the wor
 <!-- ============================ SLICE B ============================ -->
 <h2 id="s1" class="slice"><span class="n">B</span>Slice B: the bar and the tab</h2>
 
-<details class="task" id="task-3" data-state="pending">
+<details class="task" id="task-3" data-state="done">
 <summary><span class="num">B1</span><span class="ttl">Icon-only top bar; the panel toggle in the nav pill</span><span class="state"></span><span class="files">src/aegis/client/index.html · client/css/base.css · client/js/app.js · tests/test_tabbar_browser.py</span></summary>
 <div class="body">
 <ol>
@@ -412,7 +412,7 @@ def test_the_panel_toggle_lives_in_the_nav_pill(server, page):
 </ol>
 </div></details>
 
-<details class="task" id="task-4" data-state="pending">
+<details class="task" id="task-4" data-state="done">
 <summary><span class="num">B2</span><span class="ttl">Two-line tabs that never shrink, the server name inside</span><span class="state"></span><span class="files">client/js/tabs.js · client/css/base.css · tests/test_tabbar_browser.py</span></summary>
 <div class="body">
 <p class="iface">Produces: in <code>patchTab</code>, a session tab's children are <code>.ic</code>, <code>.l2 &gt; .hn + .tt</code>, then <code>.where</code> (linked server) and <code>.who</code> (owner) as today. No <code>title</code> attribute on session tabs; <code>aria-label</code> = <code>`${handle}: ${title} (${state})`</code>.</p>
@@ -432,7 +432,7 @@ def test_a_long_handle_on_a_phone(server, browser): ...   # 390x844, three long 
 </ol>
 </div></details>
 
-<details class="task" id="task-5" data-state="pending">
+<details class="task" id="task-5" data-state="done">
 <summary><span class="num">B3</span><span class="ttl">The overflow menu</span><span class="state"></span><span class="files">client/js/tabs.js · client/js/app.js · client/index.html · client/css/base.css · tests/test_tabbar_browser.py · changelog.d/</span></summary>
 <div class="body">
 <p class="iface">Produces: <code>#tab-more</code>, a button after <code>#tablist</code> showing <code>`${n} ▾`</code>, visible only while the strip overflows (a <code>ResizeObserver</code> on <code>#tablist</code>); it opens the existing <code>cmenu</code> with one item per session, in bar order, whose <code>run</code> goes to the session and calls <code>scrollIntoView({inline:"nearest"})</code> on its tab.</p>
@@ -447,7 +447,7 @@ def test_a_long_handle_on_a_phone(server, browser): ...   # 390x844, three long 
 <!-- ============================ SLICE C ============================ -->
 <h2 id="s2" class="slice"><span class="n">C</span>Slice C: the tab card</h2>
 
-<details class="task" id="task-6" data-state="pending">
+<details class="task" id="task-6" data-state="done">
 <summary><span class="num">C1</span><span class="ttl">The hover card</span><span class="state"></span><span class="files">client/js/tabcard.js (new) · client/js/app.js · client/css/base.css · tests/test_tabcard_browser.py</span></summary>
 <div class="body">
 <p class="iface">Produces: <code>export function attachTabCard(list, { meta, items, open })</code> in <code>tabcard.js</code>: <code>meta(key)</code> returns the session's meta, <code>items(key)</code> returns <code>sessionMenu(key)</code> (<code>{title, groups}</code>), <code>open(key)</code> opens it. Also <code>export function cardBody(m, metas)</code>, which C2 and E1 reuse. Card content uses <code>fleet.js</code>'s <code>ago</code>, <code>modelLine</code>, <code>money</code> and <code>tickPlan</code>; actions render each item as a button with <code>icon(item.icon)</code> from <code>glyphs.js</code>, <code>title</code> = label, <code>disabled</code> + <code>title</code> = the item's reason, <code>danger</code> items after a spacer.</p>
@@ -470,7 +470,7 @@ def test_alt_j_closes_the_card_and_still_moves(server, page): ...
 </ol>
 </div></details>
 
-<details class="task" id="task-7" data-state="pending">
+<details class="task" id="task-7" data-state="done">
 <summary><span class="num">C2</span><span class="ttl">The phone sheet on long press</span><span class="state"></span><span class="files">client/js/tabcard.js · client/js/app.js · client/css/base.css · tests/test_tabcard_browser.py · changelog.d/</span></summary>
 <div class="body">
 <ol>
@@ -483,7 +483,7 @@ def test_alt_j_closes_the_card_and_still_moves(server, page): ...
 <!-- ============================ SLICE D ============================ -->
 <h2 id="s3" class="slice"><span class="n">D</span>Slice D: groups</h2>
 
-<details class="task" id="task-8" data-state="pending">
+<details class="task" id="task-8" data-state="done">
 <summary><span class="num">D1</span><span class="ttl">group on SpawnSpec, set at every spawn path</span><span class="state"></span><span class="files">src/aegis/session.py · src/aegis/agents.py · src/aegis/app.py · src/aegis/queues.py · tests/test_groups.py</span></summary>
 <div class="body">
 <p class="iface">Produces: <code>SpawnSpec.group: str | None = None</code>, in <code>record()</code>/<code>from_record()</code>; <code>resolve(..., group: str | None = None)</code> in <code>agents.py</code>; <code>SpawnParams.from_session: SkipJsonSchema[str | None]</code> (hidden like <code>spawned_from</code>); <code>SpawnedFrom.group: str | None = None</code>. A helper <code>group_of(parent: Session) -&gt; str</code> = <code>parent.spec.group or parent.log_id</code>.</p>
@@ -511,7 +511,7 @@ async def test_an_old_meta_has_no_group(world): ...
 </ol>
 </div></details>
 
-<details class="task" id="task-9" data-state="pending">
+<details class="task" id="task-9" data-state="done">
 <summary><span class="num">D2</span><span class="ttl">groups.js: blocks, heads and keys</span><span class="state"></span><span class="files">client/js/groups.js (new) · tests/test_groups_browser.py</span></summary>
 <div class="body">
 <p class="iface">Produces, all pure: <code>groupKey(m, here)</code> → <code>m.group ? (m.group.includes("@") ? m.group : `${m.group}@${m.server || here}`) : `${m.key}@${m.server || here}`</code>; <code>blocksOf(metas, here, order)</code> → <code>[{key, head, members}]</code> with <code>head</code> the oldest member by <code>created_at</code> that is not <code>off</code> (fall back to the oldest); members in <code>order</code>; terminals always their own block. <code>order</code> is <code>{blocks: string[], members: {[key]: string[]}}</code>.</p>
@@ -521,7 +521,7 @@ async def test_an_old_meta_has_no_group(world): ...
 </ol>
 </div></details>
 
-<details class="task" id="task-10" data-state="pending">
+<details class="task" id="task-10" data-state="done">
 <summary><span class="num">D3</span><span class="ttl">Groups in the bar: heads, folding, drag, Alt+J</span><span class="state"></span><span class="files">client/js/tabs.js · client/js/app.js · client/css/base.css · client/themes/*.css · tests/test_groups_browser.py · changelog.d/</span></summary>
 <div class="body">
 <p class="iface">Consumes: <code>blocksOf</code>, <code>groupKey</code>. Produces: <code>TabOrder</code> stores <code>{blocks, members}</code> under <code>aegis.tabs</code> and reads an old flat array as blocks of one; folds in <code>aegis.tab-folds</code>.</p>
@@ -545,7 +545,7 @@ def test_a_linked_head_offline_keeps_the_group_in_place(linked, page): ...
 <!-- ============================ SLICE E ============================ -->
 <h2 id="s4" class="slice"><span class="n">E</span>Slice E: the Fleet as stacks</h2>
 
-<details class="task" id="task-11" data-state="pending">
+<details class="task" id="task-11" data-state="done">
 <summary><span class="num">E1</span><span class="ttl">Stacks, unfolding and ranking</span><span class="state"></span><span class="files">client/js/fleet.js · client/js/app.js · client/css/base.css · tests/test_fleet_stacks_browser.py · changelog.d/</span></summary>
 <div class="body">
 <p class="iface">Consumes: <code>blocksOf</code>. Changes <code>renderCards(box, metas, onOpen, order, onClose)</code> to draw one <code>.stack</code> per block of more than one member, and <code>.gopen</code> for the unfolded ones listed in <code>aegis.fleet-open</code>.</p>
