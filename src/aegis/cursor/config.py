@@ -127,13 +127,14 @@ def models_from(entries: list, current: str = "") -> tuple[Model, ...]:
             )
         )
     if current and not any(current in (m.value, m.resolved) for m in models):
+        effort = effort_of(current)
         models.append(
             Model(
                 value=current,
                 resolved=current,
                 label=current,
                 doc="",
-                efforts=(effort_of(current),) if effort_of(current) else (),
+                efforts=(effort,) if effort else (),
             )
         )
     return tuple(models)

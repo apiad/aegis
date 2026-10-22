@@ -38,10 +38,10 @@ from collections import deque
 from pathlib import Path
 from typing import Any
 
-from ..cgroups import wrap
+from .. import launch
 from ..claude.control import Catalog
 from ..claude.process import ControlError
-from ..harness import Launch, raise_oom_score, session_env
+from ..harness import Launch, session_env
 from .config import (
     argv,
     allows,
@@ -156,19 +156,21 @@ class CursorProcess:
     async def _spawn(self) -> None:
         self._quiet = False
         self._launch.stderr_path.parent.mkdir(parents=True, exist_ok=True)
-        self._proc = await asyncio.create_subprocess_exec(
-            *wrap(self._launch.cgroup, argv(self._bin)),
+        self._proc = await launch.child(
+            argv(self._bin),
             cwd=self._launch.cwd,
             # The whole environment, not just AEGIS_*: cursor-agent needs the
             # person's HOME and PATH to find its login and its tools.
             env=session_env(self._launch),
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            stdin=launch.PIPE,
+            stdout=launch.PIPE,
+            stderr=launch.PIPE,
             limit=LINE_LIMIT,
-            start_new_session=True,
+            new_session=True,
+            cgroup=self._launch.cgroup,
+            oom=True,
+            user=self._launch.user,
         )
-        raise_oom_score(self._proc.pid)
         self._keep(self._drain(self._proc.stderr))
         self._keep(self._read())
         self._wait_task = asyncio.create_task(self._wait())
@@ -366,7 +368,9 @@ class CursorProcess:
         kind = str(call.get("kind") or "")
         allow = allows(self.permission, kind)
         want = "allow_once" if allow else "reject_once"
-        options = p.get("options") if isinstance(p.get("options"), list) else []
+        options = p.get("options")
+        if not isinstance(options, list):
+            options = []
         pick = next(
             (
                 str(o["optionId"])
@@ -594,7 +598,8 @@ class CursorProcess:
     def _try_catalog(self) -> None:
         if self._catalog is None and self._models:
             self._catalog = catalog_from(
-                models_from(self._models, self._current_model), self._commands
+                list(models_from(self._models, self._current_model or "")),
+                self._commands,
             )
 
     async def catalog(self) -> Catalog:

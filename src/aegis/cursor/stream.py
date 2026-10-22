@@ -286,10 +286,11 @@ class Parser:
         tid = _str(p.get("toolCallId"))
         if not tid:
             return []
+        raw = p.get("rawInput")
         name, inp = tool_name(
             str(p.get("kind") or ""),
             str(p.get("title") or ""),
-            p.get("rawInput") if isinstance(p.get("rawInput"), dict) else {},
+            raw if isinstance(raw, dict) else {},
         )
         self.tools[tid] = [name, inp]
         return [ToolCall(id=tid, name=name, input=inp, parent=None, usage=None)]
@@ -298,10 +299,13 @@ class Parser:
         tid = _str(p.get("toolCallId"))
         if not tid:
             return []
-        raw = p.get("rawInput") if isinstance(p.get("rawInput"), dict) else None
-        raw_out = p.get("rawOutput") if isinstance(p.get("rawOutput"), dict) else None
+        raw = p.get("rawInput")
+        raw = raw if isinstance(raw, dict) else None
+        raw_out = p.get("rawOutput")
+        raw_out = raw_out if isinstance(raw_out, dict) else None
         title = str(p.get("title") or "")
-        content = p.get("content") if isinstance(p.get("content"), list) else []
+        content = p.get("content")
+        content = content if isinstance(content, list) else []
         status = str(p.get("status") or "")
         text, diff = _output(content, raw_out)
         state = self.tools.get(tid)
@@ -309,7 +313,8 @@ class Parser:
         if state is None:
             state = list(tool_name(str(p.get("kind") or ""), title, raw or {}))
             self.tools[tid] = state
-        name, inp = state
+        name = str(state[0])
+        inp = state[1] if isinstance(state[1], dict) else {}
         changed = False
         if title.startswith(f"{SERVER}: ") and not name.startswith("mcp__"):
             state[0] = name = f"mcp__{SERVER}__{title.partition(': ')[2]}"

@@ -319,7 +319,7 @@ async def test_a_line_over_the_stdio_limit_reaches_the_store(cx):
 
 async def test_an_exit_leaves_the_session_stopped(cx):
     await cx.session.send("/exit 1")
-    await until(lambda: cx.session.status == "stopped", timeout=5, what="stopped")
+    await until(lambda: cx.session.status == "asleep", timeout=5, what="stopped")
     assert any(
         e["summary"] == "Cursor Agent exited with code 1" for e in cx.session.entries()
     )
