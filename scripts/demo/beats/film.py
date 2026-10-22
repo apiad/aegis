@@ -290,12 +290,16 @@ def rung3(stage):
     stage.say(L["r3"][0])
     s = stage.vars
     # Started from the dark mode tab, the three join its group: one stack.
-    dark = stage.page.locator(".tab:has-text('Dark mode')").first.get_attribute("data-id")
+    dark = stage.page.locator(".tab:has-text('Dark mode')").first.get_attribute(
+        "data-id"
+    )
     s["api"] = stage.spawn(f"{ROOT}/api", API, parent=dark)
     stage.wait(0.8)
     s["web"] = stage.spawn(f"{ROOT}/web", "Profile the slow checkout.", parent=dark)
     stage.wait(0.8)
-    s["docs"] = stage.spawn(f"{ROOT}/docs", "Update the docs for dark mode.", parent=dark)
+    s["docs"] = stage.spawn(
+        f"{ROOT}/docs", "Update the docs for dark mode.", parent=dark
+    )
     stage.wait(1.2)
     stage.camera(1600, rx=10, ry=-12, s=0.85)
     stage.click("#tab-fleet")
