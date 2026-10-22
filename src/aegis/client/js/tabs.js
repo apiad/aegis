@@ -56,17 +56,25 @@ function tab(m, focusId, { onFocus, onMove, onClose }) {
   t.classList.toggle("blink", !!m.blink);
   t.draggable = true;
   t.dataset.id = m.key;
-  t.title = `${m.handle}: ${m.title || "untitled"} (${LABEL[m.attention] || m.state})`;
+  const said = `${m.handle}: ${m.title || "untitled"} (${LABEL[m.attention] || m.state})`;
   const mark = markNode(m);
-  const name = document.createElement("span");
-  name.className = "tname";
-  // A terminal is named by its name; its command is in the title.
   const term = m.kind === "term" || m.kind === "browser";
-  name.textContent = term ? `${m.kind === "term" ? "▸_" : "◫"} ${m.name}` : m.title || m.handle;
-  const handle = document.createElement("span");
-  handle.className = "srv";
-  handle.textContent = m.title && !term ? m.handle : "";
-  t.append(mark, name, handle);
+  if (term) {
+    // A terminal is named by its name; its command is in the title.
+    t.title = said;
+    const name = Object.assign(document.createElement("span"), { className: "tname" });
+    name.textContent = `${m.kind === "term" ? "▸_" : "◫"} ${m.name}`;
+    t.append(mark, name);
+  } else {
+    // The whole handle, and the title under it cut to the handle's width (#586).
+    t.setAttribute("aria-label", said);
+    const lines = Object.assign(document.createElement("span"), { className: "l2" });
+    lines.append(
+      Object.assign(document.createElement("span"), { className: "hn", textContent: m.handle }),
+      Object.assign(document.createElement("span"), { className: "tt", textContent: m.title || "" }),
+    );
+    t.append(mark, lines);
+  }
   // Whose it is, when it is not this browser's (tokens.py).
   const owner = shownOwner(m);
   if (owner) t.append(Object.assign(document.createElement("span"), { className: "who", textContent: owner }));

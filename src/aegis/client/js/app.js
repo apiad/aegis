@@ -3936,6 +3936,28 @@ new ResizeObserver(() => root.style.setProperty("--hdr", `${header.getBoundingCl
 // The navigator floats just above the composer, which grows with its lines.
 new ResizeObserver(() => root.style.setProperty("--composer-h", `${$("composer").offsetHeight}px`)).observe($("composer"));
 $("side-btn").addEventListener("click", toggleSide);
+
+// The strip's menu (#586): while the tabs overflow, a button after them lists
+// every open session in bar order; a choice opens it, and the route's render
+// scrolls its tab into view.
+const MARK_ICON = { needs_you: "need", working: "work", waiting: "wait", error: "err", review: "rev", done: "done" };
+function sizeTabMore() {
+  const list = $("tablist");
+  $("tab-more").hidden = list.scrollWidth <= list.clientWidth + 1;
+  $("tab-more").textContent = `${tabbed().length} ▾`;
+}
+new ResizeObserver(sizeTabMore).observe($("tablist"));
+new MutationObserver(sizeTabMore).observe($("tablist"), { childList: true });
+$("tab-more").addEventListener("click", () => {
+  const items = tabbed().map((m) => ({
+    id: m.key,
+    label: m.server ? `${m.handle} · ${m.server}` : m.handle,
+    icon: MARK_ICON[m.mark] || "dot",
+    run: () => go(`#s=${m.key}`),
+  }));
+  cmenu.open({ groups: [items] }, $("tab-more"), $("tab-more"));
+});
+$("nav-side").addEventListener("click", toggleSide);
 // The dimmed transcript is the session view's own ::after, so a tap on it
 // lands on the view itself and goes no further.
 document.querySelector(".v-session").addEventListener("click", (ev) => {

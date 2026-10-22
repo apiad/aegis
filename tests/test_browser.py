@@ -1261,11 +1261,11 @@ def test_reopen_from_the_archive_and_rename(server, page, frames):
     page.click("#s-title")
     page.fill("#s-title input", "Old talk")
     page.press("#s-title input", "Enter")
-    page.wait_for_selector("#tablist .tab .tname >> text=Old talk")
+    page.wait_for_selector("#tablist .tab .tt >> text=Old talk")
     page.click("#s-handle")
     page.fill("#s-handle input", "old-talk")
     page.press("#s-handle input", "Enter")
-    page.wait_for_selector("#tablist .tab .srv >> text=old-talk")
+    page.wait_for_selector("#tablist .tab .hn >> text=old-talk")
     close_session(page)
     page.wait_for_selector(f"#arch-list tr[data-id='{a}']")
     page.fill("#arch-q", "nothing like it")
@@ -1839,7 +1839,7 @@ def test_the_panel_collapses_and_resizes_and_the_browser_keeps_both(server, page
     page.reload()
     page.wait_for_selector("#a2[data-view=session]")
     assert page.is_hidden("#side")
-    page.click("#side-btn")
+    page.click("#nav-side")
     page.wait_for_selector("#side", state="visible")
     assert side_width(page) == 260
     assert page.errors == []
@@ -6182,7 +6182,7 @@ def test_the_navigator_fits_a_phone_and_keeps_its_touch_targets(server, browser)
     assert box["x"] >= 60 and box["x"] + box["width"] <= 390, box
     # A tap 4 px above the pill still lands on each button.
     hits = page.evaluate(
-        """() => [...document.querySelectorAll('#nav button')].map(b => {
+        """() => [...document.querySelectorAll('#nav button')].filter(b => b.offsetWidth).map(b => {
           const r = b.getBoundingClientRect();
           const at = document.elementFromPoint(r.x + r.width / 2, r.top - 4);
           return [b.id, at?.closest('button') === b];
@@ -6462,7 +6462,9 @@ def test_a_phone_in_landscape_gets_the_desktop_layout_with_touch_targets(
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page)
-    assert page.is_visible(".side") and page.is_visible("#side-btn")
+    # The pill, which holds the panel button, shows with the first row.
+    page.wait_for_selector("#nav-side", state="visible")
+    assert page.is_visible(".side")
     assert page.locator("#send").bounding_box()["height"] >= 44
     assert errors == []
 
@@ -8756,7 +8758,7 @@ def test_the_recap_button_mid_turn_says_busy_in_a_toast(recap_server, page):
     page.fill("#input", "/busy 2")
     page.press("#input", "Enter")
     page.wait_for_function(
-        "() => (document.querySelector('.tab.on')?.title || '').includes('working')",
+        "() => (document.querySelector('.tab.on')?.getAttribute('aria-label') || '').includes('working')",
         timeout=4000,
     )
     page.click("#nav-recap")
@@ -8779,7 +8781,7 @@ def test_an_agent_toast_reaches_every_browser_and_its_click_opens_the_tab(
     page.press("#input", "Enter")
     for pg in (page, other):
         pg.wait_for_selector(".toast.from .msg >> text=Spec is ready")
-    handle = page.get_attribute(".tab.on", "title").split(":")[0]
+    handle = page.inner_text(".tab.on .hn")
     assert other.text_content(".toast.from .hd .nm") == handle
     other.click(".toast.from")
     other.wait_for_selector("#a2[data-view=session]")
@@ -8813,7 +8815,7 @@ def test_an_agent_toast_goes_to_the_desktop_only_while_the_page_is_hidden(
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     sid = spawn(page, "hello")
-    handle = page.get_attribute(".tab.on", "title").split(":")[0]
+    handle = page.inner_text(".tab.on .hn")
     page.fill("#input", '/mcp toast {"text": "Seen while visible"}')
     page.press("#input", "Enter")
     other.wait_for_selector(".toast.from .msg >> text=Seen while visible")
