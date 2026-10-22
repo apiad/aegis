@@ -145,7 +145,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · browsers</span>
-  <span class="st"><span class="pill acc">draft, in review</span><span class="pill">2026-10-22</span></span>
+  <span class="st"><span class="pill acc">approved</span><span class="pill">2026-10-22</span></span>
 </div>
 
 <div class="wrap">
@@ -192,20 +192,20 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 </div>
 
 <h2 id="decisions"><span class="n">02</span>Decisions</h2>
-<p><span class="who">maintainer</span> marks a decision the maintainer made. <span class="who q">proposed</span> marks one this spec proposes and nobody has ruled on yet.</p>
+<p><span class="who">maintainer</span> marks a decision the maintainer made; every decision here is one.</p>
 <table class="tbl">
 <thead><tr><th>Question</th><th>Decision</th><th>Why</th></tr></thead>
 <tbody>
 <tr><td>Inside aegis or beside it</td><td>A feature of aegis, with its own pane and tools, not an extension or a separate service</td><td class="why"><span class="who">maintainer</span> The page belongs next to the transcript, and the agent should reach it with the same tools and wake-ups as monitors and terminals.</td></tr>
 <tr><td>What the agent may do</td><td>Read, drive, and hand control to the person and take it back</td><td class="why"><span class="who">maintainer</span> A test with a person needs both directions: the agent sets up a state, the person tries it, a captcha or a login needs a human.</td></tr>
-<tr><td>Where the page runs</td><td>A Chromium on the server, streamed to the pane. Not an iframe in the client</td><td class="why"><span class="who q">proposed</span> An iframe of another origin cannot be read by aegis's page, and many sites refuse to be framed. A server-side browser can be read by the server, survives a closed tab, and reaches the server's own <code>localhost</code>.</td></tr>
-<tr><td>How the server drives it</td><td>Playwright, as an optional extra, <code>aegis-harness[browser]</code>. The screencast and raw input go through a CDP session Playwright opens</td><td class="why"><span class="who q">proposed</span> Playwright already gives locators, waits and an accessibility snapshot, and aegis's tests use it. A server without the extra shows no browser entry and the tools answer <code>browser_unavailable</code>.</td></tr>
-<tr><td>How the pane shows it</td><td>JPEG frames from <code>Page.startScreencast</code>, acknowledged one by one, and input sent back as CDP input events</td><td class="why"><span class="who q">proposed</span> Frames only flow while a pane is open and acknowledges them, so a hidden pane costs nothing. VNC or WebRTC would add a codec and a server for one page.</td></tr>
-<tr><td>Who holds the page</td><td>One holder at a time, the agent or the person. The person can take it at any moment without asking; the agent gets it back only when the person gives it</td><td class="why"><span class="who q">proposed</span> Two cursors on one page lose each other's input. The person wins because they are the one who can see it go wrong.</td></tr>
-<tr><td>How the agent reads the page</td><td>Text first: the accessibility snapshot. A screenshot only when the agent asks for one</td><td class="why"><span class="who q">proposed</span> A snapshot costs a few hundred tokens and names what can be clicked. An image costs more and the agent rarely needs one.</td></tr>
-<tr><td>Sign-ins</td><td>Each browser has a profile directory that persists cookies and storage. A profile is named and reused, so a login done once stays</td><td class="why"><span class="who q">proposed</span> The person logs in once inside the server's browser. aegis never sees the person's own browser or its sessions.</td></tr>
-<tr><td>How many</td><td>At most <code>browsers.max</code> live at once (default 3), stopped after <code>browsers.idle_minutes</code> without a frame, an input or a tool call (default 30)</td><td class="why"><span class="who q">proposed</span> A Chromium with one page takes a few hundred MB. The profile stays on disk, so a stopped browser reopens signed in.</td></tr>
-<tr><td>Passwords in the record</td><td>Typing into a password field is logged as its length, never its text, and the agent's own typing into one is not echoed in its transcript</td><td class="why"><span class="who q">proposed</span> The log and the transcript are read by agents and kept on disk.</td></tr>
+<tr><td>Where the page runs</td><td>A Chromium on the server, streamed to the pane. Not an iframe in the client</td><td class="why"><span class="who">maintainer</span> An iframe of another origin cannot be read by aegis's page, and many sites refuse to be framed. A server-side browser can be read by the server, survives a closed tab, and reaches the server's own <code>localhost</code>.</td></tr>
+<tr><td>How the server drives it</td><td>Playwright, as an optional extra, <code>aegis-harness[browser]</code>. The screencast and raw input go through a CDP session Playwright opens</td><td class="why"><span class="who">maintainer</span> Playwright already gives locators, waits and an accessibility snapshot, and aegis's tests use it. A server without the extra shows no browser entry and the tools answer <code>browser_unavailable</code>.</td></tr>
+<tr><td>How the pane shows it</td><td>JPEG frames from <code>Page.startScreencast</code>, acknowledged one by one, and input sent back as CDP input events</td><td class="why"><span class="who">maintainer</span> Frames only flow while a pane is open and acknowledges them, so a hidden pane costs nothing. VNC or WebRTC would add a codec and a server for one page.</td></tr>
+<tr><td>Who holds the page</td><td>One holder at a time, the agent or the person. The person can take it at any moment without asking; the agent gets it back only when the person gives it</td><td class="why"><span class="who">maintainer</span> Two cursors on one page lose each other's input. The person wins because they are the one who can see it go wrong.</td></tr>
+<tr><td>How the agent reads the page</td><td>Text first: the accessibility snapshot. A screenshot only when the agent asks for one</td><td class="why"><span class="who">maintainer</span> A snapshot costs a few hundred tokens and names what can be clicked. An image costs more and the agent rarely needs one.</td></tr>
+<tr><td>Sign-ins</td><td>Each browser has a profile directory that persists cookies and storage. A profile is named and reused, so a login done once stays</td><td class="why"><span class="who">maintainer</span> The person logs in once inside the server's browser. aegis never sees the person's own browser or its sessions.</td></tr>
+<tr><td>How many</td><td>At most <code>browsers.max</code> live at once (default 3), stopped after <code>browsers.idle_minutes</code> without a frame, an input or a tool call (default 30)</td><td class="why"><span class="who">maintainer</span> A Chromium with one page takes a few hundred MB. The profile stays on disk, so a stopped browser reopens signed in.</td></tr>
+<tr><td>Passwords in the record</td><td>Typing into a password field is logged as its length, never its text, and the agent's own typing into one is not echoed in its transcript</td><td class="why"><span class="who">maintainer</span> The log and the transcript are read by agents and kept on disk.</td></tr>
 </tbody>
 </table>
 
