@@ -56,7 +56,7 @@ from pydantic import BaseModel, Field, model_validator
 from pydantic.json_schema import SkipJsonSchema
 
 from . import archive, attachments as att, commands, dictation, files, restarts
-from . import feedback, harness_versions
+from . import feedback, harness_versions, multiuser
 from . import workflow_store
 from .agent_ops import (
     far_error,
@@ -1269,6 +1269,16 @@ class App:
             await s.deliver(
                 *feedback.turn(arg, facts, feedback.issues_url(), iso_now())
             )
+            return {"status": "delivered"}
+        if name == "multiuser":
+            # The agent runs the host work from the help page multi-user with
+            # the person; only an admin may start it, since it changes the server.
+            if not self.who(caller).is_admin:
+                raise OpError(
+                    "not_for_members", "/multiuser is for an admin of this server"
+                )
+            on = self.multi_user is not None
+            await s.deliver(*multiuser.turn(arg, on, multiuser.facts(on), iso_now()))
             return {"status": "delivered"}
         if name in ("workflow", "loop"):
             # A person's line launches a saved workflow: the only path, beside
