@@ -1846,7 +1846,11 @@ def test_a_set_of_files_is_one_card_that_pages_between_them(server, page):
     bar = card.locator(".fbar")
     assert bar.locator(".count").inner_text() == "1 / 3"
     assert bar.locator(".fn").inner_text() == "dot.png"
-    assert bar.locator(".prev").is_disabled() and not bar.locator(".next").is_disabled()
+    # The pager goes round: neither end disables a button.
+    assert (
+        not bar.locator(".prev").is_disabled()
+        and not bar.locator(".next").is_disabled()
+    )
     first = bar.locator("a.open").get_attribute("href")
     assert card.locator(".stage").count() == 1 and card.locator("img").count() == 1
 
@@ -1863,11 +1867,12 @@ def test_a_set_of_files_is_one_card_that_pages_between_them(server, page):
     bar.locator(".next").click()
     assert bar.locator(".fn").inner_text() == "log.txt"
     assert card.locator(".stage pre").inner_text() == "line one"
-    assert bar.locator(".next").is_disabled()
-    bar.locator(".prev").click()
-    bar.locator(".prev").click()
+    bar.locator(".next").click()
     assert bar.locator(".count").inner_text() == "1 / 3"
     assert bar.locator("a.open").get_attribute("href") == first
+    bar.locator(".prev").click()
+    assert bar.locator(".fn").inner_text() == "log.txt"
+    bar.locator(".next").click()
     assert page.request.get(server.url.split("/?")[0] + first).body() == PNG
 
     # A single file keeps the card it always had: no pager.

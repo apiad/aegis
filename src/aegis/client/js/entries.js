@@ -95,8 +95,41 @@ export function setFileBase(base) {
   fileBase = base;
 }
 
+// A horizontal swipe across `node` on a touch screen calls step(+1) for the
+// next item (finger moving left) or step(-1). A swipe that began inside
+// something that scrolls sideways (a wide table or code line) is that
+// thing's scroll, not a page turn; a frame's touches never reach here.
+export function swipe(node, step) {
+  let x0 = null;
+  let y0 = 0;
+  node.addEventListener(
+    "touchstart",
+    (ev) => {
+      x0 = null;
+      if (ev.touches.length !== 1) return;
+      for (let n = ev.target; n && n !== node; n = n.parentElement) if (n.scrollWidth > n.clientWidth + 1) return;
+      x0 = ev.touches[0].clientX;
+      y0 = ev.touches[0].clientY;
+    },
+    { passive: true },
+  );
+  node.addEventListener(
+    "touchend",
+    (ev) => {
+      if (x0 === null) return;
+      const t = ev.changedTouches[0];
+      const dx = t.clientX - x0;
+      const dy = t.clientY - y0;
+      x0 = null;
+      if (Math.abs(dx) >= 50 && Math.abs(dx) > 2 * Math.abs(dy)) step(dx < 0 ? 1 : -1);
+    },
+    { passive: true },
+  );
+}
+
 // A set of sent files as one card: a bar with the name and the actions, the
-// preview below. A set pages in place (‹ ›), and a preview is built only when
+// preview below. A set pages in place (‹ ›, or a swipe on a touch screen),
+// round from the last file to the first, and a preview is built only when
 // its file is shown. The preview kind was decided at send (files.py); Open
 // hands the set to the viewer, at the file shown.
 function fileCard(files, glyph) {
@@ -146,8 +179,6 @@ function fileCard(files, glyph) {
     dock.dataset.dock = f.replaced ? "" : f.key || "";
     dock.hidden = !docker.can(dock.dataset.dock);
     count.textContent = `${i + 1} / ${sent.length}`;
-    prev.disabled = i === 0;
-    next.disabled = i === sent.length - 1;
     stage?.remove();
     // A replaced file, or one docked as a pane, holds a line instead of its
     // preview; syncDock() redraws it when the docking changes.
@@ -169,8 +200,10 @@ function fileCard(files, glyph) {
   card._sync = () => {
     if (holds(sent[at]) !== card.dataset.held) show(at);
   };
-  prev.addEventListener("click", () => show(at - 1));
-  next.addEventListener("click", () => show(at + 1));
+  const step = (d) => show((at + d + sent.length) % sent.length);
+  prev.addEventListener("click", () => step(-1));
+  next.addEventListener("click", () => step(1));
+  if (sent.length > 1) swipe(card, step);
   show(0);
   return card;
 }

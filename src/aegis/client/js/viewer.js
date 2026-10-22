@@ -17,7 +17,7 @@
 // agent's state reaches the viewer's frame instead.
 
 import { Tray } from "./comments.js";
-import { artifactStage, dockButton, fileActions, fileUrl, fillWorkflow, hold, markdown, popButton, preview } from "./entries.js";
+import { artifactStage, dockButton, fileActions, fileUrl, fillWorkflow, hold, markdown, popButton, preview, swipe } from "./entries.js";
 import { entryIcon, icon } from "./glyphs.js";
 import { colour, langOfPath, paint } from "./highlight.js";
 import { filesHash } from "./files.js";
@@ -362,21 +362,23 @@ export class Viewer {
       drawn: (content) => tray?.layer(content),
     });
     if (item.files.length > 1) {
+      // Round from the last file to the first, as on the card.
+      const go = (d) => {
+        item.at = (item.at + d + item.files.length) % item.files.length;
+        this.render();
+      };
       const pager = el("span", "pager");
       const step = (d, name, title) => {
         const b = el("button", "btn icon");
         b.append(icon(name));
         b.title = title;
         b.setAttribute("aria-label", title);
-        b.disabled = item.at + d < 0 || item.at + d >= item.files.length;
-        b.addEventListener("click", () => {
-          item.at += d;
-          this.render();
-        });
+        b.addEventListener("click", () => go(d));
         return b;
       };
       pager.append(step(-1, "left", "Previous file"), el("span", "count", `${item.at + 1} / ${item.files.length}`), step(1, "right", "Next file"));
       bar.append(pager);
+      swipe(body, go);
     }
     acts.append(this.closeButton());
     bar.append(acts);
