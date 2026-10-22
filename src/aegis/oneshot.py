@@ -54,8 +54,11 @@ def load_generator(config_root: Path, key: str) -> dict | None:
 
 
 def argv(
-    claude_bin: str, model: str, schema: type[BaseModel], system: str, prompt: str
+    claude_bin: str, model: str, schema: type[BaseModel], system: str
 ) -> list[str]:
+    """``claude -p`` for one call. The prompt is not here: ``run`` writes it on
+    stdin, since an argv is readable by every user on the host and a prompt
+    holds a person's transcript."""
     return [
         claude_bin,
         "-p",
@@ -74,10 +77,6 @@ def argv(
         "--mcp-config",
         json.dumps({"mcpServers": {}}),
         "--strict-mcp-config",
-        # Last and after --: a prompt that opens on "-" would otherwise be
-        # rejected as an unknown option.
-        "--",
-        prompt,
     ]
 
 
@@ -121,7 +120,7 @@ def parse(stdout: str, out: type[T]) -> tuple[T | None, float, int]:
 
 
 async def run(
-    argv: list[str], cwd: Path, timeout: float, user: str | None = None
+    argv: list[str], cwd: Path, timeout: float, user: str | None, prompt: str
 ) -> str:
     """stdout of one call, as ``user`` (launch.py). A cancelled caller kills
     its claude: one left running would keep billing. A call as a user runs in
@@ -137,7 +136,7 @@ async def run(
             argv,
             cwd=cwd,
             env={**os.environ, "MAX_THINKING_TOKENS": "0"},
-            stdin=launch.DEVNULL,
+            stdin=launch.PIPE,
             stdout=launch.PIPE,
             stderr=launch.DEVNULL,
             user=user,
@@ -145,7 +144,7 @@ async def run(
     except OSError as e:
         raise OneshotError(str(e)) from e
     try:
-        out, _ = await asyncio.wait_for(proc.communicate(), timeout)
+        out, _ = await asyncio.wait_for(proc.communicate(prompt.encode()), timeout)
     except asyncio.TimeoutError:
         proc.kill()
         await proc.wait()

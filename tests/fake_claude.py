@@ -837,9 +837,17 @@ def worker() -> None:
 
 def oneshot() -> None:
     mode = os.environ.get("FAKE_CLAUDE_ONESHOT", "")
+    # As the real CLI: the prompt after --, else after -p, else on stdin.
     after = "--" if "--" in sys.argv else "-p"
-    prompt = sys.argv[sys.argv.index(after) + 1]
-    if after == "-p" and prompt.startswith("-"):
+    i = sys.argv.index(after) + 1
+    prompt = sys.argv[i] if i < len(sys.argv) else ""
+    if (
+        after == "-p"
+        and (not prompt or prompt.startswith("-"))
+        and not sys.stdin.isatty()
+    ):
+        prompt = sys.stdin.read()
+    elif after == "-p" and prompt.startswith("-"):
         # Like the real CLI: a prompt opening on "-" reads as an option unless
         # it comes after --.
         print(f"error: unknown option '{prompt}'", file=sys.stderr)

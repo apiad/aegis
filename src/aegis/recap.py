@@ -111,8 +111,8 @@ def window(entries: list[dict], unread: set[str], standing: dict) -> str:
     return "\n\n".join(parts)
 
 
-def argv(claude_bin: str, model: str, prompt: str) -> list[str]:
-    return oneshot.argv(claude_bin, model, RecapOut, SYSTEM, prompt)
+def argv(claude_bin: str, model: str) -> list[str]:
+    return oneshot.argv(claude_bin, model, RecapOut, SYSTEM)
 
 
 def parse(stdout: str) -> tuple[RecapOut | None, float, int]:

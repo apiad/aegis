@@ -58,12 +58,13 @@ class Recaps:
         prompt = recap.window(s.fold().entries(), s.unread, s.standing)
         try:
             out = await oneshot.run(
-                recap.argv(self.app.claude_bin, cfg["model"], prompt),
+                recap.argv(self.app.claude_bin, cfg["model"]),
                 self.app.roots.state_root / "oneshot",
                 recap.TIMEOUT_S,
-                s.spec.linux_user,
+                self.app.sessions.user_for(s.spec),
+                prompt,
             )
-        except oneshot.OneshotError as e:
+        except (oneshot.OneshotError, PermissionError) as e:
             return {"status": "failed", "why": str(e)}
         value, cost, ms = recap.parse(out)
         if value is None:
