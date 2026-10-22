@@ -212,3 +212,11 @@ def test_settings_asks_for_the_linux_user_in_multi_user_mode(mu_server):
             assert f"uid {CARA}" in card.text_content()
         finally:
             b.close()
+
+
+async def test_no_token_in_a_members_harness_argv(mu_server):
+    """Every user can read /proc/<pid>/cmdline: the argv names the variable."""
+    _, rep = await spawn(mu_server)
+    argv = json.dumps(rep["argv"])
+    assert "${AEGIS_SESSION_TOKEN}" in argv
+    assert not re.search(r'X-Aegis-Session\\?":\s*\\?"[\w-]{20,}', argv)

@@ -112,6 +112,7 @@ if sys.argv[1:2] == ["--version"]:
 import json
 import os
 import queue
+import re
 import subprocess
 import sys
 import tempfile
@@ -253,7 +254,11 @@ def mcp_call(tool: str, arguments: dict) -> tuple[bool, str]:
         headers={
             "content-type": "application/json",
             "accept": "application/json, text/event-stream",
-            **cfg.get("headers", {}),
+            # Claude Code expands ${VAR} in --mcp-config from its environment.
+            **{
+                k: re.sub(r"\$\{(\w+)\}", lambda m: os.environ.get(m[1], ""), v)
+                for k, v in cfg.get("headers", {}).items()
+            },
         },
     )
     try:
