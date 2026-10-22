@@ -468,6 +468,15 @@ and runs `general`. The Settings page's Set up offer, on a server with no
 file, makes the same proposal.
 It refuses to overwrite an existing `.aegis.yaml`.
 
+## Suggested changes, applied from a card
+
+The file is never written by a session. `config_suggest` puts a card with
+the whole new text and its diff in the transcript; Apply writes exactly that
+text, Not now writes nothing, and either way the session is woken. Only an
+admin applies, as only an admin saves Settings. A file changed since makes
+the card stale, and nothing is written. `/setup` uses it (see the page
+setup).
+
 ## The theme
 
 The theme is not in the file: each browser keeps its own. The Settings page

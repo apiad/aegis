@@ -1070,6 +1070,10 @@ class Session:
         """A secret's card or its next state (secret_ops): never plaintext."""
         self._record(record)
 
+    def record_config(self, record: dict) -> None:
+        """A config suggestion's card or its outcome (config_suggest.py)."""
+        self._record(record)
+
     def record_card(self, record: dict) -> None:
         """A card asking a person to approve what this session's agent made:
         a schedule now, a workflow next (schedule_ops, workflow_ops)."""

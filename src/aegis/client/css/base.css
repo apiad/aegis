@@ -809,6 +809,11 @@ body{background:#000}
 #a2 .scard .sform input{flex:1;min-width:0;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:6px 9px;font-family:var(--font-mono);font-size:12px;color:var(--strong)}
 #a2 .scard .sform input:focus{outline:none;border-color:var(--accent)}
 #a2 .scard.gone .fbar>.ic,#a2 .scard.gone .fn{color:var(--muted)}
+#a2 .ccard .cdiff{margin:0;border-top:1px solid var(--rule);background:var(--bg);padding:8px 12px;font-family:var(--font-mono);font-size:12px;line-height:1.5;color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto}
+#a2 .ccard .cdiff .add{color:var(--ok)}
+#a2 .ccard .cdiff .del{color:var(--err)}
+#a2 .ccard .cdiff .at,#a2 .ccard .cdiff .h{color:var(--faint)}
+#a2 .ccard .sbody.why{color:var(--ink)}
 @media (pointer:coarse){#a2 .scard .btn,#a2 .scard .sform input{min-height:44px}}
 #a2 .fcard .stage{border-top:1px solid var(--rule);background:var(--bg)}
 #a2 .fcard .stage.image{display:flex;justify-content:center;padding:12px}
