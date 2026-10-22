@@ -1022,6 +1022,20 @@ that throws is a tool error, not a card; with no browser open it lands with
 `started` unset, and the first browser to mount it reports an error to the
 inbox.
 
+**A secret crosses between an agent and a person without a transcript holding
+it.** `secret.send` reads the agent's file on the server, keeps a random pad of
+the same length in memory only (`secret_store.py`) and records the XOR on the
+card; `secret.reveal`, a person operation, hands the pad to the browser once
+and forgets it, and the browser undoes the XOR in the page's memory. Expiry and
+a restart forget pads too, which turns every stored copy of the card into
+noise. `secret.request` puts a password field on a card; `secret.provide`
+writes what the person typed with `O_EXCL` and mode 0600 to a path that must
+not exist, wakes the agent through the inbox, and the registry removes that
+file on close if its inode is still the one written. Neither person operation
+is open to agents, and the call log masks a `secret` param as it masks
+`token`, so a value typed on a linked server's page is not logged on either
+side (`secret_ops.py`).
+
 **One menu, built on demand.** `client/js/menu.js` owns the page's one open
 context menu and its one selection bar. A view attaches a provider to a root
 element; on a right-click, a long press or the menu key, the provider turns

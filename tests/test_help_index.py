@@ -162,6 +162,8 @@ FIRST = [
     ),
     ("run a workflow every night", "workflow-recipes#a-saved-workflow-every-night"),
     ("poll until a deploy is live", "workflow-recipes#poll-until-something-is-true"),
+    ("give the person a password I generated", "secrets#send-a-new-password"),
+    ("ask the person for an API token", "secrets"),
     (
         "have a judge agent check before publishing",
         "workflow-recipes#let-a-judge-decide-before-going-on",
