@@ -14,6 +14,12 @@ logged and the last good state kept. Keys this module does not know survive
 every write. A policy (quota_gate.py) is set through ``set_policy`` or
 ``set_default_policy``, which refuse one ``quota_gate.validate`` rejects; a
 hand-edited one that does not validate closes the pools it names wrongly.
+
+In multi-user mode (users.py) an entry also names the Linux user its sessions
+run as, ``linux_user``, checked when the token is made and again at each
+sign-in: a member whose account is gone, or that never had one, is refused
+with a log line rather than run as the server. Outside the mode the field is
+ignored.
 """
 
 from __future__ import annotations
@@ -23,12 +29,13 @@ import hmac
 import json
 import logging
 import os
+import pwd
 import re
 import secrets
 import time
 from pathlib import Path
 
-from . import quota_gate
+from . import quota_gate, users
 from .ops import OpError, Principal
 
 log = logging.getLogger("aegis.tokens")
@@ -65,9 +72,21 @@ def _write_private(path: Path, text: str) -> None:
 
 
 class TokenStore:
-    def __init__(self, state_root: Path, owner: str) -> None:
+    def __init__(
+        self,
+        state_root: Path,
+        owner: str,
+        *,
+        multi_user: bool = False,
+        server_uid: int | None = None,
+    ) -> None:
         self.root = state_root
         self.owner = owner
+        self.multi_user = multi_user
+        self.server_uid = os.getuid() if server_uid is None else server_uid
+        # The member tokens already logged as refused, so a browser retrying
+        # does not fill the log.
+        self._told: set[str] = set()
         self.path = state_root / FILE
         self._admin = load_or_create_token(state_root)
         self._admin_mtime = self._mtime(state_root / "token")
@@ -139,6 +158,8 @@ class TokenStore:
             if e is None:
                 return None
             role = str(e.get("role")) if e.get("role") in ROLES else "member"
+            if self.multi_user and role == "member" and not self._user_ok(e):
+                return None
             who = Principal(str(e["name"]), role)
         self._used[who.name] = time.time()
         return who
@@ -152,6 +173,49 @@ class TokenStore:
         if e is None:
             return None
         return e.get("role") if e.get("role") in ROLES else "member"
+
+    def _user_ok(self, e: dict) -> bool:
+        """Whether a member entry names a Linux user that exists; logs once
+        per token when not."""
+        name, user = str(e["name"]), e.get("linux_user")
+        if not user:
+            why = "has no Linux user; revoke it and add it again with --linux-user"
+        else:
+            try:
+                pwd.getpwnam(str(user))
+                return True
+            except KeyError:
+                why = f"names Linux user {user}, which does not exist; refusing it"
+        if name not in self._told:
+            self._told.add(name)
+            log.warning("aegis: token %s %s", name, why)
+        return False
+
+    def linux_user_of(self, name: str | None) -> str | None:
+        """The Linux user ``name``'s sessions run as; None outside the mode,
+        for the server's owner and for an admin made without one."""
+        if not self.multi_user or name is None or name == self.owner:
+            return None
+        self._fresh()
+        e = self._entry(name)
+        user = e.get("linux_user") if e else None
+        return str(user) if user else None
+
+    def missing_users(self) -> list[tuple[str, str]]:
+        """(token, Linux user) for each member token whose user does not
+        exist, in the mode."""
+        if not self.multi_user:
+            return []
+        self._fresh()
+        out = []
+        for e in self._entries():
+            user = e.get("linux_user")
+            if e.get("role", "member") != "admin" and user:
+                try:
+                    pwd.getpwnam(str(user))
+                except KeyError:
+                    out.append((str(e["name"]), str(user)))
+        return out
 
     def _entry(self, name: str) -> dict | None:
         return next((e for e in self._entries() if e["name"] == name), None)
@@ -228,6 +292,7 @@ class TokenStore:
                 "owner": True,
                 "created_at": None,
                 "policy": None,
+                "linux_user": None,
             }
         ]
         rows += [
@@ -237,6 +302,7 @@ class TokenStore:
                 "owner": False,
                 "created_at": e.get("created_at"),
                 "policy": e["policy"] if isinstance(e.get("policy"), dict) else None,
+                "linux_user": self.linux_user_of(e["name"]),
             }
             for e in self._entries()
         ]
@@ -245,8 +311,16 @@ class TokenStore:
         return rows
 
     # -- changing -------------------------------------------------------------
-    def add(self, name: str, role: str) -> str:
-        """Mint a token for ``name``; returns it, the one time it is shown."""
+    def add(
+        self,
+        name: str,
+        role: str,
+        linux_user: str | None = None,
+        no_linux_user: bool = False,
+    ) -> str:
+        """Mint a token for ``name``; returns it, the one time it is shown. In
+        multi-user mode it runs as ``linux_user`` (default: ``name``), or, for
+        an admin with ``no_linux_user``, as the server's own user."""
         self._fresh()
         if not NAME.match(name):
             raise OpError(
@@ -257,14 +331,21 @@ class TokenStore:
             raise OpError("bad_role", f"a role is one of {', '.join(ROLES)}")
         if name == self.owner or any(e["name"] == name for e in self._entries()):
             raise OpError("name_taken", f"{name} already has a token")
+        entry: dict = {"name": name, "role": role}
+        if not self.multi_user:
+            if linux_user or no_linux_user:
+                raise OpError(
+                    "needs_multi_user", "--linux-user needs multi_user in .aegis.yaml"
+                )
+        elif no_linux_user:
+            if role != "admin":
+                raise OpError("member_needs_user", "a member token needs a Linux user")
+        else:
+            pw = users.allowed(linux_user or name, server_uid=self.server_uid)
+            entry["linux_user"] = pw.pw_name
         token = secrets.token_urlsafe(32)
         self._doc["tokens"].append(
-            {
-                "name": name,
-                "role": role,
-                "sha256": _digest(token),
-                "created_at": time.time(),
-            }
+            entry | {"sha256": _digest(token), "created_at": time.time()}
         )
         self._save()
         return token

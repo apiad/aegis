@@ -8413,10 +8413,14 @@ def test_an_admin_adds_and_revokes_a_token_in_settings(server, page):
     page.wait_for_selector("#a2[data-view=fleet]")
     page.click("#settings-btn")
     page.wait_for_selector("#set-tokens")
+    # Outside multi-user mode a token names no Linux user.
+    page.wait_for_selector("#set-tokens .set-agent")
+    assert page.query_selector("#set-token-user") is None
     page.fill("#set-token-name", "cara")
     page.click("#set-token-add")
     page.wait_for_selector("#set-token-once")
     page.wait_for_selector("#set-tokens .tok-cara")
+    assert page.query_selector("#set-tokens .set-uid") is None
     page.click("#set-tokens .tok-cara .danger")
     page.click("#set-tokens .tok-cara .danger")  # the second click confirms
     page.wait_for_function("!document.querySelector('#set-tokens .tok-cara')")

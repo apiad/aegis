@@ -1,11 +1,13 @@
 import json
 import os
+import pwd
 import stat
 
 import pytest
 
 from aegis.ops import OpError, Principal
-from aegis.tokens import TokenStore
+from aegis import users
+from aegis.tokens import NAME, TokenStore
 
 
 @pytest.fixture
@@ -165,3 +167,88 @@ def test_a_policy_survives_a_revoke_of_another_token_and_a_reload(store, tmp_pat
     assert again.default_policy() == {"claude": {"mode": "open"}}
     rows = {r["name"]: r for r in again.rows()}
     assert rows["ben"]["policy"] == LINES and rows["ana"]["policy"] is None
+
+
+@pytest.fixture
+def member_user():
+    """A regular account other than the test user's: the Linux user a member
+    token can name on this host."""
+    me = os.getuid()
+    for pw in pwd.getpwall():
+        if pw.pw_uid >= users.uid_min() and pw.pw_uid != me and pw.pw_uid < 60000:
+            if NAME.match(pw.pw_name):
+                return pw.pw_name
+    pytest.skip("no regular user other than the test user on this host")
+
+
+@pytest.fixture
+def store_mu(tmp_path):
+    return TokenStore(tmp_path, "owner", multi_user=True)
+
+
+def test_add_in_the_mode_names_the_user_after_the_token(store_mu, member_user):
+    store_mu.add(member_user, "member")
+    assert store_mu.linux_user_of(member_user) == member_user
+    assert store_mu.rows()[1]["linux_user"] == member_user
+
+
+def test_add_takes_another_user_with_linux_user(store_mu, member_user):
+    store_mu.add("laptop", "member", linux_user=member_user)
+    assert store_mu.linux_user_of("laptop") == member_user
+
+
+@pytest.mark.parametrize("bad", ["aegis-no-such-user", "root", "daemon"])
+def test_add_refuses_a_user_that_is_missing_or_not_allowed(store_mu, bad):
+    with pytest.raises(OpError) as e:
+        store_mu.add("ben", "member", linux_user=bad)
+    assert e.value.code in ("no_such_user", "user_not_allowed")
+    assert store_mu.rows()[1:] == []
+
+
+def test_add_refuses_the_servers_own_user(store_mu):
+    with pytest.raises(OpError) as e:
+        store_mu.add("me", "member", linux_user=pwd.getpwuid(os.getuid()).pw_name)
+    assert e.value.code == "user_not_allowed"
+
+
+def test_no_linux_user_is_for_admins_only(store_mu):
+    with pytest.raises(OpError) as e:
+        store_mu.add("ben", "member", no_linux_user=True)
+    assert e.value.code == "member_needs_user"
+    store_mu.add("other-server", "admin", no_linux_user=True)
+    assert store_mu.linux_user_of("other-server") is None
+
+
+def test_outside_the_mode_linux_user_is_an_error_and_the_field_is_ignored(
+    tmp_path, member_user
+):
+    off = TokenStore(tmp_path, "owner")
+    with pytest.raises(OpError) as e:
+        off.add("ben", "member", linux_user=member_user)
+    assert e.value.code == "needs_multi_user"
+    TokenStore(tmp_path, "owner", multi_user=True).add(member_user, "member")
+    assert off.linux_user_of(member_user) is None
+
+
+def test_sign_in_refuses_a_member_whose_user_is_gone(
+    tmp_path, store_mu, member_user, caplog
+):
+    token = store_mu.add(member_user, "member")
+    doc = json.loads((tmp_path / "tokens.json").read_text())
+    doc["tokens"][0]["linux_user"] = "aegis-no-such-user"
+    (tmp_path / "tokens.json").write_text(json.dumps(doc))
+    os.utime(tmp_path / "tokens.json", ns=(1, 1))
+    assert store_mu.resolve(token) is None
+    assert "aegis-no-such-user" in caplog.text
+    assert store_mu.missing_users() == [(member_user, "aegis-no-such-user")]
+
+
+def test_sign_in_refuses_a_member_token_from_before_the_mode(tmp_path, caplog):
+    token = TokenStore(tmp_path, "owner").add("ben", "member")
+    assert TokenStore(tmp_path, "owner", multi_user=True).resolve(token) is None
+    assert "revoke it and add it again with --linux-user" in caplog.text
+
+
+def test_an_admin_without_a_user_signs_in_in_the_mode(store_mu):
+    token = store_mu.add("other-server", "admin", no_linux_user=True)
+    assert store_mu.resolve(token) == Principal("other-server", "admin")
