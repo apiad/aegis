@@ -165,3 +165,29 @@ async def test_fs_open_is_refused_in_the_mode(world, ben_home):
         await world.app.registry.call(
             "fs.open", {"path": "a.txt"}, Caller("user", desktop=True)
         )
+
+
+async def ben_session(world):
+    r = await world.app.registry.call("session.spawn", {"agent": "opus"}, BEN)
+    return r["log_id"]
+
+
+async def test_a_members_agent_sends_a_file_read_on_its_runner(
+    world, ben_home, monkeypatch
+):
+    log_id = await ben_session(world)
+    (ben_home / "chart.txt").write_text("42")
+    ran: list[tuple[str | None, str]] = []
+    real = as_user.Runner.__call__
+
+    async def spy(self, fn, *a, **kw):
+        ran.append((self.user, getattr(fn, "__name__", "")))
+        return await real(self, fn, *a, **kw)
+
+    monkeypatch.setattr(as_user.Runner, "__call__", spy)
+    agent = Caller("agent", log_id=log_id)
+    sent = await world.app.registry.call("file.send", {"paths": ["chart.txt"]}, agent)
+    assert ("ben", "open_all") in ran
+    file_id = sent[0]["url"].split("/")[2]
+    stored = world.app.roots.state_root / "files" / file_id / "chart.txt"
+    assert stored.read_text() == "42"
