@@ -496,6 +496,7 @@ class Registry(Host):
             metas=self.metas,
             title=meta.get("title") or "",
             title_set=bool(meta.get("title_set")),
+            handle_set=bool(meta.get("handle_set", True)),
             resume_id=meta.get("resume_id") or meta.get("claude_session_id"),
             created_at=meta.get("created_at"),
             last_activity=meta.get("last_activity"),
@@ -722,7 +723,7 @@ class Registry(Host):
             except PermissionError as e:
                 raise OpError("no_linux_user", str(e)) from None
         s = self._session(
-            {"log_id": log_id, "handle": mint_handle(self._handles())}
+            {"log_id": log_id, "handle": mint_handle(self._handles()), "handle_set": False}
             | spec.record()
             | {
                 "created_at": time.time(),
@@ -825,6 +826,8 @@ class Registry(Host):
             }
             if title is not None:
                 s.title_set = True
+            if handle is not None:
+                s.handle_set = True
             renamed = handle is not None and handle != s.handle
             s._set(**changes)
             if renamed:
@@ -835,6 +838,7 @@ class Registry(Host):
         meta = self.archived[log_id]
         if handle is not None:
             meta["handle"] = handle
+            meta["handle_set"] = True
         if title is not None:
             meta["title"] = title
             meta["title_set"] = True
