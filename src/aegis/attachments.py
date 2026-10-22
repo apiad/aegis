@@ -25,6 +25,7 @@ import secrets
 import shutil
 import time
 import unicodedata
+from collections.abc import Callable
 from pathlib import Path
 
 from . import files
@@ -38,16 +39,42 @@ SIZE = ".size"
 _UPLOAD_ID = re.compile(r"[A-Za-z0-9_-]{16,64}")
 
 
-def inbox(state_root: Path, log_id: str) -> Path:
-    return state_root / "inbox" / log_id
+def inbox(state_root: Path, log_id: str, home: Path | None = None) -> Path:
+    """Where a session's files land: under the state root, or in multi-user
+    mode under ``~/.aegis/inbox`` in the home of the user the session runs
+    as, whose agent cannot read the state root (#555). Uploads are staged
+    under the state root either way."""
+    base = home / ".aegis" if home is not None else state_root
+    return base / "inbox" / log_id
 
 
-def ensure_inbox(state_root: Path, log_id: str) -> Path:
-    """The session's inbox, created private if it is not there yet."""
-    folder = inbox(state_root, log_id)
+def ensure_inbox(state_root: Path, log_id: str, home: Path | None = None) -> Path:
+    """The session's inbox, created private if it is not there yet. For a
+    home, run it as that home's user (as_user.py)."""
+    folder = inbox(state_root, log_id, home)
+    if home is not None:
+        (home / ".aegis").mkdir(mode=0o700, exist_ok=True)
     folder.parent.mkdir(parents=True, exist_ok=True)
     folder.mkdir(mode=0o700, exist_ok=True)
     return folder
+
+
+def write_into(box: Path, name: str, fd: int) -> Path:
+    """A new file ``name`` in ``box`` (``_free``'s suffix when taken) with
+    what ``fd`` reads: how a staged upload reaches an inbox the server may
+    not write, on the runner of the inbox's user."""
+    box.mkdir(mode=0o700, parents=True, exist_ok=True)
+    dest = _free(box, name)
+    with dest.open("xb") as out:
+        while chunk := os.read(fd, 1 << 20):
+            out.write(chunk)
+    return dest
+
+
+def _move(path: Path, box: Path, name: str) -> Path:
+    dest = _free(box, name)
+    os.replace(path, dest)
+    return dest
 
 
 def clean_name(raw: str) -> str:
@@ -142,11 +169,17 @@ def _free(folder: Path, name: str) -> Path:
 
 
 def commit(
-    state_root: Path, log_id: str, upload_ids: list[str], now: float | None = None
+    state_root: Path,
+    log_id: str,
+    upload_ids: list[str],
+    now: float | None = None,
+    deliver: Callable[[Path, str], Path] | None = None,
 ) -> list[dict]:
     """Move every upload into the inbox and the files store, or none: each is
     checked complete before the first moves. One record per file, as
-    files.store makes it without ``kind``, plus its inbox ``path``."""
+    files.store makes it without ``kind``, plus its inbox ``path``.
+    ``deliver(staged, name)`` puts one file into an inbox the server may not
+    write, and says where; by default it is moved into the state root's."""
     if len(upload_ids) > MAX_FILES:
         raise FileError(
             "too_many", f"{len(upload_ids)} files; a message carries {MAX_FILES}"
@@ -166,10 +199,10 @@ def commit(
     box = inbox(state_root, log_id)
     sent = []
     for path in staged:
-        dest = _free(box, f"{stamp}-{path.name}")
-        os.replace(path, dest)
+        rec = files.store(state_root, path, name=path.name)
+        name = f"{stamp}-{path.name}"
+        dest = deliver(path, name) if deliver else _move(path, box, name)
         shutil.rmtree(path.parent)
-        rec = files.store(state_root, dest, name=path.name)
         sent.append(
             {**{k: v for k, v in rec.items() if k != "kind"}, "path": str(dest)}
         )
