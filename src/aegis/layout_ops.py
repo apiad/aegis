@@ -65,6 +65,10 @@ def described(s) -> dict:
             kind, title = "transcript", "transcript"
         elif pid in fold.file_keys:
             kind, title = "file", fold.file_keys[pid]["name"]
+        elif pid.startswith("b-"):
+            brs = getattr(s._host, "browsers", None)
+            b = brs.open.get(pid) if brs is not None else None
+            kind, title = "browser", (b.meta["name"] if b else pid)
         elif pid.startswith("wf-"):
             # Titled as the person sees it: the definition's title, not the run.
             wfs = getattr(s._host, "workflows", None)
@@ -152,8 +156,8 @@ def register_layout_ops(app: App) -> None:
     async def set_(p: LayoutSet, caller):
         """Replace your canvas: which pages and files sit beside the transcript,
         where, and in which window. Pass every window, as layout_read answers;
-        a pane is a live page's id, a sent file's key or a workflow's
-        wf-<run>. Limits: 4 windows, 4 columns in a window, 3 panes in a
+        a pane is a live page's id, a sent file's key, a workflow's
+        wf-<run> or a browser's id. Limits: 4 windows, 4 columns in a window, 3 panes in a
         column; the transcript stays in window 1. You cannot open a window's
         browser tab: the person's card offers it. To place one item as you
         send it, use dock= on artifact_send, file_send or workflow_arm

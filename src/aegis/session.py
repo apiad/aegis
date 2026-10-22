@@ -1087,6 +1087,11 @@ class Session:
             wfs = getattr(self._host, "workflows", None)
             st = wfs.runs.get(pane[3:]) if wfs is not None else None
             return st is None or st.status != "replaced"
+        if pane.startswith("b-"):
+            # A browser this session drives (browsers.py).
+            brs = getattr(self._host, "browsers", None)
+            b = brs.open.get(pane) if brs is not None else None
+            return b is not None and b.meta.get("session") == self.log_id
         if pane.startswith("art-"):
             try:
                 return self.artifacts.get(pane).status == "live"

@@ -41,7 +41,7 @@ import { Attachments } from "./attach.js";
 import { dur, planTimes } from "./plantime.js";
 import { setToastOpener, toast } from "./toast.js";
 import { closeTerm, drawCard, openTerm } from "./termview.js";
-import { closeBrowser, drawBrowser, openBrowser } from "./browserview.js";
+import { browserSources, closeBrowser, drawBrowser, mountBrowser, openBrowser } from "./browserview.js";
 import { applyUpdate, checkForUpdate, setAutoApply, startWorker } from "./appworker.js";
 import { closeInstallDialog, startInstall } from "./install.js";
 import { checkRotation, closePushPanel, openPushPanel, pushSupported, setupPush } from "./pushpanel.js";
@@ -192,6 +192,8 @@ const canvas = new Canvas($("canvas"), {
   onChange: () => syncDock(),
   refuse: (message) => toast(message, { kind: "error" }),
   openWindow: (n, tab) => openWindow(shown, n, tab),
+  // A browser the session drives, docked: its own view of the stream.
+  mountBrowser: (host, id) => (sessions.has(id) ? mountBrowser(host, id, termCard(id), { conn }) : null),
 });
 // Dock on a card or the viewer's bar. The viewer lets go of what it docks.
 // The viewer lets go of what it docks or pops out.
@@ -973,8 +975,9 @@ function flushSessions() {
     markNeedsNet(); // the cards' Archive buttons
   } else if (r.view === "session" && ids.has(r.id)) renderMeta(sessions.get(r.id));
   else if (r.view === "term" && ids.has(r.id)) drawCard(termCard(r.id));
-  else if (r.view === "browser" && ids.has(r.id)) drawBrowser(termCard(r.id));
   else if (r.view === "window" && ids.has(r.id)) drawWindow(r);
+  // A browser shows in its tab and in canvas panes: every view redraws.
+  for (const id of ids) if (sessions.get(id)?.kind === "browser") drawBrowser(termCard(id));
   drawNav(); // the needs count
 }
 
@@ -1004,6 +1007,11 @@ const openSession = (id) => route().view === "window" || go(hashOf(id));
 // A tab's hash: a terminal's view, or a session's.
 const hashOf = (key) => ({ term: `#t=${key}`, browser: `#b=${key}` })[sessions.get(key)?.kind] || `#s=${key}`;
 const tabFocus = (r) => (r.view === "session" || r.view === "term" || r.view === "browser" ? r.id : null);
+// Where a browser's views find its card and the sessions it can be given to.
+browserSources({
+  card: (id) => (sessions.has(id) ? termCard(id) : null),
+  sessions: () => local().filter((m) => !isTool(m) && m.state !== "asleep" && mine(m)),
+});
 // The open terminal's card, with the log id and server it is reached by.
 function termCard(key) {
   const m = sessions.get(key);
@@ -1244,8 +1252,7 @@ function render() {
     if (!sessions.has(r.id)) return homeLive && go("#");
     show("browser");
     const card = termCard(r.id);
-    const mineOpen = () => local().filter((m) => !isTool(m) && m.state !== "asleep" && mine(m));
-    openBrowser(card.id, card, { conn, server: card.server ?? null, sessions: mineOpen });
+    openBrowser(card.id, card, { conn, server: card.server ?? null });
     setTitle(`${card.name} · aegis`);
   } else if (r.view === "term") {
     watchHost(null);

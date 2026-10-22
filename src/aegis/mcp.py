@@ -178,8 +178,8 @@ def primer(
 BROWSERS = """\
 To test a web page with the person, or to see what they see in one, open it \
 with browser_open: a Chromium on the server, so its localhost is the server's. \
-It shows as a tab, not in front of the person: tell them its name and ask them \
-to open it. Read it with browser_snapshot, drive it with browser_click and \
+It docks beside your transcript, but a person looking elsewhere does not see \
+it: tell them what to look at and ask them to open it. Read it with browser_snapshot, drive it with browser_click and \
 browser_type, and read what the person did with browser_events. For a captcha, \
 a sign-in or a step they should try, call browser_handover with what to do and \
 end your turn; you are woken with what they did when they give the page back. \

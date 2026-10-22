@@ -486,6 +486,7 @@ class App:
             (s.pin["id"], s.pin["sha"]) for s in self.schedules.items.values() if s.pin
         }
         reg.workflows = self.workflows
+        reg.browsers = self.browsers
         self.catalogs = commands.Catalogs(
             roots.state_root / "stderr" / "catalog-probe.log"
         )

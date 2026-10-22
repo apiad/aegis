@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field
 
+from . import layout as canvas
 from .browsers import SNAPSHOT_MAX, Browser, event_line
 from .ops import Caller, OpError
 
@@ -33,6 +34,10 @@ class BrowserOpen(_Strict):
     profile: str | None = Field(
         None,
         description="The profile whose sign-ins it keeps; defaults to your handle.",
+    )
+    dock: str | None = Field(
+        "right",
+        description=canvas.DOCK_DOC + " Defaults to right; null leaves it a tab only.",
     )
 
 
@@ -121,6 +126,17 @@ class PaneGive(PaneRef):
 def register_browser_ops(app: App) -> None:
     r, br = app.registry, app.browsers
 
+    def dock(s, bid: str, where: str | None) -> dict:
+        """Put a browser in its session's canvas; a placement that does not
+        fit is reported, not raised, as artifact_send does."""
+        if s is None or where is None:
+            return {}
+        try:
+            s.set_layout(canvas.place(s.layout, bid, where, s.dockable), "agent")
+        except canvas.LayoutError as e:
+            return {"docked": False, "reason": str(e)}
+        return {"docked": where}
+
     def agent_browser(p: BrowserRef, caller: Caller, held: bool = True) -> Browser:
         b = br.of_session(caller.log_id or "", p.browser)
         if not b.running:
@@ -163,9 +179,10 @@ def register_browser_ops(app: App) -> None:
 
     @r.op("browser.open", BrowserOpen, agent=True)
     async def open_(p: BrowserOpen, caller):
-        """Start a browser on the server and load a URL. It shows as a tab the
-        person can open, watch and click in; you hold the page until you hand
-        it over. Its profile keeps sign-ins between opens."""
+        """Start a browser on the server and load a URL. It docks beside your
+        transcript (dock=) and shows as a tab, where the person watches and
+        clicks in it; you hold the page until you hand it over. Its profile
+        keeps sign-ins between opens."""
         if not caller.is_agent:
             raise OpError("bad_caller", "a person opens a browser with browser.spawn")
         s = app.sessions.sessions.get(caller.log_id or "")
@@ -173,8 +190,9 @@ def register_browser_ops(app: App) -> None:
         b = await br.open_(
             app.who(caller).name, p.url, profile=profile, session=caller.log_id
         )
-        return {"id": b.id, "name": b.meta["name"], "url": b.meta["url"],
-                "title": b.meta.get("title", "")}  # fmt: skip
+        out = {"id": b.id, "name": b.meta["name"], "url": b.meta["url"],
+               "title": b.meta.get("title", "")}  # fmt: skip
+        return out | dock(s, b.id, p.dock)
 
     @r.op("browser.goto", BrowserGoto, agent=True)
     async def goto(p: BrowserGoto, caller):
@@ -370,6 +388,7 @@ def register_browser_ops(app: App) -> None:
         if app.owner_of(s.log_id) != app.owner_of(p.id):
             raise OpError("not_owner", "give a browser to a session of its owner")
         await br.give(p.id, s.log_id, s.handle)
+        dock(s, p.id, "right")
 
     @r.op("browser.reopen", PaneRef, owned="id")
     async def reopen(p: PaneRef, caller):

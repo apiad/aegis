@@ -91,7 +91,10 @@ and runs `Page.startScreencast` only while a tab watches, and acks each frame
 no sooner than 100 ms after the last, so a pane gets at most ten a second. The
 person's input comes back as CDP input events (`browser.input`), refused while
 the agent holds the page; the agent's `browser_*` tools are Playwright calls,
-refused while the person holds it. `holder` says which. A give-back or a give
+refused while the person holds it. `holder` says which. The client's view of
+a browser (`browserview.js`) builds its own DOM, so it mounts in the
+browser's tab and, as pane `b-<id>`, in the canvas of the session that drives
+it (`Session.dockable`); each view subscribes on its own. A give-back or a give
 wakes the driving session through its inbox with the person's events since the
 handover. An init script reports clicks, typing (a password field's length
 only) and submits through a binding, with the target's role and name; page
