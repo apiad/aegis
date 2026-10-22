@@ -602,6 +602,7 @@ filesView = new Files(conn, $("files"), {
   here: {
     insert: (path) => toComposer(lastShown, `\`${path}\``, { caret: true }),
     session: async (dir) => {
+      spawnFrom = null;
       go("#new");
       spawnGrow();
       await setSpServer(null);
@@ -3108,7 +3109,10 @@ installKeys(
       if (v === "session" || v === "read") cmenu.openFor(transcript.selected && transcript.nodes.get(transcript.selected));
       else if (v === "fleet") cmenu.openFor(fleetItems().find((x) => x.dataset.id === fleetSel));
     },
-    spawn: () => offline() || go("#new"), // a new session needs the server
+    spawn: () => {
+      spawnFrom = null;
+      if (!offline()) go("#new"); // a new session needs the server
+    },
     settings: () => go("#settings"),
     journal: () => go("#journal"),
     files: () => filePicker.open(),
@@ -4197,6 +4201,7 @@ async function toComposer(key, text, opts) {
 function newSessionWith(s, text) {
   if (s) openSpawnWith({ server: s.server, agent: s.agent, model: s.model, cwd: s.cwd, from: s.server ? null : s.key, prompt: `From ${s.handle}:\n${text}\n\n` });
   else {
+    spawnFrom = null;
     $("sp-text").value = `${text}\n\n${$("sp-text").value}`;
     go("#new");
     spawnGrow();

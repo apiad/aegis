@@ -138,6 +138,8 @@ def test_a_head_drags_its_group_and_a_member_stays_inside(server, page):  # noqa
     assert bar(page) == [[d], [a, b, c]]
     drop(page, b, d, "left")  # out of its group: refused
     assert bar(page) == [[d], [a, b, c]]
+    drop(page, b, b, "left")  # on itself: it stays
+    assert bar(page) == [[d], [a, b, c]]
     drop(page, c, b, "left")
     page.wait_for_function(
         f"document.querySelectorAll('.tblock.grp .tab')[1].dataset.id === {c!r}"
@@ -201,5 +203,25 @@ def test_a_new_session_from_a_selection_joins_its_sources_block(server, page):  
     assert len(bar(page)) == 1 and bar(page)[0][0] == key
     # The + tab afterwards starts a session of its own.
     spawn(page)
+    assert len(bar(page)) == 2
+    assert page.errors == []
+
+
+def test_a_form_left_unsent_forgets_its_source(server, page):  # noqa: F811
+    from .test_selection_browser import REPLY, select
+
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    key = spawn(page, "/md alpha kiwi beta")
+    select(page, REPLY, "kiwi")
+    page.click(".sbar [data-id=new]")
+    page.wait_for_selector("#a2[data-view=spawn]")
+    page.goto(page.url.split("#")[0] + f"#s={key}")
+    page.wait_for_selector("#a2[data-view=session]")
+    page.keyboard.press("Alt+N")
+    page.wait_for_selector("#a2[data-view=spawn]")
+    page.fill("#sp-text", "")
+    page.click("#sp-go")
+    page.wait_for_function("document.querySelectorAll('#tablist .tab').length === 2")
     assert len(bar(page)) == 2
     assert page.errors == []
