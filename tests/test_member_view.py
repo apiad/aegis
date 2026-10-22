@@ -116,3 +116,53 @@ async def test_another_members_task_answers_as_no_task(world):
         missing.message.replace("task-00000000", "?"),
     )
     await call(world, "task.status", {"task_id": t["task_id"]}, theirs)
+
+
+def watch(world, channel: str, caller: Caller) -> list[dict]:
+    """Every message ``channel`` sends ``caller``'s subscription."""
+    got: list[dict] = []
+    world.app.channels.subscribe(channel, got.append, view=world.app.view_of(caller))
+    return got
+
+
+def ids(msgs: list[dict]) -> set:
+    out = set()
+    for m in msgs:
+        rows = m.get("data") or []
+        rows += [o.get("upsert") or {} for o in m.get("ops", [])]
+        out |= {r.get("log_id") for r in rows if r.get("log_id")}
+        out |= {o["remove"] for o in m.get("ops", []) if "remove" in o}
+    return out
+
+
+async def test_a_members_sessions_channel_holds_its_own(world):
+    mine = await spawn(world, BEN)
+    theirs = await spawn(world, CARA)
+    got = watch(world, "sessions", BEN)
+    assert mine in ids(got) and theirs not in ids(got)
+    await call(world, "session.rename", {"log_id": theirs, "title": "x"}, CARA)
+    await call(world, "session.close", {"log_id": theirs}, CARA)
+    await call(world, "session.rename", {"log_id": mine, "title": "y"}, BEN)
+    world.app._sessions_out._flush()
+    assert theirs not in ids(got) and mine in ids(got)
+    admin = watch(world, "sessions", ADMIN)
+    assert mine in ids(admin)
+
+
+async def test_another_members_entity_channels_do_not_exist_for_it(world):
+    theirs = await spawn(world, CARA)
+    for ch in (f"transcript:{theirs}", f"repos:{theirs}"):
+        with pytest.raises(OpError) as e:
+            watch(world, ch, BEN)
+        assert e.value.code == "unknown_channel"
+        watch(world, ch, CARA)
+        watch(world, ch, ADMIN)
+
+
+async def test_a_toast_from_another_members_agent_does_not_reach_it(world):
+    theirs = await spawn(world, CARA)
+    got = watch(world, "toasts", BEN)
+    world.app.toast("cara's", source=world.app.sessions.sessions[theirs])
+    world.app.toast("for everyone")
+    texts = [o["toast"]["text"] for m in got for o in m.get("ops", [])]
+    assert texts == ["for everyone"]
