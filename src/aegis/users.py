@@ -280,5 +280,8 @@ def place(
     member's home instead."""
     cwd = spec.cwd
     if linux_user and role == "member" and Path(cwd).resolve() == root.resolve():
-        cwd = Path(pwd.getpwnam(linux_user).pw_dir)
+        try:
+            cwd = Path(pwd.getpwnam(linux_user).pw_dir)
+        except KeyError:
+            raise PermissionError(f"Linux user {linux_user} does not exist") from None
     return replace(spec, linux_user=linux_user, cwd=cwd)

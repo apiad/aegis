@@ -201,6 +201,26 @@ class TokenStore:
         user = e.get("linux_user") if e else None
         return str(user) if user else None
 
+    def acts_for(self, name: str | None) -> str | None:
+        """The Linux user a process started for ``name`` runs as. None (the
+        server's own user) outside the mode, for the server's owner and for an
+        admin made without a user. Anyone else without a user, and a name with
+        no token, raises PermissionError: nothing runs as the server for them."""
+        if not self.multi_user or name is None or name == self.owner:
+            return None
+        self._fresh()
+        e = self._entry(name)
+        if e is None:
+            raise PermissionError(f"{name} has no token; nothing runs for it")
+        if user := e.get("linux_user"):
+            return str(user)
+        if e.get("role") == "admin":
+            return None
+        raise PermissionError(
+            f"token {name} has no Linux user; revoke it and add it again with "
+            "--linux-user"
+        )
+
     def missing_users(self) -> list[tuple[str, str]]:
         """(token, Linux user) for each member token whose user does not
         exist, in the mode."""

@@ -2310,19 +2310,26 @@ class Workflows:
         return await self._check_judge(st, wf, node, prefix)  # task 7
 
     def _user(self, st: RunState) -> str | None:
-        """The Linux user the run's commands run as: its owner's (users.py)."""
+        """The Linux user the run's commands run as: its owner's (users.py).
+        Raises PermissionError, which fails the step, rather than run as the
+        server when the owner is gone or has no user in multi-user mode."""
         owner = self.owner(st)
-        return owner.spec.linux_user if owner is not None else None
+        if owner is None:
+            if self._reg.multi_user:
+                raise PermissionError("the workflow's owner is gone")
+            return None
+        return self._reg.user_for(owner.spec)
 
     async def _probe_sh(
-        self, cmd: str, cwd: str, env: dict[str, str], user: str | None
+        self, cmd: str, cwd: str, env: dict[str, str], st: RunState
     ) -> tuple[int | None, str, str]:
         """An sh probe's exit code, stdout and stderr, run as an sh node is
         (its own process group, ended when its task is cancelled); the code
         is None when bash did not start or the probe ran too long."""
         try:
             return await asyncio.wait_for(
-                run_sh(cmd, cwd, lambda _: None, env, user=user), CONDITION_LIMIT_S
+                run_sh(cmd, cwd, lambda _: None, env, user=self._user(st)),
+                CONDITION_LIMIT_S,
             )
         except TimeoutError:
             return None, "", f"took over {CONDITION_LIMIT_S:g}s"
@@ -2334,9 +2341,7 @@ class Workflows:
     ) -> None:
         try:
             while True:
-                rc, out, err = await self._probe_sh(
-                    cmd, self._cwd(st), env, self._user(st)
-                )
+                rc, out, err = await self._probe_sh(cmd, self._cwd(st), env, st)
                 self._readings[(st.run, inst)] = (
                     f"exit {rc if rc is not None else '?'} at {iso_now()[11:16]}"
                 )
@@ -2491,7 +2496,7 @@ class Workflows:
         self, st: RunState, inst: str, rnd: str, cmd: str, env: dict[str, str]
     ) -> None:
         try:
-            rc, out, err = await self._probe_sh(cmd, self._cwd(st), env, self._user(st))
+            rc, out, err = await self._probe_sh(cmd, self._cwd(st), env, st)
             self._readings[(st.run, inst)] = (
                 f"exit {rc if rc is not None else '?'} at {iso_now()[11:16]}"
             )
