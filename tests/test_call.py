@@ -44,12 +44,19 @@ async def test_arguments_as_pairs_as_one_object_and_from_stdin(world, tmp_path):
     s = await world.spawn()
     items = '[{"text": "a", "state": "done"}, {"text": "b", "state": "doing"}]'
     rc, out, _ = await sh(s, tmp_path, f"{AEGIS} call plan_update items='{items}'")
-    assert (rc, out.strip()) == (0, "plan saved: 1 of 2 done")
+    assert (rc, out.strip()) == (
+        0,
+        "plan saved: 1 of 2 done. The current plan:\n"
+        "  ✓ a\n"
+        "  ▶ b\n"
+        "Call plan_update again whenever an item starts, finishes, "
+        "or the work changes.",
+    )
     obj = json.dumps({"items": [{"text": "a", "state": "done"}]})
     rc, out, _ = await sh(s, tmp_path, f"{AEGIS} call plan_update '{obj}'")
-    assert (rc, out.strip()) == (0, "plan saved: 1 of 1 done")
+    assert (rc, out.split("\n")[0]) == (0, "plan saved: 1 of 1 done. The current plan:")
     rc, out, _ = await sh(s, tmp_path, f"echo '{obj}' | {AEGIS} call plan_update -")
-    assert (rc, out.strip()) == (0, "plan saved: 1 of 1 done")
+    assert (rc, out.split("\n")[0]) == (0, "plan saved: 1 of 1 done. The current plan:")
 
 
 async def test_a_tool_error_exits_1_with_the_tools_message(world, tmp_path):

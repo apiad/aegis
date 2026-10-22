@@ -1096,7 +1096,18 @@ def register_agent_ops(app: App) -> None:
         items = [{"text": i.text[:120], "state": i.state} for i in p.items[:30]]
         s.report({"kind": "plan", "items": items})
         done = sum(1 for i in items if i["state"] == "done")
-        return f"plan saved: {done} of {len(items)} done"
+        # The plan comes back as saved, so the agent sees what the card shows
+        # and when to call again, instead of waiting for the stale-plan nudge
+        # (#542).
+        mark = {"done": "✓", "doing": "▶", "pending": "·"}
+        return "\n".join(
+            [f"plan saved: {done} of {len(items)} done. The current plan:"]
+            + [f"  {mark[i['state']]} {i['text']}" for i in items]
+            + [
+                "Call plan_update again whenever an item starts, finishes, "
+                "or the work changes."
+            ]
+        )
 
     @r.op("turn.end", TurnEnd, agent=True, read=True)
     async def turn_end(p: TurnEnd, caller):
