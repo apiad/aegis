@@ -6398,7 +6398,9 @@ def test_a_phone_in_landscape_gets_the_desktop_layout_with_touch_targets(
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page)
-    assert page.is_visible(".side") and page.is_visible("#nav-side")
+    # The pill, which holds the panel button, shows with the first row.
+    page.wait_for_selector("#nav-side", state="visible")
+    assert page.is_visible(".side")
     assert page.locator("#send").bounding_box()["height"] >= 44
     assert errors == []
 
