@@ -64,11 +64,28 @@ body{background:#000}
 .a2 .tabs{display:flex;align-items:stretch;gap:2px;padding:6px 8px 0;background:var(--chrome);border-bottom:1px solid var(--rule);font-family:var(--font-chrome)}
 .a2 .tab{position:relative;display:flex;align-items:center;gap:8px;padding:7px 12px;font-size:12.5px;white-space:nowrap;color:var(--muted);border-radius:var(--r) var(--r) 0 0}
 .a2 .tab.on{background:var(--bg);color:var(--strong);box-shadow:inset 0 2px 0 var(--accent)}
-.a2 .tab .srv{opacity:.55}
 .a2 .tabs .gap{flex:1}
 .a2 .tabs{min-width:0}
 .a2 .tablist{display:flex;gap:2px;flex:0 1 auto;min-width:0;overflow-x:auto;scrollbar-width:none}
 .a2 .tablist::-webkit-scrollbar{display:none}
+.a2 .tab-more{flex:none;align-self:center;margin:0 4px 6px;padding:2px 8px;font:12px var(--font-chrome);color:var(--muted);background:none;border:1px solid transparent;border-radius:var(--r);cursor:pointer}
+.a2 .tab-more:hover{color:var(--strong);background:color-mix(in srgb,var(--ink) 7%,transparent)}
+.a2 .tab-more[hidden]{display:none}
+/* The tab card (#586, tabcard.js): the session's Fleet card under its tab, and
+   the tab menu's items as a row of icon buttons. It lives on <body>. */
+.tabcard{position:fixed;z-index:60;width:360px;max-width:calc(100vw - 16px);background:var(--bg);border:1px solid var(--rule);border-radius:calc(var(--r) + 2px);box-shadow:0 10px 30px rgba(0,0,0,.35);font-family:var(--font-chrome)}
+.tabcard[hidden]{display:none}
+.tabcard .card{border:0;margin:0;box-shadow:none;cursor:pointer}
+.tabcard .acts{display:flex;flex-wrap:wrap;gap:2px;padding:6px 8px 8px;border-top:1px solid var(--rule)}
+.tabcard .acts button{display:grid;place-items:center;width:30px;height:30px;padding:0;border:0;border-radius:var(--r);background:none;color:var(--muted);cursor:pointer}
+.tabcard .acts button:hover{color:var(--strong);background:color-mix(in srgb,var(--ink) 8%,transparent)}
+.tabcard .acts button.danger{margin-left:auto}
+.tabcard .acts button.danger~button.danger{margin-left:0}
+.tabcard .acts button.danger:hover{color:var(--err)}
+.tabcard .acts button:disabled{opacity:.4;cursor:default}
+.tabcard .acts .ic{width:15px;height:15px}
+.tabcard.tabsheet{top:auto;left:0;right:0;bottom:0;width:auto;max-width:none;border-radius:14px 14px 0 0;padding-bottom:env(safe-area-inset-bottom)}
+@media (pointer:coarse){.tabcard .acts button{width:44px;height:44px}}
 .a2 .tab{cursor:pointer;user-select:none}
 .a2 .tab .tname{max-width:22ch;overflow:hidden;text-overflow:ellipsis}
 .a2 .tab.home{font-weight:500}
@@ -77,10 +94,12 @@ body{background:#000}
 .a2 .tab.dragging{opacity:.35}
 .a2 .tab.drop{box-shadow:inset 2px 0 0 var(--accent)}
 .a2 .tabs .servers{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--faint);padding:0 10px}
-.a2 .keys-btn{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);color:var(--faint);font-family:var(--font-mono);font-size:11.5px;padding:1px 7px;margin:0 6px 6px;cursor:pointer}
-.a2 .keys-btn:hover{color:var(--strong)}
+/* The header's buttons are bare icons at every width (#586): no box, a tint on hover. */
+.a2 .keys-btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:30px;height:28px;background:none;border:1px solid transparent;border-radius:var(--r);color:var(--muted);font-family:var(--font-mono);font-size:11.5px;padding:0 4px;margin:0 1px 6px;cursor:pointer}
+.a2 .keys-btn:hover{color:var(--strong);background:color-mix(in srgb,var(--ink) 7%,transparent)}
 .a2 .bell[data-state=granted]{color:var(--accent)}
-.a2 .set-btn .ic{display:none}
+.a2 .set-btn .lbl{display:none}
+.a2 .set-btn .ic{width:15px;height:15px}
 .a2 .keymap{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:rgba(0,0,0,.45)}
 .a2 .keymap[hidden]{display:none}
 .a2 .keymap .panel{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);padding:6px 22px 14px;max-height:85vh;overflow:auto;font-size:12.5px;display:grid;grid-template-columns:auto auto;column-gap:36px;align-items:start}
@@ -1348,7 +1367,7 @@ body{background:#000}
 .a2 .set-empty{width:min(520px,100%);margin:12vh auto 0;padding:0 24px;display:grid;gap:14px;justify-items:start;font-size:14px;line-height:1.55;color:var(--ink)}
 .a2 .set-empty p{margin:0}
 .a2 .set-empty code{font-family:var(--font-mono);font-size:12.5px;color:var(--strong)}
-.a2 #settings-btn.on,.a2 #journal-btn.on,.a2 #help-btn.on{color:var(--strong);border-color:var(--accent)}
+.a2 #settings-btn.on,.a2 #journal-btn.on,.a2 #files-btn.on,.a2 #schedules-btn.on,.a2 #help-btn.on{color:var(--accent)}
 @media (max-width:640px){.a2 .set-agent{grid-template-columns:1fr}.a2 .set-card-foot,.a2 .set-agent > .set-why{grid-column:1}.a2 .set-findings li{grid-template-columns:1fr;gap:2px}}
 
 /* the Files view (js/files.js): a bar with the path and Save, the folder tree
@@ -1623,9 +1642,14 @@ body{background:#000}
 /* narrow and touch: last, so these win over the rules above */
 /* the panel's button: collapses it on a desktop, opens the drawer on a phone */
 /* the Journal's button: the same icon button, in every view */
-.a2 .side-btn,.a2 .jr-btn{display:grid;place-items:center;width:30px;padding:0;margin:0 4px 6px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);color:var(--muted);cursor:pointer}
+.a2 .jr-btn{display:grid;place-items:center;width:30px;height:28px;padding:0;margin:0 1px 6px;background:none;border:1px solid transparent;border-radius:var(--r);color:var(--muted);cursor:pointer}
+.a2 .jr-btn:hover{background:color-mix(in srgb,var(--ink) 7%,transparent)}
 .a2 .side-btn{display:none}
-.a2[data-view=session] .side-btn{display:grid}
+/* The panel's toggle (#586): the navigation pill's last button where the panel
+   sits beside the transcript; in the drawer layout the header keeps it, since
+   the open drawer covers the pill and the pill has no width to spare. */
+.a2 .nav .side-btn{display:grid}
+@media (max-width:760px){.a2[data-view=session] .nav .side-btn{display:none}.a2[data-view=session] .tabs .side-btn{display:grid}}
 .a2 .side-btn svg,.a2 .jr-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
 .a2 .side-btn:hover,.a2 .jr-btn:hover{color:var(--strong)}
 .a2 .grip{display:none}
@@ -1643,7 +1667,7 @@ body{background:#000}
    side panel slides in as a drawer (data-side=open), the band stacks. */
 @media (max-width:760px){
   .a2 .tabs{flex-wrap:wrap;padding:4px 6px 0;padding-top:max(4px,env(safe-area-inset-top))}
-  .a2 .tablist{order:9;flex:1 0 100%;margin:2px -6px 0;padding:0 6px;border-top:1px solid var(--rule)}
+  .a2 .tablist{order:9;flex:1 0 100%;margin:2px -2px 0;padding:0 6px;border-top:1px solid var(--rule)}
   /* The row wraps on each item's content width, so the name takes the
      spacer's place with a zero basis, right-aligned, and shrinks first. */
   .a2 .tabs .gap{display:none}
@@ -1651,19 +1675,20 @@ body{background:#000}
   /* the server's name gives way first, so the header's buttons keep their row */
   .a2 #conn-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .a2 .tabs .ver-top{display:none}
-  .a2 .tablist .tab .srv{display:none}
-  .a2 .tablist .tab .tname{max-width:16ch}
   .a2 .keys-btn:not(.bell):not(.set-btn):not(.help-btn){display:none}
   /* the header's buttons: bare icons, the tap target kept by (pointer:coarse) */
   .a2 .tabs .keys-btn.bell,.a2 .tabs .set-btn,.a2 .tabs .jr-btn,.a2 .tabs .help-btn,.a2[data-view=session] .side-btn{display:grid;place-items:center;background:none;border-color:transparent;margin:0 0 4px;padding:0}
+  /* Files joins this row (#586): the 40 px targets stay, and the row gives up
+     a pixel of each gap and most of its side padding instead. */
   .a2 .tabs .set-btn,.a2 .tabs .jr-btn,.a2 .tabs .help-btn{min-width:40px}
+  .a2 .tabs{gap:1px;padding-left:2px;padding-right:2px}
+  .a2 .tabs .tab.home,.a2 .tabs .tab.add{padding-left:8px;padding-right:8px}
+  .a2 .tabs .servers{padding:0 2px}
   .a2 .tabs .help-btn{font-size:16px}
   .a2 .tabs .keys-btn.bell .ic,.a2 .tabs .set-btn .ic,.a2 .tabs .jr-btn svg{width:18px;height:18px}
   .a2 .set-btn .lbl{display:none}
   .a2 .set-btn .ic{display:inline-block}
   .a2 .journal{padding:12px 12px 24px}
-  /* Files has no header button here: the Journal view carries its way in. */
-  .a2 .tabs #files-btn{display:none}
   .a2 .jfiles{display:inline-flex;align-items:center;gap:8px;min-height:44px;margin:0 0 8px;padding:0 14px;font-family:var(--font-mono);font-size:12px;color:var(--muted);border:1px solid var(--rule);border-radius:999px;text-decoration:none}
   .a2 .jfiles .ic{width:15px;height:15px}
   .a2 .jfiles:hover,.a2 .jfiles:focus-visible{color:var(--strong);border-color:var(--faint);outline:none}
@@ -1785,7 +1810,7 @@ body{background:#000}
 
 /* Linked servers (links.py): a server's tag, its band and cards under this
    server's, and what goes grey while its link is down. */
-.a2 .where{font:500 10px/1 var(--font-mono);letter-spacing:.02em;color:var(--muted);border:1px solid var(--rule);border-radius:4px;padding:2px 5px;margin-left:6px;flex:none;align-self:center}
+.a2 .where{font:500 10px/1 var(--font-mono);letter-spacing:.02em;color:var(--faint);margin-left:2px;flex:none;align-self:center}
 .a2 .band .band-link{font-weight:400;color:var(--faint);margin-left:8px;text-transform:none;letter-spacing:0}
 .a2 .band.off .band-link{color:var(--err)}
 .a2 .band.off .band-counts,.a2 .band.off .band-host,.a2 .band.off .q{opacity:.45}
@@ -1794,9 +1819,13 @@ body{background:#000}
 .a2 .tab.off{opacity:.45}
 /* A full bar scrolls sideways; a tab gives up its title first, then its handle,
    and keeps its server's tag. */
-.a2 .tablist .tab{flex:0 1 auto;min-width:0}
-.a2 .tablist .tab .tname{flex:0 3 auto;min-width:4ch}
-.a2 .tablist .tab .srv{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* A tab keeps its whole handle and never shrinks; a full strip scrolls sideways
+   and fades at its right edge (#586). The title is cut to the handle's width. */
+.a2 .tablist .tab{flex:none;padding-top:4px;padding-bottom:4px}
+.a2 .tablist{mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent)}
+.a2 .tab .l2{display:grid;line-height:1.2}
+.a2 .tab .tt{font:10.5px/1.25 var(--font-ui);opacity:.75;width:0;min-width:100%;overflow:hidden;text-overflow:ellipsis}
+.a2 .tab .tt:empty{display:none}
 /* The new tab's directory line names the server once one is linked. */
 .a2 .spawn .cwdline{display:flex;align-items:center;justify-content:center;gap:6px;width:100%}
 .a2 .spawn .cwdline .cwd{flex:1;min-width:0}
