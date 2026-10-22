@@ -1620,7 +1620,7 @@ body{background:#000}
    side panel slides in as a drawer (data-side=open), the band stacks. */
 @media (max-width:760px){
   #a2 .tabs{flex-wrap:wrap;padding:4px 6px 0;padding-top:max(4px,env(safe-area-inset-top))}
-  #a2 .tablist{order:9;flex:1 0 100%;margin:2px -6px 0;padding:0 6px;border-top:1px solid var(--rule)}
+  #a2 .tablist{order:9;flex:1 0 100%;margin:2px -2px 0;padding:0 6px;border-top:1px solid var(--rule)}
   /* The row wraps on each item's content width, so the name takes the
      spacer's place with a zero basis, right-aligned, and shrinks first. */
   #a2 .tabs .gap{display:none}
@@ -1631,7 +1631,12 @@ body{background:#000}
   #a2 .keys-btn:not(.bell):not(.set-btn):not(.help-btn){display:none}
   /* the header's buttons: bare icons, the tap target kept by (pointer:coarse) */
   #a2 .tabs .keys-btn.bell,#a2 .tabs .set-btn,#a2 .tabs .jr-btn,#a2 .tabs .help-btn,#a2[data-view=session] .side-btn{display:grid;place-items:center;background:none;border-color:transparent;margin:0 0 4px;padding:0}
+  /* Files joins this row (#586): the 40 px targets stay, and the row gives up
+     a pixel of each gap and most of its side padding instead. */
   #a2 .tabs .set-btn,#a2 .tabs .jr-btn,#a2 .tabs .help-btn{min-width:40px}
+  #a2 .tabs{gap:1px;padding-left:2px;padding-right:2px}
+  #a2 .tabs .tab.home,#a2 .tabs .tab.add{padding-left:8px;padding-right:8px}
+  #a2 .tabs .servers{padding:0 2px}
   #a2 .tabs .help-btn{font-size:16px}
   #a2 .tabs .keys-btn.bell .ic,#a2 .tabs .set-btn .ic,#a2 .tabs .jr-btn svg{width:18px;height:18px}
   #a2 .set-btn .lbl{display:none}

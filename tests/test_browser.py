@@ -1776,7 +1776,7 @@ def test_the_panel_collapses_and_resizes_and_the_browser_keeps_both(server, page
     page.reload()
     page.wait_for_selector("#a2[data-view=session]")
     assert page.is_hidden("#side")
-    page.click("#side-btn")
+    page.click("#nav-side")
     page.wait_for_selector("#side", state="visible")
     assert side_width(page) == 260
     assert page.errors == []
