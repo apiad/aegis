@@ -480,3 +480,12 @@ async def test_a_doctor_without_the_mode_has_no_multi_user_rows(
 ):
     found = await run(tmp_path, "agents: {}\n", fake_claude, fake_opencode)
     assert rows(found, "multi_user") == []
+
+
+def test_multi_user_names_a_machine_it_cannot_switch_files_on(tmp_path):
+    roots = mu_roots(tmp_path)
+    found = _multi_user(roots, users.MultiUser(), [], FULL_UNIT, {}, "riscv64")
+    (row,) = rows(found, "multi_user.files")
+    assert row.level == "error" and "riscv64" in row.message
+    found = _multi_user(roots, users.MultiUser(), [], FULL_UNIT, {}, "x86_64")
+    assert not rows(found, "multi_user.files")
