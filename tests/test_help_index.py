@@ -166,6 +166,11 @@ FIRST = [
     ("let several people use one server as their own linux users", "multi-user"),
     ("add a person to a multi-user server", "multi-user#add-a-person"),
     ("members cannot see each other's sessions", "multi-user"),
+    ("move my claude code skills and cron jobs into aegis", "setup"),
+    (
+        "suggest a config change the person applies from a card",
+        "config#suggested-changes-applied-from-a-card",
+    ),
     ("ask the person for an API token", "secrets"),
     (
         "have a judge agent check before publishing",

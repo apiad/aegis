@@ -124,9 +124,10 @@ class RecordParams(BaseModel):
 
 
 def register_setup(app: App) -> Records:
+    r = app.registry
     records = Records(app.roots.state_root)
 
-    @app.registry.op("setup.record", RecordParams, agent=True)
+    @r.op("setup.record", RecordParams, agent=True)
     async def record(p: RecordParams, caller):
         """Save what this /setup run applied and declined, for the person
         whose session this is, so their next run proposes only what is new.

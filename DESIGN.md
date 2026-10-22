@@ -575,6 +575,14 @@ the server (an op's params in `Registry.call`, each channel subscriber's view in
 something missing. The host work the mode needs is the help page `multi-user`,
 which `/multiuser` hands to the admin's agent as one turn (`multiuser.py`)
 (`docs/superpowers/specs/2026-10-21-linux-users-design.html`).
+**An agent suggests the configuration; a person writes it.** `config_suggest`
+records a card with the whole new `.aegis.yaml`, its diff and the file's stamp
+in the transcript, so it survives a restart; an admin's Apply writes that text
+through the stamp check (`config.write_text`) and wakes the agent
+(`config_suggest.py`). `/setup` hands the help page `setup` to the session's
+agent as one turn with the caller's last run, and `setup_record` keeps one
+record per principal under the state directory, which a member's agent cannot
+write itself (`setup.py`, `docs/superpowers/specs/2026-10-22-setup-onboarding-design.html`).
 Closing is the one exception, and it asks for a second thought: `session_close`
 closes at once only a session the agent spawned, or a worker whose task it
 enqueued, whose attention is done. Anything else, the caller's own session
