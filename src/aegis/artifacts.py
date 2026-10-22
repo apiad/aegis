@@ -83,8 +83,11 @@ def mint_id() -> str:
     return f"art-{secrets.token_hex(4)}"
 
 
-def draft_dir(state_root: Path, id: str) -> Path:
-    return state_root / "artifacts" / id
+def draft_dir(base: Path, id: str) -> Path:
+    """A draft's folder under ``base``: the state root, or in multi-user mode
+    ``~/.aegis`` in the home of the user the session runs as, whose agent
+    edits the draft with its own tools (#555)."""
+    return base / "artifacts" / id
 
 
 def draft_path(state_root: Path, id: str) -> Path:
@@ -207,9 +210,14 @@ class Board:
         }
 
     # -- lifecycle -------------------------------------------------------------
-    def create(self, title: str, caption: str | None, state: Any) -> Artifact:
+    def create(
+        self, title: str, caption: str | None, state: Any, write: bool = True
+    ) -> Artifact:
+        """A new draft; ``write`` false leaves the skeleton to the caller,
+        which writes it as the session's user (artifact_ops.py)."""
         a = Artifact(id=mint_id(), title=title, caption=caption, state=state)
-        write_draft(self._s.state_root, a.id, title)
+        if write:
+            write_draft(self._s.state_root, a.id, title)
         self.items[a.id] = a
         return a
 
@@ -316,10 +324,12 @@ class Board:
             {"kind": "artifact_submit", "artifact_id": id, "data": data, "label": label}
         )
 
-    def close(self, id: str, label: str | None) -> None:
+    def close(self, id: str, label: str | None, drop: bool = True) -> None:
+        """``drop`` false leaves removing a draft's folder to the caller."""
         a = self.get(id)
         if a.status == "draft":
-            drop_draft(self._s.state_root, id)
+            if drop:
+                drop_draft(self._s.state_root, id)
             del self.items[id]
             return
         if a.status != "live":

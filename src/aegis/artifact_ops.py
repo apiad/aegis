@@ -10,7 +10,6 @@ with the artifact id the host holds, never one the page sent.
 
 from __future__ import annotations
 
-import asyncio
 import shutil
 from typing import TYPE_CHECKING, Any
 
@@ -134,15 +133,16 @@ def register_artifact_ops(app: App) -> None:
 
     async def land(s, a, caption: str | None):
         """Checks, snapshot, probe, record; the snapshot goes when the probe fails."""
-        path = artifacts.draft_path(s.state_root, a.id)
+        run = app.place_of_session(s.log_id).run
+        path = artifacts.draft_path(s.drafts, a.id)
         try:
-            artifacts.check(path.read_text(encoding="utf-8"))
+            artifacts.check(await run(path.read_text, encoding="utf-8"))
         except OSError as e:
             raise OpError("unreadable", f"cannot read the draft {path}: {e}") from e
         except ArtifactError as e:
             raise _err(e) from e
         try:
-            rec = await asyncio.to_thread(files.store, app.roots.state_root, path)
+            (rec,) = await files.store_as(app.roots.state_root, [path], run)
         except files.FileError as e:
             raise OpError(e.code, e.message) from e
         url = files.url(rec["file_id"], rec["name"])
@@ -196,9 +196,11 @@ def register_artifact_ops(app: App) -> None:
         s = own(caller)
         if p.state is not None:
             _sized(p.state, "state")
-        a = s.artifacts.create(p.title, p.caption, p.state)
-        path = artifacts.draft_path(s.state_root, a.id)
-        return {"id": a.id, "path": str(path), "html": path.read_text(encoding="utf-8")}
+        a = s.artifacts.create(p.title, p.caption, p.state, write=False)
+        run = app.place_of_session(s.log_id).run
+        # Written as the session's user, in its home in multi-user mode.
+        path = await run(artifacts.write_draft, s.drafts, a.id, p.title)
+        return {"id": a.id, "path": str(path), "html": artifacts.skeleton(p.title)}
 
     @r.op("artifact.send", ArtifactSend, agent=True)
     async def send(p: ArtifactSend, caller):
@@ -293,9 +295,13 @@ def register_artifact_ops(app: App) -> None:
         is simply discarded."""
         s = own(caller)
         try:
-            s.artifacts.close(p.id, p.label)
+            draft = s.artifacts.get(p.id).status == "draft"
+            s.artifacts.close(p.id, p.label, drop=False)
         except ArtifactError as e:
             raise _err(e) from e
+        if draft:
+            run = app.place_of_session(s.log_id).run
+            await run(artifacts.drop_draft, s.drafts, p.id)
         return "closed"
 
     # -- the page, through the bridge ----------------------------------------------

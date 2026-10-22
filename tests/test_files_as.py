@@ -217,3 +217,16 @@ async def test_a_members_attachment_lands_in_its_home_inbox(world, ben_home, bec
     assert [p.read_bytes() for p in landed] == [b"hi"]
     assert not (world.app.roots.state_root / "inbox" / log_id / "a.txt").exists()
     assert not list((world.app.roots.state_root / "inbox" / log_id).glob("*-a.txt"))
+
+
+async def test_a_members_artifact_draft_lives_in_its_home(world, ben_home):
+    log_id = await ben_session(world)
+    agent = Caller("agent", log_id=log_id)
+    made = await world.app.registry.call("artifact.create", {"title": "Pick"}, agent)
+    path = ben_home / ".aegis" / "artifacts" / made["id"] / "index.html"
+    assert made["path"] == str(path) and path.read_text() == made["html"]
+    state = world.app.roots.state_root
+    assert not (state / "artifacts" / made["id"]).exists()
+    gone = await world.app.registry.call("artifact.create", {"title": "No"}, agent)
+    await world.app.registry.call("artifact.close", {"id": gone["id"]}, agent)
+    assert not (ben_home / ".aegis" / "artifacts" / gone["id"]).exists()
