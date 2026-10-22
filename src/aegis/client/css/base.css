@@ -39,6 +39,21 @@ body{background:#000}
 #a2 .tab-more{flex:none;align-self:center;margin:0 4px 6px;padding:2px 8px;font:12px var(--font-chrome);color:var(--muted);background:none;border:1px solid transparent;border-radius:var(--r);cursor:pointer}
 #a2 .tab-more:hover{color:var(--strong);background:color-mix(in srgb,var(--ink) 7%,transparent)}
 #a2 .tab-more[hidden]{display:none}
+/* The tab card (#586, tabcard.js): the session's Fleet card under its tab, and
+   the tab menu's items as a row of icon buttons. It lives on <body>. */
+.tabcard{position:fixed;z-index:60;width:360px;max-width:calc(100vw - 16px);background:var(--bg);border:1px solid var(--rule);border-radius:calc(var(--r) + 2px);box-shadow:0 10px 30px rgba(0,0,0,.35);font-family:var(--font-chrome)}
+.tabcard[hidden]{display:none}
+.tabcard .card{border:0;margin:0;box-shadow:none;cursor:pointer}
+.tabcard .acts{display:flex;flex-wrap:wrap;gap:2px;padding:6px 8px 8px;border-top:1px solid var(--rule)}
+.tabcard .acts button{display:grid;place-items:center;width:30px;height:30px;padding:0;border:0;border-radius:var(--r);background:none;color:var(--muted);cursor:pointer}
+.tabcard .acts button:hover{color:var(--strong);background:color-mix(in srgb,var(--ink) 8%,transparent)}
+.tabcard .acts button.danger{margin-left:auto}
+.tabcard .acts button.danger~button.danger{margin-left:0}
+.tabcard .acts button.danger:hover{color:var(--err)}
+.tabcard .acts button:disabled{opacity:.4;cursor:default}
+.tabcard .acts .ic{width:15px;height:15px}
+.tabcard.tabsheet{top:auto;left:0;right:0;bottom:0;width:auto;max-width:none;border-radius:14px 14px 0 0;padding-bottom:env(safe-area-inset-bottom)}
+@media (pointer:coarse){.tabcard .acts button{width:44px;height:44px}}
 #a2 .tab{cursor:pointer;user-select:none}
 #a2 .tab .tname{max-width:22ch;overflow:hidden;text-overflow:ellipsis}
 #a2 .tab.home{font-weight:500}
