@@ -114,6 +114,11 @@ class Registry:
             c.principal or Principal("", "admin")
         )
         self.owner_of: Callable[[str], str | None] = lambda log_id: None
+        # What a caller may not know exists (multi-user mode, app.py): the
+        # error a missing thing gives, or None when it may see it.
+        self.hides: Callable[[Principal, str, BaseModel], OpError | None] = (
+            lambda who, name, params: None
+        )
         # A session's schedule meta by log id (session.py); set by the app.
         self.schedule_of: Callable[[str], dict | None] = lambda log_id: None
 
@@ -187,6 +192,9 @@ class Registry:
         who = self.who(caller)
         if op.admin and not who.is_admin:
             raise OpError("not_for_members", f"{name} is for an admin of this server")
+        # Before not_owner, which would say whose it is.
+        if (hidden := self.hides(who, name, params)) is not None:
+            raise hidden
         if op.owned and not who.is_admin:
             target = getattr(params, op.owned, None)
             owner = self.owner_of(target) if isinstance(target, str) else None

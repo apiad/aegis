@@ -149,6 +149,20 @@ class _Strict(BaseModel):
     model_config = {"extra": "forbid"}
 
 
+# The param that names a session by handle in each op that takes one
+# (App._hides): a member may not learn of another's session through it.
+HANDLE_FIELDS = {
+    "peer.read": "target",
+    "peer.handoff": "target",
+    "peer.deliver": "target",
+    "session.close": "handle",
+    "session.quiet": "handle",
+    "monitor.sessions": "sessions",
+    "schedule.test": "session",
+    "journal.search": "session",
+}
+
+
 class SpawnedFrom(_Strict):
     handle: str
     server: str
@@ -541,6 +555,7 @@ class App:
         self.registry = Ops()
         self.registry.who = self.who
         self.registry.owner_of = self.owner_of
+        self.registry.hides = self._hides
         self.registry.permission_of = lambda log_id: (
             s.spec.permission if (s := self.sessions.sessions.get(log_id)) else None
         )
@@ -744,6 +759,68 @@ class App:
 
     def _live(self, s) -> bool:
         return not s.archived and self.sessions.sessions.get(s.log_id) is s
+
+    def sees(self, who: Principal, owner: str | None) -> bool:
+        """Whether ``who`` may know of a thing ``owner`` owns: always outside
+        multi-user mode and for an admin; in it, a member sees its own only
+        (the spec's section 08). A thing from before owners is the admin's."""
+        if self.multi_user is None or who.is_admin:
+            return True
+        return (owner or self.user) == who.name
+
+    def owner_of_handle(self, handle: str) -> str | None:
+        """The owner of the session a handle or a log id names, open or
+        archived; None when it names none here (or a session on another
+        server)."""
+        local, _, server = handle.partition("@")
+        if server and server != self.server_name:
+            return None
+        s = self.sessions.by_handle(local) or self.sessions.sessions.get(local)
+        if s is not None:
+            return self.owner_of(s.log_id)
+        for log_id, m in self.sessions.archived.items():
+            if local in (m.get("handle"), log_id):
+                return m.get("owner") or self.user
+        return None
+
+    def _hides(self, who: Principal, op: str, params) -> OpError | None:
+        """The not-found error an op gives for a thing ``who`` may not see,
+        named in its params; None when it names nothing hidden. A member
+        asking about another's thing gets the answer for no such thing."""
+        if self.multi_user is None or who.is_admin:
+            return None
+        log_id = getattr(params, "log_id", None)
+        if isinstance(log_id, str):
+            if log_id.startswith("t-"):
+                if not self.sees(who, self.terminals.owner_of(log_id) or who.name):
+                    return OpError("no_terminal", f"no open terminal {log_id}")
+            elif (o := self.owner_of(log_id)) is not None and not self.sees(who, o):
+                return OpError("no_session", f"no session {log_id!r}")
+        if op.startswith("term.") and isinstance(
+            tid := getattr(params, "id", None), str
+        ):
+            if not self.sees(who, self.terminals.owner_of(tid) or who.name):
+                return OpError("no_terminal", f"no open terminal {tid}")
+        field = HANDLE_FIELDS.get(op)
+        named = getattr(params, field, None) if field else None
+        for h in named if isinstance(named, list) else [named]:
+            if isinstance(h, str) and (o := self.owner_of_handle(h)) is not None:
+                if not self.sees(who, o):
+                    return OpError("no_session", f"no open session {h!r}")
+        run = getattr(params, "run", None)
+        if isinstance(run, str) and (st := self.workflows.runs.get(run)) is not None:
+            if not self.sees(who, self.owner_of(st.owner)):
+                return OpError("no_run", f"no workflow run {run!r}")
+        task_id = getattr(params, "task_id", None)
+        if isinstance(task_id, str) and (t := self.queues.tasks.get(task_id)):
+            if not self.sees(who, t.owner):
+                return OpError("no_task", f"no task {task_id!r}")
+        if op.startswith("schedule.") and op != "schedule.create":
+            name = getattr(params, "name", None)
+            if isinstance(name, str) and (s := self.schedules.items.get(name)):
+                if not self.sees(who, s.owner.get("principal")):
+                    return OpError("no_schedule", f"no schedule {name!r}")
+        return None
 
     def owner_of(self, log_id: str) -> str | None:
         """A session's owner by log id, None for no such session. One from
