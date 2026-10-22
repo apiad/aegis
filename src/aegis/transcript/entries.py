@@ -580,6 +580,9 @@ class Fold:
                     # Only when the agent wrote one (#354), so a report without
                     # it keeps its old shape.
                     **({"handoff": h} if (h := rec.get("handoff")) else {}),
+                    # Only when asked: archive this session and the ones it
+                    # started once the turn ends (registry._close_when_finished).
+                    **({"close": True} if rec.get("close") else {}),
                 }
             )
             return []

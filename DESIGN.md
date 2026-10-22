@@ -564,6 +564,11 @@ included, is refused with a prose account of that session (who started it, its
 state, attention, plan step and last activity) and a one-time token bound to the
 caller and the target; the same call with the token closes it, because a person
 may be reading that tab (`confirm.py`).
+An agent the person told to close when it finishes asks with `turn_end`'s
+`close` instead: the report carries it, and when that turn ends done with the
+session and its whole spawn tree finished, the registry archives the tree,
+deepest first (`registry._close_when_finished`). Like a handoff's retirement it
+keeps no state: the fold drops a report made in an earlier turn.
 Reading includes waiting: `monitor_sessions` watches other sessions' attention
 cards and wakes its owner when all have finished or one is blocked on the
 person, and `session_list` shows each card and plan. Neither changes the

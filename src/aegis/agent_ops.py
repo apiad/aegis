@@ -221,6 +221,14 @@ class TurnEnd(_Strict):
         "is at a natural break: a brief for a fresh session that continues this work. "
         "What is done, what is next, the files, the decisions, what not to retry.",
     )
+    close: bool = Field(
+        False,
+        description="With done only: archive your session, and every session you "
+        "or they started, once this turn ends and all of them are finished. Only "
+        "when the person told you in this conversation to close when you finish, "
+        "or the plan or workflow they approved says so; never on your own "
+        "judgment. Refused while you or they still wait on anything.",
+    )
 
 
 # What turn_end answers past the context block's handoff_at (#354). A tool
@@ -531,7 +539,8 @@ def close_refusal(
     if yourself:
         paras.append(
             "If your work is finished, end your turn with turn_end(done) instead: "
-            "the person closes the tab once they have read it."
+            "the person closes the tab once they have read it. If they told you "
+            "to close when you finish, pass close=true to that turn_end."
         )
     else:
         peer = f" (or {starter}, which started it)" if starter else ""
@@ -1124,7 +1133,21 @@ def register_agent_ops(app: App) -> None:
                 "plan_update, then call turn_end again; if not, call turn_end with "
                 "review, or needs_you when you ask something.",
             )
-        rec = {
+        if p.close and p.attention != "done":
+            raise OpError(
+                "bad_params",
+                "close goes with done only: a session that asks the person "
+                "something or has something for them to read stays open.",
+            )
+        if p.close and (blockers := reg.close_blockers(s)):
+            raise OpError(
+                "close_refused",
+                "Not closed, because this is still running: "
+                + ", ".join(blockers)
+                + ". Wait for it, or cancel or close it, then call turn_end again; "
+                "or call turn_end without close and leave the tab open.",
+            )
+        rec: dict[str, object] = {
             "kind": "turn_end",
             "attention": p.attention,
             "line": p.line,
@@ -1132,7 +1155,18 @@ def register_agent_ops(app: App) -> None:
         }
         if p.handoff and not s.worker:
             rec["handoff"] = p.handoff
+        if p.close:
+            rec["close"] = True
         s.report(rec)
+        if p.close:
+            n = len(reg.descendants(s.log_id))
+            tree = (
+                f" and the {n} session{'s' if n != 1 else ''} it started" if n else ""
+            )
+            return (
+                f"noted. aegis archives this session{tree} when this turn ends; "
+                "your final message is the last thing in its tab."
+            )
         at = app.config.current().context["handoff_at"]
         n = s.context_tokens or 0
         if s.worker or p.handoff or not at or n < at:
