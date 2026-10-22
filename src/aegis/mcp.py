@@ -73,11 +73,18 @@ class Tokens:
         return self._by_token.get(token or "")
 
 
-def mcp_config(url: str, token: str) -> str:
+def mcp_config(url: str) -> str:
+    """Claude Code's --mcp-config for aegis. The session's token is named,
+    not written: Claude expands ${AEGIS_SESSION_TOKEN} from its environment
+    (harness.session_env), and an argv is readable by every user on the host."""
     return json.dumps(
         {
             "mcpServers": {
-                "aegis": {"type": "http", "url": url, "headers": {HEADER: token}}
+                "aegis": {
+                    "type": "http",
+                    "url": url,
+                    "headers": {HEADER: "${AEGIS_SESSION_TOKEN}"},
+                }
             }
         }
     )

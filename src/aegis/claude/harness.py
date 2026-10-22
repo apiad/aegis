@@ -33,7 +33,7 @@ class ClaudeSession:
         if launch.mcp is not None:
             from ..mcp import mcp_config as build
 
-            mcp_config = build(*launch.mcp)
+            mcp_config = build(launch.mcp[0])
             # Without aegis's tools there is nothing to replace them with.
             keep = set(launch.keep_harness_tools)
             disallowed = tuple(t for t in REPLACED_TOOLS if t not in keep)
