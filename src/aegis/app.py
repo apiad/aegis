@@ -810,14 +810,14 @@ class App:
         log_id = getattr(params, "log_id", None)
         if isinstance(log_id, str):
             if log_id.startswith("t-"):
-                if not self.sees(who, self.terminals.owner_of(log_id) or who.name):
+                if (o := self.terminals.owner_of(log_id)) and not self.sees(who, o):
                     return OpError("no_terminal", f"no open terminal {log_id}")
             elif (o := self.owner_of(log_id)) is not None and not self.sees(who, o):
                 return OpError("no_session", f"no session {log_id!r}")
         if op.startswith("term.") and isinstance(
             tid := getattr(params, "id", None), str
         ):
-            if not self.sees(who, self.terminals.owner_of(tid) or who.name):
+            if (o := self.terminals.owner_of(tid)) and not self.sees(who, o):
                 return OpError("no_terminal", f"no open terminal {tid}")
         field = HANDLE_FIELDS.get(op)
         named = getattr(params, field, None) if field else None
@@ -825,6 +825,11 @@ class App:
             if isinstance(h, str) and (o := self.owner_of_handle(h)) is not None:
                 if not self.sees(who, o):
                     return OpError("no_session", f"no open session {h!r}")
+        fire = getattr(params, "fire", None)
+        target = getattr(fire, "session", None) if op.startswith("schedule.") else None
+        if isinstance(target, str) and (o := self.owner_of_handle(target)) is not None:
+            if not self.sees(who, o):
+                return OpError("no_session", f"no open session {target!r}")
         run = getattr(params, "run", None)
         if isinstance(run, str) and (st := self.workflows.runs.get(run)) is not None:
             if not self.sees(who, self.owner_of(st.owner)):
@@ -1064,7 +1069,9 @@ class App:
         else:
             self.channels.publish(channel, ops)
 
-    def toast(self, text: str, kind: str = "info", source=None) -> int:
+    def toast(
+        self, text: str, kind: str = "info", source=None, owner: str | None = None
+    ) -> int:
         """Show a toast in every open browser (client/js/toast.js) and return how
         many there are. ``source`` is the session an agent's toast comes from; a
         click on it opens that session's tab. It skips the throttle: a toast
@@ -1072,9 +1079,13 @@ class App:
         t: dict = {"text": text, "kind": kind, "ts": time.time()}
         if source is not None:
             t["from"] = {"handle": source.handle, "id": source.log_id}
+        if owner is not None:
+            # About a principal's own thing (a schedule): its browsers only,
+            # in multi-user mode (member_view.py).
+            t["owner"] = owner
         self.channels.publish("toasts", [{"toast": t}])
         self.push.sender.on_toast(t)  # an agent's goes to subscribed devices
-        return self.channels.subscribers("toasts")
+        return self.channels.reached("toasts", {"toast": t})
 
     def _sessions_key(self, op: dict) -> tuple[str, bool]:
         """A session added or removed, or a change to its state, name, model,

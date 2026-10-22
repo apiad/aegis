@@ -253,6 +253,12 @@ def register_workflow_ops(app: App) -> None:
                 out |= {"docked": False, "reason": str(e)}
         return out
 
+    def saver(by: dict) -> str | None:
+        """The principal a save's ``by`` names (``by`` below)."""
+        if by.get("kind") == "agent":
+            return app.owner_of(by.get("log_id") or "")
+        return by.get("principal")
+
     def by(caller: Caller) -> dict:
         s = reg.sessions.get(caller.log_id or "") if caller.is_agent else None
         if s is not None:
@@ -285,7 +291,12 @@ def register_workflow_ops(app: App) -> None:
         """The saved workflows a person can run with /workflow <id> <text>:
         built in and the project's, each with its title, args schema,
         version, who saved it, and what is wrong with it if it does not lint."""
-        return app.saved.listing(wf._agents())
+        rows = app.saved.listing(wf._agents())
+        who = app.who(caller)
+        for row in rows:
+            if "saved_by" in row and not app.sees(who, saver(row["saved_by"])):
+                del row["saved_by"], row["saved_at"]
+        return rows
 
     @r.op("workflow.read", WorkflowId, admin=True)
     async def workflow_read(p: WorkflowId, caller):
@@ -304,6 +315,12 @@ def register_workflow_ops(app: App) -> None:
     async def workflow_delete(p: WorkflowId, caller):
         """Delete a saved workflow from the project. A built-in one cannot be
         deleted. A schedule that fires it pauses."""
+        last = app.saved.last_save(p.id)
+        if last is not None and not app.sees(app.who(caller), saver(last["by"])):
+            raise OpError(
+                "no_workflow",
+                f"no saved workflow {p.id!r}; /workflow alone lists them",
+            )
         app.saved.delete(p.id, by(caller))
         app.schedules.workflow_changed(p.id)
         return {"deleted": p.id}
