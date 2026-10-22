@@ -132,6 +132,8 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   .beats{grid-template-columns:repeat(4,minmax(0,1fr))}
   .fleet{grid-template-columns:1fr}
 }
+.duo>*,.trio>*{min-width:0}
+@media (max-width:640px){.card pre{white-space:pre-wrap;overflow-wrap:anywhere}}
 @media (pointer:coarse){.rung{padding:12px 10px}}
 /* The spec page itself on a phone: tables become stacked rows, chrome keeps its tab. */
 @media (max-width:640px){
@@ -165,6 +167,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <a class="sub" href="#try">Try the ladder</a>
   <a class="sub" href="#rungs">Each rung</a>
   <a href="#page">The landing page</a>
+  <a class="sub" href="#install">Install</a>
   <a href="#video">The video</a>
   <a class="sub" href="#beats">Beats and narration</a>
   <a class="sub" href="#look">The look</a>
@@ -247,8 +250,24 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <li><b>Hero.</b> The line "The programmable meta-harness that grows with you" stays, with a sentence under it that names the four harnesses, the install line, and the video.</li>
   <li><b>The ladder.</b> Six rungs on the left and the sticky stage on the right, as in the prototype above. On a phone the stage sits on top of each rung, at the rung's own state, and does not stick.</li>
   <li><b>The reference.</b> The current sections on configuration, the tools an agent can call and where it runs, shortened and moved here.</li>
-  <li><b>Install and links.</b> PyPI, GitHub, the help pages.</li>
+  <li><b>Install and links.</b> The two install paths below, then PyPI, GitHub and the help pages.</li>
 </ol>
+
+<h3 id="install">Install, for a person and for an agent</h3>
+<p>The install block appears twice: short in the hero, whole at the end. It has two tabs. <span class="who">maintainer</span></p>
+<div class="duo">
+  <div class="card"><h4>I install it</h4><p>Three commands with what each prints: install the package, write a first <code>.aegis.yaml</code> from the harnesses found, start the server and open the browser.</p>
+<pre>uv tool install aegis-harness   # or: pip install aegis-harness
+aegis init
+aegis serve --window</pre>
+  <p>Then, in the first tab: <code>/setup</code>.</p></div>
+  <div class="card"><h4>My agent installs it</h4><p>A prompt with a copy button, to paste into the harness the visitor already uses (Claude Code, Codex, OpenCode, Cursor). The agent installs aegis, runs <code>aegis init</code> answering from what it knows of the machine, starts the server, and tells the person to open the URL and run <code>/setup</code> in the first tab.</p>
+<pre>Install aegis for me (https://github.com/apiad/aegis).
+Read its getting-started help page first, then install
+it with uv, run `aegis init`, start `aegis serve -d`,
+and tell me the URL. When I open it, I will run /setup.</pre></div>
+</div>
+<p>Both paths end at <code>/setup</code>, the onboarding inside aegis, which has its own spec. The prompt is short on purpose: the agent reads the instructions from the help page that ships with the version it installs, so the prompt does not go stale.</p>
 <p>The stage is built from mockup fragments, one per rung state, in a single file the page and the video both load. Each fragment uses the class names of <code>client.css</code>, so it looks like the client and changes with it. The page's script only swaps fragments and wires the few clicks each state allows. The page keeps working with scripts off: every rung's text and a static stage state are in the markup.</p>
 <p>The ten themes stay as a switcher on the stage, since a theme is one variable set in client.css.</p>
 
