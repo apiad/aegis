@@ -1138,7 +1138,10 @@ against their sha256, serves them at `/dictation/<pin>/` with an immutable cache
 header, and answers `dictation.prepare` with that base and the keywords that bias
 the model toward names it knows (`dictation.py`). Nothing carries samples, so
 dictation works through any proxy that serves the page, and the server pays
-nothing per word.
+nothing per word. A send from a box that got dictated text says so
+(`dictated`), and the server adds `dictation.NOTE` after the text for the
+agent; the fold strips that exact line off the person's row and marks it
+`detail.dictated`, so the transcript and the harness keep the same text.
 
 **The help pages are the shipped contract for how aegis is used, checked
 against the code both ways.** They are Markdown in `src/aegis/help/`, inside the

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from aegis.dictation import with_note
 from aegis.transcript.entries import EMPTY_STANDING, Fold, fold_records
 from aegis.transcript.store import read_store
 
@@ -1325,6 +1326,29 @@ def test_an_attached_echo_takes_its_own_pending_send_not_the_oldest():
         ("look", 0),
     ]
     assert fold_records(r.records).entries() == f.entries()
+
+
+def test_a_dictated_send_shows_the_text_with_a_mark_not_the_note():
+    r = Rec()
+    r.own("send", text="look")
+    r.own("send", text=with_note("lock at it"))
+    r.echo(with_note("lock at it"))
+    r.echo("look")
+    f, _ = run(r)
+    users = [(u["md"], u["detail"]) for u in f.entries() if u["kind"] == "user"]
+    assert users == [("lock at it", {"dictated": True}), ("look", {})]
+    assert fold_records(r.records).entries() == f.entries()
+
+
+def test_a_dictated_send_with_a_file_keeps_both_card_and_mark():
+    said = with_note("look")
+    full = said + FULL.removeprefix("look")
+    r = Rec()
+    r.own("send", text=full, typed=said, files=[_attached("a.png")])
+    r.echo(full)
+    (user,) = fold_records(r.records).entries()
+    assert user["md"] == "look" and user["detail"]["dictated"] is True
+    assert len(user["detail"]["files"]) == 1
 
 
 def test_a_server_stopped_row_says_crash_or_why_it_was_not_continued():

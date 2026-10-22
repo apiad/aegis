@@ -202,6 +202,9 @@ class SendParams(_Strict):
     # The answer to harness_untested, for a send that starts a stopped session
     # or a /spawn line (SpawnParams.untested).
     untested: Literal["once", "always"] | None = None
+    # The box got dictated text since the last send: the agent reads the text
+    # with dictation.NOTE after it (#579).
+    dictated: bool = False
 
     @model_validator(mode="after")
     def _says_something(self) -> "SendParams":
@@ -1610,6 +1613,8 @@ class App:
                         "start the line with // to send it as text",
                     )
             text = commands.escape(p.text)
+            if p.dictated and cmd is None:
+                text = dictation.with_note(text)
             if (why := reg.quota_hold(s)) is not None:
                 raise OpError("quota_closed", _held(s.spec.owner or self.user, why))
             not_saved = None

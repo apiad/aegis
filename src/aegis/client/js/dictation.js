@@ -248,6 +248,7 @@ function insert(rec, item, text) {
   Object.assign(item, { piece, from: at, to: at + piece.length });
   rec.placed.push(item);
   rec.at = at + piece.length;
+  rec.target.heard?.();
 }
 
 // A final: replaces the provisional text it covers if that text is still there,
@@ -282,9 +283,10 @@ export function pick(queue) {
 }
 
 // One recording listens at a time; earlier ones may still have pieces in
-// flight. A target is { el, key, current }: the textarea, the localStorage key
-// of the draft it holds (null for one that holds no session's draft), and a
-// function naming the draft the textarea shows now.
+// flight. A target is { el, key, current, heard }: the textarea, the localStorage key
+// of the draft it holds (null for one that holds no session's draft), a
+// function naming the draft the textarea shows now, and one called when
+// dictated text lands.
 export class Dictation {
   constructor({ prepare, onState = () => {}, onLevel = () => {}, onError = () => {} }) {
     Object.assign(this, { prepare, onState, onLevel, onError });

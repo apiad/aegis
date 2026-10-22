@@ -1330,6 +1330,8 @@ const RENDERERS = {
       d.append(el("summary", null, "template"), e.detail.tail ? el("pre", "out", e.detail.tail) : el("div", "loading", "loading…"));
       body.append(d);
     }
+    // Sent from the mic: the agent read a note asking it to allow for misheard words (#579).
+    if (e.detail?.dictated) body.append(el("div", "dictated", "🎙 dictated"));
     body.append(copyButton("message"));
     return row(e, `user ${e.status}`, body);
   },
