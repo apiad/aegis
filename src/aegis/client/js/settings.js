@@ -430,11 +430,33 @@ export class Settings {
   // save bar; adding and revoking act at once, because each shows or kills a
   // secret. The chips are the server's verdict on the saved policies.
   tokens() {
-    const name = h("input", { className: "set-in", id: "set-token-name", placeholder: "name, e.g. ben or laptop", spellcheck: false, value: this.tokenName || "", oninput: (e) => (this.tokenName = e.target.value) });
+    // In multi-user mode a token names the Linux user it runs as: the name
+    // until the field is edited (tokens.py).
+    const user =
+      this.multiUser &&
+      h("input", {
+        className: "set-in",
+        id: "set-token-user",
+        placeholder: "Linux user",
+        spellcheck: false,
+        value: this.tokenUser ?? this.tokenName ?? "",
+        oninput: (e) => (this.tokenUser = e.target.value),
+      });
+    const name = h("input", {
+      className: "set-in",
+      id: "set-token-name",
+      placeholder: "name, e.g. ben or laptop",
+      spellcheck: false,
+      value: this.tokenName || "",
+      oninput: (e) => {
+        this.tokenName = e.target.value;
+        if (user && this.tokenUser == null) user.value = e.target.value;
+      },
+    });
     const role = select("role", ["member", "admin"], this.tokenRole || "member");
     role.id = "set-token-role";
     role.addEventListener("change", () => (this.tokenRole = role.value));
-    const add = button("Add token", "set-token-add", () => this.addToken(name.value.trim(), role.value), "btn primary");
+    const add = button("Add token", "set-token-add", () => this.addToken(name.value.trim(), role.value, user ? user.value.trim() : null), "btn primary");
     const once = this.tokenOnce;
     const section = h(
       "section",
@@ -443,7 +465,7 @@ export class Settings {
       h("p", { className: "set-none", textContent: "Who may use this server, and how much of each pool a member may spend. A member reads every session and changes only its own; an admin changes anything and is never gated." }),
       this.pools && this.poolNow(),
       this.pools && h("div", { className: "set-agents", id: "set-tokcards" }, this.tokenCard(null), ...(this.tokenRows || []).map((t) => this.tokenCard(t))),
-      h("div", { className: "set-linkrow" }, name, role, add),
+      h("div", { className: "set-linkrow" }, name, user, role, add),
       this.tokenError && h("p", { className: "err-text", id: "set-token-error", textContent: this.tokenError }),
       once &&
         h(
@@ -519,6 +541,7 @@ export class Settings {
         "div",
         { className: "picks" },
         h("span", { className: "set-pill", textContent: t.role }),
+        this.multiUser && h("span", { className: "set-pill set-uid", textContent: t.linux_user ? `uid ${t.linux_user}` : "server's user" }),
         ...(member ? chips(t.gates) : [h("span", { className: "set-pill", textContent: "never gated" })]),
         h("span", { className: "set-none set-used", textContent: used(t) }),
         h("span", { className: "set-gap" }),
@@ -698,6 +721,7 @@ export class Settings {
     try {
       const r = await this.conn.call("token.list");
       this.tokenRows = r.tokens;
+      this.multiUser = !!r.multi_user;
       this.pools = r.pools;
       this.defaultGates = r.default_gates;
       // What the server holds now; an unsaved edit survives an add or a revoke.
@@ -720,12 +744,13 @@ export class Settings {
     if (old) old.replaceWith(this.tokens());
   }
 
-  async addToken(name, role) {
+  async addToken(name, role, linuxUser) {
     this.tokenError = "";
     try {
-      const r = await this.conn.call("token.add", { name, role });
+      const r = await this.conn.call("token.add", { name, role, ...(linuxUser ? { linux_user: linuxUser } : {}) });
       this.tokenOnce = { text: `The token for ${r.name}, shown once: `, token: r.token };
       this.tokenName = "";
+      this.tokenUser = null;
     } catch (e) {
       this.tokenError = e.message;
     }

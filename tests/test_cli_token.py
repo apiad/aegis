@@ -36,3 +36,34 @@ def test_revoking_the_admin_prints_its_new_token(tmp_path):
     new = out.stdout.strip()
     assert new and new != old
     assert (tmp_path / ".aegis" / "state" / "token").read_text().strip() == new
+
+
+def test_token_add_linux_user_needs_the_mode(tmp_path):
+    (tmp_path / ".aegis.yaml").write_text("agents: {}\n")
+    out = run(tmp_path, "add", "ben", "--linux-user", "ben")
+    assert out.exit_code == 1 and "needs multi_user" in out.output
+
+
+def test_token_list_shows_the_linux_user_in_the_mode(tmp_path):
+    import os
+    import pwd
+
+    from aegis import users
+
+    member = next(
+        (
+            pw.pw_name
+            for pw in pwd.getpwall()
+            if users.uid_min() <= pw.pw_uid < 60000 and pw.pw_uid != os.getuid()
+        ),
+        None,
+    )
+    if member is None:
+        import pytest
+
+        pytest.skip("no regular user other than the test user on this host")
+    (tmp_path / ".aegis.yaml").write_text("multi_user:\n")
+    added = run(tmp_path, "add", "mate", "--linux-user", member)
+    assert added.exit_code == 0, added.output
+    line = next(x for x in run(tmp_path, "list").stdout.splitlines() if "mate" in x)
+    assert member in line and "member" in line

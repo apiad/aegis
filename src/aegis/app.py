@@ -314,6 +314,12 @@ class LinkName(_Strict):
 class TokenAdd(_Strict):
     name: str = Field(description="Who the token is: lowercase, e.g. ben or laptop")
     role: Literal["admin", "member"] = "member"
+    linux_user: str | None = Field(
+        None, description="The Linux user it runs as, in multi-user mode; default: name"
+    )
+    no_linux_user: bool = Field(
+        False, description="An admin that runs as the server's own user"
+    )
 
 
 class TokenName(_Strict):
@@ -472,7 +478,15 @@ class App:
         # user per server for now: whoever started it (links.py).
         self.user = user or getpass.getuser()
         # The tokens that may use this server, the admin's first (tokens.py).
-        self.principals = TokenStore(roots.state_root, self.user)
+        self.principals = TokenStore(
+            roots.state_root, self.user, multi_user=multi_user is not None
+        )
+        for name, linux_user in self.principals.missing_users():
+            log.warning(
+                "aegis: token %s names Linux user %s, which does not exist",
+                name,
+                linux_user,
+            )
         self.links = Links(roots.state_root, server_name, self.user, self.publish)
         # Sessions a pause or a continue is under way for, so a reading that
         # lands before it finishes does not start a second one.
@@ -1964,12 +1978,13 @@ class App:
                 "default_policy": default,
                 "default_gates": gates(default or {}),
                 "pools": pools_wire(),
+                "multi_user": self.multi_user is not None,
             }
 
         @r.op("token.add", TokenAdd, admin=True)
         async def token_add(p: TokenAdd, caller):
             """Mint a token; the only time it is shown."""
-            token = self.principals.add(p.name, p.role)
+            token = self.principals.add(p.name, p.role, p.linux_user, p.no_linux_user)
             return {"name": p.name, "role": p.role, "token": token}
 
         @r.op("token.revoke", TokenName, admin=True)

@@ -763,11 +763,15 @@ app.add_typer(token_app, name="token")
 def _token_store(root: Path | None):
     import getpass
 
+    from .config import Config
     from .roots import make_roots
     from .tokens import TokenStore
 
+    roots = make_roots(start=Path.cwd(), root=root)
     return TokenStore(
-        make_roots(start=Path.cwd(), root=root).state_root, getpass.getuser()
+        roots.state_root,
+        getpass.getuser(),
+        multi_user=Config(roots.config_root).current().multi_user is not None,
     )
 
 
@@ -775,13 +779,23 @@ def _token_store(root: Path | None):
 def token_add(
     name: str = typer.Argument(..., help="Who it is: lowercase, e.g. ben or laptop."),
     role: str = typer.Option("member", help="member or admin."),
+    linux_user: str | None = typer.Option(
+        None,
+        "--linux-user",
+        help="The Linux user it runs as, in multi-user mode; default: NAME.",
+    ),
+    no_linux_user: bool = typer.Option(
+        False,
+        "--no-linux-user",
+        help="An admin that runs as the server's own user, in multi-user mode.",
+    ),
     root: Path | None = _ROOT_OPTION,
 ) -> None:
     """Mint a token and print it, alone on stdout: the only time it is shown."""
     from .ops import OpError
 
     try:
-        token = _token_store(root).add(name, role)
+        token = _token_store(root).add(name, role, linux_user, no_linux_user)
     except OpError as e:
         typer.echo(e.message, err=True)
         raise typer.Exit(1) from e
@@ -797,8 +811,9 @@ def token_list(root: Path | None = _ROOT_OPTION) -> None:
     rows = store.rows()
     for r in rows:
         own = "" if r["policy"] is not None or r["role"] == "admin" else " (default)"
+        user = f"{r['linux_user'] or '-':<16} " if store.multi_user else ""
         typer.echo(
-            f"{r['name']:<16} {r['role']:<7} {describe(store.policy_of(r['name']))}{own}"
+            f"{r['name']:<16} {r['role']:<7} {user}{describe(store.policy_of(r['name']))}{own}"
             f"{'  (this server)' if r['owner'] else ''}"
         )
     typer.echo(f"{len(rows)} tokens")
