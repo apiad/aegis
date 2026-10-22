@@ -1181,11 +1181,8 @@ body{background:#000}
 .a2 .rp:hover{border-color:var(--accent);background:var(--accent-soft)}
 .a2 #s-counters .bad{color:var(--err)}
 .a2 .rp.hand{color:var(--accent);border-color:var(--accent)}
-.a2 .handoff{margin-top:10px;border:1px solid var(--rule);border-radius:var(--r);background:var(--bg);padding:10px 12px}
-.a2 .handoff .hb{white-space:pre-wrap;overflow-wrap:anywhere;font-family:var(--font-prose);margin:0 0 8px}
-.a2 .handoff .hgo{display:flex;gap:8px;flex-wrap:wrap}
 .a2 .coldnote .btn{display:block;margin-top:8px}
-@media (pointer:coarse){.a2 .rp.hand,.a2 .handoff .btn,.a2 .coldnote .btn{min-height:44px}}
+@media (pointer:coarse){.a2 .rp.hand,.a2 .coldnote .btn{min-height:44px}}
 .a2 .coldnote .cold{border-left:2px solid var(--warn);background:var(--accent-soft);border-radius:0 var(--r) var(--r) 0;padding:8px 12px;font-family:var(--font-chrome);font-size:11.5px;color:var(--strong);overflow-wrap:anywhere}
 .a2 .coldnote .lbl{display:block;color:var(--accent);font-size:10.5px;margin-bottom:3px}
 .a2 .row.closing{display:none}
