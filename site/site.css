@@ -192,3 +192,23 @@ footer a:hover{color:var(--strong)}
   .stage .band>div,.stage .order,.stage .cards,.stage .remote,.stage .col,.stage .side,.stage .composer,.stage .tr,.step p,.step h3::before{transition:none}
   .a2 .ic.work{animation:none}
 }
+
+/* The install block's two tabs: a person's commands, or a prompt for their agent. */
+.install .itabs{display:flex;gap:0;justify-content:center}
+.install .itabs button{font:13px var(--mono);background:var(--bg);color:var(--muted);border:1px solid var(--rule);padding:6px 14px;cursor:pointer}
+.install .itabs button+button{border-left:0}
+.install .itabs button.on{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.install .ipane{display:grid;gap:12px;justify-items:center;max-width:100%}
+.install .ipane[hidden]{display:none}
+.install pre{max-width:100%;overflow-x:auto}
+.install .copy{font:12px var(--mono);background:none;border:1px solid var(--rule);color:var(--muted);border-radius:5px;padding:2px 9px;cursor:pointer;margin-left:6px}
+.install .setup-note{max-width:62ch;text-align:center}
+.ladder a{color:inherit;text-decoration:none;display:block}
+.step .fine{font-family:var(--mono);font-size:12.5px;line-height:1.55;color:var(--faint);border-left:2px solid var(--rule);padding-left:10px}
+.step.on .fine{color:var(--muted)}
+.stage .dict,.stage .att{font-family:var(--mono);font-size:10.5px;color:var(--faint);border:1px solid var(--rule);border-radius:999px;padding:0 7px;margin-left:4px;white-space:nowrap}
+.stage .fprev{border-top:1px solid var(--rule);padding:8px 12px;font-size:12.5px;color:var(--ink)}
+.stage .wtree{margin:6px 0 4px;padding:0 12px 0 30px;font-size:12.5px;color:var(--ink)}
+.stage .wtree li{margin:2px 0}
+@media (max-width:760px){.install pre{padding:12px 14px;font-size:12.5px;white-space:pre-wrap;overflow-wrap:anywhere}}
+@media (pointer:coarse){.install .itabs button,.install .copy{min-height:44px}}
