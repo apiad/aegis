@@ -46,6 +46,7 @@ from . import nudges as _nudges  # noqa: F401
 from . import notice_sources
 from .cgroups import DEFAULT_MEMORY_MAX, parse_size
 from .net.config import KEYS as NET_KEYS
+from .host import host_from
 from .net.config import NetConfig, network_from
 from .ops import OpError
 from .queues import queues_from
@@ -59,7 +60,7 @@ WATCH_EVERY_S = 1.0
 TOP_KEYS = (
     "agents", "queues", "default_agent", "recap", "btw", "context",
     "session_memory_max", "terminals", "terminal_memory_max", "park", "network",
-    "workflows", "harness_versions", "notices", "nudges", "multi_user",
+    "host", "workflows", "harness_versions", "notices", "nudges", "multi_user",
 )  # fmt: skip
 AGENT_KEYS = (
     "harness", "provider", "model", "models", "effort", "permission", "priming",
@@ -427,6 +428,11 @@ SECTIONS = {
         "What the Net, Exit and Speed readings reach, and how often, in seconds."
         " A speed_interval of 0 turns the speed test off.",
     ),
+    "host": (
+        "Host",
+        "The disks the Host meters list: every block device the host mounts. Mount"
+        " points to hide, and ones to add that are not block devices (ZFS, NFS).",
+    ),
 }
 
 
@@ -468,6 +474,8 @@ def fields() -> list[dict]:
             add("network", "network.anchors", "list", [_anchor(*a) for a in v])
         else:
             add("network", f"network.{k}", "bool" if k == "enabled" else "number", v)
+    for k, v in host_from(None)[0].items():
+        add("host", f"host.{k}", "list", v)
     return out
 
 
@@ -756,6 +764,8 @@ class Snapshot:
     terminal_memory_error: str | None = None
     network: NetConfig = field(default_factory=NetConfig)
     network_error: str | None = None
+    host: dict = field(default_factory=lambda: host_from(None)[0])
+    host_error: str | None = None
     # The multi-user mode (users.py); read once, at boot (cli.serve).
     multi_user: MultiUser | None = None
     multi_user_error: str | None = None
@@ -771,6 +781,7 @@ class Snapshot:
             data.get("terminal_memory_max"), "terminal_memory_max"
         )
         network, network_error = network_from(data.get("network"))
+        host, host_error = host_from(data.get("host"))
         multi_user, multi_user_error = multi_user_from(data)
         return cls(
             path=path,
@@ -795,6 +806,8 @@ class Snapshot:
             terminal_memory_error=tmem_error,
             network=network,
             network_error=network_error,
+            host=host,
+            host_error=host_error,
             multi_user=multi_user,
             multi_user_error=multi_user_error,
         )
@@ -959,6 +972,7 @@ def _validate_settings(doc: ConfigDoc, err: Callable[[str, str, str], None]) -> 
         "nudges": lambda v: nudges_from(v).get("error"),
         "notices": lambda v: notices_from(v).get("error"),
         "network": lambda v: network_from(v)[1],
+        "host": lambda v: host_from(v)[1],
     }
     for block, error_of in readers.items():
         if block in b and (e := error_of(b[block])):

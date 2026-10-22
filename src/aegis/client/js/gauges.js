@@ -138,6 +138,17 @@ export function hostRow(label, pct, tail) {
   return g;
 }
 
+// One row per disk the host mounts, named by its mount point when there are
+// several. A linked server older than #541 sends only `disk`.
+export function diskRows(h) {
+  const disks = h.disks || (h.disk ? [h.disk] : []);
+  return disks.map((d) => {
+    const row = hostRow(disks.length > 1 ? d.mount : "Disk", d.pct, `${d.used_gb} / ${d.total_gb} GB`);
+    if (d.mount) row.firstChild.title = d.mount;
+    return row;
+  });
+}
+
 // "8.3", "84": megabits a second from bytes a second.
 export function mbps(bps) {
   const m = (bps * 8) / 1e6;

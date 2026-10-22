@@ -425,6 +425,7 @@ class App:
             net=lambda: (
                 self.net.wire() if self.config.current().network.enabled else None
             ),
+            mounts=lambda: self.config.current().host,
         )
         self.net = NetService(
             lambda: self.config.current().network,

@@ -534,7 +534,7 @@ body{background:#000}
 #a2 .pcard .big .p{font-family:var(--font-mono);font-size:24px;color:var(--strong);font-weight:500;letter-spacing:-.5px;line-height:1}
 #a2 .pcard .big .of{color:var(--muted)}
 #a2 .pcard .big .c{margin-left:auto;font-family:var(--font-mono);font-size:15px;color:var(--strong)}
-#a2 .pcard .gauge{grid-template-columns:44px minmax(40px,1fr) auto}
+#a2 .pcard .gauge{grid-template-columns:66px minmax(40px,1fr) auto}
 #a2 .pcard .plan{font-family:var(--font-ui)}
 /* the Journal row: the newest two entries in the plan's type, then the count;
    its card is the Journal view's timeline, smaller */
@@ -1053,6 +1053,7 @@ body{background:#000}
 #a2 .band .prov:first-child{margin-top:0}
 @media (max-width:1100px){#a2 .band{grid-template-columns:1fr 1fr}#a2 .band>.q{grid-column:1/-1}}
 #a2 .gauge{display:grid;grid-template-columns:70px minmax(60px,1fr) 150px;gap:10px;align-items:center;font-size:12px;font-family:var(--font-chrome);color:var(--muted);margin:4px 0}
+#a2 .gauge>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #a2 .gauge .bar{margin:0;position:relative}
 #a2 .gauge .val{display:flex;gap:8px;justify-content:flex-end;white-space:nowrap}
 #a2 .gauge .val b{font-weight:500;color:var(--ink)}

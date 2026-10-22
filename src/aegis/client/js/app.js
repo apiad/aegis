@@ -18,7 +18,7 @@ import * as artifacts from "./artifacts.js";
 import { TabOrder, patchTab, renderTabs } from "./tabs.js";
 import { linesOf, mine, ownerOf, setWho } from "./me.js";
 import { ago, byNeed, modelLine, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards, tickPlan } from "./fleet.js";
-import { age, countdown, elapsed, hostRow, hostSeverity, mbps, netRows, providerFor, quotaSideRow, quotaTile, tile } from "./gauges.js";
+import { age, countdown, diskRows, elapsed, hostRow, hostSeverity, mbps, netRows, providerFor, quotaSideRow, quotaTile, tile } from "./gauges.js";
 import { closeCard, initSide, restState, toggleCollapsed } from "./side.js";
 import { installKeys, renderKeys } from "./keys.js";
 import { Palette } from "./palette.js";
@@ -1492,10 +1492,8 @@ function drawSideHost() {
   const meter = (label, pct) => tile(label, `${pct}%`, { pct, kind: "h", severity: hostSeverity(pct) });
   const tiles = [meter("CPU", h.cpu), meter("RAM", h.ram.pct)];
   const rows = [hostRow("CPU", h.cpu, ""), hostRow("RAM", h.ram.pct, `${h.ram.used_gb} / ${h.ram.total_gb} GB`)];
-  if (h.disk) {
-    tiles.push(meter("disk", h.disk.pct));
-    rows.push(hostRow("Disk", h.disk.pct, `${h.disk.used_gb} / ${h.disk.total_gb} GB`));
-  }
+  if (h.disk) tiles.push(meter("disk", h.disk.pct)); // the fullest
+  rows.push(...diskRows(h));
   const net = h.net;
   if (net) {
     const sp = net.speed;

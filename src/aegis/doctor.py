@@ -688,6 +688,8 @@ async def doctor(
     if "error" in snap.harness_versions:
         out.append(Finding("error", "harness_versions", snap.harness_versions["error"]))
     out.append(_network(snap))
+    if snap.host_error:
+        out.append(Finding("error", "host", snap.host_error))
     out.append(_workflows(snap.workflows, tuple(a.name for a in snap.agents)))
     out.append(_session_memory(snap))
     out.append(_state(roots))

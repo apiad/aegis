@@ -1,7 +1,7 @@
 ---
 title: Configuration
 kind: concept
-when: adding or changing agents, the default agent, queues, recaps, side notes, the per-session memory cap, notices about disk, memory, CPU and quota, an agent's status and stalled monitors, when aegis nudges a silent agent, parking idle sessions, untested harness versions or the network readings in .aegis.yaml, or picking a theme
+when: adding or changing agents, the default agent, queues, recaps, side notes, the per-session memory cap, notices about disk, memory, CPU and quota, an agent's status and stalled monitors, when aegis nudges a silent agent, parking idle sessions, untested harness versions, the disks the Host rows list or the network readings in .aegis.yaml, or picking a theme
 ---
 
 aegis reads one file, `.aegis.yaml`, at the root it serves: `--root` when
@@ -343,6 +343,28 @@ harness_versions:
 A block with a wrong key or value leaves every default in force, and
 `aegis doctor` names the mistake. Only an admin can change it, in the file or
 in the Untested versions section of the Settings page.
+
+## Disks
+
+The Host rows of the Fleet band and of a session's sidebar list every disk
+the server mounts, one row each, named by its mount point when there is more
+than one: the block devices in the mount table, less loop devices (snaps),
+squashfs images, and the boot and EFI partitions. A filesystem
+mounted twice (a bind mount, a btrfs subvolume) is listed once. The disk that
+holds aegis is always listed. The sidebar's `disk` tile shows the fullest.
+
+`host:` hides mount points, and adds ones that are not block devices, such as
+a ZFS dataset or an NFS share:
+
+```yaml
+host:
+  hide_mounts: [/srv/scratch]
+  add_mounts: [/tank]
+```
+
+A block with a wrong key, or a mount point that is not an absolute path,
+leaves both lists empty, and `aegis doctor` names the mistake. Only an admin
+can change it, in the file or in the Host section of the Settings page.
 
 ## Network readings
 

@@ -16,6 +16,8 @@ from urllib.parse import unquote
 import pytest
 from ruamel.yaml import YAML
 
+from aegis.host import HostSampler
+
 from .conftest import browser_slot
 
 pytestmark = [pytest.mark.browser, pytest.mark.slow]
@@ -1484,6 +1486,11 @@ def test_the_fleet_band_and_the_sidebar_show_quota_and_the_host(quota_server, pa
     assert "retrying in" in page.inner_text("#band-quota-age")
     page.wait_for_selector("#band-host .gauge")
     assert "CPU" in page.inner_text("#band-host")
+    # Every disk this machine mounts, each its own row (#541).
+    disks = HostSampler(lambda c, o: None, lambda c: 0, quota_server.root).disks()
+    labels = [d["mount"] for d in disks] if len(disks) > 1 else ["Disk"]
+    band = page.locator("#band-host .gauge > span:first-child").all_inner_texts()
+    assert [x for x in band if x in labels] == labels
 
     spawn(page)
     # At a glance: the Claude session's 5-hour window, amber, with its projection.
@@ -1494,6 +1501,8 @@ def test_the_fleet_band_and_the_sidebar_show_quota_and_the_host(quota_server, pa
     assert five.locator("small svg.ic").count() == 1
     page.wait_for_selector("#s-host-sec:not([hidden]) #s-host-tiles .tile")
     assert "CPU" in page.inner_text("#s-host-tiles")
+    card = page.locator("#s-host-rows .gauge > span:first-child").all_inner_texts()
+    assert [x for x in card if x in labels] == labels
     # The details are the row's card.
     page.hover("#p-usage")
     page.wait_for_selector("#s-quota .qrow.warning", state="visible")
