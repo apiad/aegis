@@ -861,16 +861,21 @@ class Registry(Host):
         limit: int,
         after: Position | None,
         workers: bool = True,
+        keep: Callable[[dict], bool] | None = None,
     ) -> tuple[list[dict], int, Position | None]:
-        """A page of the archive, newest first, after ``after`` (archive.py)."""
-        items, total, last = archive_page(
-            self.archived.values(), query, limit, after, workers
-        )
+        """A page of the archive, newest first, after ``after`` (archive.py),
+        of the metas ``keep`` passes."""
+        metas = [m for m in self.archived.values() if keep is None or keep(m)]
+        items, total, last = archive_page(metas, query, limit, after, workers)
         return [_public(m) for m in items], total, last
 
-    def archived_workers(self, query: str | None) -> int:
-        """How many archived queue workers match ``query``."""
-        return count_workers(self.archived.values(), query)
+    def archived_workers(
+        self, query: str | None, keep: Callable[[dict], bool] | None = None
+    ) -> int:
+        """How many archived queue workers match ``query``, of those ``keep``
+        passes."""
+        metas = [m for m in self.archived.values() if keep is None or keep(m)]
+        return count_workers(metas, query)
 
     async def shutdown(self) -> None:
         for s in list(self.sessions.values()):

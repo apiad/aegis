@@ -166,3 +166,42 @@ async def test_a_toast_from_another_members_agent_does_not_reach_it(world):
     world.app.toast("for everyone")
     texts = [o["toast"]["text"] for m in got for o in m.get("ops", [])]
     assert texts == ["for everyone"]
+
+
+NEW = {"clock": {"every": "5m"}, "fire": {"agent": "opus"}, "prompt": "triage"}
+
+
+async def test_a_members_lists_hold_its_own(world):
+    mine = await spawn(world, BEN)
+    theirs = await spawn(world, CARA)
+    ben = Caller("agent", log_id=mine)
+    cara = Caller("agent", log_id=theirs)
+    theirs_handle = world.app.sessions.sessions[theirs].handle
+    listed = await call(world, "session.list", {}, ben)
+    assert theirs_handle not in [s["handle"] for s in listed]
+    assert world.app.sessions.sessions[mine].handle in [s["handle"] for s in listed]
+    await call(world, "schedule.create", {"name": "ben-sched", **NEW}, ben)
+    await call(world, "schedule.create", {"name": "cara-sched", **NEW}, cara)
+    names = [s["name"] for s in await call(world, "schedule.list", {}, ben)]
+    assert "ben-sched" in names and "cara-sched" not in names
+    hidden = await refused(world, "schedule.pause", {"name": "cara-sched"}, ben)
+    assert hidden.code == "no_schedule"
+    for who, text in ((ben, "ben's decision"), (cara, "cara's decision")):
+        await call(world, "journal.note", {"text": text, "tag": "decision"}, who)
+    world.app.journal.flush()
+    said = await call(world, "journal.search", {"kind": ["note"]}, ben)
+    assert "ben's decision" in said and "cara's decision" not in said
+    said = await call(world, "journal.search", {"kind": ["note"]}, ADMIN)
+    assert "ben's decision" in said and "cara's decision" in said
+
+
+async def test_a_members_archive_holds_its_own(world):
+    mine = await spawn(world, BEN)
+    theirs = await spawn(world, CARA)
+    await call(world, "session.close", {"log_id": mine}, BEN)
+    await call(world, "session.close", {"log_id": theirs}, CARA)
+    got = await call(world, "archive.list", {"limit": 50}, BEN)
+    listed = [m["log_id"] for m in got["items"]]
+    assert mine in listed and theirs not in listed and got["total"] == len(listed)
+    every = await call(world, "archive.list", {"limit": 50}, ADMIN)
+    assert {mine, theirs} <= {m["log_id"] for m in every["items"]}

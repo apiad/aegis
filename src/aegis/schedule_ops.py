@@ -132,7 +132,12 @@ def register_schedule_ops(app: App) -> None:
     async def schedule_list(_, caller):
         """Every schedule on this server: its clock, layers and owner, its next
         tick, its live runs, and whether it is paused."""
-        return sch.wire_all()
+        who = app.who(caller)
+        return [
+            w
+            for w in sch.wire_all()
+            if app.sees(who, sch.items[w["name"]].owner.get("principal"))
+        ]
 
     @r.op("schedule.runs", ScheduleRuns, agent=True, read=True)
     async def schedule_runs(p: ScheduleRuns, caller):

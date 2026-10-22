@@ -777,6 +777,15 @@ class App:
             return None
         return MemberView(self, who)
 
+    def own_log_ids(self, who: Principal) -> set[str] | None:
+        """The log ids of every session ``who`` may see, open or archived;
+        None for all of them (``sees``)."""
+        if self.multi_user is None or who.is_admin:
+            return None
+        metas = [s.meta() for s in self.sessions.sessions.values()]
+        metas += list(self.sessions.archived.values())
+        return {m["log_id"] for m in metas if self.sees(who, m.get("owner"))}
+
     def owner_of_handle(self, handle: str) -> str | None:
         """The owner of the session a handle or a log id names, open or
         archived; None when it names none here (or a session on another
@@ -1467,7 +1476,7 @@ class App:
         pages: dict[str, tuple[list[dict], archive.Position | None]] = {}
         counts: dict[str, int] = {}
         workers = 0
-        for name, fetch in self._archive_sources(only):
+        for name, fetch in self._archive_sources(only, self.who(caller)):
             if name in positions and positions[name] is None:
                 continue  # exhausted on an earlier page
             got = await fetch(p.query, p.limit, positions.get(name), p.workers)
@@ -1498,15 +1507,24 @@ class App:
             "cursor": archive.encode(positions) if more else None,
         }
 
-    def _archive_sources(self, only: str | None):
-        """Each server an archive listing reads, with how to fetch a page."""
+    def _archive_sources(self, only: str | None, who: Principal):
+        """Each server an archive listing reads, with how to fetch a page. A
+        member in multi-user mode reads its own sessions here, and no linked
+        server's: links are the admin's."""
+        member = self.multi_user is not None and not who.is_admin
+
+        def keep(m: dict) -> bool:
+            return self.sees(who, m.get("owner"))
 
         async def local(query, limit, after, workers):
-            items, total, last = self.sessions.archive(query, limit, after, workers)
-            return items, total, self.sessions.archived_workers(query), last
+            k = keep if member else None
+            items, total, last = self.sessions.archive(query, limit, after, workers, k)
+            return items, total, self.sessions.archived_workers(query, k), last
 
         if only in (None, self.server_name):
             yield self.server_name, local
+        if member:
+            return
         for link in self.links.up():
             if only not in (None, link.name):
                 continue
