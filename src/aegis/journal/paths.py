@@ -72,6 +72,8 @@ def place(path: str, user: str | None = None) -> tuple[str | None, str, str | No
     except ValueError:
         # NUL byte or other invalid input
         return None, path, None
+    if user is not None:
+        return _place_as(path, user)
     hit = _checkout(_existing(path), user)
     if hit is None:
         return None, path, None
@@ -86,6 +88,23 @@ def place(path: str, user: str | None = None) -> tuple[str | None, str, str | No
     return main, "" if rel == "." else rel, top
 
 
+def _place_as(path: str, user: str) -> tuple[str | None, str, str | None]:
+    """``place`` for a path the server may not be able to stat, inside a
+    member's home: git, run as ``user``, says where the directory's checkout
+    is, and fails when the directory is gone. The path itself is tried first,
+    for a directory, then its parent."""
+    for d in (path, os.path.dirname(path)):
+        hit = _checkout(d, user)
+        if hit is None:
+            continue
+        top, main = hit
+        rel = os.path.relpath(path, top)
+        if rel.startswith(".."):
+            return None, path, None
+        return main, "" if rel == "." else rel, top
+    return None, path, None
+
+
 def name(path: str, user: str | None = None) -> tuple[str | None, str]:
     main, rel, _ = place(path, user)
     return main, rel
@@ -97,10 +116,18 @@ def full(repo: str | None, rel: str) -> str:
     return os.path.join(repo, rel) if rel else repo
 
 
+def _where(directory: str, user: str | None) -> str:
+    """Where git runs for ``directory``: its nearest existing ancestor when
+    the server looks, the directory itself when a user's git does, since the
+    server may not see inside that user's home."""
+    real = os.path.realpath(directory)
+    return real if user is not None else _existing(real)
+
+
 def full_sha(directory: str, commit: str, user: str | None = None) -> str | None:
     out = _git(
         ["rev-parse", "--verify", "--end-of-options", f"{commit}^{{commit}}"],
-        _existing(os.path.realpath(directory)),
+        _where(directory, user),
         user,
     )
     return out.strip() if out else None
@@ -118,7 +145,7 @@ def commit_files(
             "--end-of-options",
             f"{commit}^{{commit}}",
         ],
-        _existing(os.path.realpath(directory)),
+        _where(directory, user),
         user,
     )
     if out is None:

@@ -331,7 +331,9 @@ class Repos:
 
     def _line(self, r: dict) -> tuple[dict, bool]:
         top, main = r["top"], r["main"]
-        exists = os.path.isdir(top)
+        # A member's checkout may be hidden from the server: its user's git
+        # decides (probe.probe).
+        exists = os.path.isdir(top) or self._users.get(top) is not None
         if top not in self._probes and exists:
             self._probes[top] = probe.probe(top, self._users.get(top))
             self._probed_at[top] = time.monotonic()

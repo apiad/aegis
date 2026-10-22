@@ -66,7 +66,9 @@ def _op(top: str, user: str | None = None) -> str:
 def probe(top: str, user: str | None = None) -> Probe | None:
     """The worktree's branch, upstream, operation and changed files; ``None``
     when it is gone or git cannot read it."""
-    if not os.path.isdir(top):
+    # The server may not see inside a member's home: as a user, git's own
+    # failure says the worktree is gone.
+    if user is None and not os.path.isdir(top):
         return None
     out = git(
         top,
