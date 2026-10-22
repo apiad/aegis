@@ -135,9 +135,15 @@ class Registry(Host):
         priming = session.spec.priming
         if self.mcp_url is None or self.tokens is None:
             return None, priming
+        from .browsers import available
         from .mcp import primer
 
-        prompt = primer(session, self.server_name, self.roots.config_root)
+        prompt = primer(
+            session,
+            self.server_name,
+            self.roots.config_root,
+            browsers=available() and not self.multi_user,
+        )
         if priming:
             prompt += "\n\n" + priming
         return (self.mcp_url, self.tokens.mint(session.log_id)), prompt

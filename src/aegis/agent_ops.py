@@ -1165,8 +1165,14 @@ def register_agent_ops(app: App) -> None:
     async def meta(_, caller):
         """How aegis works for you, and its tools."""
         s = reg.sessions.get(caller.log_id or "")
+        from .browsers import available
         from .mcp import primer
 
         tools = ", ".join(op.tool_name for op in r.agent_ops())
-        head = primer(s, reg.server_name, reg.roots.config_root) if s else "aegis"
+        browsers = available() and not reg.multi_user
+        head = (
+            primer(s, reg.server_name, reg.roots.config_root, browsers=browsers)
+            if s
+            else "aegis"
+        )
         return f"{head}\n\nTools: {tools}. help_search finds how to use any of these."

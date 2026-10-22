@@ -161,13 +161,32 @@ def build_mcp(registry: Registry, tokens: Tokens, sessions: Sessions | None = No
     return server, server.http_app(path=PATH, stateless_http=True, json_response=True)
 
 
-def primer(session: Session, server_name: str, root: Path) -> str:
+def primer(
+    session: Session, server_name: str, root: Path, browsers: bool = False
+) -> str:
     return PRIMER.format(
         handle=session.handle,
         server=server_name,
         tools=f"{session.harness.tool_prefix}*",
         root=root,
+        browsers=BROWSERS if browsers else "",
     )
+
+
+# Only where browsers run (browsers.py): elsewhere the tools answer
+# browser_unavailable, and the paragraph would send agents to them.
+BROWSERS = """\
+To test a web page with the person, or to see what they see in one, open it \
+with browser_open: a Chromium on the server, so its localhost is the server's. \
+It shows as a tab, not in front of the person: tell them its name and ask them \
+to open it. Read it with browser_snapshot, drive it with browser_click and \
+browser_type, and read what the person did with browser_events. For a captcha, \
+a sign-in or a step they should try, call browser_handover with what to do and \
+end your turn; you are woken with what they did when they give the page back. \
+help_read browsers says more, including how to turn a test the person clicks \
+through into a Playwright script.
+
+"""
 
 
 PRIMER = """\
@@ -292,14 +311,7 @@ an intermediate artifact they need to look at to discuss it (a mockup, a diagram
 a draft render). Do not send other files, such as source code you edited: they \
 see those as diffs.
 
-To test a web page with the person, or to see what they see in one, open it \
-with browser_open: a Chromium on the server that you read with browser_snapshot \
-and drive with browser_click and browser_type, and that the person watches and \
-clicks in a tab. For a captcha, a sign-in or a step they should try, call \
-browser_handover with what to do and end your turn; you are woken with what they \
-did when they give the page back.
-
-Never write a password, token, API key or private key where it is kept: a \
+{browsers}Never write a password, token, API key or private key where it is kept: a \
 message, a commit, a log, a command's output. Generate it straight into a file \
 with `umask 077` and no echo, such as `openssl rand -base64 18 > /tmp/pw`, and \
 hand it to the person with secret_send: the server reads the file, you never \
