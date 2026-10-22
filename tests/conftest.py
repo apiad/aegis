@@ -154,6 +154,12 @@ def pytest_addoption(parser):
         help="run tests marked canary (the real harnesses against a fake model)",
     )
     parser.addoption(
+        "--run-multiuser",
+        action="store_true",
+        default=False,
+        help="run tests marked multiuser (creates Linux users; needs sudo and systemd)",
+    )
+    parser.addoption(
         "--max-unmarked-duration",
         type=float,
         default=None,
@@ -168,6 +174,9 @@ def pytest_collection_modifyitems(config, items):
     skips = {
         "live": pytest.mark.skip(reason="live: pass --run-live (make test-live)"),
         "canary": pytest.mark.skip(reason="canary: pass --run-canary (make canary)"),
+        "multiuser": pytest.mark.skip(
+            reason="multiuser: pass --run-multiuser (make test-multiuser)"
+        ),
     }
     for marker, skip in skips.items():
         if config.getoption(f"--run-{marker}"):

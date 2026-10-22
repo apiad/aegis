@@ -365,3 +365,24 @@ async def test_the_repos_panel_probes_as_the_sessions_user(tmp_path, recorded):
     recorded.clear()
     gh.prs(str(repo), "main", user="ben")
     assert recorded.users("run") <= {"ben"}
+
+
+def test_a_repo_the_server_cannot_see_is_found_through_its_user(
+    tmp_path, recorded, monkeypatch
+):
+    """The server may not stat inside a member's home: with a user, git run
+    as that user says whether the directory and the repo are there."""
+    import os
+
+    from aegis.journal import paths
+    from aegis.repos import probe
+
+    repo = git_repo(tmp_path / "r")
+    (repo / "f.txt").write_text("x")
+    paths._checkout_cache.clear()
+    monkeypatch.setattr(os.path, "isdir", lambda p: False)
+    main, rel, top = paths.place(str(repo / "f.txt"), user="ben")
+    assert (rel, top) == ("f.txt", str(repo.resolve()))
+    assert paths.place(str(repo), user="ben")[2] == str(repo.resolve())
+    assert probe.probe(str(repo), user="ben") is not None
+    assert paths.place(str(repo / "f.txt"))[2] is None  # the server's own view

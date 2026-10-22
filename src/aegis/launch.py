@@ -67,15 +67,21 @@ def configure(mu: users.MultiUser | None) -> None:
 
 
 def _as(
-    user: str | None, argv: list[str], env: dict[str, str] | None
-) -> tuple[list[str], dict[str, str] | None]:
-    """``argv`` and ``env`` as the process runs them: unchanged outside the
-    multi-user mode; in it, behind setpriv, which drops every capability and,
-    for a user, switches to it with that user's own environment. A bare
+    user: str | None,
+    argv: list[str],
+    env: dict[str, str] | None,
+    cwd: str | Path | None,
+) -> tuple[list[str], dict[str, str] | None, str | Path | None]:
+    """``argv``, ``env`` and ``cwd`` as the process starts: unchanged outside
+    the multi-user mode; in it, behind setpriv, which drops every capability
+    and, for a user, switches to it with that user's own environment. A bare
     program name is found in the server's PATH, since a login's PATH lacks
-    the directories harnesses install to."""
+    the directories harnesses install to. A switched process enters its cwd
+    after the switch, through a shell that then execs the program (so its pid
+    stays the program's): the server may not be able to enter a member's
+    home, and the kernel checks the member's own access instead."""
     if _mode is None:
-        return argv, env
+        return argv, env, cwd
     pool, setpriv, path = _mode
     pw = None
     if user is not None:
@@ -89,10 +95,14 @@ def _as(
         if found is None:
             raise FileNotFoundError(exe)
         exe = found
-    out = [*users.setpriv_argv(pw, setpriv), exe, *argv[1:]]
+    prefix = users.setpriv_argv(pw, setpriv)
     if pw is None:
-        return out, env
-    return out, users.user_env(pw, users.added(env), pool.get(), path)
+        return [*prefix, exe, *argv[1:]], env, cwd
+    enter = (
+        [] if cwd is None else ["/bin/sh", "-c", 'cd -- "$0" && exec "$@"', str(cwd)]
+    )
+    env = users.user_env(pw, users.added(env), pool.get(), path)
+    return [*prefix, *enter, exe, *argv[1:]], env, None
 
 
 def _refused(what: str) -> None:
@@ -117,7 +127,7 @@ async def child(
     """``argv`` started inside ``cgroup`` when there is one. ``env`` None is
     the server's environment. Raises FileNotFoundError for a missing binary,
     with or without the cgroup."""
-    argv, env = _as(user, argv, env)
+    argv, env, cwd = _as(user, argv, env, cwd)
     proc = await asyncio.create_subprocess_exec(
         *wrap(cgroup, argv),
         cwd=cwd,
@@ -145,13 +155,13 @@ async def pty(
     """``argv`` on the terminal ``tty``, as its controlling terminal
     (``setsid --ctty``: a preexec_fn is unsafe in a threaded server), in
     ``cgroup`` when there is one, with the OOM score raised."""
-    argv, env = _as(user, argv, env)
+    argv, env, start_in = _as(user, argv, env, cwd)
     proc = await asyncio.create_subprocess_exec(
         *wrap(cgroup, ["setsid", "--ctty", *argv]),
         stdin=tty,
         stdout=tty,
         stderr=tty,
-        cwd=cwd,
+        cwd=start_in,
         env=env,
     )
     raise_oom_score(proc.pid)
@@ -171,7 +181,7 @@ def run(
 ) -> subprocess.CompletedProcess:
     """``argv`` run to its end with its output captured. OSError and
     subprocess.TimeoutExpired reach the caller, as from subprocess.run."""
-    argv, env = _as(user, argv, env)
+    argv, env, cwd = _as(user, argv, env, cwd)
     return subprocess.run(
         argv,
         cwd=cwd,

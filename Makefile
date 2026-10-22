@@ -1,4 +1,4 @@
-.PHONY: check gates hooks test-durations lint lint-docs lint-detail format format-check typecheck changelog changelog-check test test-cov test-all test-slow test-live canary test-browser bench coverage know-how site-css
+.PHONY: check gates hooks test-durations lint lint-docs lint-detail format format-check typecheck changelog changelog-check test test-cov test-all test-slow test-live test-multiuser canary test-browser bench coverage know-how site-css
 
 # Every gate, on the fast lane: the tests marked slow, the browser tests among
 # them, are `test-slow`'s. The tests run before typecheck so a type error cannot
@@ -18,7 +18,7 @@ hooks:
 # Refresh the slow lane's per-test times, which CI's shards balance on. Serial,
 # so the times are not inflated by neighbours; about 30 min.
 test-durations:
-	uv run pytest -q -m "slow and not live" --store-durations --clean-durations
+	uv run pytest -q -m "slow and not live and not multiuser" --store-durations --clean-durations
 
 # Doc drift (.rift.yaml), the help pages against the code among it. CI runs
 # rift pinned to a tag; with no rift installed, so does this. `make
@@ -74,7 +74,7 @@ test-all:
 # Serial here; CI splits it in four shards. With `check` it is every test CI
 # runs (tests/test_lanes.py holds them together).
 test-slow:
-	uv run pytest -q -m "slow and not live"
+	uv run pytest -q -m "slow and not live and not multiuser"
 
 # The client in headless Chromium against a real `aegis serve` and the fake
 # claude. Marked slow too, so `make test` skips them; CI runs them.
@@ -94,6 +94,11 @@ bench:
 # names contain "live", such as anything with "deliver".
 test-live:
 	uv run pytest -q --run-live -m live
+
+# aegis as a service user with capabilities, against real Linux users it
+# creates with sudo (tests/multiuser/). Needs passwordless sudo and systemd.
+test-multiuser:
+	uv run pytest -q --run-multiuser -m multiuser
 
 # The latest stable release of every harness under this aegis, against a fake
 # model: no quota. Installs the releases into ~/.cache/aegis-canary. CI runs it

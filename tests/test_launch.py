@@ -142,7 +142,12 @@ SETPRIV = shutil.which("setpriv") or "setpriv"
 @pytest.fixture
 def seen(monkeypatch):
     """The argv and env every spawn is asked for, without starting anything."""
-    calls: list[tuple[list[str], dict | None]] = []
+
+    class Calls(list):
+        cwds: list
+
+    calls: Calls = Calls()
+    calls_cwd: list = []
 
     class Proc:
         pid = 4242
@@ -150,6 +155,7 @@ def seen(monkeypatch):
 
     async def fake_exec(*argv, env=None, **kw):
         calls.append((list(argv), env))
+        calls_cwd.append(kw.get("cwd"))
         return Proc()
 
     def fake_run(argv, env=None, **kw):
@@ -159,6 +165,7 @@ def seen(monkeypatch):
     monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
     monkeypatch.setattr(subprocess, "run", fake_run)
     monkeypatch.setattr(launch, "raise_oom_score", lambda pid: None)
+    calls.cwds = calls_cwd  # type: ignore[attr-defined]
     return calls
 
 
@@ -235,3 +242,21 @@ def test_on_detach_and_browser_are_refused(mode, monkeypatch):
         launch.detach(["true"], user=None)
     with pytest.raises(PermissionError, match="off in multi-user mode"):
         launch.browser("http://x", user=None)
+
+
+async def test_on_a_switched_child_enters_its_cwd_after_the_switch(
+    seen, mode, tmp_path
+):
+    """The server may not be able to enter a member's home: the cd happens
+    as the member, after setpriv, and the program is exec'd so its pid stays."""
+    await launch.child(["git", "status"], user="ben", cwd=tmp_path)
+    argv = seen[0][0]
+    prefix = users.setpriv_argv(ME, SETPRIV)
+    assert seen.cwds == [None]
+    assert argv[: len(prefix)] == prefix
+    assert argv[len(prefix) :] == [
+        "/bin/sh", "-c", 'cd -- "$0" && exec "$@"', str(tmp_path),
+        shutil.which("git"), "status",
+    ]  # fmt: skip
+    await launch.child(["git"], user=None, cwd=tmp_path)
+    assert seen.cwds[1] == tmp_path
