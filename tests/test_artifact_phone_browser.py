@@ -5,7 +5,10 @@ toggle narrows the frame to a phone's viewport, so the page's own media
 queries answer, and turns it back. Kept out of test_browser.py, whose server
 and artifact helpers it borrows."""
 
+import re
+
 import pytest
+from playwright.sync_api import expect
 
 from .test_browser import (  # noqa: F401
     _artifact,
@@ -41,7 +44,10 @@ def test_phone_width_narrows_the_frame_and_turns_back(server, page):  # noqa: F8
     page.wait_for_function(
         f"document.querySelector('iframe[data-artifact={aid}]').clientWidth <= 390"
     )
-    assert int(width.inner_text()) <= 390
+    # The page hears its resize after the frame narrows; wait for it.
+    expect(width).to_have_text(
+        re.compile(r"^([0-9]{1,2}|[1-2][0-9]{2}|3[0-8][0-9]|390)$")
+    )
     btn.click()
     assert btn.get_attribute("aria-pressed") == "false"
     page.wait_for_function(
