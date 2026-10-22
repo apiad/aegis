@@ -259,6 +259,125 @@ function fillApproval(card) {
   card.replaceChildren(...kids);
 }
 
+// What a secret's card needs from outside: an operation on the shown
+// session's server (app.js sets it). secret_ops.py, spec 2026-10-22.
+let secretCall = async () => {};
+export function setSecrets(call) {
+  secretCall = call;
+}
+// Values revealed in this page, until it reloads or the person hides them:
+// never in storage, a draft, the device store or the find index.
+const revealed = new Map(); // secret id -> text
+const fromB64 = (s) => Uint8Array.from(atob(s || ""), (c) => c.charCodeAt(0));
+const SECRET_GONE = {
+  revealed: "Already viewed. It cannot be shown again.",
+  expired: "Expired before it was revealed. Ask the agent to send it again.",
+  restarted: "No longer available: aegis restarted before it was revealed. Ask the agent to send it again.",
+};
+const lapsed = (e) => Date.parse(e.detail?.expires_at || "") < Date.now();
+const until = (iso) => `expires ${new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+
+function secretBar(e, title, meta) {
+  const bar = el("div", "fbar");
+  const acts = el("span", "acts");
+  bar.append(entryIcon(e.glyph), el("span", "fn", title), el("span", "fs", meta), acts);
+  return { bar, acts };
+}
+
+function fillSecret(card, e) {
+  const size = `${e.detail?.bytes ?? "?"} B`;
+  const value = revealed.get(e.id);
+  const why = e.status === "pending" && lapsed(e) ? "expired" : e.status;
+  card.classList.toggle("gone", value === undefined && why !== "pending");
+  if (value !== undefined) {
+    const { bar, acts } = secretBar(e, e.title || "secret", `${size} · revealed`);
+    const copy = el("button", "btn primary", "Copy");
+    copy.type = "button";
+    copy.onclick = () => navigator.clipboard.writeText(value).then(() => (copy.textContent = "Copied"), () => (copy.textContent = "Copy failed"));
+    const hide = el("button", "btn", "Hide");
+    hide.type = "button";
+    hide.onclick = () => {
+      revealed.delete(e.id);
+      fillSecret(card, { ...e, status: "revealed" });
+    };
+    acts.append(copy, hide);
+    const shown = el("div", "sbody val", value);
+    shown.append(el("span", "hint", "Shown in this tab only. Reloading or hiding it ends it."));
+    card.replaceChildren(bar, shown);
+    return;
+  }
+  if (why !== "pending") {
+    const { bar } = secretBar(e, e.title || "secret", `${size} · ${why === "revealed" ? "viewed" : why}`);
+    card.replaceChildren(bar, el("div", "sbody dim", SECRET_GONE[why] || SECRET_GONE.restarted));
+    return;
+  }
+  const { bar, acts } = secretBar(e, e.title || "secret", `${size} · ${until(e.detail.expires_at)}`);
+  const go = el("button", "btn primary", "Reveal");
+  go.type = "button";
+  go.onclick = async () => {
+    go.disabled = true;
+    try {
+      const r = await secretCall("secret.reveal", { id: e.id });
+      if (r?.pad) {
+        const ct = fromB64(e.detail.ct);
+        const pad = fromB64(r.pad);
+        revealed.set(e.id, new TextDecoder().decode(ct.map((b, i) => b ^ pad[i])));
+      }
+      // The reveal's patch can redraw the row before this reply lands: fill
+      // the card that is on the page now, not only the one clicked.
+      const now = [...document.querySelectorAll(`.row[data-id="${CSS.escape(e.id)}"] .scard`)];
+      for (const c of now.length ? now : [card]) fillSecret(c, r?.pad ? e : { ...e, status: r?.gone || "restarted" });
+    } catch (err) {
+      go.disabled = false;
+      go.title = String(err?.message || err);
+    }
+  };
+  acts.append(go);
+  card.replaceChildren(bar, el("div", "sbody dim", "Only you can reveal this, once. The agent never saw it."));
+}
+
+function fillRequest(card, e) {
+  const d = e.detail || {};
+  const why = e.status === "waiting" && lapsed(e) ? "expired" : e.status;
+  card.classList.toggle("gone", why !== "waiting");
+  if (why === "provided") {
+    const { bar } = secretBar(e, "secret requested", "provided");
+    card.replaceChildren(bar, el("div", "sbody dim", `Provided: ${d.bytes} B written to ${d.path}. The agent was woken.`));
+    return;
+  }
+  if (why !== "waiting") {
+    const { bar } = secretBar(e, "secret requested", why);
+    card.replaceChildren(bar, el("div", "sbody dim", "Expired before it was provided. Nothing was written."));
+    return;
+  }
+  const { bar } = secretBar(e, "secret requested", until(d.expires_at));
+  const body = el("div", "sbody");
+  const form = el("form", "sform");
+  const input = el("input");
+  Object.assign(input, { type: "password", autocomplete: "off", placeholder: "paste the secret", required: true });
+  input.setAttribute("aria-label", "secret");
+  input.dataset.lpignore = "true";
+  const go = el("button", "btn primary", "Provide");
+  go.type = "submit";
+  const hint = el("span", "hint", `Written to ${d.path} on the server, mode 0600. It does not enter the transcript.`);
+  form.onsubmit = async (ev) => {
+    ev.preventDefault();
+    if (!input.value) return;
+    go.disabled = true;
+    try {
+      await secretCall("secret.provide", { id: e.id, secret: input.value });
+      input.value = "";
+    } catch (err) {
+      go.disabled = false;
+      hint.textContent = String(err?.message || err);
+      hint.classList.add("err");
+    }
+  };
+  form.append(input, go);
+  body.append(el("div", "prompt", d.prompt || ""), form, hint);
+  card.replaceChildren(bar, body);
+}
+
 // The workflow a schedule fires, as it is now: its steps, who saved it, and
 // what changed since the version a person approved (schedules.py). The
 // approval card and the Schedules view draw the same, so a Resume in either
@@ -1339,6 +1458,24 @@ const RENDERERS = {
     fillApproval(card);
     body.append(card);
     return row(e, "approval", body);
+  },
+
+  secret(e) {
+    // A secret for the person to reveal once (fillSecret). Never folded.
+    const body = el("div", "body");
+    const card = el("div", "fcard scard");
+    fillSecret(card, e);
+    body.append(card);
+    return row(e, "secret", body);
+  },
+
+  secret_request(e) {
+    // A secret asked of the person: a password field (fillRequest).
+    const body = el("div", "body");
+    const card = el("div", "fcard scard");
+    fillRequest(card, e);
+    body.append(card);
+    return row(e, "secret_request", body);
   },
 
   workflow(e) {

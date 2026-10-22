@@ -8,7 +8,7 @@
 
 import { Connection } from "./protocol.js";
 import { Transcript } from "./transcript.js";
-import { artifactStage, btwFolds, fadeTables, fileUrl, refreshApprovals, refreshWorkflows, setApprovals, setDocker, setFileBase, setOpener, setWorkflows, syncDock, tickWorkflows, workflowLocked, workflowTitle } from "./entries.js";
+import { artifactStage, btwFolds, fadeTables, fileUrl, refreshApprovals, refreshWorkflows, setApprovals, setDocker, setFileBase, setOpener, setSecrets, setWorkflows, syncDock, tickWorkflows, workflowLocked, workflowTitle } from "./entries.js";
 import { setScroller } from "./highlight.js";
 import { Viewer, peekRoots } from "./viewer.js";
 import { Canvas } from "./canvas.js";
@@ -644,6 +644,7 @@ const schedules = new Schedules(conn, $("schedules"), {
     $("schedules-n").classList.toggle("err", red);
   },
 });
+setSecrets((op, params) => callFor(shown, op, params));
 setApprovals({
   schedule: (name) => schedules.items.get(name) || null,
   call: (op, params) => conn.call(op, params),
