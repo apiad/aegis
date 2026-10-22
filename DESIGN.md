@@ -80,6 +80,25 @@ emulator; the server keeps the bytes and parses none of them, because a Python
 parser measured at under 0.4 MB/s cannot keep up with the reader
 (`docs/superpowers/specs/2026-10-14-terminals-design.html`).
 
+**A browser is a Chromium the server holds, shared by an agent and a person.**
+A browser (`browsers.py`, #564) is a headless Chromium driven through
+Playwright's persistent context, so its profile under
+`<state>/browsers/profiles/<name>/` keeps sign-ins across stops. Playwright is
+the optional `browser` extra and is imported only when a browser starts. Its
+card rides the `sessions` channel with `kind: "browser"`, as a terminal's does.
+Its frames ride `browser:<id>`: a watcher polls the channel's subscriber count
+and runs `Page.startScreencast` only while a tab watches, and acks each frame
+no sooner than 100 ms after the last, so a pane gets at most ten a second. The
+person's input comes back as CDP input events (`browser.input`), refused while
+the agent holds the page; the agent's `browser_*` tools are Playwright calls,
+refused while the person holds it. `holder` says which. A give-back or a give
+wakes the driving session through its inbox with the person's events since the
+handover. An init script reports clicks, typing (a password field's length
+only) and submits through a binding, with the target's role and name; page
+listeners add navigations, console errors, failed requests and dialogs. All of
+it goes to `<state>/browsers/<id>/events.jsonl`
+(`docs/superpowers/specs/2026-10-22-browser-design.html`).
+
 **Boot reads meta files, never stores.** Each session has a small JSON meta next to
 its store, written by write-then-rename. Boot reads only those, so an archive of
 hundreds costs hundreds of small reads; a missing or damaged meta is rebuilt from

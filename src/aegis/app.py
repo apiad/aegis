@@ -130,7 +130,9 @@ from .roots import Roots
 from .transcript.entries import _sent_file
 from .session import PUBLISH_EVERY_S, SpawnSpec
 from .term_ops import register_term_ops
+from .browser_ops import register_browser_ops
 from .terminals import Terminals
+from .browsers import Browsers
 from .version import Versions
 
 log = logging.getLogger("aegis.app")
@@ -417,6 +419,13 @@ class App:
             role_of=lambda owner: self.principals.role_of(owner),
             multi_user=multi_user is not None,
         )
+        self.browsers = Browsers(
+            roots.state_root,
+            self.publish,
+            lambda channel: self.channels.subscribers(channel),
+            self._browser_deliver,
+            multi_user=multi_user is not None,
+        )
         self.tokens = Tokens()
         self.monitors = Monitors(self.sessions, roots.state_root / "monitors.json")
         self.config = Config(roots.config_root, self._on_config)
@@ -542,6 +551,7 @@ class App:
         register_layout_ops(self)
         self.fs_index, self.fs_tickets = register_fs_ops(self)
         register_term_ops(self)
+        register_browser_ops(self)
         self.push = register_push_ops(self)
         register_journal_ops(self)
         register_help_ops(self)
@@ -736,11 +746,21 @@ class App:
         before owners existed is the admin's."""
         if log_id.startswith("t-"):
             return self.terminals.owner_of(log_id)
+        if log_id.startswith("b-"):
+            return self.browsers.owner_of(log_id)
         s = self.sessions.sessions.get(log_id)
         meta = s.meta() if s is not None else self.sessions.archived.get(log_id)
         if meta is None:
             return None
         return meta.get("owner") or self.user
+
+    async def _browser_deliver(self, log_id: str, header: str, body: str) -> bool:
+        """Wake the session that drives a browser (browsers.py)."""
+        s = self.sessions.sessions.get(log_id)
+        if s is None or s.archived:
+            return False
+        await s.deliver(header, body, through_lock=True)
+        return True
 
     def _bin(self, harness: str) -> str:
         return {
@@ -765,6 +785,7 @@ class App:
         self.repos.start()
         self.sessions.boot(restarts.started(self.roots.state_root))
         await self.terminals.boot()
+        await self.browsers.boot()
         # No browser's upload survives a restart (attachments.py).
         att.clear_staged(self.roots.state_root)
         # The Files view's deletes are kept 30 days (fs_trash.py).
@@ -856,6 +877,7 @@ class App:
         await self.monitors.shutdown()
         await self.recaps.shutdown()
         await self.terminals.shutdown()
+        await self.browsers.shutdown()
         await self.side_notes.shutdown()
         await self.sessions.shutdown()
         await self.repos.stop()
@@ -984,9 +1006,12 @@ class App:
             return lambda: (
                 [s.wire() for s in self.sessions.open_sessions()]
                 + self.terminals.cards()
+                + self.browsers.cards()
             )
         if name.startswith("term:"):
             return self.terminals.channel(name.removeprefix("term:"), since)
+        if name.startswith("browser:"):
+            return self.browsers.channel(name.removeprefix("browser:"))
         if name.startswith("transcript:"):
             return self.sessions.transcript(name.removeprefix("transcript:"), since)
         if name == "quota":

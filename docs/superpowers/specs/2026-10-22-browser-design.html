@@ -145,7 +145,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · browsers</span>
-  <span class="st"><span class="pill acc">approved</span><span class="pill">2026-10-22</span></span>
+  <span class="st"><span class="pill acc">built</span><span class="pill">2026-10-22</span></span>
 </div>
 
 <div class="wrap">
@@ -163,11 +163,12 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <a href="#delivery">Delivery</a>
   <a href="#testing">Testing</a>
   <a href="#nongoals">Non-goals and open questions</a>
+  <a href="#departs">Where the build departs</a>
 </nav>
 
 <main>
 <h1>Browsers: a page the agent and the person share</h1>
-<div class="meta"><span>docs/superpowers/specs/2026-10-22-browser-design.html</span><span>·</span><span>not started</span></div>
+<div class="meta"><span>docs/superpowers/specs/2026-10-22-browser-design.html</span><span>·</span><span>built in #564, with the departures in section 13</span></div>
 <p class="lede">An agent that tests a web app with a person today works blind. The person clicks in a tab of their own, and the agent learns what happened from a description or a screenshot pasted into the prompt. This spec adds browsers to aegis: a Chromium the server holds, as it holds a terminal, shown live in a pane of the session's canvas. The agent reads and drives the page through tools, the person sees and clicks the same page, and either one can pass control to the other, for a captcha, a login or a step the agent wants the person to try.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
@@ -390,6 +391,22 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <li><strong>Open: binary frames.</strong> CDP gives frames as base64. Whether the channel should carry them as binary WebSocket messages, a third smaller, depends on whether the channel code already handles binary; to check in slice 1.</li>
   <li><strong>Open: terminals for agents.</strong> Terminals are not open to agents yet. The holder and handover here are the same idea a terminal would need, and should be written so terminals can reuse them.</li>
 </ul>
+
+<h2 id="departs"><span class="n">13</span>Where the build departs</h2>
+<table class="tbl">
+<thead><tr><th>Spec</th><th>Built</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>Docks on the session's canvas</td><td>Opens as a tab of its own (<code>#b=&lt;id&gt;</code>) with a card in the Fleet, like a terminal</td><td class="why">A canvas pane is an artifact or a file today (<code>layout.py</code>, <code>canvas.js</code>); a third kind is its own change.</td></tr>
+<tr><td>Started through <code>launch.py</code>, in a cgroup, as the owner</td><td>Playwright starts Chromium itself; multi-user mode answers <code>browser_unavailable</code></td><td class="why">Playwright's driver spawns the browser; running it as another Linux user needs a launcher hook Playwright does not offer.</td></tr>
+<tr><td>A <code>browsers:</code> block in <code>.aegis.yaml</code></td><td>Constants in <code>browsers.py</code>: three live, 30 idle minutes, Playwright's Chromium</td><td class="why">Nothing needed another value yet; the block can come with the first that does.</td></tr>
+<tr><td>Each pane acknowledges each frame</td><td>The server acks the screencast no sooner than 100 ms after the last frame; a pane decodes only the newest</td><td class="why">The channel fans one stream out to every subscriber, so the pace is set once; a slow pane skips frames on its side.</td></tr>
+<tr><td>Idle: no frame, input or tool call</td><td>No pane watching, and no input or tool call, for 30 minutes</td><td class="why">An animated page sends frames forever while watched; a watched browser is in use anyway.</td></tr>
+<tr><td>The agent's typing into a password field is not echoed</td><td>The log and the bar show its length; the text stays in the agent's own tool call</td><td class="why">aegis cannot change how a harness shows a tool's arguments. The help page tells agents to hand the page over for a sign-in.</td></tr>
+<tr><td><code>browser_screenshot</code> returns an image</td><td>It saves a PNG and returns the path</td><td class="why">Tool results are text in aegis's MCP layer; every harness reads an image file.</td></tr>
+<tr><td>Closed browsers keep a card with Reopen</td><td>A stopped browser keeps it; a closed one is removed, its log and profile stay on disk</td><td class="why">The archive lists sessions and terminals; nobody asked to reopen a closed page.</td></tr>
+<tr><td>Dialogs answered by whoever holds the page</td><td>Accepted at once and logged</td><td class="why">The screencast does not draw native dialogs, and a pending one freezes the page.</td></tr>
+</tbody>
+</table>
 </main>
 </div>
 
