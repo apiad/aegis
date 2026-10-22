@@ -281,7 +281,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <h2 id="apply"><span class="n">06</span>How it applies</h2>
 <p>Each kind of change goes through the door aegis already has for it, and the one missing door is added.</p>
 <ul>
-  <li><b>.aegis.yaml.</b> A new tool, <code>config_suggest</code>, takes the changed document and sends a card with the diff. Apply writes it through the same path Settings uses, as the person who pressed it, and only if the file has not changed since (the stamp <code>config.write</code> already checks). The agent hears the result as a message.</li>
+  <li><b>.aegis.yaml.</b> A new tool, <code>config_suggest</code>, takes the whole new file as YAML text and sends a card with its diff, so what Apply writes is exactly what the card showed, comments included. Apply writes it through the same path Settings uses, as the person who pressed it, and only if the file has not changed since (the stamp <code>config.write</code> already checks). The agent hears the result as a message.</li>
   <li><b>Schedules.</b> <code>schedule_create</code>, born paused with its card, as today. The person's Apply on the proposal page counts as wanting it; the card still starts it, so a schedule never fires before its owner has seen its prompt and clock.</li>
   <li><b>Workflows.</b> <code>workflow_save</code> into the project the skill came from.</li>
   <li><b>Files.</b> Edits to skills, AGENTS.md or CLAUDE.md are ordinary edits in the person's own files, listed at the end with their paths so the person can review the diffs.</li>
@@ -299,7 +299,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 </div>
 
 <h2 id="again"><span class="n">07</span>Running it again</h2>
-<p>Each run writes <code>.aegis/state/setup.json</code>: the date, each proposal's key (kind and name), whether it was applied or declined, and the evidence count behind it. The next run reads it and leaves out a declined proposal unless its evidence has at least doubled, and an applied one unless it was removed since. It reads transcripts newer than the last run only, and says so. <code>/setup from scratch</code> ignores the record.</p>
+<p>Each run ends with the agent calling <code>setup_record</code>, which writes <code>.aegis/state/setup/&lt;principal&gt;.json</code>, one per person (a member's agent runs as the member and cannot write the server's state directory itself): the date, each proposal's key (kind and name), whether it was applied or declined, and the evidence count behind it. The next run reads it and leaves out a declined proposal unless its evidence has at least doubled, and an applied one unless it was removed since. It reads transcripts newer than the last run only, and says so. <code>/setup from scratch</code> ignores the record.</p>
 
 <h2 id="privacy"><span class="n">08</span>Privacy and members</h2>
 <ul>
