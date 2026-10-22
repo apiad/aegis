@@ -58,7 +58,7 @@ def test_the_pane_types_into_the_focused_field(server, browser, site):  # noqa: 
     page = browser.new_page()
     page.goto(f"{server.url}#b={card['id']}")
     frame_drawn(page)
-    tap(page, 10, 210)  # the Email field's label puts focus in it
+    tap(page, 400, 315)  # the Email field, placed by the test page
     page.keyboard.type("ana")
     page.wait_for_function(
         "document.querySelector('#tablist .tab.on')?.title.includes('typed ana')",

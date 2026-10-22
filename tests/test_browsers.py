@@ -23,7 +23,8 @@ PAGE = """<!doctype html><html><head><title>Sign in</title></head><body style="m
 <button id="go" style="position:absolute;left:100px;top:100px;width:120px;height:40px"
   onclick="document.title='clicked'">Go</button>
 <form style="position:absolute;left:0;top:200px" onsubmit="event.preventDefault()">
-  <label>Email <input id="email" name="email" oninput="document.title='typed '+this.value"></label>
+  <label>Email <input id="email" name="email" oninput="document.title='typed '+this.value"
+    style="position:absolute;left:300px;top:100px;width:200px;height:30px"></label>
   <label>Password <input id="pw" type="password" name="pw"></label>
   <input type="checkbox" id="robot" aria-label="I am not a robot">
 </form>
