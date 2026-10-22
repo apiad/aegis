@@ -206,8 +206,9 @@ def store_all(
         raise
     finally:
         for o in (opened or [])[len(done) :]:
-            with contextlib.suppress(OSError):
-                os.close(o.fd)
+            if o.fd >= 0:
+                with contextlib.suppress(OSError):
+                    os.close(o.fd)
     return done
 
 
@@ -231,7 +232,9 @@ def store(
         if got is None:
             shutil.copyfile(src, part)
         else:
-            with os.fdopen(got.fd, "rb") as f, part.open("wb") as out:
+            f = os.fdopen(got.fd, "rb")
+            got.fd = -1  # f closes it now; store_all must not close it again
+            with f, part.open("wb") as out:
                 shutil.copyfileobj(f, out)
     except OSError as e:
         part.unlink(missing_ok=True)

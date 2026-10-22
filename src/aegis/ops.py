@@ -195,4 +195,9 @@ class Registry:
                     "not_owner",
                     f"{target} belongs to {owner}; you can read it, not change it",
                 )
-        return await op.handler(params, caller)
+        try:
+            return await op.handler(params, caller)
+        except PermissionError as e:
+            # Nothing may act as this person (users.py, as_user.py): fail
+            # closed, and say so rather than as an internal error.
+            raise OpError("forbidden", str(e)) from e

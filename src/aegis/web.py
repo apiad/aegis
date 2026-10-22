@@ -121,11 +121,20 @@ def _fd_response(request, headers: dict, body: bytes | int, size: int | None):
     assert size is not None
     start, end, status = 0, size - 1, 200
     m = _RANGE.fullmatch(request.headers.get("range", "").strip())
-    if m and (m[1] or m[2]):
-        if m[1]:
-            start, end = int(m[1]), min(int(m[2]) if m[2] else size - 1, size - 1)
+    first, last = (
+        (int(m[1]) if m and m[1] else None),
+        (int(m[2]) if m and m[2] else None),
+    )
+    # A range whose end is before its start is invalid and ignored (RFC 9110).
+    if (
+        m
+        and (first is not None or last is not None)
+        and not (first is not None and last is not None and last < first)
+    ):
+        if first is not None:
+            start, end = first, min(size - 1 if last is None else last, size - 1)
         else:
-            start = max(size - int(m[2]), 0)
+            start = max(size - (last or 0), 0)
         if start > end:
             os.close(fd)
             return Response(
@@ -137,21 +146,33 @@ def _fd_response(request, headers: dict, body: bytes | int, size: int | None):
     headers["Content-Length"] = str(end - start + 1)
 
     async def stream():
-        try:
-            at = start
-            while at <= end:
-                n = min(_CHUNK, end - at + 1)
-                chunk = await asyncio.to_thread(os.pread, fd, n, at)
-                if not chunk:
-                    return
-                yield chunk
-                at += len(chunk)
-        finally:
-            os.close(fd)
+        at = start
+        while at <= end:
+            n = min(_CHUNK, end - at + 1)
+            chunk = await asyncio.to_thread(os.pread, fd, n, at)
+            if not chunk:
+                return
+            yield chunk
+            at += len(chunk)
 
-    return StreamingResponse(
-        stream(), status_code=status, media_type=media, headers=headers
+    return _FdStream(
+        fd, stream(), status_code=status, media_type=media, headers=headers
     )
+
+
+class _FdStream(StreamingResponse):
+    """A StreamingResponse that closes its descriptor when the response ends,
+    however it ends: a generator that never started has no finally to run."""
+
+    def __init__(self, fd: int, *a, **kw) -> None:
+        super().__init__(*a, **kw)
+        self.fd = fd
+
+    async def __call__(self, scope, receive, send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            os.close(self.fd)
 
 
 def _file_response(path: Path, download: bool, extra: dict | None = None):

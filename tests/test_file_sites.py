@@ -71,7 +71,7 @@ ON_RUNNER = {
         "_Walk.tree",
         "_Walk.search",
         "walk",
-        "FsIndex.touched",
+        "FsIndex.touched", "FsIndex._scan",
         "FsIndex.added",
     },
     "fs_trash.py": {"count", "delete", "manifest", "restore", "purge"},
