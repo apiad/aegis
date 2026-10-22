@@ -97,7 +97,7 @@ async def test_a_reading_goes_on_the_wire_decided(tmp_path):
         "kind": "session",
         "label": "5 hours",
         "percent": 71.0,
-        "severity": "critical",
+        "severity": "warning",
         "projected": 187,
         "starts_at": round(WALL + 11160 - H5),
         "resets_at": round(WALL + 11160),

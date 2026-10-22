@@ -1,9 +1,9 @@
 """Pace: colouring a quota window by where its spend lands at reset.
 
 Level asks how much is gone. Pace asks whether what is left survives the
-period. The two verdicts compose with ``worse``, so level can escalate pace
-but never relax it, and a window whose span or reset time we cannot read
-falls all the way back to level.
+period. Critical is level; warning is pace, over 100% at reset with half the
+quota spent; under pace is normal below critical. A window whose span or reset
+time we cannot read falls all the way back to level.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -85,24 +85,46 @@ def test_comfortable_pace_is_normal():
     assert _verdict(30.0, timedelta(hours=2)) == "normal"
 
 
-def test_exactly_twenty_percent_of_headroom_is_a_warning():
-    # e = 0.5, so 40% spent projects to exactly 80%. "More than 20% left" is
-    # strict, so the boundary belongs to warning.
-    assert _pace(40.0, timedelta(hours=2, minutes=30)) == pytest.approx(80.0)
-    assert _verdict(40.0, timedelta(hours=2, minutes=30)) == "warning"
+def test_under_pace_is_normal_however_much_is_gone():
+    # The reading that prompted the change: 73% of the week, 86% of it gone,
+    # landing at 85%. The period absorbs it; nobody needs to slow down.
+    w = _w(73.0, timedelta(days=1), severity="normal", kind="weekly_all")
+    assert window_pace(w, WK, now=NOW) == pytest.approx(85.17, abs=0.01)
+    assert pace_severity(w, WK, now=NOW) == "normal"
 
 
-def test_a_shade_under_the_boundary_is_still_normal():
-    assert _verdict(39.9, timedelta(hours=2, minutes=30)) == "normal"
+def test_a_level_warning_under_pace_is_dropped():
+    # 82% gone with 18 hours of the week left lands at 92%. The level verdict
+    # (ours at 80%, or a vendor's) says warning; pace overrules it.
+    w = _w(82.0, timedelta(hours=18), severity="warning", kind="weekly_all")
+    assert window_pace(w, WK, now=NOW) < 100.0
+    assert pace_severity(w, WK, now=NOW) == "normal"
 
 
-def test_landing_exactly_on_the_limit_is_a_warning():
+def test_landing_exactly_on_the_limit_is_normal():
+    # Over pace is strict: spending exactly the quota by reset is the plan.
     assert _pace(50.0, timedelta(hours=2, minutes=30)) == pytest.approx(100.0)
-    assert _verdict(50.0, timedelta(hours=2, minutes=30)) == "warning"
+    assert _verdict(50.0, timedelta(hours=2, minutes=30)) == "normal"
 
 
-def test_running_out_before_the_period_does_is_critical():
-    assert _verdict(50.1, timedelta(hours=2, minutes=30)) == "critical"
+def test_over_pace_with_half_spent_is_a_warning():
+    assert _verdict(50.1, timedelta(hours=2, minutes=30)) == "warning"
+
+
+def test_over_pace_under_half_spent_is_not_yet_a_warning():
+    # 45% with 3.5h of a 5h window left projects to 150%, but half the quota is
+    # still there to slow down with.
+    assert _pace(45.0, timedelta(hours=3, minutes=30)) == pytest.approx(150.0)
+    assert _verdict(45.0, timedelta(hours=3, minutes=30)) == "normal"
+
+
+def test_ninety_percent_spent_is_critical_on_any_pace():
+    assert _verdict(90.0, timedelta(minutes=5)) == "critical"
+    assert _verdict(89.9, timedelta(minutes=5)) == "normal"
+
+
+def test_far_over_pace_below_ninety_is_only_a_warning():
+    assert _verdict(85.0, timedelta(hours=3)) == "warning"
 
 
 # --- level and pace compose ---------------------------------------------------
@@ -110,7 +132,7 @@ def test_running_out_before_the_period_does_is_critical():
 
 def test_level_escalates_a_pace_that_says_fine():
     # 97% of the week gone with five minutes left projects to 97%, which is
-    # only a warning. You have 3% to spend: level keeps it critical.
+    # under pace. You have 3% to spend: level keeps it critical.
     w = _w(97.0, timedelta(minutes=5), severity="critical", kind="weekly_all")
     assert window_pace(w, WK, now=NOW) == pytest.approx(97.05, abs=0.01)
     assert pace_severity(w, WK, now=NOW) == "critical"
@@ -122,9 +144,7 @@ def test_a_vendor_alarm_survives_a_calm_projection():
 
 
 def test_pace_escalates_a_level_that_says_fine():
-    assert (
-        _verdict(45.0, timedelta(hours=3, minutes=30), severity="normal") == "critical"
-    )
+    assert _verdict(60.0, timedelta(hours=3), severity="normal") == "warning"
 
 
 # --- the weekly window reads its own first day harshly, then relaxes ---------
@@ -142,17 +162,11 @@ def test_the_same_burst_relaxes_once_a_full_day_has_measured_it():
 
 
 def test_an_idle_window_relaxes_without_a_new_reading():
-    # One frozen 45% reading, three render times. This is why the projection
+    # One frozen 60% reading, two render times. This is why the projection
     # is computed at render and not at parse.
-    w = _w(45.0, timedelta(hours=3, minutes=30))
-    at = {
-        "1h30m": NOW,
-        "2h30m": NOW + timedelta(hours=1),
-        "3h00m": NOW + timedelta(hours=1, minutes=30),
-    }
-    assert pace_severity(w, H5, now=at["1h30m"]) == "critical"
-    assert pace_severity(w, H5, now=at["2h30m"]) == "warning"
-    assert pace_severity(w, H5, now=at["3h00m"]) == "normal"
+    w = _w(60.0, timedelta(hours=3))
+    assert pace_severity(w, H5, now=NOW) == "warning"
+    assert pace_severity(w, H5, now=NOW + timedelta(hours=1)) == "normal"
 
 
 # --- everything we refuse to guess about -------------------------------------

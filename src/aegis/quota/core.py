@@ -26,13 +26,15 @@ BACKOFF_S = 300.0  # hands off the endpoint after it says 429
 
 # Used only when the API omits its own `severity` for a window.
 WARNING_AT = 80.0
-CRITICAL_AT = 95.0
+CRITICAL_AT = 90.0
 
-# Pace thresholds, on the *projected* spend at reset rather than the spend so
-# far. 80 is "20% of the quota still there when the period ends"; above 100 the
-# quota runs out before the period does.
-PACE_WARN_AT = 80.0
-PACE_CRIT_AT = 100.0
+# A window warns only when it is over pace: its *projected* spend at reset is
+# above 100%, so the quota runs out before the period does. Under pace there is
+# nothing to change, however much is gone, until level reaches CRITICAL_AT.
+PACE_WARN_AT = 100.0
+# Over pace with less than this spent is not yet a warning: early in a window
+# the projection rests on a thin slice, and there is room left to slow down.
+PACE_WARN_MIN = 50.0
 # No projection is trusted from a thinner slice of the window than this. Without
 # it, one turn six minutes into a five-hour window projects to 250% and every
 # window opens red. It is a clamp on the denominator, not on the answer: red
@@ -138,13 +140,6 @@ def _severity(percent: float, given) -> str:
     return "normal"
 
 
-_ORDER = {"normal": 0, "warning": 1, "critical": 2}
-
-
-def _worse(a: str, b: str) -> str:
-    return a if _ORDER.get(a, 0) >= _ORDER.get(b, 0) else b
-
-
 async def cancel_and_wait(task: asyncio.Task | None) -> None:
     """Cancel a background task and wait for it to finish.
 
@@ -189,23 +184,24 @@ def window_pace(window: QuotaWindow, span_s, *, now: datetime) -> float | None:
 
 
 def pace_severity(window: QuotaWindow, span_s, *, now: datetime) -> str:
-    """The window's colour: the worse of its level and its pace.
+    """The window's colour, from its pace when it has one.
 
-    Level can only escalate pace. A window at 97% with five minutes left
-    projects to 97% and would read as a warning on pace alone, while the 3% you
-    have left is the number that matters. The vendor's own ``severity`` rides
-    along inside the level verdict, so we never paint green over its alarm.
+    Critical is level: CRITICAL_AT spent, or the vendor's own critical, so a
+    window at 97% with five minutes left stays red although it projects to
+    97%. Warning is pace alone: over PACE_WARN_AT at reset with PACE_WARN_MIN
+    already spent. A window under pace is normal below critical, which drops
+    the level warning and a vendor's warning with it: spend that the period
+    absorbs needs no one to slow down. A window with no projection keeps its
+    level verdict.
     """
     projected = window_pace(window, span_s, now=now)
     if projected is None:
         return window.severity
-    if projected > PACE_CRIT_AT:
-        pace = "critical"
-    elif projected >= PACE_WARN_AT:
-        pace = "warning"
-    else:
-        pace = "normal"
-    return _worse(window.severity, pace)
+    if window.severity == "critical" or window.percent >= CRITICAL_AT:
+        return "critical"
+    if projected > PACE_WARN_AT and window.percent >= PACE_WARN_MIN:
+        return "warning"
+    return "normal"
 
 
 def _timestamp(raw) -> datetime | None:
