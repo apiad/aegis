@@ -8,8 +8,8 @@
 // controls also act like the client: the fold button, a folded line, the
 // panel's rows and button, its edge, the layout picker and the theme.
 
-const FLEET = new Set(["fleet", "quota", "links"]);
-const OPEN_CARD = { subs: "usage-go", panel: "plan" }; // the card a step opens by itself
+const FLEET = new Set(["fleet", "quota", "links", "multiuser"]);
+const OPEN_CARD = { subs: "usage-go", panel: "plan", plan: "plan" }; // the card a step opens by itself
 const THEMES = ["ink", "logbook", "electric", "phosphor", "blueprint", "amphora", "riso", "solari", "aizome", "poster"];
 const LAYOUTS = {
   sidebar: ["Sidebar sections", "Sidebar sections it is."],
@@ -260,3 +260,17 @@ fetch("https://pypi.org/pypi/aegis-harness/json")
     if (v && el) el.textContent = `Version ${v}`;
   })
   .catch(() => {});
+
+// -- the install block: two tabs, and a copy button for the agent's prompt -------
+for (const b of document.querySelectorAll("[data-itab]")) {
+  b.addEventListener("click", () => {
+    for (const x of document.querySelectorAll("[data-itab]")) x.classList.toggle("on", x === b);
+    for (const p of document.querySelectorAll("[data-ipane]")) p.hidden = p.dataset.ipane !== b.dataset.itab;
+  });
+}
+for (const b of document.querySelectorAll("[data-copy]")) {
+  b.addEventListener("click", () => {
+    const text = document.getElementById(b.dataset.copy).textContent;
+    navigator.clipboard.writeText(text).then(() => (b.textContent = "Copied"), () => (b.textContent = "Select and copy"));
+  });
+}
