@@ -1198,11 +1198,11 @@ def test_reopen_from_the_archive_and_rename(server, page, frames):
     page.click("#s-title")
     page.fill("#s-title input", "Old talk")
     page.press("#s-title input", "Enter")
-    page.wait_for_selector("#tablist .tab .tname >> text=Old talk")
+    page.wait_for_selector("#tablist .tab .tt >> text=Old talk")
     page.click("#s-handle")
     page.fill("#s-handle input", "old-talk")
     page.press("#s-handle input", "Enter")
-    page.wait_for_selector("#tablist .tab .srv >> text=old-talk")
+    page.wait_for_selector("#tablist .tab .hn >> text=old-talk")
     close_session(page)
     page.wait_for_selector(f"#arch-list tr[data-id='{a}']")
     page.fill("#arch-q", "nothing like it")
@@ -8692,7 +8692,7 @@ def test_the_recap_button_mid_turn_says_busy_in_a_toast(recap_server, page):
     page.fill("#input", "/busy 2")
     page.press("#input", "Enter")
     page.wait_for_function(
-        "() => (document.querySelector('.tab.on')?.title || '').includes('working')",
+        "() => (document.querySelector('.tab.on')?.getAttribute('aria-label') || '').includes('working')",
         timeout=4000,
     )
     page.click("#nav-recap")
@@ -8715,7 +8715,7 @@ def test_an_agent_toast_reaches_every_browser_and_its_click_opens_the_tab(
     page.press("#input", "Enter")
     for pg in (page, other):
         pg.wait_for_selector(".toast.from .msg >> text=Spec is ready")
-    handle = page.get_attribute(".tab.on", "title").split(":")[0]
+    handle = page.inner_text(".tab.on .hn")
     assert other.text_content(".toast.from .hd .nm") == handle
     other.click(".toast.from")
     other.wait_for_selector("#a2[data-view=session]")
@@ -8749,7 +8749,7 @@ def test_an_agent_toast_goes_to_the_desktop_only_while_the_page_is_hidden(
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     sid = spawn(page, "hello")
-    handle = page.get_attribute(".tab.on", "title").split(":")[0]
+    handle = page.inner_text(".tab.on .hn")
     page.fill("#input", '/mcp toast {"text": "Seen while visible"}')
     page.press("#input", "Enter")
     other.wait_for_selector(".toast.from .msg >> text=Seen while visible")

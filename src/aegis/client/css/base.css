@@ -32,7 +32,6 @@ body{background:#000}
 #a2 .tabs{display:flex;align-items:stretch;gap:2px;padding:6px 8px 0;background:var(--chrome);border-bottom:1px solid var(--rule);font-family:var(--font-chrome)}
 #a2 .tab{position:relative;display:flex;align-items:center;gap:8px;padding:7px 12px;font-size:12.5px;white-space:nowrap;color:var(--muted);border-radius:var(--r) var(--r) 0 0}
 #a2 .tab.on{background:var(--bg);color:var(--strong);box-shadow:inset 0 2px 0 var(--accent)}
-#a2 .tab .srv{opacity:.55}
 #a2 .tabs .gap{flex:1}
 #a2 .tabs{min-width:0}
 #a2 .tablist{display:flex;gap:2px;flex:0 1 auto;min-width:0;overflow-x:auto;scrollbar-width:none}
@@ -1626,8 +1625,6 @@ body{background:#000}
   /* the server's name gives way first, so the header's buttons keep their row */
   #a2 #conn-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #a2 .tabs .ver-top{display:none}
-  #a2 .tablist .tab .srv{display:none}
-  #a2 .tablist .tab .tname{max-width:16ch}
   #a2 .keys-btn:not(.bell):not(.set-btn):not(.help-btn){display:none}
   /* the header's buttons: bare icons, the tap target kept by (pointer:coarse) */
   #a2 .tabs .keys-btn.bell,#a2 .tabs .set-btn,#a2 .tabs .jr-btn,#a2 .tabs .help-btn,#a2[data-view=session] .side-btn{display:grid;place-items:center;background:none;border-color:transparent;margin:0 0 4px;padding:0}
@@ -1758,7 +1755,7 @@ body{background:#000}
 
 /* Linked servers (links.py): a server's tag, its band and cards under this
    server's, and what goes grey while its link is down. */
-#a2 .where{font:500 10px/1 var(--font-mono);letter-spacing:.02em;color:var(--muted);border:1px solid var(--rule);border-radius:4px;padding:2px 5px;margin-left:6px;flex:none;align-self:center}
+#a2 .where{font:500 10px/1 var(--font-mono);letter-spacing:.02em;color:var(--faint);margin-left:2px;flex:none;align-self:center}
 #a2 .band .band-link{font-weight:400;color:var(--faint);margin-left:8px;text-transform:none;letter-spacing:0}
 #a2 .band.off .band-link{color:var(--err)}
 #a2 .band.off .band-counts,#a2 .band.off .band-host,#a2 .band.off .q{opacity:.45}
@@ -1767,9 +1764,13 @@ body{background:#000}
 #a2 .tab.off{opacity:.45}
 /* A full bar scrolls sideways; a tab gives up its title first, then its handle,
    and keeps its server's tag. */
-#a2 .tablist .tab{flex:0 1 auto;min-width:0}
-#a2 .tablist .tab .tname{flex:0 3 auto;min-width:4ch}
-#a2 .tablist .tab .srv{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* A tab keeps its whole handle and never shrinks; a full strip scrolls sideways
+   and fades at its right edge (#586). The title is cut to the handle's width. */
+#a2 .tablist .tab{flex:none;padding-top:4px;padding-bottom:4px}
+#a2 .tablist{mask-image:linear-gradient(90deg,#000 calc(100% - 24px),transparent)}
+#a2 .tab .l2{display:grid;line-height:1.2}
+#a2 .tab .tt{font:10.5px/1.25 var(--font-ui);opacity:.75;width:0;min-width:100%;overflow:hidden;text-overflow:ellipsis}
+#a2 .tab .tt:empty{display:none}
 /* The new tab's directory line names the server once one is linked. */
 #a2 .spawn .cwdline{display:flex;align-items:center;justify-content:center;gap:6px;width:100%}
 #a2 .spawn .cwdline .cwd{flex:1;min-width:0}
