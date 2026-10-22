@@ -212,3 +212,8 @@ footer a:hover{color:var(--strong)}
 .stage .wtree li{margin:2px 0}
 @media (max-width:760px){.install pre{padding:12px 14px;font-size:12.5px;white-space:pre-wrap;overflow-wrap:anywhere}}
 @media (pointer:coarse){.install .itabs button,.install .copy{min-height:44px}}
+
+/* The film: two minutes of aegis itself, filmed by scripts/demo. */
+.film { max-width: 1100px; margin: 8px auto 56px; padding: 0 20px; }
+.film video { display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 14px;
+  background: #0b0d10; box-shadow: 0 30px 80px rgba(0,0,0,.35); }
