@@ -1,9 +1,12 @@
 // The tab bar. The set of tabs is the server's open sessions, the same in
 // every browser; their order is this browser's own, kept in localStorage as a
-// list of log ids. Gone ids drop out, new sessions go at the end.
+// list of log ids. Gone ids drop out, new sessions go at the end. A group (a
+// session and those it started, groups.js) is drawn as one block headed by its
+// oldest member, which can fold it to one tab (#586).
 
 import { LABEL } from "./glyphs.js";
 import { closeOnMiddle, markNode } from "./fleet.js";
+import { blocksOf } from "./groups.js";
 import { shownOwner } from "./me.js";
 
 export class TabOrder {
@@ -33,26 +36,93 @@ export class TabOrder {
     return ids;
   }
 
-  move(id, beforeId) {
-    const ids = this.load().filter((x) => x !== id);
+  // `moving` (keys, in their order) to just before `beforeId`, or the end.
+  move(moving, beforeId) {
+    const ids = this.load().filter((x) => !moving.includes(x));
     const at = beforeId ? ids.indexOf(beforeId) : -1;
-    ids.splice(at < 0 ? ids.length : at, 0, id);
+    ids.splice(at < 0 ? ids.length : at, 0, ...moving);
     this.save(ids);
   }
 }
 
+const HUES = 4; // --group-0 to --group-3 (base.css), in bar order
+const URGENT = ["needs_you", "error", "review", "working", "waiting"];
+
+// `actions.here` names this server; `actions.folds` is the set of folded group
+// keys, `actions.onFold(key)` toggles one and `actions.saveFolds()` keeps the
+// set. A folded group whose hidden member is the one in view unfolds.
 export function renderTabs(list, metas, focusId, actions) {
-  list.replaceChildren(...metas.map((m) => tab(m, focusId, actions)));
+  let hue = 0;
+  list.replaceChildren(
+    ...blocksOf(metas, actions.here || "").map((b) => {
+      const box = document.createElement("div");
+      box.className = "tblock";
+      box.dataset.group = b.key;
+      // Every member's key, in tab order, folded ones too: what a drag moves.
+      box.dataset.keys = JSON.stringify(metas.filter((m) => b.members.includes(m)).map((m) => m.key));
+      if (b.members.length < 2) {
+        box.append(tab(b.head, focusId, actions, "solo"));
+        return box;
+      }
+      const hidden = b.members.slice(1);
+      if (actions.folds?.has(b.key) && hidden.some((m) => m.key === focusId)) {
+        actions.folds.delete(b.key);
+        actions.saveFolds();
+      }
+      const folded = !!actions.folds?.has(b.key);
+      box.classList.add("grp");
+      box.style.setProperty("--g", `var(--group-${hue++ % HUES})`);
+      const mark = folded ? URGENT.find((a) => b.members.some((m) => m.mark === a)) : null;
+      const head = tab(mark ? { ...b.head, mark } : b.head, focusId, actions, "head");
+      const cnt = document.createElement("span");
+      cnt.className = "cnt";
+      cnt.textContent = folded ? `+${hidden.length}` : "−";
+      cnt.title = folded ? "Unfold the group" : "Fold the group";
+      cnt.classList.toggle("alert", folded && hidden.some((m) => m.mark === "needs_you"));
+      cnt.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        actions.onFold(b.key);
+      });
+      head.append(cnt);
+      box.append(head, ...(folded ? [] : hidden.map((m) => tab(m, focusId, actions, "member"))));
+      return box;
+    }),
+  );
 }
 
-// One session's tab redrawn where it stands; the others keep their nodes.
+// One session's tab redrawn where it stands; the others keep their nodes. A
+// tab inside a group is not patched (false): its head and count depend on its
+// members, so the caller redraws the bar.
 export function patchTab(list, m, focusId, actions) {
-  list.querySelector(`.tab[data-id="${CSS.escape(m.key)}"]`)?.replaceWith(tab(m, focusId, actions));
+  const old = list.querySelector(`.tab[data-id="${CSS.escape(m.key)}"]`);
+  if (!old) return true;
+  if (old.closest(".tblock.grp")) return false;
+  old.replaceWith(tab(m, focusId, actions, "solo"));
+  return true;
 }
 
-function tab(m, focusId, { onFocus, onMove, onClose }) {
+// What is being dragged: one member inside its group, or a whole block.
+let dragging = null;
+
+// Where a drop on tab `t` at `x` puts what is dragged: the key it goes before
+// (null: the end), or undefined when it may not go there.
+function dropBefore(t, x) {
+  const after = x > t.getBoundingClientRect().left + t.getBoundingClientRect().width / 2;
+  const box = t.closest(".tblock");
+  if (dragging.member) {
+    if (box.dataset.group !== dragging.group || !t.classList.contains("member")) return undefined;
+    if (!after) return t.dataset.id;
+    const next = t.nextElementSibling?.dataset.id;
+    return next ?? firstKey(box.nextElementSibling);
+  }
+  if (box.dataset.group === dragging.group) return undefined;
+  return after ? firstKey(box.nextElementSibling) : firstKey(box);
+}
+const firstKey = (box) => (box ? JSON.parse(box.dataset.keys)[0] : null);
+
+function tab(m, focusId, { onFocus, onMove, onClose }, role) {
   const t = document.createElement("div");
-  t.className = `tab${m.key === focusId ? " on" : ""}${m.state === "asleep" ? " asleep" : ""}${m.off ? " off" : ""}`;
+  t.className = `tab ${role}${m.key === focusId ? " on" : ""}${m.state === "asleep" ? " asleep" : ""}${m.off ? " off" : ""}`;
   t.classList.toggle("blink", !!m.blink);
   t.draggable = true;
   t.dataset.id = m.key;
@@ -85,21 +155,28 @@ function tab(m, focusId, { onFocus, onMove, onClose }) {
   t.addEventListener("dragstart", (ev) => {
     ev.dataTransfer.setData("text/aegis-tab", m.key);
     ev.dataTransfer.effectAllowed = "move";
-    t.classList.add("dragging");
+    const box = t.closest(".tblock");
+    const member = role === "member";
+    dragging = { group: box.dataset.group, member, keys: member ? [m.key] : JSON.parse(box.dataset.keys) };
+    (member ? t : box).classList.add("dragging");
   });
-  t.addEventListener("dragend", () => t.classList.remove("dragging"));
+  t.addEventListener("dragend", () => {
+    dragging = null;
+    t.closest(".tblock")?.classList.remove("dragging");
+    t.classList.remove("dragging");
+  });
   t.addEventListener("dragover", (ev) => {
-    if (ev.dataTransfer.types.includes("text/aegis-tab")) {
-      ev.preventDefault();
-      t.classList.add("drop");
-    }
+    if (!dragging || !ev.dataTransfer.types.includes("text/aegis-tab")) return;
+    if (dropBefore(t, ev.clientX) === undefined) return t.classList.add("nodrop");
+    ev.preventDefault();
+    t.classList.add("drop");
   });
-  t.addEventListener("dragleave", () => t.classList.remove("drop"));
+  t.addEventListener("dragleave", () => t.classList.remove("drop", "nodrop"));
   t.addEventListener("drop", (ev) => {
     ev.preventDefault();
-    t.classList.remove("drop");
-    const id = ev.dataTransfer.getData("text/aegis-tab");
-    if (id && id !== m.key) onMove(id, m.key);
+    t.classList.remove("drop", "nodrop");
+    const before = dragging && dropBefore(t, ev.clientX);
+    if (before !== undefined && dragging) onMove(dragging.keys, before);
   });
   return t;
 }

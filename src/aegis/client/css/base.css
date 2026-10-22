@@ -39,6 +39,17 @@ body{background:#000}
 #a2 .tab-more{flex:none;align-self:center;margin:0 4px 6px;padding:2px 8px;font:12px var(--font-chrome);color:var(--muted);background:none;border:1px solid transparent;border-radius:var(--r);cursor:pointer}
 #a2 .tab-more:hover{color:var(--strong);background:color-mix(in srgb,var(--ink) 7%,transparent)}
 #a2 .tab-more[hidden]{display:none}
+/* Groups in the bar (#586, tabs.js): a block per group, its tabs on a wash of
+   the group's colour with a rule under them; the head folds it to one tab. */
+#a2{--group-0:#d9a066;--group-1:#8a7fd0;--group-2:#5aa3a0;--group-3:#c76f8f}
+#a2 .tblock{display:flex;gap:2px;flex:none}
+#a2 .tblock.grp{gap:1px;padding:0 2px;margin:0 3px;border-radius:var(--r) var(--r) 0 0;background:color-mix(in srgb,var(--g) 9%,transparent);box-shadow:inset 0 -2px 0 var(--g)}
+#a2 .tblock.dragging{opacity:.35}
+#a2 .tab.head .hn{font-weight:600}
+#a2 .tab .cnt{flex:none;font:10.5px/1 var(--font-mono);padding:3px 6px;border-radius:9px;background:color-mix(in srgb,var(--g) 30%,transparent);color:var(--strong);cursor:pointer}
+#a2 .tab .cnt.alert{box-shadow:0 0 0 1.5px var(--accent);animation:a2blink 1.2s steps(2,start) infinite}
+#a2 .tab.nodrop{cursor:not-allowed}
+@media (prefers-reduced-motion:reduce){#a2 .tab .cnt.alert{animation:none}}
 /* The tab card (#586, tabcard.js): the session's Fleet card under its tab, and
    the tab menu's items as a row of icon buttons. It lives on <body>. */
 .tabcard{position:fixed;z-index:60;width:360px;max-width:calc(100vw - 16px);background:var(--bg);border:1px solid var(--rule);border-radius:calc(var(--r) + 2px);box-shadow:0 10px 30px rgba(0,0,0,.35);font-family:var(--font-chrome)}

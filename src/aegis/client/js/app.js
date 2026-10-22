@@ -26,6 +26,7 @@ import { entryIcon, glyph, gorgoneion, icon, installGlyphs, LABEL } from "./glyp
 import { CommandMenu } from "./commands.js";
 import * as cmenu from "./menu.js";
 import { attachTabCard } from "./tabcard.js";
+import { blocksOf } from "./groups.js";
 import { clampToRow, insertIntoComposer, quoted, rangeText } from "./quote.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
@@ -965,7 +966,9 @@ function flushSessions() {
     return;
   }
   const r = route();
-  for (const id of ids) if (sessions.has(id)) patchTab($("tablist"), sessions.get(id), tabFocus(r), tabActions);
+  let whole = false; // a grouped tab redraws the bar (tabs.js patchTab)
+  for (const id of ids) if (sessions.has(id) && !patchTab($("tablist"), sessions.get(id), tabFocus(r), tabActions)) whole = true;
+  if (whole) renderTabs($("tablist"), tabbed(), tabFocus(r), tabActions);
   if (r.view === "fleet") {
     const home = [...ids].filter((id) => !sessions.get(id)?.server);
     const regroup = home.some((id) => !patchCard($("cards"), sessions.get(id), openCard, fleetOrder, closeById));
@@ -1048,12 +1051,24 @@ const closeById = (id) => {
   const s = sessions.get(id);
   if (s) closeSession(s);
 };
+// Folded groups in the bar (#586), this browser's own like the tab order.
+const tabFolds = new Set(JSON.parse(localStorage.getItem("aegis.tab-folds") || "[]"));
 const tabActions = {
   onFocus: openSession,
   onClose: closeById,
-  onMove: (id, before) => {
-    order.move(id, before);
+  onMove: (keys, before) => {
+    order.move(keys, before);
     onSessions();
+  },
+  get here() {
+    return conn.server || localStorage.getItem("aegis.server") || "";
+  },
+  folds: tabFolds,
+  saveFolds: () => localStorage.setItem("aegis.tab-folds", JSON.stringify([...tabFolds])),
+  onFold: (key) => {
+    if (!tabFolds.delete(key)) tabFolds.add(key);
+    tabActions.saveFolds();
+    renderTabs($("tablist"), tabbed(), tabFocus(route()), tabActions);
   },
 };
 
@@ -2836,12 +2851,14 @@ async function spawnFromComposer() {
   // as spawn's prompt the harness would get it as plain text.
   const command = text.startsWith("/") && !text.startsWith("//");
   if (text && !held && !command) params.prompt = text;
+  if (spawnFrom && !spServer) params.from_session = spawnFrom;
   try {
     const r = await untestedRetry(
       () => conn.call("session.spawn", params, spServer),
       (untested) => conn.call("session.spawn", { ...params, untested }, spServer),
     );
     if (r === CANCELLED) return; // the typed text stays
+    spawnFrom = null;
     localStorage.setItem(LAST_AGENT, a.name);
     $("sp-text").value = "";
     spawnGrow();
@@ -2999,7 +3016,10 @@ for (const [kind, id] of [
 
 // -- tab bar and keys -----------------------------------------------------------
 $("tab-fleet").addEventListener("click", () => go("#fleet"));
-$("tab-add").addEventListener("click", () => !offline() && go("#new"));
+$("tab-add").addEventListener("click", () => {
+  spawnFrom = null;
+  if (!offline()) go("#new");
+});
 // The ? list: drawn once from the key table.
 const keymap = $("keymap");
 renderKeys(keymap);
@@ -3468,6 +3488,11 @@ const askClose = (s) =>
 // through it.
 const confirmClose = async (s) => s.attention === "done" || (await askClose(s));
 
+async function archiveGroup(members) {
+  if (offline() || !(await ask(`Archive these ${members.length} sessions: ${members.map((m) => m.handle).join(", ")}?`, { ok: "Archive" }))) return;
+  for (const m of members) callFor(m.key, "session.close").catch((e) => toast(`${m.handle}: ${e.message}`, { kind: "error" }));
+}
+
 async function closeSession(s) {
   if (locked(s)) return toast(`${s.handle} is a step of a running workflow; it archives when the run ends`, { kind: "error" });
   if (offline() || !(await confirmClose(s))) return;
@@ -3892,12 +3917,15 @@ function sizeTabMore() {
 new ResizeObserver(sizeTabMore).observe($("tablist"));
 new MutationObserver(sizeTabMore).observe($("tablist"), { childList: true });
 $("tab-more").addEventListener("click", () => {
-  const items = tabbed().map((m) => ({
-    id: m.key,
-    label: m.server ? `${m.handle} · ${m.server}` : m.handle,
-    icon: MARK_ICON[m.mark] || "dot",
-    run: () => go(`#s=${m.key}`),
-  }));
+  // In the bar's order, a group's members under its head (#586).
+  const items = blocksOf(tabbed(), tabActions.here).flatMap((b) =>
+    b.members.map((m, i) => ({
+      id: m.key,
+      label: `${i ? "↳ " : ""}${m.handle}${m.server ? ` · ${m.server}` : ""}`,
+      icon: MARK_ICON[m.mark] || "dot",
+      run: () => go(`#s=${m.key}`),
+    })),
+  );
   cmenu.open({ groups: [items] }, $("tab-more"), $("tab-more"));
 });
 $("nav-side").addEventListener("click", toggleSide);
@@ -3979,6 +4007,9 @@ function sessionMenu(key) {
       ? "No connection to its server"
       : undefined;
   const close = [{ id: "archive", label: "Archive", icon: "archive", danger: true, disabled: why, run: () => closeSession(s) }];
+  // A group's head archives the whole group, after one question (#586).
+  const group = blocksOf(tabbed(), tabActions.here).find((b) => b.head.key === key && b.members.length > 1);
+  if (group) close.push({ id: "archivegroup", label: "Archive group…", icon: "archive", danger: true, disabled: why, run: () => archiveGroup(group.members) });
   if (isTool(s)) return { title, groups: [opening, close] };
   if (s.quiet) opening.push({ id: "unquiet", label: "Unquiet", icon: "unquiet", disabled: why, run: () => quietKey(key, false) });
   else if (["working", "waiting"].includes(s.attention))
@@ -4017,7 +4048,11 @@ attachCardMenu($("tablist"), { touch: (t) => t.matches(".tab[data-id]") && tabCa
 // from the source's server's roster once it has loaded, the same way on every
 // server: pickAgent resets the chips to that agent, so nothing a person set in
 // the form before carries over. What the form's text held stays after the prompt.
-async function openSpawnWith({ server = null, agent, model, cwd, prompt }) {
+// The local session the New session form was opened from: the new session
+// joins its group (#586). The + tab and a spawn clear it.
+let spawnFrom = null;
+async function openSpawnWith({ server = null, agent, model, cwd, prompt, from = null }) {
+  spawnFrom = from;
   $("sp-text").value = prompt + $("sp-text").value;
   go("#new");
   spawnGrow();
@@ -4048,7 +4083,7 @@ function selectionItems(range) {
       id: "new",
       label: "New session",
       icon: "start",
-      run: () => openSpawnWith({ server: s.server, agent: s.agent, model: s.model, cwd: s.cwd, prompt: `From ${s.handle}:\n${quoted(text)}\n\n` }),
+      run: () => openSpawnWith({ server: s.server, agent: s.agent, model: s.model, cwd: s.cwd, from: s.server ? null : s.key, prompt: `From ${s.handle}:\n${quoted(text)}\n\n` }),
     },
     {
       id: "copy",
@@ -4160,7 +4195,7 @@ async function toComposer(key, text, opts) {
 // The New session form with `text` for its prompt: from session `s`'s agent,
 // model and folder, or the form's own picks. The text is in the form at once.
 function newSessionWith(s, text) {
-  if (s) openSpawnWith({ server: s.server, agent: s.agent, model: s.model, cwd: s.cwd, prompt: `From ${s.handle}:\n${text}\n\n` });
+  if (s) openSpawnWith({ server: s.server, agent: s.agent, model: s.model, cwd: s.cwd, from: s.server ? null : s.key, prompt: `From ${s.handle}:\n${text}\n\n` });
   else {
     $("sp-text").value = `${text}\n\n${$("sp-text").value}`;
     go("#new");
@@ -4201,7 +4236,7 @@ function rowMenu(t, ev) {
     id: "new",
     label: "New session",
     icon: "start",
-    run: () => quote((q) => openSpawnWith({ server: s.server, agent: s.agent, model: s.model, cwd: s.cwd, prompt: `From ${s.handle}:\n${q}\n\n` })),
+    run: () => quote((q) => openSpawnWith({ server: s.server, agent: s.agent, model: s.model, cwd: s.cwd, from: s.server ? null : s.key, prompt: `From ${s.handle}:\n${q}\n\n` })),
   };
   const copy = { id: "copy", label: "Copy", icon: "copy", key: "c", run: () => copyRow(id, transcript.nodes.get(id), copyDeps) };
   // A part still streaming has an id the whole block will replace: no link.
