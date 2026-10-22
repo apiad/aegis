@@ -257,6 +257,58 @@ async def test_messages_to_a_busy_session_are_held_and_arrive_once_in_one_turn(w
     assert b.held == []
 
 
+async def busy(s, seconds: float = 1) -> None:
+    await s.send(f"/busy {seconds}")
+    await until(
+        lambda: s.status == "working" and any(e["kind"] == "tool" for e in s.entries()),
+        what=f"{s.handle} busy",
+    )
+
+
+async def test_an_urgent_handoff_is_steered_into_the_running_turn(world):
+    a, b = await world.spawn(), await world.spawn()
+    await busy(b)
+    said = await turn(
+        a, mcp("peer_handoff", target=b.handle, context="stop now", urgent=True)
+    )
+    assert said == f"mcp ok: steered into {b.handle}"
+    assert b.held == []
+    await until(lambda: inbox(b), timeout=8, what="the steered row")
+    (row,) = inbox(b)
+    assert "stop now" in row["md"] and row["detail"] == {"steered": True}
+    await until(lambda: b.status == "idle", what="b idle")
+    # Read inside the turn it was sent into: that turn's last word names it.
+    assert any("done: > from agent:" in (e.get("md") or "") for e in b.entries())
+
+
+async def test_an_urgent_handoff_waits_where_the_harness_cannot_steer(
+    world, monkeypatch
+):
+    a, b = await world.spawn(), await world.spawn()
+    monkeypatch.setattr(b.harness, "steers_mid_turn", False)
+    await busy(b)
+    said = await turn(
+        a, mcp("peer_handoff", target=b.handle, context="stop now", urgent=True)
+    )
+    assert said == (
+        f"mcp ok: held for {b.handle} (its harness cannot take a message mid-turn)"
+    )
+    assert [m["body"] for m in b.held] == ["stop now"]
+
+
+async def test_urgent_to_an_idle_session_lands_and_with_interrupt_is_refused(world):
+    a, b = await world.spawn(), await world.spawn()
+    said = await turn(
+        a, mcp("peer_handoff", target=b.handle, context="hi", urgent=True)
+    )
+    assert said == f"mcp ok: landed at {b.handle}"
+    said = await turn(
+        a,
+        mcp("peer_handoff", target=b.handle, context="x", urgent=True, interrupt=True),
+    )
+    assert said.startswith("mcp error: bad_params: urgent and interrupt together")
+
+
 async def test_peer_read_shows_the_other_side(world):
     a, b = await world.spawn(), await world.spawn()
     await turn(b, "hello from b")

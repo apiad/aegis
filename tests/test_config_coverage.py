@@ -64,6 +64,7 @@ notices:
   monitors: {stall_min: 20, broken_checks: 5, overdue_min: 15, wake: false}
   plan: {stale_min: 5}
   queues: false
+  held: false
 """
 
 

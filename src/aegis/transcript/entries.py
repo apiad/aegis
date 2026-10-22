@@ -530,7 +530,11 @@ class Fold:
                     ts,
                     d.USER_GLYPH,
                     md=str(rec.get("typed") or "") if attached else head,
-                    detail={"files": attached} if attached else None,
+                    detail={"files": attached}
+                    if attached
+                    else {"steered": True}
+                    if rec.get("steered")
+                    else None,
                 )
             )
         if kind == "spawn":
@@ -1138,8 +1142,19 @@ class Fold:
             if head.startswith("> from "):
                 # An inbox message: a monitor wake, a queue result, a handoff.
                 header = head.splitlines()[0].removeprefix("> from ").strip()
+                # Sent into a running turn by an urgent handoff (Session.deliver).
+                steered = ((carried or {}).get("detail") or {}).get("steered")
                 ops += self._upsert(
-                    _entry(id, "inbox", "ok", ts, d.COMMS_GLYPH, title=header, md=head)
+                    _entry(
+                        id,
+                        "inbox",
+                        "ok",
+                        ts,
+                        d.COMMS_GLYPH,
+                        title=header,
+                        md=head,
+                        detail={"steered": True} if steered else None,
+                    )
                 )
                 return ops + self._notice_rows(id, ts, notices)
             attached = ((carried or {}).get("detail") or {}).get("files")

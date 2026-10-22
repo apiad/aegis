@@ -9000,3 +9000,18 @@ def test_card_shows_the_cascade_position(cascade_server, page):
     page.wait_for_selector("#a2[data-view=fleet]")
     assert "opencode/b · 2 of 3" in page.inner_text(".card .ln")
     assert page.errors == []
+
+
+def test_an_urgent_handoff_shows_steered_in_on_the_row_it_makes(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    b = spawn(page, '/mcp session_rename {"handle": "steer-target"}')
+    page.fill("#input", "/busy 8")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.tool.running")
+    args = {"target": "steer-target", "context": "stop now", "urgent": True}
+    spawn(page, f"/mcp peer_handoff {json.dumps(args)}")
+    page.wait_for_selector(".row >> text=steered into steer-target")
+    page.click(f"#tablist .tab[data-id='{b}']")
+    pill = page.wait_for_selector(".row.inbox .from .steered", timeout=10000)
+    assert pill.inner_text() == "steered in"
