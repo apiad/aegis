@@ -141,3 +141,17 @@ def test_a_long_press_on_a_tab_opens_the_sheet_and_a_card_keeps_its_menu(
     pg.wait_for_selector(".tabsheet", state="hidden")
     ctx.close()
     assert errors == []
+
+
+def test_a_clicked_tab_shows_no_card_until_the_pointer_leaves(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    key = spawn(page, "hello")
+    page.goto(server.url.split("#")[0] + "#fleet")
+    page.mouse.move(640, 760)
+    page.click(tab(key))  # the pointer stays on the tab
+    page.wait_for_selector(f".tab.on[data-id='{key}']")
+    page.wait_for_timeout(700)
+    assert page.is_hidden(".tabcard")
+    open_card(page, key)  # off the bar and back: the card again
+    assert page.errors == []
