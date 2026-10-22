@@ -135,7 +135,7 @@ def check(src: Path) -> int:
         raise FileError("not_found", f"{src} does not exist", src)
     if not src.is_file():
         raise FileError("not_a_file", f"{src} is not a regular file", src)
-    if not os.access(src, os.R_OK):
+    if not os.access(src, os.R_OK, effective_ids=True):
         raise FileError("unreadable", f"cannot read {src}", src)
     size = src.stat().st_size
     if size > MAX_BYTES:

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import os
+import platform
 import pwd
 import re
 import shutil
@@ -33,6 +34,9 @@ ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # The capabilities the server needs to start a child as another user and drop
 # every capability from it (the bounding set needs CAP_SETPCAP), by bit.
 CAPS = {"CAP_SETGID": 6, "CAP_SETUID": 7, "CAP_SETPCAP": 8}
+# The setgroups syscall's number on each machine the mode supports: as_user.py
+# calls it raw, so that it changes one thread's groups only.
+SETGROUPS = {"x86_64": 116, "aarch64": 159}
 UNIT_LINES = (
     "AmbientCapabilities=CAP_SETUID CAP_SETGID CAP_SETPCAP",
     "CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_SETPCAP",
@@ -176,6 +180,7 @@ def boot_problems(
     *,
     status: str | None = None,
     uid: int | None = None,
+    machine: str | None = None,
 ) -> list[str]:
     """Why this server may not start in multi-user mode, one line each; []
     when it may. A state directory it owns with a looser mode is set to 0700,
@@ -184,7 +189,12 @@ def boot_problems(
         status = Path("/proc/self/status").read_text()
     if uid is None:
         uid = os.geteuid()
+    machine = machine or platform.machine()
     out = []
+    if machine not in SETGROUPS:
+        out.append(
+            f"multi_user supports {' and '.join(SETGROUPS)}; this machine is {machine}"
+        )
     if uid == 0:
         out.append(
             "aegis serve runs as root; multi_user needs an unprivileged service user"
