@@ -377,7 +377,12 @@ in (#595).
 and a handoff reach a session as a user turn headed `> from <kind>:<name> · …`. An
 idle session gets it at once and an asleep one is woken for it; a working one
 holds it and gets every held message as one turn when its turn ends. Writing to a
-working `claude` would inject the message at its next tool boundary instead.
+working `claude` would inject the message at its next tool boundary instead, which
+is what an urgent handoff asks for: `deliver(urgent=True)` sends it into the turn
+when the harness declares `steers_mid_turn` (Claude Code, Codex), records the send
+as `steered`, and holds it otherwise. While messages are held, the `held` notice
+source gives the busy agent one warning per message, its sender and first line, on
+its next aegis tool result; the warnings end silently when the batch is sent.
 
 **aegis nudges an agent that drifts, once.** A live, idle session that is
 not a queue worker, whose card says done or review, gets an inbox message

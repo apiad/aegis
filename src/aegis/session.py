@@ -42,7 +42,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 import pwd
-from typing import Any
+from typing import Any, Literal
 
 from .as_user import Runners
 from . import attachments, cache, harness_versions, restarts
@@ -870,26 +870,38 @@ class Session:
             raise OpError("in_workflow", why)
 
     async def deliver(
-        self, header: str, body: str, *, through_lock: bool = False
-    ) -> None:
+        self,
+        header: str,
+        body: str,
+        *,
+        through_lock: bool = False,
+        urgent: bool = False,
+    ) -> Literal["sent", "held", "steered"]:
         """An inbox message. Idle or stopped: sent now (a stopped session is
         resumed to receive it). Mid-turn: held, and sent with any others when
         the turn ends, because a prompt written mid-turn would be injected at
-        the next tool boundary instead of waiting. When the owner's quota gate
-        says no turn may start, held with ``held_for: "quota"`` until it opens
-        (app.on_quota)."""
+        the next tool boundary instead of waiting; ``urgent`` wants exactly
+        that, and gets it from a harness that reads mid-turn input. When the
+        owner's quota gate says no turn may start, held with ``held_for:
+        "quota"`` until it opens (app.on_quota). Returns what it did."""
         if self.archived:
             raise Archived(self.log_id)
         if not through_lock:
             self.check_lock()
         msg = {"header": header, "body": body, "ts": time.time()}
+        if urgent and self.status == "working" and self.harness.steers_mid_turn:
+            # Steered in as a person's mid-turn message is: a user message at
+            # the next tool boundary (Claude Code) or a turn/steer (Codex).
+            await self._send(_inbox_text([msg]), steered=True)
+            return "steered"
         if self.status == "working" or self._flushing:
             self._hold(msg)
-            return
+            return "held"
         if self._host.quota_hold(self) is not None:
             self._hold(msg | {"held_for": "quota"})
-            return
+            return "held"
         await self._send(_inbox_text([msg]))
+        return "sent"
 
     def _hold(self, msg: dict) -> None:
         self.held.append(msg)
@@ -902,6 +914,8 @@ class Session:
         try:
             batch, self.held = self.held, []
             if batch:
+                # Before the send gathers notices: the "held" warning ends here.
+                self._host.status_changed(self)
                 await self._send(_inbox_text(batch))
         finally:
             self._flushing = False
@@ -944,7 +958,12 @@ class Session:
         await self._send(text, typed, attached)
 
     async def _send(
-        self, text: str, typed: str | None = None, attached: list[dict] | None = None
+        self,
+        text: str,
+        typed: str | None = None,
+        attached: list[dict] | None = None,
+        *,
+        steered: bool = False,
     ) -> None:
         await self.ensure_running()
         assert self._proc is not None
@@ -962,6 +981,8 @@ class Session:
         record: dict = {"kind": "send", "text": text}
         if attached:
             record |= {"typed": typed or "", "files": attached}
+        if steered:
+            record["steered"] = True  # an inbox message sent into a running turn
         self._record(record)
         # Working before the send returns: a harness can answer during it (an
         # OpenCode command refused before it starts a turn).

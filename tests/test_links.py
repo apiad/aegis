@@ -1313,3 +1313,17 @@ async def test_a_far_server_without_groups_still_takes_the_spawn(pair):
     assert out.startswith("mcp ok:"), out
     (far,) = beta.app.sessions.sessions.values()
     assert far.meta().get("group") is None
+
+
+async def test_an_urgent_handoff_through_a_link_is_steered_into_the_far_turn(pair):
+    from .test_agents import busy
+
+    alpha, beta = pair
+    here, far = await alpha.spawn(), await beta.spawn()
+    await busy(far)
+    said = await turn(
+        here,
+        mcp("peer_handoff", target=f"{far.handle}@beta", context="stop", urgent=True),
+    )
+    assert said == f"mcp ok: steered into {far.handle}@beta"
+    assert far.held == []

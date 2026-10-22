@@ -89,7 +89,8 @@ turn, and an asleep session's when it wakes.
 Type in the session's box and press Enter. A message you send while the
 agent works reaches it during the turn: Claude Code reads it at its next tool
 call. Messages from other sessions and from aegis are held until the turn
-ends. Esc interrupts the turn.
+ends, unless an agent sent a handoff as urgent: that one reaches the turn the
+same way yours does, and its row shows `steered in`. Esc interrupts the turn.
 `/model`, `/effort` and `/permission` switch those for this session; clicking
 the chips under the box does the same.
 
@@ -243,9 +244,16 @@ queue tasks out: 2 running (review-a, review-b)
 
 The status block rides only on messages, never on a tool result. Warnings
 ride on both, once, and say when they end: a plan untouched for ten minutes
-of work, and a monitor that has stalled, cannot run its check or has overrun
-its ETA (see the monitors page). After the context is compacted, the next
-message tells it all again.
+of work, a monitor that has stalled, cannot run its check or has overrun
+its ETA (see the monitors page), and each message held for the turn's end:
+
+```text
+> from aegis:notice · held:m1792684879882 · warn · 2026-10-22T12:04:11
+agent:director waits for your turn to end: "Scope changed: do #47 only, then end with done." End your turn early if it changes your work.
+```
+
+`notices: {held: false}` turns the held warnings off. After the context is
+compacted, the next message tells it all again.
 
 ## Announcements
 

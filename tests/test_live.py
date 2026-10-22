@@ -2022,3 +2022,43 @@ async def test_real_claude_runs_setup_asks_first_and_proposes_from_a_project(
     finally:
         server.should_exit = True
         await asyncio.wait_for(task, 30)
+
+
+async def test_real_claude_reads_an_urgent_handoff_inside_its_turn(tmp_path: Path):
+    """An urgent handoff sent while a real Claude Code runs a tool is read at
+    the next tool boundary: the turn goes on calling tools after its row."""
+    from .test_agents import World
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  haiku: {{harness: claude-code, model: {HAIKU}, effort: low, permission: full}}\n"
+    )
+    world = await World(tmp_path, claude).start()
+    try:
+        r = await world.app.registry.call("session.spawn", {"agent": "haiku"})
+        s = world.app.sessions.sessions[r["log_id"]]
+        await s.send(
+            "Run these three shell commands as three separate Bash calls, one "
+            "after the other: `sleep 5`, `sleep 5`, `sleep 5`. Then reply in one line."
+        )
+        await until(
+            lambda: any(e["kind"] == "tool" for e in s.entries()),
+            timeout=90,
+            what="the first tool call",
+        )
+        did = await s.deliver(
+            "> from agent:peer · 2026-10-22T12:00:00Z",
+            "Include the word PELICAN in your final reply.",
+            urgent=True,
+        )
+        assert did == "steered"
+        await until(lambda: s.status == "idle", timeout=180, what="the turn's end")
+        kinds = [(e["kind"], e.get("detail") or {}) for e in s.entries()]
+        at = next(i for i, (k, d) in enumerate(kinds) if k == "inbox")
+        assert kinds[at][1].get("steered") is True
+        assert any(k == "tool" for k, _ in kinds[at + 1 :]), kinds
+        prose = [e.get("md") or "" for e in s.entries() if e["kind"] == "prose"]
+        assert "PELICAN" in prose[-1]
+    finally:
+        await world.stop()

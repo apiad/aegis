@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import secrets
 import time
 from collections.abc import Callable
@@ -30,6 +31,9 @@ from .config import CONTEXT_DEFAULTS
 from .harness import harness_for
 from .meta import MetaStore, rebuild
 from .names import TITLE_MAX, mint_handle, valid_handle
+from . import notice_sources
+from .notice_sources import Item
+from .notices import TEXT_MAX
 from .ops import OpError
 from .roots import Roots
 from .session import Host, Session, SpawnSpec
@@ -39,6 +43,40 @@ from .transcript.wire import withheld_text
 
 log = logging.getLogger("aegis.registry")
 Publish = Callable[[str, list[dict]], None]
+
+# A busy session is told, on its next tool result, that inbox messages wait
+# for its turn to end (Session.deliver), so it can finish early when they may
+# change its work. The message itself stays a user turn.
+HELD_SOURCE = "held"
+notice_sources.declare(HELD_SOURCE, {})
+HELD_TAIL = " End your turn early if it changes your work."
+
+
+def held_items(held: list[dict]) -> list[Item]:
+    """One warning per message held mid-turn: its sender and as much of its
+    first line as a notice's one line leaves room for. Keyed by its arrival,
+    so each new message is told once. Messages the quota gate holds are left
+    out: their session is not in a turn."""
+    items = []
+    for m in held:
+        if "held_for" in m:
+            continue
+        head = f"{held_label(m['header'])} waits for your turn to end: "
+        first = next((ln.strip() for ln in m["body"].splitlines() if ln.strip()), "")
+        room = TEXT_MAX - len(head) - len(HELD_TAIL) - 2
+        if len(first) > room:
+            first = first[: max(room - 1, 0)] + "…"
+        key = f"m{int(m['ts'] * 1000)}"
+        items.append(Item(key, "warn", f'{head}"{first}"{HELD_TAIL}'))
+    return items
+
+
+def held_label(header: str) -> str:
+    """``> from monitor:m-1 · fail · 2026-…Z`` → ``monitor:m-1 · fail``."""
+    parts = header.removeprefix("> from ").split(" · ")
+    if len(parts) > 1 and re.match(r"\d{4}-\d{2}-\d{2}T", parts[-1]):
+        parts.pop()
+    return " · ".join(parts)
 
 
 def mint_log_id() -> str:
@@ -503,6 +541,8 @@ class Registry(Host):
             self.schedules.changed()
         if self.workflows is not None:
             self.workflows.changed()
+        if self.notices is not None:
+            self.notices.set(session.log_id, HELD_SOURCE, held_items(session.held))
 
     def finished(self, s: Session) -> bool:
         """Done working, which a turn ending is not: not busy (held messages
