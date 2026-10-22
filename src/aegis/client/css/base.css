@@ -524,7 +524,6 @@ body{background:#000}
 #a2 .rp-clean,#a2 a.rp-pr{color:var(--ok)}
 #a2 .rp-gone{color:var(--faint)}
 #a2 .rp-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--comms);flex:none}
-#a2 .pcard .rp-wt{font-size:10px;padding:0 5px;border-radius:8px;border:1px solid var(--rule);color:var(--faint);font-weight:400}
 #a2 .pcard h5.rp-h{justify-content:flex-start;flex-wrap:wrap;align-items:baseline;color:var(--strong);font-size:12px}
 #a2 .pcard h5.rp-h .p{margin-left:auto;color:var(--faint);font-weight:400;font-size:10.5px;overflow-wrap:anywhere}
 #a2 .pcard .rp-files{margin:2px 0 6px;padding:0;list-style:none;font-family:var(--font-mono);font-size:11px;color:var(--ink)}
@@ -533,6 +532,9 @@ body{background:#000}
 #a2 .pcard .rp-files li>.x{margin-left:auto;color:var(--faint);flex:none}
 #a2 .pcard .rp-files li.more{color:var(--faint)}
 #a2 .pcard .rp-peer{margin-top:6px;color:var(--comms);font-size:11px}
+#a2 .pcard .rp-co{margin:4px 0 2px 2px;padding-left:8px;border-left:2px solid var(--rule)}
+#a2 .pcard .rp-co h6{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline;margin:0 0 2px;font-size:11.5px;font-family:var(--font-mono);color:var(--strong);font-weight:600}
+#a2 .pcard .rp-co h6 .p{margin-left:auto;color:var(--faint);font-weight:400;font-size:10.5px;overflow-wrap:anywhere}
 @media (pointer:coarse){#a2 .rp-line a.rp-pr{padding:12px 4px;margin:-12px -4px}}
 #a2 .pcard .cnote{margin:8px 0 0;color:var(--faint);font-size:11px;line-height:1.45}
 #a2 .pcard .cnote:empty{display:none}

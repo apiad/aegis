@@ -366,7 +366,9 @@ exists, and asks git (`repos/probe.py`) and `gh` (`repos/gh.py`) only for the
 present state. Uncommitted counts only the files the session wrote. A worktree is
 probed at most every 10 s, in a thread; only sessions a browser subscribes to on
 `repos:<log_id>` are built and published, at most every 5 s and only on change
-(#526).
+(#526). The server sends one line per worktree; the browser groups them per repo
+(its main checkout) and names each peer once per repo with the checkouts it wrote
+in (#595).
 
 **The inbox holds messages until a turn ends.** A monitor's wake, a queue's result
 and a handoff reach a session as a user turn headed `> from <kind>:<name> · …`. An
