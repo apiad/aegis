@@ -261,6 +261,7 @@ export class Settings {
       this.untested(),
       this.workflows(),
       this.fieldSection("network"),
+      this.fieldSection("host"),
     );
     this.box.replaceChildren(full, this.bar());
     this.mark();
