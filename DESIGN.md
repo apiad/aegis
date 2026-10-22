@@ -553,10 +553,26 @@ spawning on a linked server are for admins. Each operation declares `admin` or
 the param that names the session it changes, and `ops.Registry.call` checks both
 in one place. An agent acts as its session's owner with the owner's current role,
 and a link acts as the token it presented. A token revoked while its socket is
-open is refused at its next message, and reads nothing more. Every harness runs as
-the server's Linux user, so a member's agent with shell access can read the admin
-token: roles stop accidents between colleagues, not a hostile member, until
-sessions run as separate users.
+open is refused at its next message, and reads nothing more. Outside the
+multi-user mode every harness runs as the server's Linux user, so a member's agent
+with shell access can read the admin token: roles stop accidents between
+colleagues, not a hostile member.
+
+**In the multi-user mode a principal is a Linux user.** With `multi_user:` in
+`.aegis.yaml`, each token names a Linux user (`users.py`), and the server, an
+unprivileged user holding `CAP_SETUID`, `CAP_SETGID` and `CAP_SETPCAP` from its
+unit, starts every process through one launcher (`launch.py`): behind `setpriv`,
+switched to the owner's user with every capability dropped, with the owner's
+environment and the pool file's variables. Files the server opens for a person,
+it opens on a thread switched to that person (`as_user.py`), so the kernel checks
+every access. The state directory is mode 0700, out of every member's reach. A
+member sees only what it owns: one rule, `App.sees`, hides another's sessions,
+runs, tasks, schedules, journal rows and toasts at the three places data leaves
+the server (an op's params in `Registry.call`, each channel subscriber's view in
+`member_view.py`, and the lists ops return), and something hidden answers like
+something missing. The host work the mode needs is the help page `multi-user`,
+which `/multiuser` hands to the admin's agent as one turn (`multiuser.py`)
+(`docs/superpowers/specs/2026-10-21-linux-users-design.html`).
 Closing is the one exception, and it asks for a second thought: `session_close`
 closes at once only a session the agent spawned, or a worker whose task it
 enqueued, whose attention is done. Anything else, the caller's own session
