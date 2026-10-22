@@ -50,6 +50,11 @@ def test_the_primer_names_tools_by_the_harness_prefix(tmp_path):
 
     assert "(mcp__aegis__*)" in primer(make("claude-code"), "zion", tmp_path)
     assert "(aegis_*)" in primer(make("opencode"), "zion", tmp_path)
+    # Browsers only where they run: elsewhere the tools answer unavailable.
+    s = make("claude-code")
+    assert "browser_open" not in primer(s, "zion", tmp_path)
+    shown = primer(s, "zion", tmp_path, browsers=True)
+    assert "browser_open" in shown and "ask them" in shown
 
 
 def test_the_primer_asks_for_a_language_on_every_fence():

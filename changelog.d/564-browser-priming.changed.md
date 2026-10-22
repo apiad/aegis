@@ -1,0 +1,2 @@
+- **Agents are primed for browsers only where browsers run, and told to point the person at the tab.** The primer's browser paragraph now appears only when the `browser` extra is installed and the server is not in multi-user mode. It tells the agent that a new browser is a tab the person has to open, and to read what the person did with `browser_events`. The help page adds how to smoke-test a page with the person and how to turn a session they clicked through into a Playwright script.
+help: browsers#turning-a-session-into-a-test

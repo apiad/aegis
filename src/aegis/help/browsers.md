@@ -85,6 +85,27 @@ agent's next action on the page is refused until they give it back. A
 browser the person opened has no agent: Give to… hands it to one of their
 open sessions, which is woken with `> from browser:<id> · given`.
 
+## Testing a page with the person
+
+For a smoke test, open the page, tell the person the browser's name and
+what to try, and hand it over with `browser_handover`. While they hold it you
+can still read it: `browser_snapshot` shows where they are, and
+`browser_events` with `who=person` lists what they clicked and typed, and the
+console errors and failed requests it caused. When they give it back, the
+wake-up holds the same list. Report what broke from the log, not from what
+they remember.
+
+## Turning a session into a test
+
+aegis does not record or replay. The log is enough to write a test from: when
+a person has clicked through a flow, offer to turn it into a Playwright
+script. Read `browser_events` with `who=person` and write a script that
+reaches the same states the person reached, not one that repeats their
+clicks: target elements by role and name (the log gives both), wait for what
+the page shows instead of sleeping, and assert on the outcome they checked by
+eye. Skip their detours and typos. Run it against the same page with your
+browser, or in the project's test suite, before you hand it over.
+
 ## What the log records
 
 Each browser keeps a log in `.aegis/state/browsers/<id>/events.jsonl`, and
