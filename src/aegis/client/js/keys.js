@@ -71,6 +71,8 @@ export const ACTIONS = [
   },
   // As the Quiet button, and only when it is enabled: a working or waiting session.
   { id: "quiet", title: "Quiet: hide this tab until the turn ends", when: ["session"], keys: [on("global", "Alt+Q", alt("KeyQ"))] },
+  // As the Archive button, so a working session still asks first.
+  { id: "archive", title: "Archive this tab; Reopen brings it back", when: ["session"], keys: [on("global", "Alt+A", alt("KeyA"))] },
   { id: "side", title: "Show or hide the session panel", keys: [on("global", "Alt+B", alt("KeyB"))] },
   {
     id: "foldLevel",
