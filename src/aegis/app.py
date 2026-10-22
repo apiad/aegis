@@ -66,6 +66,7 @@ from .agent_ops import (
     spawn_tail,
 )
 from .artifact_ops import register_artifact_ops
+from .config_suggest import register_config_suggest
 from .secret_ops import register_secret_ops
 from .agents import (
     EFFORTS,
@@ -566,6 +567,7 @@ class App:
         self._register()
         register_agent_ops(self)
         register_config_ops(self)
+        register_config_suggest(self)
         register_artifact_ops(self)
         self.secrets = self.sessions.secrets = register_secret_ops(self)
         register_layout_ops(self)

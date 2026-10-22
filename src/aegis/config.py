@@ -1234,6 +1234,32 @@ def write(path: Path, doc: ConfigDoc, expected: Stamp | None) -> list[Finding]:
     return []
 
 
+def write_text(path: Path, text: str, expected: Stamp | None) -> list[Finding]:
+    """Write ``text`` to ``path`` as it is, comments and all: what a person's
+    Apply on a config card writes (config_suggest.py). The same stamp check
+    and validation as ``write``; an empty list means it was written."""
+    if stamp_of(path) != expected:
+        raise OpError("stale", f"{path} changed on disk since it was read; reload it")
+    if problems := text_problems(text):
+        return problems
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_text(text)
+    os.replace(tmp, path)
+    return []
+
+
+def text_problems(text: str) -> list[Finding]:
+    """What stops ``text`` being written as .aegis.yaml: it does not parse,
+    its top level is not a mapping, or ``validate`` finds an error."""
+    try:
+        data = YAML(typ="safe").load(text)
+    except YAMLError as e:
+        return [Finding("error", "file", f"does not parse: {e}")]
+    if not isinstance(data, dict):
+        return [Finding("error", "file", "the top level is not a mapping")]
+    return validate(doc_from(data))
+
+
 def accept_version(path: Path, harness: str, version: str) -> None:
     """Add ``version`` to ``harness_versions.accepted.<harness>``: what a
     person's "Always" does. Only that block is edited, so a finding elsewhere
