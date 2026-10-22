@@ -192,7 +192,7 @@ clear. A notice at critical also shows you a toast, once per episode.
 | disk | the fullest filesystem holding the config root or the temporary directory | 90, 97, 85 |
 | memory | percent of RAM not available, or memory pressure (PSI full avg60) at 5 or more | 90, 95, 85 |
 | cpu | CPU pressure (PSI some avg60), or the load over the CPU count times 25 | 50, none, 30 |
-| quota | the account's quota windows, for sessions that draw on that account | warning, critical, normal |
+| quota | the account's quota windows, for sessions that draw on that account: warning when a window is on pace to run out before its reset with half of it spent, critical at 90% spent | warning, critical, normal |
 | announce | what a person or an admin's agent wrote | as written |
 
 The text tells an agent to free or cut back only what its own session

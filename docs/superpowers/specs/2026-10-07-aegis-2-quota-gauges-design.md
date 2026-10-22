@@ -63,12 +63,15 @@ so it can move when the plugin runtime from #113 exists.
 - **Cadence.** Claude polls every 180 s, and a turn end may refresh it no sooner
   than 60 s after the last fetch. OpenCode Go polls every 60 s with a 10 s turn
   floor. A 429 backs off for 300 s, and the backoff is shared through the cache.
-- **Severity** is the worse of level and pace. Level is the API's own
-  `severity`, or 80% and 95% when the API gives none. Pace is the projected
-  spend at reset, `percent / max(elapsed_fraction, 0.15)`: 80% or more is a
-  warning, above 100% is critical. A reset time further out than the window's
-  span (plus 60 s of skew) gives no projection, and the window keeps its level
-  colour.
+- **Severity.** Pace is the projected spend at reset,
+  `percent / max(elapsed_fraction, 0.15)`. Critical is level: 90% spent, or
+  the API's own `critical`. Warning is pace: above 100% at reset with 50% or
+  more spent. Under pace is normal below 90%, whatever the level or the API's
+  `warning` says (#557; this replaced "the worse of level and pace", with a
+  warning from 80% projected, which warned on spend the period absorbed). A
+  reset time further out than the window's span (plus 60 s of skew) gives no
+  projection, and the window keeps its level colour: the API's `severity`, or
+  80% and 90% when the API gives none.
 - **Spans.** Claude: `session` 5 h; `weekly_all`, `weekly_opus` and
   `weekly_scoped` 7 days. OpenCode Go: `rolling` 5 h, `weekly` 7 days, `monthly`
   30 days.

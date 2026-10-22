@@ -1468,8 +1468,8 @@ def test_the_fleet_band_and_the_sidebar_show_quota_and_the_host(quota_server, pa
     page.goto(quota_server.url)
     five = page.locator("#band .gauge[data-kind=session]")
     five.wait_for()
-    # 71% with 38% of the window gone: on pace for about 187%, so red.
-    assert "critical" in five.get_attribute("class")
+    # 71% with 38% of the window gone: on pace for about 187%, so a warning.
+    assert "warning" in five.get_attribute("class")
     assert "71%" in five.inner_text()
     assert re.search(r"18\d%", five.locator(".proj").inner_text())
     assert five.locator(".proj svg.ic").count() == 1
@@ -1486,17 +1486,17 @@ def test_the_fleet_band_and_the_sidebar_show_quota_and_the_host(quota_server, pa
     assert "CPU" in page.inner_text("#band-host")
 
     spawn(page)
-    # At a glance: the Claude session's 5-hour window, red, with its projection.
+    # At a glance: the Claude session's 5-hour window, amber, with its projection.
     five = page.locator("#s-tiles .tile[data-kind=session]")
     five.wait_for()
-    assert "critical" in five.get_attribute("class")
+    assert "warning" in five.get_attribute("class")
     assert re.search(r"71%18\d", five.inner_text().replace("\n", ""))
     assert five.locator("small svg.ic").count() == 1
     page.wait_for_selector("#s-host-sec:not([hidden]) #s-host-tiles .tile")
     assert "CPU" in page.inner_text("#s-host-tiles")
     # The details are the row's card.
     page.hover("#p-usage")
-    page.wait_for_selector("#s-quota .qrow.critical", state="visible")
+    page.wait_for_selector("#s-quota .qrow.warning", state="visible")
     assert page.inner_text("#s-quota-head") == "Quota · Claude"
     assert "5 hours" in page.inner_text("#s-quota")
     assert "OpenCode" not in page.inner_text("#p-usage")
