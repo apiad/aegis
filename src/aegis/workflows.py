@@ -845,10 +845,14 @@ class Workflows:
             out[key] = {k: v for k, v in item.items() if v is not None}
         return out[keys[0]] if n.kind == "loop" else out
 
-    def see_file(self, run: str, node: str) -> tuple[Path, str | None, int | None]:
+    def see_file(
+        self, run: str, node: str, check: bool = True
+    ) -> tuple[Path, str | None, int | None]:
         """The file a step's see names, as its row carries it: relative
         to the run's folder unless absolute, with its #fragment or :line.
-        The caller gives a run and a step, never a path (as file.peek)."""
+        The caller gives a run and a step, never a path (as file.peek).
+        ``check`` false leaves whether the file is there to the caller,
+        which asks as the run's owner (workflow_ops.py)."""
         st = self._get(run)
         row = next((r for r in self.wire(run)["tree"] if r["id"] == node), None)
         see = (row or {}).get("see")
@@ -861,7 +865,7 @@ class Workflows:
         path = Path(raw).expanduser()
         if not path.is_absolute():
             path = Path(self._cwd(st)) / path
-        if not path.is_file():
+        if check and not path.is_file():
             raise OpError("no_file", f"no file {raw} in {self._cwd(st)}")
         return path, fragment or None, line
 

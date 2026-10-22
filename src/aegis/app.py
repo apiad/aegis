@@ -872,9 +872,10 @@ class App:
         """How an upload reaches ``s``'s inbox in its user's home, as that
         user: the server opens the staged file, the user's runner writes the
         copy (attachments.commit). None for an inbox under the state root."""
-        if s.spec.linux_user is None:
+        user = self.sessions.user_for(s.spec)
+        if user is None:
             return None
-        run, box = self.runners.get(s.spec.linux_user), s.inbox
+        run, box = self.runners.get(user), s.inbox
 
         def deliver(staged: Path, name: str) -> Path:
             fd = os.open(staged, os.O_RDONLY | os.O_CLOEXEC)
@@ -1918,20 +1919,24 @@ class App:
             except (files.FileError, OSError) as e:
                 raise OpError("open_failed", str(e)) from e
 
-        def root_path(path: Path) -> dict:
-            """``{"root_path": ...}``, the file relative to the config root,
-            when the Files view may open it (fs_paths.resolve passes): the
-            viewer's "Open in Files". Only in the answer; a stored peek keeps
-            its shape."""
-            root = self.roots.config_root
-            try:
-                rel = path.resolve().relative_to(root.resolve()).as_posix()
-                fs_paths.resolve(root, self.roots.state_root, rel)
-            except (ValueError, OpError):
-                return {}
-            return {"root_path": rel}
+        async def root_path(path: Path, caller) -> dict:
+            """``{"root_path": ...}``, the file relative to the viewer's Files
+            root, when their Files view may open it (fs_paths.resolve passes,
+            as the viewer): their "Open in Files". Only in the answer; a
+            stored peek keeps its shape."""
+            place = self.place_of(caller)
 
-        async def peek_path(s, row, index: int, pick: str | None):
+            def rel() -> dict:
+                try:
+                    r = path.resolve().relative_to(place.root.resolve()).as_posix()
+                    fs_paths.resolve(place.root, place.guard, r)
+                except (ValueError, OpError, OSError):
+                    return {}
+                return {"root_path": r}
+
+            return await place.run(rel)
+
+        async def peek_path(s, row, index: int, pick: str | None, caller):
             """A path a reply named, resolved now: as written when absolute,
             else under the config root and under the session's cwd (#323).
             When both hold a file and they differ, it opens neither and asks:
@@ -1972,7 +1977,7 @@ class App:
                 (rec,) = await files.store_as(self.roots.state_root, [path], run)
             except files.FileError as e:
                 raise OpError(e.code, e.message) from e
-            return [_sent_file(rec) | root_path(path)]
+            return [_sent_file(rec) | await root_path(path, caller)]
 
         @r.op("file.peek", PeekParams)
         async def file_peek(p: PeekParams, caller):
@@ -1982,7 +1987,7 @@ class App:
             s = reg.open(p.log_id)
             row = s.fold().entry(p.entry_id)
             if p.index is not None:
-                return await peek_path(s, row, p.index, p.pick)
+                return await peek_path(s, row, p.index, p.pick, caller)
             raw = row["detail"].get("path") if row and row["kind"] == "tool" else None
             if not raw:
                 raise OpError("no_path", "that row used no file")
@@ -1999,7 +2004,8 @@ class App:
             s.record_peek({"kind": "peek", "entry": p.entry_id, "files": [sent]})
             url = files.url(rec["file_id"], rec["name"])
             return [
-                {"url": url, "name": rec["name"], "size": rec["size"]} | root_path(path)
+                {"url": url, "name": rec["name"], "size": rec["size"]}
+                | await root_path(path, caller)
             ]
 
         @r.op("path.stat", StatParams)

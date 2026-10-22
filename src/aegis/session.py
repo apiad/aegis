@@ -898,9 +898,15 @@ class Session:
         return home / ".aegis" if home is not None else self.state_root
 
     def _home(self) -> Path | None:
-        """The home of the Linux user this session runs as, or None."""
-        user = self.spec.linux_user
-        return Path(pwd.getpwnam(user).pw_dir) if user else None
+        """The home of the Linux user this session runs as (Host.user_for),
+        or None for the server's own; PermissionError when that user is gone."""
+        user = self._host.user_for(self.spec)
+        if user is None:
+            return None
+        try:
+            return Path(pwd.getpwnam(user).pw_dir)
+        except KeyError:
+            raise PermissionError(f"Linux user {user} does not exist") from None
 
     async def send(
         self,

@@ -484,7 +484,7 @@ def register_fs_ops(app: App) -> tuple[FsIndex, Tickets]:
         async with writing:
             exists, st = await place.run(save)
         log(caller, "write" if exists else "create", p.path, len(data))
-        await place.run(index_of(place).touched, p.path)
+        await index_of(place).note(p.path)
         return {"hash": hashlib.sha256(data).hexdigest(), "mtime": _mtime(st)}
 
     @r.op("fs.list", FsList, local=True)
@@ -513,7 +513,7 @@ def register_fs_ops(app: App) -> tuple[FsIndex, Tickets]:
         log(caller, "move", p.path, size, p.to)
         idx = index_of(place)
         idx.removed(p.path)
-        await place.run(idx.added, p.to)
+        await idx.note(p.to)
         return {"path": p.to}
 
     @r.op("fs.count", FsPath, local=True)
@@ -532,8 +532,8 @@ def register_fs_ops(app: App) -> tuple[FsIndex, Tickets]:
         who = r.who(caller).name
         if place.user is not None and place.user not in purged:
             # A person's own trash is purged the first time it is used.
-            purged.add(place.user)
             await place.run(fs_trash.purge, place.trash)
+            purged.add(place.user)
 
         def delete():
             return fs_trash.delete(place.trash, _entry(place, p.path), p.path, who)
@@ -551,7 +551,7 @@ def register_fs_ops(app: App) -> tuple[FsIndex, Tickets]:
         async with writing:
             rel, size = await place.run(_restore, place, p.trash_id)
         log(caller, "restore", rel, size, p.trash_id)
-        await place.run(index_of(place).added, rel)
+        await index_of(place).note(rel)
         return {"path": rel}
 
     return index, tickets

@@ -230,3 +230,92 @@ async def test_a_members_artifact_draft_lives_in_its_home(world, ben_home):
     gone = await world.app.registry.call("artifact.create", {"title": "No"}, agent)
     await world.app.registry.call("artifact.close", {"id": gone["id"]}, agent)
     assert not (ben_home / ".aegis" / "artifacts" / gone["id"]).exists()
+
+
+def test_a_failed_copy_closes_the_opened_file_once(tmp_path, monkeypatch):
+    import os
+
+    from aegis import files
+
+    src = tmp_path / "a.txt"
+    src.write_text("a")
+    state = tmp_path / "state"
+    (state / "files").mkdir(parents=True)
+    (state / "files").chmod(0o500)  # the copy cannot be written
+    twice: list[int] = []
+    real = os.close
+
+    def close(fd):
+        try:
+            os.fstat(fd)
+        except OSError:
+            twice.append(fd)  # already closed: this number may be another file now
+        real(fd)
+
+    monkeypatch.setattr(os, "close", close)
+    opened = files.open_all([src])
+    fd = opened[0].fd
+    try:
+        with pytest.raises(files.FileError):
+            files.store_all(state, [src], opened)
+    finally:
+        (state / "files").chmod(0o700)
+    assert twice == []
+    with pytest.raises(OSError):
+        os.fstat(fd)
+
+
+async def test_a_stream_that_never_starts_still_closes_its_file(tmp_path):
+    import os
+
+    from aegis.web import _FdStream
+
+    (tmp_path / "f").write_bytes(b"x")
+    fd = os.open(tmp_path / "f", os.O_RDONLY)
+
+    async def body():
+        yield b"x"
+
+    async def receive():
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        raise OSError("the client is gone")
+
+    with pytest.raises(OSError):
+        await _FdStream(fd, body())({"type": "http"}, receive, send)
+    with pytest.raises(OSError):
+        os.fstat(fd)
+
+
+async def test_an_inverted_range_is_ignored(world, ben_home):
+    (ben_home / "v.bin").write_bytes(b"0123456789")
+    url = (await as_ben(world, "fs.ticket", {"path": "v.bin"}))["url"]
+    r = get(world, url, range="bytes=5-3")
+    assert r.status_code == 200 and r.content == b"0123456789"
+
+
+async def test_a_member_without_a_user_is_forbidden_not_internal(world):
+    from aegis.ops import OpError
+
+    gone = Caller("user", principal=Principal("gone", "member"))
+    with pytest.raises(OpError) as e:
+        await world.app.registry.call("fs.list", {"dir": ""}, gone)
+    assert e.value.code == "forbidden"
+
+
+async def test_outside_the_mode_a_recorded_user_changes_no_path(tmp_path, fake_claude):
+    import dataclasses
+
+    from .test_agents import CONFIG, World
+
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    w = await World(tmp_path, fake_claude).start()
+    try:
+        s = await w.spawn()
+        s.spec = dataclasses.replace(s.spec, linux_user="aegis-no-such-user")
+        assert s.inbox == w.app.roots.state_root / "inbox" / s.log_id
+        assert s.drafts == w.app.roots.state_root
+        assert w.app._deliver(s) is None
+    finally:
+        await w.stop()

@@ -1027,7 +1027,8 @@ def register_agent_ops(app: App) -> None:
         paths = [s.spec.cwd / x if not x.is_absolute() else x for x in paths]
         # A file's key is its resolved path (layout.file_key): one path twice
         # in one send would be two versions on one card, so it is refused.
-        sources = [x.resolve() for x in paths]
+        run = app.place_of_session(s.log_id).run
+        sources = await run(lambda: [x.resolve() for x in paths])
         twice = sorted({str(x) for x in sources if sources.count(x) > 1})
         if twice:
             raise OpError(
@@ -1051,7 +1052,6 @@ def register_agent_ops(app: App) -> None:
             except canvas.LayoutError as e:
                 raise OpError("bad_params", str(e)) from e
         try:
-            run = app.place_of_session(s.log_id).run
             recs = await files.store_as(app.roots.state_root, paths, run)
         except files.FileError as e:
             # Agents write files after a cd in the shell, which does not carry

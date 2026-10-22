@@ -265,29 +265,51 @@ class FsIndex:
         files = self._files or {}
         return sorted(files.items(), key=lambda e: e[1], reverse=True)
 
-    def touched(self, rel: str) -> None:
-        """A file was written or created at ``rel``."""
-        if self._files is None or _ignored(rel):
-            return
-        try:
-            self._files[rel] = (self.root / rel).stat().st_mtime_ns // 1_000_000
-        except OSError:
-            self._files.pop(rel, None)
-
-    def added(self, rel: str) -> None:
-        """A file or a folder appeared at ``rel`` (a move, a restore): it
-        and every file under it, by the fixed list only until the next walk."""
-        if self._files is None:
-            return
+    def _scan(self, rel: str) -> dict[str, int | None]:
+        """The files at ``rel`` with their mtimes in ms, None for one gone:
+        the file itself, or every file under a folder by the fixed list.
+        Reads the disk, so it runs on the index's runner (``note``)."""
         full = self.root / rel
         if full.is_symlink() or not full.is_dir():
-            self.touched(rel)
-            return
+            try:
+                return {rel: full.stat().st_mtime_ns // 1_000_000}
+            except OSError:
+                return {rel: None}
+        out: dict[str, int | None] = {}
         for top, dirs, names in os.walk(full):
             dirs[:] = [d for d in dirs if not ignore_dir(d)]
             sub = os.path.relpath(top, self.root).replace(os.sep, "/")
             for n in names:
-                self.touched(f"{sub}/{n}")
+                out.update(self._scan(f"{sub}/{n}"))
+        return out
+
+    def _apply(self, found: dict[str, int | None]) -> None:
+        if self._files is None:
+            return
+        for rel, mtime in found.items():
+            if _ignored(rel):
+                continue
+            if mtime is None:
+                self._files.pop(rel, None)
+            else:
+                self._files[rel] = mtime
+
+    async def note(self, rel: str) -> None:
+        """A file was written at ``rel``, or a file or a folder appeared there
+        (a move, a restore): read on the runner, the list changed here, on
+        the event loop that also reads it."""
+        if self._files is not None:
+            self._apply(await self.run(self._scan, rel))
+
+    def touched(self, rel: str) -> None:
+        """A file was written or created at ``rel``."""
+        if self._files is not None and not _ignored(rel):
+            self._apply(self._scan(rel))
+
+    def added(self, rel: str) -> None:
+        """A file or a folder appeared at ``rel``: it and every file under it,
+        by the fixed list only until the next walk."""
+        self._apply(self._scan(rel))
 
     def removed(self, rel: str) -> None:
         """The file at ``rel`` is gone, or every file under it when a folder."""
