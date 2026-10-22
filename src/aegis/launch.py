@@ -3,11 +3,10 @@
 No other module starts a process, by ``subprocess``, asyncio's spawns, the
 ``os`` and ``pty`` process calls, ``webbrowser`` or ``multiprocessing``, whether
 it calls them or hands them to an executor; ``tests/test_launch_only.py`` fails
-if one does. The
-multi-user mode switches each child to its owner's Linux user and drops its
-capabilities, and that has to happen for every process or it protects nothing
-(docs/superpowers/specs/2026-10-21-linux-users-design.html, section 06), so
-there is one place to do it.
+if one does. The multi-user mode switches each child to its owner's Linux user
+and drops its capabilities, and that has to happen for every process or it
+protects nothing (docs/superpowers/specs/2026-10-21-linux-users-design.html,
+section 06), so there is one place to do it.
 
 A caller picks one of five shapes and keeps its own reading, timeout and kill
 logic:
