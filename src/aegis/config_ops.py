@@ -15,7 +15,9 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel
 
 from .config import ConfigDoc, stamp_from, write
+from . import service
 from .doctor import Found, detect, doctor, propose
+from .doctor_watch import DoctorWatch
 from .ranking import ranking
 
 if TYPE_CHECKING:
@@ -41,6 +43,12 @@ def register_config_ops(app: App) -> None:
             "codex": app.codex_bin,
             "cursor": app.cursor_bin,
         }
+
+    async def checked():
+        # What `aegis doctor` prints: the config, the harnesses, the service.
+        return await doctor(app.roots, bins()) + service.check()
+
+    app.doctor_watch = DoctorWatch(checked)
 
     async def detected() -> list[Found]:
         hit = cache.get("found")

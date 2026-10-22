@@ -218,7 +218,11 @@ def check(dirs=None, read=cat) -> list[Finding]:
         where = f"service.{f.name}"
         gaps = diff(read(f, user), want, total)
         out += [
-            Finding("warn", f"{where}.{k}", f"{got}, recommended {rec}")
+            Finding(
+                "warn",
+                f"{where}.{k}",
+                f"{k} is {got}; aegis service install sets {rec}",
+            )
             for k, got, rec in gaps
         ]
         if not gaps:

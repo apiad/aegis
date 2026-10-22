@@ -41,12 +41,21 @@ def facts(harness: str, harness_version: str | None) -> str:
         f"{platform.system()} {platform.release()}",
         f"Python {platform.python_version()}",
     ]
-    return " · ".join(parts)
+    return " · ".join(p for p in parts if p)
 
 
-def turn(typed: str, facts: str, issues: str, now: str) -> tuple[str, str]:
+def turn(
+    typed: str, facts: str, issues: str, now: str, fresh: bool = False
+) -> tuple[str, str]:
+    """``fresh``: the session starts with this turn (the new tab's /feedback),
+    so there is no conversation to work the report out from."""
     if typed:
         said = f"The person typed: /feedback {typed}"
+    elif fresh:
+        said = (
+            "The person started this session from /feedback on the new tab. "
+            "Ask them what they want to report."
+        )
     else:
         said = (
             "The person typed /feedback with no text. Work out from this "

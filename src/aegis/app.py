@@ -82,6 +82,7 @@ from .claude.process import PERMISSION_MODE, ControlError
 from .config import Config, Snapshot, accept_version
 from .harness import harness_for
 from .config_ops import register_config_ops
+from .doctor_watch import DoctorWatch
 from .confirm import Confirmations
 from .help_ops import register_help_ops
 from .host import HostSampler
@@ -362,6 +363,9 @@ def _dead(e: Exception) -> OpError:
 
 
 class App:
+    # Set by register_config_ops, which holds the harness binaries it runs.
+    doctor_watch: DoctorWatch
+
     def __init__(
         self,
         roots: Roots,
@@ -823,6 +827,8 @@ class App:
         # In the background: a harness that hangs on --version must not hold
         # the server's start (harness_versions.py, spec §08).
         self._versions_task = asyncio.create_task(self._startup_versions())
+        # In the background too, for the new tab's doctor row (doctor_watch.py).
+        self.doctor_watch.start()
 
     async def _startup_versions(self) -> None:
         """Log one warning per harness the config's agents name whose version
@@ -863,6 +869,7 @@ class App:
         self.queues.shutdown()
         if self._versions_task is not None:
             self._versions_task.cancel()
+        await self.doctor_watch.stop()
         if self._config_task is not None:
             self._config_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -946,6 +953,8 @@ class App:
         """Every change to .aegis.yaml, however it was made: the page and the
         composer follow it, and the queues start what it now allows."""
         self.channels.publish("config", [{"set": snap.wire()}])
+        if hasattr(self, "doctor_watch"):
+            self.doctor_watch.kick()
         if snap.multi_user != self.multi_user and snap.multi_user not in self._mu_told:
             self._mu_told.append(snap.multi_user)
             log.warning(
@@ -1147,6 +1156,14 @@ class App:
             # this session's directory (help_ops.help_guide); the client opens
             # its tab.
             params = {"kind": "whats_new", "cwd": str(s.spec.cwd)}
+            if untested:
+                params["untested"] = untested
+            r = await self.registry.call("help.guide", params, caller)
+            return {**r, "server": self.server_name}
+        if name == "doctor":
+            # The doctor's report in a new tab, on default_agent in the config
+            # root (help_ops.help_guide); the client opens its tab.
+            params = {"kind": "doctor"}
             if untested:
                 params["untested"] = untested
             r = await self.registry.call("help.guide", params, caller)
@@ -1817,8 +1834,12 @@ class App:
                 # The menu outlives a broken workflows folder; it lists none.
                 log.exception("aegis: the saved workflows could not be listed")
                 saved = []
+            # /doctor only for an admin while the doctor finds a problem.
+            doctor = bool(self.doctor_watch.problems()) and self.who(caller).is_admin
             return {
-                "commands": commands.aegis_wire()
+                "commands": [
+                    c for c in commands.aegis_wire() if doctor or c["name"] != "doctor"
+                ]
                 + (cat.wire_commands(shadowed=commands.AEGIS) if cat else []),
                 "models": cat.wire_models() if cat else [],
                 "permissions": list(PERMISSION_MODE),

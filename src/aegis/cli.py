@@ -364,9 +364,6 @@ def serve(
     uvicorn.run(web, host=host, port=port, log_level="warning", ws=ws_protocol())
 
 
-MARK = {"ok": "ok   ", "warn": "warn ", "error": "ERROR"}
-
-
 def _bins(claude: str, opencode: str, codex: str, cursor: str) -> dict[str, str]:
     return {
         "claude-code": claude,
@@ -378,12 +375,10 @@ def _bins(claude: str, opencode: str, codex: str, cursor: str) -> dict[str, str]
 
 def _report(findings) -> int:
     """Print the findings; the number of errors."""
-    for f in findings:
-        typer.echo(f"{MARK[f.level]} {f.where:<26} {f.message}")
-    errors = sum(f.level == "error" for f in findings)
-    warns = sum(f.level == "warn" for f in findings)
-    typer.echo(f"{errors} errors, {warns} warnings")
-    return errors
+    from .doctor import render
+
+    typer.echo(render(findings))
+    return sum(f.level == "error" for f in findings)
 
 
 @app.command()

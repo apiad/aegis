@@ -17,6 +17,11 @@ that fails marks nothing, and neither does a tour of another page or a
 question asked in the Help tab, so the new tab keeps offering the tutorial. A
 title that cannot be set leaves the guide untitled rather than failing a call
 whose session already exists.
+
+help.state also carries the new tab's hints, every page's, and for an admin
+the doctor's last warnings and errors (doctor_watch.py). help.guide's feedback
+kind starts the /feedback turn in a new session, and its doctor kind, an
+admin's, runs the doctor fresh and starts a session with its report.
 """
 
 from __future__ import annotations
@@ -27,10 +32,13 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field
 
+from . import feedback
 from .changelog_read import changelog_text, sections_between
+from .doctor import render
 from .helppages import Index, load
 from .helpstate import HelpState, installed, newer
 from .names import TITLE_MAX
+from .monitors import iso_now
 from .ops import OpError
 
 if TYPE_CHECKING:
@@ -83,6 +91,28 @@ def tutorial_prompt(page_id: str) -> str:
         "and say which one it is. When the page ends, offer the tutorials it lists "
         "under Next, or suggest the next tutorial."
     )
+
+
+def doctor_prompt(report: str) -> str:
+    """The first message of a /doctor session: the report and how to work
+    through it with the person."""
+    return (
+        "aegis doctor found these problems on this server:\n\n"
+        f"{report}\n\n"
+        "Read the help page config (and service, for a service finding). Go "
+        "through the problems one at a time with the person: say what is wrong "
+        "and what you propose, and ask before you edit .aegis.yaml, install or "
+        "upgrade anything, or restart a service. When you are done, run "
+        "`aegis doctor` and show its last line."
+    )
+
+
+def doctor_title(problems) -> str:
+    errors = sum(f.level == "error" for f in problems)
+    warns = len(problems) - errors
+    parts = [f"{errors} error{'s' * (errors != 1)}"] if errors else []
+    parts += [f"{warns} warning{'s' * (warns != 1)}"] if warns else []
+    return "Doctor: " + ", ".join(parts)
 
 
 def tour_prompt(page_id: str, title: str) -> str:
@@ -169,7 +199,7 @@ class DismissParams(BaseModel):
 
 class GuideParams(BaseModel):
     model_config = {"extra": "forbid"}
-    kind: Literal["tutorial", "whats_new", "ask"]
+    kind: Literal["tutorial", "whats_new", "ask", "feedback", "doctor"]
     page: str | None = None
     # An ask's question, as the person typed it in the Help tab.
     question: str | None = Field(None, min_length=1, max_length=4000)
@@ -244,6 +274,20 @@ def register_help_ops(app: App) -> None:
         return {
             "tutorial": rec["tutorial"],
             "whats_new": v if notes and newer(v, rec["toured"]) else None,
+            "hints": index.hints(),
+            "doctor": doctor_state(caller),
+        }
+
+    def doctor_state(caller) -> dict | None:
+        """The doctor row: an admin's, and only while there is a problem."""
+        problems = app.doctor_watch.problems()
+        if not problems or not app.who(caller).is_admin:
+            return None
+        errors = sum(f.level == "error" for f in problems)
+        return {
+            "errors": errors,
+            "warns": len(problems) - errors,
+            "findings": [f.wire() for f in problems],
         }
 
     @r.op("help.dismiss", DismissParams)
@@ -280,7 +324,27 @@ def register_help_ops(app: App) -> None:
             except OpError as e:
                 log.warning("aegis: guide %s left untitled: %s", started["log_id"], e)
             return {"log_id": started["log_id"], "handle": started["handle"]}
-        if p.kind == "ask":
+        if p.kind in ("feedback", "doctor"):
+            fields = p.model_dump(
+                exclude={"kind", "page", "question"}, exclude_none=True
+            )
+            if p.kind == "feedback":
+                record(caller)
+                head, body = feedback.turn(
+                    "", feedback.facts("", None), feedback.issues_url(), iso_now(), True
+                )
+                prompt, title = f"{head}\n{body}", "Feedback"
+            else:
+                if not app.who(caller).is_admin:
+                    raise OpError("not_for_members", "/doctor is for an admin")
+                await app.doctor_watch.refresh()
+                problems = app.doctor_watch.problems()
+                if not problems:
+                    raise OpError("nothing_to_fix", "aegis doctor finds nothing wrong")
+                prompt, title = doctor_prompt(render(problems)), doctor_title(problems)
+                fields.setdefault("cwd", str(app.roots.config_root))
+            started = await r.call("session.spawn", fields | {"prompt": prompt}, caller)
+        elif p.kind == "ask":
             if not p.question:
                 raise OpError("bad_params", "an ask needs a question")
             if p.page:
