@@ -851,6 +851,12 @@ body{background:#000}
 .a2 .fcard .stage video{display:block;max-width:100%;max-height:360px;margin:0 auto}
 .a2 .fcard .stage audio{display:block;width:100%;padding:8px}
 .a2 .acard .stage iframe{height:240px;background:var(--bg)}
+/* Phone width: the frame at a phone's viewport, centred on the fill; a screen
+   already that narrow has nothing to preview, so the button goes. */
+.a2 .stage.phone{display:flex;justify-content:center;background:var(--fill)}
+.a2 .stage.phone>iframe[data-artifact]{width:390px;max-width:100%;flex:none;border-inline:1px solid var(--rule)}
+.a2 .btn.phone[aria-pressed=true]{color:var(--accent);background:var(--accent-soft)}
+@media (max-width:480px){.a2 .btn.phone{display:none}}
 .a2 .acard .done{padding:10px 12px;color:var(--muted);font-family:var(--font-chrome);font-size:12.5px;border-top:1px solid var(--rule)}
 .a2 :is(.acard,.docked,.viewer) .refused{padding:8px 12px;color:var(--err);background:var(--err-bg);font-family:var(--font-chrome);font-size:12.5px;border-top:1px solid var(--rule);overflow-wrap:anywhere}
 .a2 .acard[data-status=submitted] .fbar>.ic{color:var(--ok)}
