@@ -61,8 +61,8 @@ function tab(m, focusId, { onFocus, onMove, onClose }) {
   const name = document.createElement("span");
   name.className = "tname";
   // A terminal is named by its name; its command is in the title.
-  const term = m.kind === "term";
-  name.textContent = term ? `▸_ ${m.name}` : m.title || m.handle;
+  const term = m.kind === "term" || m.kind === "browser";
+  name.textContent = term ? `${m.kind === "term" ? "▸_" : "◫"} ${m.name}` : m.title || m.handle;
   const handle = document.createElement("span");
   handle.className = "srv";
   handle.textContent = m.title && !term ? m.handle : "";

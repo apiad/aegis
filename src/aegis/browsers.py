@@ -215,10 +215,14 @@ class Browsers:
                 raise OpError("unknown_browser", f"no browser {bid} of yours")
             return b
         if not mine:
-            raise OpError("no_browser", "you have no browser; open one with browser_open")
+            raise OpError(
+                "no_browser", "you have no browser; open one with browser_open"
+            )
         if len(mine) > 1:
             ids = ", ".join(b.id for b in mine)
-            raise OpError("which_browser", f"you have several browsers, name one: {ids}")
+            raise OpError(
+                "which_browser", f"you have several browsers, name one: {ids}"
+            )
         return mine[0]
 
     # -- life -----------------------------------------------------------------
@@ -241,7 +245,9 @@ class Browsers:
             )
         profile = profile or "default"
         if not PROFILE.match(profile):
-            raise OpError("bad_profile", "a profile is lowercase letters, digits, - and _")
+            raise OpError(
+                "bad_profile", "a profile is lowercase letters, digits, - and _"
+            )
         self._profile_free(profile)
         bid = mint_browser_id()
         meta = {
@@ -310,7 +316,9 @@ class Browsers:
             except Exception as e:
                 raise OpError("spawn_failed", f"browser {b.meta['name']}: {e}") from e
             b.ctx = ctx
-            await ctx.expose_binding("__aegisEvent", lambda _src, ev: self._page_event(b, ev))
+            await ctx.expose_binding(
+                "__aegisEvent", lambda _src, ev: self._page_event(b, ev)
+            )
             await ctx.add_init_script(INIT_SCRIPT)
             page = ctx.pages[0] if ctx.pages else await ctx.new_page()
             for extra in ctx.pages[1:]:
@@ -327,9 +335,18 @@ class Browsers:
             self._card(b)
             b.watcher = asyncio.create_task(self._watch(b))
         try:
-            await page.goto(b.meta["url"], wait_until="domcontentloaded", timeout=20_000)
+            await page.goto(
+                b.meta["url"], wait_until="domcontentloaded", timeout=20_000
+            )
         except Exception as e:
-            self._event(b, {"kind": "navigate", "url": b.meta["url"], "error": str(e).splitlines()[0]})
+            self._event(
+                b,
+                {
+                    "kind": "navigate",
+                    "url": b.meta["url"],
+                    "error": str(e).splitlines()[0],
+                },
+            )
 
     def _attach(self, b: Browser, page: Any) -> None:
         b.page = page
@@ -436,6 +453,13 @@ class Browsers:
                 if not watched and time.time() - b.last_used > IDLE_S:
                     await self._stop(b, "idle")
                     return
+                # A script changes the title, and pushState the address,
+                # without a load: the card follows both.
+                title, url = await b.page.title(), b.page.url
+                if (title, url) != (b.meta.get("title"), b.meta["url"]):
+                    b.meta.update(title=title, url=url)
+                    self._save(b)
+                    self._card(b)
                 await asyncio.sleep(WATCH_S)
         except asyncio.CancelledError:
             raise
@@ -458,7 +482,11 @@ class Browsers:
 
     def _frame(self, b: Browser, f: dict) -> None:
         md = f.get("metadata", {})
-        b.frame = {"frame": f["data"], "w": md.get("deviceWidth"), "h": md.get("deviceHeight")}
+        b.frame = {
+            "frame": f["data"],
+            "w": md.get("deviceWidth"),
+            "h": md.get("deviceHeight"),
+        }
         self._publish(f"browser:{b.id}", [b.frame])
         now = time.monotonic()
         wait = max(0.0, FRAME_EVERY_S - (now - b.last_frame))
@@ -469,7 +497,9 @@ class Browsers:
             await asyncio.sleep(wait)
             if cdp is not None and b.cdp is cdp:
                 try:
-                    await cdp.send("Page.screencastFrameAck", {"sessionId": f["sessionId"]})
+                    await cdp.send(
+                        "Page.screencastFrameAck", {"sessionId": f["sessionId"]}
+                    )
                 except Exception:
                     pass
 
@@ -480,7 +510,9 @@ class Browsers:
     async def input(self, bid: str, events: list[dict]) -> None:
         b = self._live(bid)
         if b.meta["holder"] != "person":
-            raise OpError("agent_has_control", "the agent holds this page; take over first")
+            raise OpError(
+                "agent_has_control", "the agent holds this page; take over first"
+            )
         b.last_used = time.time()
         for ev in events:
             await self._dispatch(b, ev)
@@ -507,15 +539,21 @@ class Browsers:
         else:
             raise OpError("bad_input", f"unknown input event {t!r}")
 
-    async def goto(self, bid: str, url: str | None, action: str | None, who: str) -> dict:
+    async def goto(
+        self, bid: str, url: str | None, action: str | None, who: str
+    ) -> dict:
         b = self._live(bid)
         if who == "person" and b.meta["holder"] != "person":
-            raise OpError("agent_has_control", "the agent holds this page; take over first")
+            raise OpError(
+                "agent_has_control", "the agent holds this page; take over first"
+            )
         b.last_used = time.time()
         p = b.page
         try:
             if url:
-                r = await p.goto(_url(url), wait_until="domcontentloaded", timeout=30_000)
+                r = await p.goto(
+                    _url(url), wait_until="domcontentloaded", timeout=30_000
+                )
             elif action == "back":
                 r = await p.go_back(wait_until="domcontentloaded")
             elif action == "forward":
@@ -557,7 +595,9 @@ class Browsers:
     async def give_back(self, bid: str) -> None:
         b = self.get(bid)
         if b.meta.get("session") is None:
-            raise OpError("no_session", "no agent drives this browser; give it to a session")
+            raise OpError(
+                "no_session", "no agent drives this browser; give it to a session"
+            )
         if b.meta["holder"] == "agent":
             return
         since = b.meta.get("handed_rev") or 0
@@ -569,7 +609,9 @@ class Browsers:
 
     async def give(self, bid: str, log_id: str, handle: str) -> None:
         b = self.get(bid)
-        if any(o.meta.get("session") == log_id for o in self.open.values() if o is not b):
+        if any(
+            o.meta.get("session") == log_id for o in self.open.values() if o is not b
+        ):
             raise OpError("has_browser", f"{handle} already drives a browser")
         b.meta.update(session=log_id, holder="agent", ask=None, handed_rev=None)
         self._event(b, {"kind": "control", "what": f"given to {handle}"}, who="person")
@@ -579,7 +621,9 @@ class Browsers:
 
     def handover(self, b: Browser, reason: str) -> None:
         b.meta.update(holder="person", ask=reason, handed_rev=b.rev)
-        self._event(b, {"kind": "control", "what": "handover", "reason": reason}, who="agent")
+        self._event(
+            b, {"kind": "control", "what": "handover", "reason": reason}, who="agent"
+        )
         self._save(b)
         self._card(b)
 
@@ -591,25 +635,38 @@ class Browsers:
         if what == "given":
             lines[0] = f"The person gave you browser {b.meta['name']} ({b.id})."
         if evs:
-            lines.append("What the person did:" if what == "back" else "What happened so far:")
+            lines.append(
+                "What the person did:" if what == "back" else "What happened so far:"
+            )
             lines += [event_line(e) for e in evs[-60:]]
         else:
             lines.append("The person did nothing in the page.")
-        lines.append("Read it with browser_snapshot; browser_events gives the full log.")
+        lines.append(
+            "Read it with browser_snapshot; browser_events gives the full log."
+        )
         header = f"> from browser:{b.id} · {what} · {_iso()}"
         await self._deliver(log_id, header, "\n".join(lines))
 
     # -- events ----------------------------------------------------------------
 
     def _page_event(self, b: Browser, ev: Any) -> None:
-        if not isinstance(ev, dict) or ev.get("kind") not in ("click", "input", "submit"):
+        if not isinstance(ev, dict) or ev.get("kind") not in (
+            "click",
+            "input",
+            "submit",
+        ):
             return
         keep = ("kind", "role", "name", "text", "length")
         self._event(b, {k: ev[k] for k in keep if k in ev})
 
     def _event(self, b: Browser, ev: dict, who: str | None = None) -> None:
         b.rev += 1
-        e = {"rev": b.rev, "ts": round(time.time(), 3), "who": who or b.meta["holder"], **ev}
+        e = {
+            "rev": b.rev,
+            "ts": round(time.time(), 3),
+            "who": who or b.meta["holder"],
+            **ev,
+        }
         b.events.append(e)
         del b.events[:-EVENTS_KEEP]
         try:
@@ -705,7 +762,9 @@ class Browsers:
     def _live(self, bid: str) -> Browser:
         b = self.get(bid)
         if not b.running:
-            raise OpError("browser_stopped", f"browser {b.meta['name']} is stopped; reopen it")
+            raise OpError(
+                "browser_stopped", f"browser {b.meta['name']} is stopped; reopen it"
+            )
         return b
 
     def _spawn(self, coro: Awaitable) -> None:

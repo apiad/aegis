@@ -290,6 +290,27 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
       </div>
     </aside>
   </main>
+  <main class="view v-browser" id="v-browser" aria-label="browser">
+    <header class="br-bar">
+      <span class="br-name" id="br-name"></span>
+      <button class="br-nav" type="button" data-action="back" title="Back" aria-label="Back">‹</button>
+      <button class="br-nav" type="button" data-action="forward" title="Forward" aria-label="Forward">›</button>
+      <button class="br-nav" type="button" data-action="reload" title="Reload" aria-label="Reload">↻</button>
+      <input id="br-url" class="br-url" type="text" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Address">
+      <span id="br-holder" class="br-holder"></span>
+      <button class="btn" type="button" id="br-take" hidden>Take over</button>
+      <button class="btn acc" type="button" id="br-giveback" hidden>Give back</button>
+      <span class="br-give-wrap"><button class="btn" type="button" id="br-give" hidden>Give to…</button><span class="br-give-list" id="br-give-list" hidden></span></span>
+      <button class="btn" type="button" id="br-reopen" hidden>Reopen</button>
+      <button class="btn" type="button" id="br-close">Close</button>
+    </header>
+    <div class="br-ask" id="br-ask" hidden><span id="br-ask-text"></span><button class="btn acc" type="button" id="br-ask-back">Give back</button></div>
+    <div class="br-act" id="br-act"></div>
+    <div class="br-stage" id="br-stage">
+      <canvas id="br-screen" class="br-screen" tabindex="0" aria-label="The page"></canvas>
+      <div class="br-wait" id="br-wait">waiting for the first frame…</div>
+    </div>
+  </main>
   <div class="keymap" id="keymap" hidden></div>
   <div class="palette" id="palette" hidden></div>
   <div class="palette fpick" id="fpick" hidden></div>

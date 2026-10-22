@@ -49,7 +49,7 @@ class BrowserGoto(BrowserRef):
 
 class BrowserTarget(BrowserRef):
     target: str = Field(
-        description="A Playwright selector: role=button[name=\"Send\"], "
+        description='A Playwright selector: role=button[name="Send"], '
         "text=Sign in, label=Email, or CSS."
     )
 
@@ -144,7 +144,9 @@ def register_browser_ops(app: App) -> None:
         await asyncio.sleep(0.3)
         b.meta.update(url=b.page.url, title=await b.page.title())
         br._card(b)
-        seen = [event_line(e) for e in b.events if e["rev"] > rev and e["kind"] != "agent"]
+        seen = [
+            event_line(e) for e in b.events if e["rev"] > rev and e["kind"] != "agent"
+        ]
         return {"url": b.meta["url"], "title": b.meta["title"], "events": seen[-30:]}
 
     async def locate(b: Browser, target: str):
@@ -354,7 +356,7 @@ def register_browser_ops(app: App) -> None:
     async def take(p: PaneRef, caller):
         br.take(p.id)
 
-    @r.op("browser.give_back", PaneRef, owned="id")
+    @r.op("browser.handback", PaneRef, owned="id")
     async def give_back(p: PaneRef, caller):
         await br.give_back(p.id)
 

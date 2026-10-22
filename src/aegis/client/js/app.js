@@ -41,6 +41,7 @@ import { Attachments } from "./attach.js";
 import { dur, planTimes } from "./plantime.js";
 import { setToastOpener, toast } from "./toast.js";
 import { closeTerm, drawCard, openTerm } from "./termview.js";
+import { closeBrowser, drawBrowser, openBrowser } from "./browserview.js";
 import { applyUpdate, checkForUpdate, setAutoApply, startWorker } from "./appworker.js";
 import { closeInstallDialog, startInstall } from "./install.js";
 import { checkRotation, closePushPanel, openPushPanel, pushSupported, setupPush } from "./pushpanel.js";
@@ -346,7 +347,9 @@ markOrder();
 // Which kinds the Fleet and the archive show: all, agents or terminals. This
 // browser's choice, like the order.
 let fleetKind = localStorage.getItem("aegis.kind") || "all";
-const kindShown = (m) => fleetKind === "all" || (fleetKind === "terminals") === (m.kind === "term");
+// Terminals and browsers are tools, not agents: the "terminals" kind shows both.
+const isTool = (m) => m.kind === "term" || m.kind === "browser";
+const kindShown = (m) => fleetKind === "all" || (fleetKind === "terminals") === isTool(m);
 function markKind() {
   for (const b of document.querySelectorAll(".kinds button")) b.setAttribute("aria-checked", String(b.dataset.kind === fleetKind));
 }
@@ -384,6 +387,7 @@ function route(hash = location.hash) {
     return at ? { view: "session", id, at } : { view: "session", id };
   }
   if (h.startsWith("t=")) return { view: "term", id: h.slice(2) };
+  if (h.startsWith("b=")) return { view: "browser", id: h.slice(2) };
   if (h.startsWith("read=")) return { view: "read", id: h.slice(5) };
   // Window n of a session's canvas, a browser tab of its own (js/canvas.js).
   const w = /^w=(\d+):(.+)$/.exec(h);
@@ -969,6 +973,7 @@ function flushSessions() {
     markNeedsNet(); // the cards' Archive buttons
   } else if (r.view === "session" && ids.has(r.id)) renderMeta(sessions.get(r.id));
   else if (r.view === "term" && ids.has(r.id)) drawCard(termCard(r.id));
+  else if (r.view === "browser" && ids.has(r.id)) drawBrowser(termCard(r.id));
   else if (r.view === "window" && ids.has(r.id)) drawWindow(r);
   drawNav(); // the needs count
 }
@@ -989,7 +994,7 @@ function onSessions() {
 // the page was closed would ping on every cold start.
 let homeLive = false;
 function ping() {
-  if (homeLive) updatePing([...sessions.values()].filter((m) => !m.stale && m.kind !== "term"), { onOpen: openSession });
+  if (homeLive) updatePing([...sessions.values()].filter((m) => !m.stale && !isTool(m)), { onOpen: openSession });
 }
 
 // -- rendering -----------------------------------------------------------------
@@ -997,8 +1002,8 @@ function ping() {
 // another view: window 1's pages would run in it a second time.
 const openSession = (id) => route().view === "window" || go(hashOf(id));
 // A tab's hash: a terminal's view, or a session's.
-const hashOf = (key) => (sessions.get(key)?.kind === "term" ? `#t=${key}` : `#s=${key}`);
-const tabFocus = (r) => (r.view === "session" || r.view === "term" ? r.id : null);
+const hashOf = (key) => ({ term: `#t=${key}`, browser: `#b=${key}` })[sessions.get(key)?.kind] || `#s=${key}`;
+const tabFocus = (r) => (r.view === "session" || r.view === "term" || r.view === "browser" ? r.id : null);
 // The open terminal's card, with the log id and server it is reached by.
 function termCard(key) {
   const m = sessions.get(key);
@@ -1114,9 +1119,10 @@ function render() {
     cmenu.unbar();
   }
   if (r.view !== "term") closeTerm();
+  if (r.view !== "browser") closeBrowser();
   if (leaveIfQuieted(r)) return;
   // A session's link to a terminal, or the reverse, opens the right view.
-  if ((r.view === "session" || r.view === "term") && sessions.has(r.id) && `#${r.view[0]}=${r.id}` !== hashOf(r.id)) {
+  if ((r.view === "session" || r.view === "term" || r.view === "browser") && sessions.has(r.id) && `#${r.view[0]}=${r.id}` !== hashOf(r.id)) {
     history.replaceState(null, "", hashOf(r.id));
     return render();
   }
@@ -1232,6 +1238,15 @@ function render() {
       drawQuota();
       drawSideHost();
     }
+  } else if (r.view === "browser") {
+    watchHost(null);
+    follow(null);
+    if (!sessions.has(r.id)) return homeLive && go("#");
+    show("browser");
+    const card = termCard(r.id);
+    const mineOpen = () => local().filter((m) => !isTool(m) && m.state !== "asleep" && mine(m));
+    openBrowser(card.id, card, { conn, server: card.server ?? null, sessions: mineOpen });
+    setTitle(`${card.name} · aegis`);
   } else if (r.view === "term") {
     watchHost(null);
     follow(null);
@@ -1504,7 +1519,7 @@ function drawSideHost() {
   rows.push(...netRows(net, Date.now() / 1000, () => measureNet(server || null)));
   $("s-host-tiles").replaceChildren(...tiles);
   $("s-host-rows").replaceChildren(...rows);
-  const live = (s.server ? on(s.server) : local()).filter((m) => m.state !== "asleep" && m.kind !== "term");
+  const live = (s.server ? on(s.server) : local()).filter((m) => m.state !== "asleep" && !isTool(m));
   const sized = live.filter((m) => m.context_window && m.context_tokens);
   $("s-host-live").textContent = String(live.length);
   $("s-host-ctx").textContent = sized.length
@@ -2117,7 +2132,7 @@ setInterval(() => {
   if (root.dataset.view === "fleet" && local().some((m) => m.stale)) drawBand();
   if (root.dataset.view === "fleet") for (const c of document.querySelectorAll(".card")) {
     const m = sessions.get(c.dataset.id);
-    if (m && m.kind !== "term") {
+    if (m && !isTool(m)) {
       c.querySelector(".when").textContent = ago(m.last_activity);
       tickPlan(c, m);
     }
@@ -2602,6 +2617,29 @@ function drawProfiles(list, server) {
   );
 }
 
+// A browser under the terminals: a page on the server, held by the person.
+function drawBrowserEntry(server) {
+  const host = document.querySelector("#sp-terms .sp-term-list");
+  const b = document.createElement("button");
+  b.type = "button";
+  b.dataset.browser = "";
+  b.title = "a browser on the server you and an agent can share";
+  const name = document.createElement("b");
+  name.textContent = "browser";
+  const what = document.createElement("span");
+  what.textContent = "a page on the server";
+  b.append(name, " ", what);
+  b.addEventListener("click", () =>
+    conn.call("browser.spawn", { url: "about:blank" }, server).then(
+      (card) => go(`#b=${keyOf(server, card.id)}`),
+      (e) => toast(e.message, { kind: "error" }),
+    ),
+  );
+  $("sp-terms").hidden = false;
+  host.querySelector("[data-browser]")?.remove();
+  host.append(b);
+}
+
 // The roster load in flight, so a caller can wait for the one already
 // running (openSpawnWith right after a connect).
 let agentsLoading = Promise.resolve();
@@ -2613,6 +2651,9 @@ async function fetchAgents() {
   conn.call("term.profiles", {}, spServer).then(
     (list) => drawProfiles(list, spServer),
     () => drawProfiles([], spServer), // a server without terminals
+  ).then(() => conn.call("browser.available", {}, spServer)).then(
+    (a) => a.ok && drawBrowserEntry(spServer),
+    () => {}, // a server from before browsers
   );
   // The picked agent as the chips last knew it, to tell the person's overrides
   // from values an edit to .aegis.yaml has since changed.
@@ -3389,9 +3430,10 @@ const confirmClose = async (s) => s.attention === "done" || (await askClose(s));
 async function closeSession(s) {
   if (locked(s)) return toast(`${s.handle} is a step of a running workflow; it archives when the run ends`, { kind: "error" });
   if (offline() || !(await confirmClose(s))) return;
-  if (s.kind === "term") {
+  if (isTool(s)) {
     const { server, log_id } = forKey(s.key);
-    return conn.call("term.close", { id: log_id }, server).catch((e) => toast(e.message, { kind: "error" }));
+    const op = s.kind === "term" ? "term.close" : "browser.shut";
+    return conn.call(op, { id: log_id }, server).catch((e) => toast(e.message, { kind: "error" }));
   }
   try {
     await callFor(s.key, "session.close");
@@ -3859,7 +3901,7 @@ function sessionMenu(key) {
     { id: "open", label: "Open", icon: "arrow", run: () => openCard(key) },
     { id: "newtab", label: "Open in new tab", icon: "open", run: () => window.open(hashOf(key)) },
   ];
-  const title = `${s.kind === "term" ? s.name : s.handle} · ${LABEL[s.attention] || s.state}`;
+  const title = `${isTool(s) ? s.name : s.handle} · ${LABEL[s.attention] || s.state}`;
   if (!mine(s)) return { title, groups: [opening] };
   const why = locked(s)
     ? `${s.handle} is a step of a running workflow`
@@ -3867,7 +3909,7 @@ function sessionMenu(key) {
       ? "No connection to its server"
       : undefined;
   const close = [{ id: "archive", label: "Archive", icon: "archive", danger: true, disabled: why, run: () => closeSession(s) }];
-  if (s.kind === "term") return { title, groups: [opening, close] };
+  if (isTool(s)) return { title, groups: [opening, close] };
   if (s.quiet) opening.push({ id: "unquiet", label: "Unquiet", icon: "unquiet", disabled: why, run: () => quietKey(key, false) });
   else if (["working", "waiting"].includes(s.attention))
     opening.push({ id: "quiet", label: "Quiet", icon: "quiet", disabled: why, run: () => quietKey(key, true) });

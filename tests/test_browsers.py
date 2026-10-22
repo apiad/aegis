@@ -23,7 +23,7 @@ PAGE = """<!doctype html><html><head><title>Sign in</title></head><body style="m
 <button id="go" style="position:absolute;left:100px;top:100px;width:120px;height:40px"
   onclick="document.title='clicked'">Go</button>
 <form style="position:absolute;left:0;top:200px" onsubmit="event.preventDefault()">
-  <label>Email <input id="email" name="email"></label>
+  <label>Email <input id="email" name="email" oninput="document.title='typed '+this.value"></label>
   <label>Password <input id="pw" type="password" name="pw"></label>
   <input type="checkbox" id="robot" aria-label="I am not a robot">
 </form>
@@ -94,7 +94,11 @@ async def test_a_watched_browser_streams_frames_and_a_click_lands_where_it_point
         await click_at(w.br, b.id, 150, 120)
         await until(lambda: any(e["kind"] == "click" for e in b.events))
         click = next(e for e in b.events if e["kind"] == "click")
-        assert (click["who"], click["role"], click["name"]) == ("person", "button", "Go")
+        assert (click["who"], click["role"], click["name"]) == (
+            "person",
+            "button",
+            "Go",
+        )
         assert await b.page.title() == "clicked"
         assert any(e["kind"] == "console" and "boom" in e["text"] for e in b.events)
     finally:
@@ -198,7 +202,9 @@ async def test_multi_user_mode_has_no_browsers(tmp_path, site):
     assert e.value.code == "browser_unavailable"
 
 
-async def test_an_agent_drives_its_browser_through_the_tools(tmp_path, site, fake_claude):
+async def test_an_agent_drives_its_browser_through_the_tools(
+    tmp_path, site, fake_claude
+):
     app = App(make_roots(tmp_path, None), claude_bin=fake_claude, interrupt_timeout=0.5)
     me, other = Caller("agent", "s-me"), Caller("agent", "s-other")
     call = app.registry.call
