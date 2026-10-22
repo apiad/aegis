@@ -80,7 +80,7 @@ async def test_a_failed_refresh_is_logged_and_the_old_list_answers(
     index = FsIndex(tmp_path, tmp_path / "state")
     await index.entries()
 
-    def broken(root, state):
+    def broken(root, state, user=None):
         raise RuntimeError("disk on fire")
 
     monkeypatch.setattr(fs_index, "walk", broken)
