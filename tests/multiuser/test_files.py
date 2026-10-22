@@ -170,4 +170,11 @@ def test_the_runner_check_can_fail(host):
         "cat", f"/home/{BEN}/{name}",
         check=False,
     )  # fmt: skip
-    assert r.returncode != 0 and "x" not in r.stdout
+    path = f"/home/{BEN}/{name}"
+    why = sudo(
+        "sh", "-c",
+        f"stat -c '%a %U %G' /home/{BEN} {path}; id; id {BEN}; "
+        f"getfacl -p {path} 2>&1 | tail -4; grep -E '^(runner|{BEN}):' /etc/passwd",
+        check=False,
+    ).stdout  # fmt: skip
+    assert r.returncode != 0 and "x" not in r.stdout, (why, os.getuid(), os.getgroups())
