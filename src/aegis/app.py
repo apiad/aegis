@@ -1924,10 +1924,17 @@ class App:
                 if "absolute" in tried
                 else f" under {self.roots.config_root} or {s.spec.cwd}"
             )
-            found = {k: t for k, t in tried.items() if t.is_file()}
+            run = self.place_of_session(s.log_id).run
+
+            def look() -> tuple[dict[str, Path], bool]:
+                found = {k: t for k, t in tried.items() if t.is_file()}
+                two = len(found) == 2
+                return found, two and found["root"].resolve() != found["cwd"].resolve()
+
+            found, differ = await run(look)
             if not found:
                 raise OpError("no_file", f"no file {raw}{where}")
-            if len(found) == 2 and found["root"].resolve() != found["cwd"].resolve():
+            if differ:
                 if pick is None:
                     raise OpError(
                         "ambiguous_path",
@@ -1937,9 +1944,7 @@ class App:
             else:
                 path = next(iter(found.values()))
             try:
-                (rec,) = await asyncio.to_thread(
-                    files.store_all, self.roots.state_root, [path]
-                )
+                (rec,) = await files.store_as(self.roots.state_root, [path], run)
             except files.FileError as e:
                 raise OpError(e.code, e.message) from e
             return [_sent_file(rec) | root_path(path)]
@@ -1960,8 +1965,8 @@ class App:
             if not path.is_absolute():
                 path = s.spec.cwd / path
             try:
-                (rec,) = await asyncio.to_thread(
-                    files.store_all, self.roots.state_root, [path]
+                (rec,) = await files.store_as(
+                    self.roots.state_root, [path], self.place_of_session(s.log_id).run
                 )
             except files.FileError as e:
                 raise OpError(e.code, e.message) from e

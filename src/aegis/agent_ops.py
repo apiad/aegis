@@ -14,7 +14,6 @@ a person may be reading that tab; the same call with the token closes it.
 
 from __future__ import annotations
 
-import asyncio
 import re
 import time
 from pathlib import Path
@@ -1052,7 +1051,8 @@ def register_agent_ops(app: App) -> None:
             except canvas.LayoutError as e:
                 raise OpError("bad_params", str(e)) from e
         try:
-            recs = await asyncio.to_thread(files.store_all, app.roots.state_root, paths)
+            run = app.place_of_session(s.log_id).run
+            recs = await files.store_as(app.roots.state_root, paths, run)
         except files.FileError as e:
             # Agents write files after a cd in the shell, which does not carry
             # over, then send the bare name (seen in the first smoke test).

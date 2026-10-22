@@ -11,7 +11,6 @@ step's see for a person: it takes a run and a step, never a path.
 
 from __future__ import annotations
 
-import asyncio
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -383,11 +382,11 @@ def register_workflow_ops(app: App) -> None:
     @r.op("workflow.see", NodeRef)
     async def workflow_see(p: NodeRef, caller):
         owned(p.run, caller)
-        path, fragment, line = wf.see_file(p.run, p.node)
+        # The step's file is in its owner's working tree: read as that owner.
+        run = app.place_of_session(wf.runs[p.run].owner).run
+        path, fragment, line = await run(wf.see_file, p.run, p.node)
         try:
-            (rec,) = await asyncio.to_thread(
-                files.store_all, app.roots.state_root, [path]
-            )
+            (rec,) = await files.store_as(app.roots.state_root, [path], run)
         except files.FileError as e:
             raise OpError(e.code, e.message) from e
         return {"files": [_sent_file(rec)], "fragment": fragment, "line": line}
