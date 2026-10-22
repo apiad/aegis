@@ -12,6 +12,14 @@ export function groupKey(m, here) {
   return m.group.includes("@") ? m.group : `${m.group}@${at}`;
 }
 
+// A group's colour, --group-0 to --group-3 (base.css), from its key: the bar
+// and the Fleet paint one group alike.
+export function hueOf(key) {
+  let h = 0;
+  for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return h % 4;
+}
+
 const older = (a, b) => (a.created_at || 0) - (b.created_at || 0);
 
 // The blocks in bar order: [{key, head, members}], members starting with the

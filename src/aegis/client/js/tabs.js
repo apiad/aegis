@@ -6,7 +6,7 @@
 
 import { LABEL } from "./glyphs.js";
 import { closeOnMiddle, markNode } from "./fleet.js";
-import { blocksOf } from "./groups.js";
+import { blocksOf, hueOf } from "./groups.js";
 import { shownOwner } from "./me.js";
 
 export class TabOrder {
@@ -45,14 +45,12 @@ export class TabOrder {
   }
 }
 
-const HUES = 4; // --group-0 to --group-3 (base.css), in bar order
 const URGENT = ["needs_you", "error", "review", "working", "waiting"];
 
 // `actions.here` names this server; `actions.folds` is the set of folded group
 // keys, `actions.onFold(key)` toggles one and `actions.saveFolds()` keeps the
 // set. A folded group whose hidden member is the one in view unfolds.
 export function renderTabs(list, metas, focusId, actions) {
-  let hue = 0;
   list.replaceChildren(
     ...blocksOf(metas, actions.here || "").map((b) => {
       const box = document.createElement("div");
@@ -71,7 +69,7 @@ export function renderTabs(list, metas, focusId, actions) {
       }
       const folded = !!actions.folds?.has(b.key);
       box.classList.add("grp");
-      box.style.setProperty("--g", `var(--group-${hue++ % HUES})`);
+      box.style.setProperty("--g", `var(--group-${hueOf(b.key)})`);
       const mark = folded ? URGENT.find((a) => b.members.some((m) => m.mark === a)) : null;
       const head = tab(mark ? { ...b.head, mark } : b.head, focusId, actions, "head");
       const cnt = document.createElement("span");

@@ -641,6 +641,29 @@ body{background:#000}
 
 /* fleet */
 #a2 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;padding:18px 20px}
+/* The Fleet's groups (#586, fleet.js): a stack of cards in one cell, the edges
+   of two more behind the head's card in the group's colour; a click unfolds it
+   across the grid in a frame of that colour. */
+#a2 .stack{position:relative;margin:0 12px 12px 0;cursor:pointer}
+#a2 .stack>.ghost{position:absolute;inset:0;border:1px solid var(--g);border-radius:var(--r);background:var(--surface);transition:transform .2s ease}
+#a2 .stack>.g1{transform:translate(6px,6px);opacity:.75}
+#a2 .stack>.g2{transform:translate(12px,12px);opacity:.45}
+#a2 .stack:hover>.g1{transform:translate(8px,8px)}
+#a2 .stack:hover>.g2{transform:translate(16px,16px)}
+#a2 .stack.need>.ghost{border-color:var(--accent)}
+#a2 .stack>.card{position:relative;border-color:var(--g);box-shadow:inset 3px 0 0 var(--g);height:100%;box-sizing:border-box}
+#a2 .stack>.badge{position:absolute;top:-9px;right:-9px;z-index:2;font:600 11px var(--font-mono);background:var(--g);color:#111;border-radius:10px;padding:2px 7px}
+#a2 .stack .mrow{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px;padding-top:7px;border-top:1px dashed var(--rule);color:var(--muted);font-size:11px}
+#a2 .stack .mrow .ic{width:12px;height:12px}
+#a2 .stack .mrow .alert{color:var(--accent)}
+#a2 .gopen{grid-column:1/-1;border:1px solid var(--g);border-radius:calc(var(--r) + 4px);padding:10px 12px 14px;background:color-mix(in srgb,var(--g) 6%,transparent)}
+#a2 .gopen .gh{display:flex;gap:10px;align-items:center;margin-bottom:10px;font-family:var(--font-mono);font-size:12.5px;color:var(--muted)}
+#a2 .gopen .gh b{color:var(--strong)}
+#a2 .gopen .gh button{margin-left:auto;font:12px var(--font-ui);padding:4px 10px;border:1px solid var(--rule);border-radius:var(--r);background:var(--surface);color:var(--strong);cursor:pointer}
+#a2 .gopen .gcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+#a2 .gopen .card{box-shadow:inset 3px 0 0 var(--g)}
+#a2 .gopen .card .by{margin-top:6px;color:var(--faint);font-size:10.5px;font-family:var(--font-mono)}
+@media (pointer:coarse){#a2 .gopen .gh button{min-height:44px}}
 #a2 .tr:focus,#a2 .cards:focus{outline:none}
 #a2 .card{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);padding:12px 14px;font-size:12.5px;display:flex;flex-direction:column;gap:7px;cursor:pointer;min-width:0}
 #a2 .card:hover{border-color:var(--faint)}

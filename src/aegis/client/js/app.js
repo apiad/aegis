@@ -344,6 +344,20 @@ foldLevel(Number(localStorage.getItem("aegis.foldLevel")) % 3 || 0);
 $("nav-fold").addEventListener("click", () => foldLevel((transcript.foldLevel + 1) % 3));
 // How the Fleet orders its cards: this browser's choice, like the tab order.
 let fleetOrder = localStorage.getItem("aegis.fleetOrder") || "attention";
+// Unfolded groups in the Fleet (#586), this browser's own and apart from the
+// bar's folds: the overview and the switcher fold for different reasons.
+const unfoldedGroups = new Set(JSON.parse(localStorage.getItem("aegis.fleet-open") || "[]"));
+const fleetStacks = {
+  get here() {
+    return conn.server || localStorage.getItem("aegis.server") || "";
+  },
+  open: unfoldedGroups,
+  onToggle: (key) => {
+    if (!unfoldedGroups.delete(key)) unfoldedGroups.add(key);
+    localStorage.setItem("aegis.fleet-open", JSON.stringify([...unfoldedGroups]));
+    render();
+  },
+};
 function markOrder() {
   for (const b of document.querySelectorAll("#fleet-order button")) b.classList.toggle("on", b.dataset.order === fleetOrder);
 }
@@ -973,7 +987,7 @@ function flushSessions() {
   if (r.view === "fleet") {
     const home = [...ids].filter((id) => !sessions.get(id)?.server);
     const regroup = home.some((id) => !patchCard($("cards"), sessions.get(id), openCard, fleetOrder, closeById));
-    if (regroup) renderCards($("cards"), local().filter(kindShown), openCard, fleetOrder, closeById);
+    if (regroup) renderCards($("cards"), local().filter(kindShown), openCard, fleetOrder, closeById, fleetStacks);
     if (home.length < ids.size) renderRemotes();
     fleetMark(false);
     drawBand();
@@ -1205,7 +1219,7 @@ function render() {
   if (r.view === "fleet") {
     follow(null);
     show("fleet");
-    renderCards($("cards"), local().filter(kindShown), openCard, fleetOrder, closeById);
+    renderCards($("cards"), local().filter(kindShown), openCard, fleetOrder, closeById, fleetStacks);
     renderRemotes();
     fleetMark(false);
     watchHost("all");
@@ -1418,7 +1432,7 @@ function renderRemotes() {
     }
     host.append(box); // keep the links' order
     const metas = on(l.name).filter(kindShown);
-    if (metas.length) renderCards(box.querySelector(".cards"), metas, openCard, fleetOrder, closeById);
+    if (metas.length) renderCards(box.querySelector(".cards"), metas, openCard, fleetOrder, closeById, fleetStacks);
     else box.querySelector(".cards").replaceChildren();
   }
   drawBand();
