@@ -260,7 +260,8 @@ itself when its turn ends done, review, needs_you or error, and stays there
 until it is quieted again; a queue worker comes back only on an error.
 
 - The Quiet button in the session panel, beside Sleep, quiets a session that
-  is working or waiting.
+  is working or waiting. Alt+Q does the same for the session in front, from
+  the message box too.
 - An agent calls `session_quiet` with a handle, its own included.
 - Clicking a quiet card in the Fleet brings the session back at once.
 

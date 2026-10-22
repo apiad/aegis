@@ -3122,6 +3122,10 @@ installKeys(
     },
     help: () => help(),
     side: () => toggleSide(),
+    quiet() {
+      const b = $("quiet-session");
+      if (route().view === "session" && !b.disabled) b.click();
+    },
     palette: () => palette.toggle(),
   },
   () => (booted ? route().view : "boot"),
