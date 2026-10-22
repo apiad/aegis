@@ -55,6 +55,9 @@ async def test_the_card_carries_the_cold_thresholds_for_claude(world):
 
 
 async def end(world, a, **args):
+    # A named session, so the reply is about the context alone, not the rename
+    # reminder (test_rename_nudge.py).
+    world.app.sessions.rename(a.log_id, a.handle, "A named session")
     args = {"attention": "done", "line": "Shipped it."} | args
     return await world.app.registry.call("turn.end", args, Caller("agent", a.log_id))
 

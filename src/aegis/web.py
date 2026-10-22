@@ -751,7 +751,11 @@ def build_web(
 
                     try:
                         subs[key] = app.channels.subscribe(
-                            ch, send, since, merge=msg.get("merge") is True
+                            ch,
+                            send,
+                            since,
+                            merge=msg.get("merge") is True,
+                            view=app.view_of(caller),
                         )
                     except OpError as e:
                         send(
