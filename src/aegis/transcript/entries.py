@@ -923,6 +923,40 @@ class Fold:
             return self._upsert(
                 {**e, "status": status, "summary": status, "detail": det}
             )
+        if kind in ("secret", "secret_request"):
+            # A secret for the person to reveal, or one asked of them
+            # (secret_ops): never plaintext, only a ciphertext or a path.
+            sid = str(rec.get("secret_id"))
+            sent = kind == "secret"
+            det = {"expires_at": rec.get("expires_at"), "by": None, "ended_ts": None}
+            if sent:
+                det.update(ct=rec.get("ct"), bytes=rec.get("bytes"))
+            else:
+                det.update(prompt=rec.get("prompt"), path=rec.get("path"))
+            status = "pending" if sent else "waiting"
+            return self._upsert(
+                _entry(
+                    sid,
+                    kind,
+                    status,
+                    ts,
+                    d.SECRET_GLYPH,
+                    title=str(rec.get("caption") or "") if sent else "secret requested",
+                    summary=status,
+                    detail=det,
+                )
+            )
+        if kind in ("secret_gone", "secret_provided"):
+            e = self._entries.get(str(rec.get("secret_id")))
+            if e is None:
+                return []
+            det = {**e["detail"], "by": rec.get("by"), "ended_ts": ts}
+            if kind == "secret_provided":
+                status = "provided"
+                det.update(bytes=rec.get("bytes"), dev=rec.get("dev"), ino=rec.get("ino"))
+            else:
+                status = str(rec.get("why"))
+            return self._upsert({**e, "status": status, "summary": status, "detail": det})
         if kind == "peek":
             # A file tool's file, copied because the person asked to see it:
             # it opens inside that tool's row, the latest copy replacing any.

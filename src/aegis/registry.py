@@ -22,7 +22,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from .archive import Position, count_workers, page as archive_page
-from . import attention, cache, restarts, users
+from . import attention, cache, restarts, secret_store, users
 from .cgroups import SessionCgroups
 from .config import CONTEXT_DEFAULTS
 from .harness import harness_for
@@ -80,6 +80,7 @@ class Registry(Host):
         self.server_name = "aegis"
         self.monitors = None
         self.side_notes = None
+        self.secrets = None  # secret_store.SecretStore, set by the app
         self.queues = None
         self.schedules = None
         self.workflows = None
@@ -737,6 +738,11 @@ class Registry(Host):
         if self.side_notes is not None:
             self.side_notes.drop(log_id)
         await s.stop()
+        if self.secrets is not None:
+            # Pads and open requests die with the session, and so do the
+            # files people provided to it, unless the agent moved them.
+            self.secrets.drop(log_id)
+            secret_store.remove_all_provided(s.entries())
         s.report({"kind": "close"})
         del self.sessions[log_id]
         s.archived = True
