@@ -891,6 +891,12 @@ class Session:
         """Where the files a person attaches land (attachments.py)."""
         return attachments.inbox(self.state_root, self.log_id, self._home())
 
+    @property
+    def drafts(self) -> Path:
+        """Where this session's artifact drafts go (artifacts.draft_dir)."""
+        home = self._home()
+        return home / ".aegis" if home is not None else self.state_root
+
     def _home(self) -> Path | None:
         """The home of the Linux user this session runs as, or None."""
         user = self.spec.linux_user
