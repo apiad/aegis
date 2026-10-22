@@ -266,6 +266,7 @@ body{background:#000}
 .a2 .row.sel .g{background:none}
 .a2 .row.user.pending .body{opacity:.55;border:1px dashed var(--rule)}
 .a2 .row.user.pending .body:after{content:"not read yet";display:block;font-size:11px;color:var(--faint);margin-top:4px;font-family:var(--font-chrome)}
+.a2 .row.user .body .dictated{font-size:11px;color:var(--faint);margin-top:4px;font-family:var(--font-chrome)}
 .a2 .row.prose .body{font-family:var(--font-prose);font-size:var(--prose-size);line-height:1.55;color:var(--ink);overflow-wrap:anywhere}
 .a2 .row.prose .g{color:var(--ink)}
 /* reading: the margin mark on agent messages */
