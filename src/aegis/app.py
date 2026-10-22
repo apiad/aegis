@@ -152,6 +152,7 @@ class _Strict(BaseModel):
 class SpawnedFrom(_Strict):
     handle: str
     server: str
+    group: str | None = None
 
 
 class SpawnParams(_Strict):
@@ -182,6 +183,9 @@ class SpawnParams(_Strict):
         "appears when its turn ends. Needs a prompt.",
     )
     spawned_from: SkipJsonSchema[SpawnedFrom | None] = Field(None, exclude=True)
+    # The session a person spawned this from (a typed /spawn, a card's New
+    # session): it joins that session's group, and nothing else follows (#586).
+    from_session: SkipJsonSchema[str | None] = Field(None, exclude=True)
     # A person's answer to harness_untested (harness_versions.py): start this
     # once, or allow the version for good. Agents never get asked.
     untested: SkipJsonSchema[Literal["once", "always"] | None] = Field(
@@ -1051,6 +1055,22 @@ class App:
         snap = self.config.current()
         return list(snap.agents), snap.default_agent
 
+    def _group_for(
+        self, parent, from_session: str | None, caller: Caller
+    ) -> str | None:
+        """The group a new session joins (#586): its agent parent's, else the
+        group of the session a person spawned it from, when that session is
+        theirs to change."""
+        if parent is not None:
+            return parent.group_key()
+        src = self.sessions.sessions.get(from_session or "")
+        if src is None or caller.is_agent:
+            return None
+        who = self.who(caller)
+        if not who.is_admin and src.spec.owner != who.name:
+            return None
+        return src.group_key()
+
     def _resolve_cwd(self, raw: str | None, base: Path | None = None) -> Path:
         base = base or self.roots.harness_cwd
         p = Path(raw).expanduser() if raw else base
@@ -1272,7 +1292,8 @@ class App:
     ) -> dict:
         """``/spawn``: a person starting a session, here or, with ``@server``, on
         a linked server through the link. Nobody's child: no ``spawned_by``, but
-        its prompt carries the tail of tab ``s``, where it was typed."""
+        its prompt carries the tail of tab ``s``, where it was typed, and here it
+        joins that tab's group (#586)."""
         far = None if line.server == self.server_name else line.server
         prompt = line.prompt and spawn_opening(s, line.prompt, far and self.server_name)
         params = {
@@ -1290,6 +1311,7 @@ class App:
             if v is not None
         }
         if far is None:
+            params["from_session"] = s.log_id
             r = await self.registry.call("session.spawn", params, caller)
             return {**r, "server": self.server_name}
         if caller.link is not None:
@@ -1357,7 +1379,12 @@ class App:
         params = p.model_dump(exclude_none=True) | {
             "agent": name or None,
             "permission": permission,
-            "spawned_from": {"handle": parent.handle, "server": self.server_name},
+            "spawned_from": {"handle": parent.handle, "server": self.server_name}
+            | (
+                {"group": f"{parent.group_key()}@{self.server_name}"}
+                if (link.remote or {}).get("groups")
+                else {}
+            ),
         }
         try:
             r = await link.call(
@@ -1508,6 +1535,7 @@ class App:
                 },
                 self._resolve_cwd(p.cwd, parent.spec.cwd if parent else None),
                 spawned_by=parent.log_id if parent else None,
+                group=self._group_for(parent, p.from_session, caller),
                 # A child is its parent's owner's, so a member's agent cannot
                 # hand work to anyone else; a person's session is theirs.
                 owner=parent.spec.owner if parent else self.who(caller).name,
@@ -1518,6 +1546,7 @@ class App:
                 spec = dataclasses.replace(
                     spec,
                     spawned_from=f"{p.spawned_from.handle}@{p.spawned_from.server}",
+                    group=p.spawned_from.group,
                 )
             elif caller.link is not None:
                 # A person's /spawn on the far side: its questions would reach

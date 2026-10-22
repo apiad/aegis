@@ -228,6 +228,11 @@ class SpawnSpec:
     overridden: tuple[str, ...] = ()
     # The log id of the agent session that spawned this one.
     spawned_by: str | None = None
+    # The group this session belongs to (#586): the log id of the session that
+    # started the chain it was spawned or enqueued in, fixed at spawn, so it
+    # outlives that session. ``key@server`` when the chain began on a linked
+    # server. None for a session nobody started: its own log id is its group.
+    group: str | None = None
     # The principal whose session this is (tokens.py); None from before owners,
     # which reads as the admin's.
     owner: str | None = None
@@ -264,6 +269,8 @@ class SpawnSpec:
             d["overridden"] = list(self.overridden)
         if self.spawned_by:
             d["spawned_by"] = self.spawned_by
+        if self.group:
+            d["group"] = self.group
         if self.owner:
             d["owner"] = self.owner
         if self.spawned_from:
@@ -292,6 +299,7 @@ class SpawnSpec:
             priming=d.get("priming") or None,
             overridden=tuple(d.get("overridden") or ()),
             spawned_by=d.get("spawned_by"),
+            group=d.get("group"),
             owner=d.get("owner"),
             spawned_from=d.get("spawned_from"),
             continues=d.get("continues"),
@@ -544,6 +552,10 @@ class Session:
         if self.cascade_exhausted:
             out["exhausted"] = True
         return out
+
+    def group_key(self) -> str:
+        """The group a session this one starts belongs to (#586)."""
+        return self.spec.group or self.log_id
 
     def wire(self) -> dict:
         """What the ``sessions`` channel carries."""
