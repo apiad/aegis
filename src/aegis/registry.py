@@ -92,6 +92,7 @@ class Registry(Host):
         self.queues = None
         self.schedules = None
         self.workflows = None
+        self.browsers = None  # browsers.py, set by the app: docked browser panes
         self.quota = None
         self.notices = None  # notices.Notices, set by App
         self.nudges = None  # nudges.Nudges, set by App

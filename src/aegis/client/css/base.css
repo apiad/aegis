@@ -1928,13 +1928,17 @@ body{background:#000}
   #a2 .term-side{border-left:none;border-top:1px solid var(--rule);padding:10px 12px}
 }
 /* A browser's tab (#564): a bar, the agent's request, and the page's stream. */
-#a2[data-view=browser] .v-browser{display:flex;flex-direction:column;min-height:0;padding:8px 16px 12px;gap:6px}
-#a2 .br-bar{display:flex;gap:6px;align-items:center;font-family:var(--font-mono);font-size:12px;color:var(--muted)}
+#a2[data-view=browser] .v-browser{display:flex;flex-direction:column;min-height:0;padding:8px 16px 12px}
+#a2 .br-host{flex:1;min-height:0;display:flex;flex-direction:column}
+#a2 .br-view{flex:1;min-height:0;display:flex;flex-direction:column;gap:6px}
+#a2 .pbody > .br-host{height:100%;padding:6px}
+#a2 .pbody .br-name{display:none} /* the pane's own bar names it */
+#a2 .br-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-family:var(--font-mono);font-size:12px;color:var(--muted)}
 #a2 .br-bar [hidden]{display:none}
 #a2 .br-name{color:var(--strong);font-weight:600;white-space:nowrap}
 #a2 .br-nav{background:none;border:1px solid var(--rule);border-radius:var(--r);color:var(--ink);font-size:14px;width:28px;height:28px;cursor:pointer}
 #a2 .br-nav:disabled{color:var(--faint);cursor:default}
-#a2 .br-url{flex:1;min-width:0;background:var(--raised);border:1px solid var(--rule);border-radius:var(--r);padding:4px 10px;color:var(--strong);font-family:var(--font-mono);font-size:12px}
+#a2 .br-url{flex:1 1 160px;min-width:0;background:var(--raised);border:1px solid var(--rule);border-radius:var(--r);padding:4px 10px;color:var(--strong);font-family:var(--font-mono);font-size:12px}
 #a2 .br-url:read-only{color:var(--muted)}
 #a2 .br-holder{border:1px solid var(--rule);border-radius:999px;padding:1px 9px;white-space:nowrap}
 #a2 .br-holder.agent{color:var(--comms)}
@@ -1946,7 +1950,7 @@ body{background:#000}
 #a2 .br-give-list button{background:none;border:none;color:var(--ink);text-align:left;padding:6px 10px;font-family:var(--font-mono);cursor:pointer}
 #a2 .br-give-list button:hover{background:var(--surface)}
 #a2 .br-ask{display:flex;gap:10px;align-items:center;padding:8px 12px;background:var(--accent-soft);border:1px solid var(--accent);border-radius:var(--r);color:var(--strong)}
-#a2 .br-ask[hidden]{display:none}
+#a2 .br-ask[hidden],#a2 .br-bar [hidden]{display:none}
 #a2 .br-ask span{flex:1}
 #a2 .br-act{font-family:var(--font-mono);font-size:11.5px;color:var(--muted);min-height:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #a2 .br-stage{position:relative;flex:1;min-height:0;display:flex;align-items:flex-start;justify-content:center;overflow:auto}
@@ -1957,7 +1961,6 @@ body{background:#000}
 #a2 .br-wait[hidden]{display:none}
 @media (max-width:760px){
   #a2[data-view=browser] .v-browser{padding:6px 6px max(8px,env(safe-area-inset-bottom))}
-  #a2 .br-bar{flex-wrap:wrap}
   #a2 .br-url{order:9;flex-basis:100%}
   #a2 .br-nav{width:44px;height:36px}
 }

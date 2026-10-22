@@ -54,7 +54,7 @@ def test_the_primer_names_tools_by_the_harness_prefix(tmp_path):
     s = make("claude-code")
     assert "browser_open" not in primer(s, "zion", tmp_path)
     shown = primer(s, "zion", tmp_path, browsers=True)
-    assert "browser_open" in shown and "ask them" in shown
+    assert "browser_open" in shown and "ask them to open it" in shown
 
 
 def test_the_primer_asks_for_a_language_on_every_fence():

@@ -26,9 +26,11 @@ browser_unavailable. Browsers do not run in multi-user mode yet.
 ## Opening one
 
 A person presses + and picks `browser` under Terminals; they hold the page.
-An agent calls `browser_open` with a URL; the agent holds it, and the
-browser shows as a tab and a card in the Fleet that the person opens to
-watch. The server's own `localhost` is reachable, so a dev server on the
+An agent calls `browser_open` with a URL; the agent holds it. The browser
+docks beside the agent's transcript, as a sent page does (`dock=`, right by
+default; `null` leaves it out), and also has a tab and a card in the Fleet.
+A browser the person gives to a session docks there too. `layout_set` moves
+it like any pane, by its id. The server's own `localhost` is reachable, so a dev server on the
 same machine opens with no tunnel.
 
 Each browser has a profile, a directory that keeps cookies and storage, so a

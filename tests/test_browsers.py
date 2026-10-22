@@ -233,3 +233,29 @@ async def test_an_agent_drives_its_browser_through_the_tools(
         assert bid not in app.browsers.open
     finally:
         await app.browsers.shutdown()
+
+
+async def test_an_agents_browser_docks_beside_its_transcript_and_leaves_on_close(
+    tmp_path, site, fake_claude
+):
+    from .test_agents import CONFIG, World, mcp, turn
+    from .test_workflows_e2e import ok
+
+    def panes(layout):
+        return [p for w in layout["windows"] for c in w["columns"] for p in c["panes"]]
+
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    w = await World(tmp_path, fake_claude).start()
+    try:
+        a = await w.spawn()
+        out = ok(await turn(a, mcp("browser_open", url=site)))
+        assert out["docked"] == "right"
+        lay = ok(await turn(a, mcp("layout_read")))
+        mine = [p for p in panes(lay) if p["id"] == out["id"]]
+        assert mine and mine[0]["kind"] == "browser" and mine[0]["title"] == "browser"
+        ok(await turn(a, mcp("browser_close")))
+        lay = ok(await turn(a, mcp("layout_read")))
+        assert all(p["id"] != out["id"] for p in panes(lay))
+    finally:
+        await w.app.browsers.shutdown()
+        await w.stop()
