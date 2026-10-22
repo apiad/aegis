@@ -238,6 +238,8 @@ async def test_a_recap_runs_as_the_summarised_sessions_owner(
         await w.app.registry.call("recap.request", {"log_id": s.log_id})
         assert recorded.users("child") == {"ben"}
         assert str(w.app.roots.state_root / "oneshot") not in recorded.cwds
+        # The window of the transcript goes on stdin: an argv is world-readable.
+        assert not recorded.of("first ask")
     finally:
         await w.stop()
 
@@ -256,6 +258,7 @@ async def test_a_btw_runs_as_the_sessions_owner(
         )
         await until(lambda: recorded.users("child"), timeout=8, what="the btw call")
         assert recorded.users("child") == {"ben"}
+        assert not recorded.of("what?")
     finally:
         await w.stop()
 
@@ -291,7 +294,7 @@ def test_user_for_refuses_a_members_session_without_a_user(tmp_path):
     )
     reg = Registry.__new__(Registry)
     reg.multi_user = True
-    reg.role_of = lambda n: "member"
+    reg.acts_for = lambda n: "ben"
     with pytest.raises(PermissionError, match="created before multi-user mode"):
         reg.user_for(spec)
     reg.multi_user = False
@@ -386,3 +389,110 @@ def test_a_repo_the_server_cannot_see_is_found_through_its_user(
     assert paths.place(str(repo), user="ben")[2] == str(repo.resolve())
     assert probe.probe(str(repo), user="ben") is not None
     assert paths.place(str(repo / "f.txt"))[2] is None  # the server's own view
+
+
+# -- failing closed (the branch review's C2, C3, I2, I3) ------------------------
+import dataclasses  # noqa: E402
+
+from aegis.ops import OpError  # noqa: E402
+
+
+def drop_linux_user(world, name: str) -> None:
+    """Make ``name``'s token one from before the mode: no linux_user."""
+    path = world.app.roots.state_root / "tokens.json"
+    doc = json.loads(path.read_text())
+    for e in doc["tokens"]:
+        if e["name"] == name:
+            e.pop("linux_user", None)
+    path.write_text(json.dumps(doc))
+    import os
+
+    os.utime(path, ns=(7, 7))
+
+
+def server_ran(recorded, word: str) -> bool:
+    return None in recorded.of(word)
+
+
+async def test_a_revoked_members_agent_starts_nothing_as_the_server(world, recorded):
+    s = await ben_spawn(world)
+    world.app.principals.revoke("ben")
+    agent = Caller("agent", log_id=s.log_id)
+    with pytest.raises(OpError):
+        await world.app.registry.call(
+            "schedule.test",
+            {"clock": {"every": "5m"}, "check": {"bash": "echo revoked-ran"}},
+            agent,
+        )
+    with pytest.raises(OpError):
+        await world.app.registry.call("session.spawn", {"agent": "opus"}, agent)
+    assert not server_ran(recorded, "revoked-ran")
+    assert recorded.harness(world.fake) == {"ben"}
+
+
+async def test_a_pre_mode_members_schedule_check_does_not_run_as_the_server(
+    world, recorded
+):
+    drop_linux_user(world, "ben")
+    with pytest.raises(OpError):
+        await world.app.registry.call(
+            "schedule.test",
+            {"clock": {"every": "5m"}, "check": {"bash": "echo premode-ran"}},
+            BEN,
+        )
+    assert not server_ran(recorded, "premode-ran")
+
+
+async def test_a_pre_mode_sessions_monitor_fails_instead_of_running_as_the_server(
+    world, recorded
+):
+    s = await ben_spawn(world)
+    s.spec = dataclasses.replace(s.spec, linux_user=None)
+    await world.app.registry.call(
+        "monitor.start",
+        {"description": "w", "done": "echo premon-ran", "progress": None},
+        Caller("agent", log_id=s.log_id),
+    )
+    m = next(iter(world.app.monitors.items.values()))
+    await until(lambda: m.checks, timeout=10, what="a check")
+    assert not server_ran(recorded, "premon-ran")
+
+
+def test_user_for_ignores_a_recorded_user_outside_the_mode(tmp_path):
+    from aegis.registry import Registry
+    from aegis.session import SpawnSpec
+
+    spec = SpawnSpec(
+        agent="a", model="m", effort="high", permission="full", cwd=tmp_path,
+        owner="ben", linux_user="ben",
+    )  # fmt: skip
+    reg = Registry.__new__(Registry)
+    reg.multi_user = False
+    assert reg.user_for(spec) is None
+
+
+def test_place_names_a_deleted_user(tmp_path):
+    from aegis.session import SpawnSpec
+
+    spec = SpawnSpec(
+        agent="a", model="m", effort="high", permission="full", cwd=tmp_path
+    )
+    with pytest.raises(PermissionError, match="aegis-no-such-user"):
+        users.place(spec, root=tmp_path, role="member", linux_user="aegis-no-such-user")
+
+
+def test_acts_for_fails_closed(tmp_path, ben_home):
+    from aegis.tokens import TokenStore
+
+    store = TokenStore(tmp_path, "owner", multi_user=True)
+    store.add("ben", "member")
+    store.add("link", "admin", no_linux_user=True)
+    assert store.acts_for("ben") == "ben"
+    assert store.acts_for("owner") is None and store.acts_for(None) is None
+    assert store.acts_for("link") is None
+    with pytest.raises(PermissionError):
+        store.acts_for("gone")
+    store.revoke("ben")
+    with pytest.raises(PermissionError):
+        store.acts_for("ben")
+    assert TokenStore(tmp_path, "owner").acts_for("gone") is None

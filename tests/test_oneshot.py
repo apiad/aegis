@@ -34,9 +34,9 @@ def test_load_generator_reads_any_key_and_names_it_in_errors(tmp_path):
     )
 
 
-def test_argv_carries_the_given_schema_and_system_and_puts_the_prompt_last():
-    a = oneshot.argv("/bin/claude", "m", Out, "be brief", "--- transcript ---")
-    assert a[-2:] == ["--", "--- transcript ---"]
+def test_argv_carries_the_given_schema_and_system_and_never_the_prompt():
+    a = oneshot.argv("/bin/claude", "m", Out, "be brief")
+    assert "--" not in a and a[-1] == "--strict-mcp-config"
     assert json.loads(a[a.index("--json-schema") + 1])["properties"].keys() == {
         "answer",
         "needs_more",

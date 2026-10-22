@@ -53,17 +53,16 @@ class SideNotes:
             "model": cfg["model"],
             "header": header,
         }
-        argv = oneshot.argv(
-            self.app.claude_bin, cfg["model"], btw.BtwOut, btw.SYSTEM, text
-        )
+        argv = oneshot.argv(self.app.claude_bin, cfg["model"], btw.BtwOut, btw.SYSTEM)
         try:
             out = await oneshot.run(
                 argv,
                 self.app.roots.state_root / "oneshot",
                 btw.TIMEOUT_S,
-                s.spec.linux_user,
+                self.app.sessions.user_for(s.spec),
+                text,
             )
-        except oneshot.OneshotError as e:
+        except (oneshot.OneshotError, PermissionError) as e:
             self._answer(s, {**base, "status": "failed", "why": str(e)})
             return
         except asyncio.CancelledError:

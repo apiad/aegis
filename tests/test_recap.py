@@ -59,11 +59,10 @@ def test_window_carries_the_agents_report_and_plan_and_is_capped():
 
 
 def test_argv_sheds_tools_settings_and_mcp():
-    a = argv("/bin/claude", "claude-haiku-4-5-20251001", "--- transcript ---")
+    a = argv("/bin/claude", "claude-haiku-4-5-20251001")
     assert a[:2] == ["/bin/claude", "-p"]
-    # The window opens on dashes, which the CLI reads as an option unless the
-    # prompt comes last, after --.
-    assert a[-2:] == ["--", "--- transcript ---"]
+    # The window goes on stdin (oneshot.run): an argv is world-readable.
+    assert "--" not in a
     for flag, value in [
         ("--model", "claude-haiku-4-5-20251001"),
         ("--output-format", "json"),
