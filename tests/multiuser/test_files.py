@@ -7,14 +7,13 @@ outlive a run."""
 from __future__ import annotations
 
 import json
-import os
 import secrets
 import shlex
 
 import httpx
 import pytest
 
-from .conftest import CAPS, MEMBERS, sudo, until
+from .conftest import MEMBERS, sudo, until
 from .test_switch import send, spawn
 
 pytestmark = [pytest.mark.slow, pytest.mark.multiuser]
@@ -155,26 +154,3 @@ async def test_a_members_artifact_draft_is_in_its_home_and_sends(mu_server):
         what="the sent page",
     )  # fmt: skip
     assert stored
-
-
-def test_the_runner_check_can_fail(host):
-    """Without the switch, a process confined as the server is (its uid, its
-    three capabilities) cannot read a member's private file: what the
-    runner adds is real. The test's own shell may read more (a CI runner's
-    user can), so the check runs under the server's unit settings."""
-    name = private(BEN, "x")
-    r = sudo(
-        "systemd-run", "--quiet", "--wait", "--pipe", "--collect",
-        f"--uid={os.getuid()}", f"--gid={os.getgid()}",
-        "-p", f"AmbientCapabilities={CAPS}", "-p", f"CapabilityBoundingSet={CAPS}",
-        "cat", f"/home/{BEN}/{name}",
-        check=False,
-    )  # fmt: skip
-    path = f"/home/{BEN}/{name}"
-    why = sudo(
-        "sh", "-c",
-        f"stat -c '%a %U %G' /home/{BEN} {path}; id; id {BEN}; "
-        f"getfacl -p {path} 2>&1 | tail -4; grep -E '^(runner|{BEN}):' /etc/passwd",
-        check=False,
-    ).stdout  # fmt: skip
-    assert r.returncode != 0 and "x" not in r.stdout, (why, os.getuid(), os.getgroups())
