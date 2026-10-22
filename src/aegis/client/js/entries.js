@@ -1621,6 +1621,7 @@ const RENDERERS = {
       open.rel = "noopener noreferrer";
       acts.append(view, open);
     }
+    acts.prepend(phoneButton(e.id));
     if (e.status !== "live") acts.prepend(el("button", "btn show", "Show"));
     card.dataset.md = e.md || ""; // the caption's source, for update() to compare exactly
     bar.append(entryIcon(e.glyph), el("span", "fn", e.title), el("span", "fs", e.summary), acts);
@@ -1741,9 +1742,30 @@ export function hold(id, onEntry, entry, label = "open in the viewer") {
   if (line && entry?.status === "live" && docker.frames()) line.replaceWith(artifactStage(entry));
 }
 
+// Phone width, on every artifact's bar: the frame narrows to a phone's
+// viewport so the page's own media queries answer as on a phone. Per
+// artifact and per tab, so a redrawn card, the viewer and a pane agree.
+const phoneIds = new Set();
+export function phoneButton(id) {
+  const b = iconButton(el("button", "btn phone"), "phone", "Phone width");
+  b.type = "button";
+  b.dataset.phone = id;
+  b.setAttribute("aria-pressed", String(phoneIds.has(id)));
+  b.addEventListener("click", () => {
+    const on = !phoneIds.has(id);
+    if (on) phoneIds.add(id);
+    else phoneIds.delete(id);
+    const sel = CSS.escape(id);
+    for (const f of document.querySelectorAll(`#a2 iframe[data-artifact="${sel}"]`)) f.parentElement.classList.toggle("phone", on);
+    for (const x of document.querySelectorAll(`#a2 .btn.phone[data-phone="${sel}"]`)) x.setAttribute("aria-pressed", String(on));
+  });
+  return b;
+}
+
 // The frame of an artifact's card, live or shown again read-only.
 export function artifactStage(e) {
   const stage = el("div", "stage html");
+  stage.classList.toggle("phone", phoneIds.has(e.id));
   const f = el("iframe");
   f.setAttribute("sandbox", "allow-scripts");
   f.loading = "lazy";

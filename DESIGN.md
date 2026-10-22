@@ -1089,7 +1089,12 @@ a click mid-turn is held. A page lands only after the static checks and, when
 a browser has the transcript open, a hidden run there (`Board.probe`): a page
 that throws is a tool error, not a card; with no browser open it lands with
 `started` unset, and the first browser to mount it reports an error to the
-inbox.
+inbox. Every artifact's bar, on its card, in the viewer and in a pane, has a
+Phone width toggle (`entries.phoneButton`): it narrows the frame to 390 px so
+the page's own media queries answer as on a phone, and the choice is a
+per-tab set of artifact ids, so every frame of one page agrees and a redrawn
+stage keeps it. It is client-only; agents are told to lay pages out for both
+widths because the person will look at both.
 
 **A secret crosses between an agent and a person without a transcript holding
 it.** `secret.send` reads the agent's file on the server, keeps a random pad of
