@@ -69,6 +69,8 @@ export const ACTIONS = [
     when: ["session", "spawn"],
     keys: [on("global", "Alt+M", alt("KeyM"))],
   },
+  // As the Quiet button, and only when it is enabled: a working or waiting session.
+  { id: "quiet", title: "Quiet: hide this tab until the turn ends", when: ["session"], keys: [on("global", "Alt+Q", alt("KeyQ"))] },
   { id: "side", title: "Show or hide the session panel", keys: [on("global", "Alt+B", alt("KeyB"))] },
   {
     id: "foldLevel",
