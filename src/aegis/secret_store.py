@@ -120,7 +120,9 @@ def remove_all_provided(entries: list[dict]) -> int:
     for e in entries:
         d = e.get("detail") or {}
         if e.get("kind") == "secret_request" and e.get("status") == "provided":
-            n += remove_provided(str(d.get("path")), int(d.get("dev", -1)), int(d.get("ino", -1)))
+            n += remove_provided(
+                str(d.get("path")), int(d.get("dev", -1)), int(d.get("ino", -1))
+            )
     return n
 
 
@@ -151,7 +153,9 @@ class SecretStore:
         held.timer = asyncio.get_running_loop().call_later(ttl, fire)
         table[id] = held
 
-    def put(self, log_id: str, data: bytes, ttl: float, now: float) -> tuple[str, bytes]:
+    def put(
+        self, log_id: str, data: bytes, ttl: float, now: float
+    ) -> tuple[str, bytes]:
         """A new sent secret: its id and its ciphertext."""
         id = f"s-{secrets.token_hex(4)}"
         pad = secrets.token_bytes(len(data))

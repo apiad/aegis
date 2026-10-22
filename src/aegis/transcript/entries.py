@@ -953,10 +953,14 @@ class Fold:
             det = {**e["detail"], "by": rec.get("by"), "ended_ts": ts}
             if kind == "secret_provided":
                 status = "provided"
-                det.update(bytes=rec.get("bytes"), dev=rec.get("dev"), ino=rec.get("ino"))
+                det.update(
+                    bytes=rec.get("bytes"), dev=rec.get("dev"), ino=rec.get("ino")
+                )
             else:
                 status = str(rec.get("why"))
-            return self._upsert({**e, "status": status, "summary": status, "detail": det})
+            return self._upsert(
+                {**e, "status": status, "summary": status, "detail": det}
+            )
         if kind == "peek":
             # A file tool's file, copied because the person asked to see it:
             # it opens inside that tool's row, the latest copy replacing any.
