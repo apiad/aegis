@@ -498,7 +498,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <li>an agent called <code>session_spawn</code> from it (today's <code>spawned_by</code>);</li>
 <li>an agent on a linked server spawned it here (today's <code>spawned_from</code>, <code>handle@server</code>);</li>
 <li>it is a queue worker that has a tab, for a task that session enqueued (<code>worker.task_id</code> → the task's <code>enqueuer</code>). Workers of a quiet queue have no tab (#386) and so show in no group;</li>
-<li>the person typed <code>/spawn</code> in that session's composer, or opened New session from that session's card. Today a person's spawn records no parent (<code>app.py</code>, <code>parent = … if caller.is_agent else None</code>); the client sends the session it was opened from, and the server records it as the parent.</li>
+<li>the person typed <code>/spawn</code> in that session's composer, or opened New session from that session's card. Today a person's spawn records no parent (<code>app.py</code>, <code>parent = … if caller.is_agent else None</code>). <code>SpawnParams</code> gains a hidden <code>from_session</code> log id: <code>_spawn_line</code> sets it for a typed <code>/spawn</code>, and the client's <code>openSpawnWith</code> sends it from a card. The server uses it as the parent when the caller owns that session.</li>
 </ul>
 <p>A group of one is drawn as a plain tab. A terminal or browser tab never joins a group.</p>
 
@@ -524,7 +524,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 
 <h3 id="wire">What the server sends</h3>
 <ul>
-<li><code>SessionSpec</code> gains <code>group: str | None</code>, persisted in the meta like <code>spawned_by</code>. At spawn it is the parent's <code>group</code> if the parent has one, else the parent's log id; with no parent it stays <code>None</code> and the session's own log id is its group.</li>
+<li><code>SpawnSpec</code> (<code>session.py</code>) gains <code>group: str | None</code>, written by <code>SpawnSpec.record()</code> and read by <code>from_record()</code> like <code>spawned_by</code>, so it reaches the meta and the wire with no other change. At spawn it is the parent's <code>group</code> if the parent has one, else the parent's log id; with no parent it stays <code>None</code> and the session's own log id is its group.</li>
 <li>For a cross-server spawn, the caller adds its session's group to the <code>spawned_from</code> it already sends, as <code>{handle, server, group}</code>. The child stores <code>group</code> as <code>&lt;group&gt;@&lt;server&gt;</code>. A browser reads a key without <code>@</code> as <code>&lt;key&gt;@&lt;the server that sent it&gt;</code>, so a parent on one server and its child on another land in the same group. A caller too old to send <code>group</code> leaves the child ungrouped.</li>
 <li>A queue worker's group is set when its session starts, from its task's <code>enqueuer</code>.</li>
 <li><code>Session.wire()</code> sends <code>group</code> and <code>created_at</code>. The browser computes heads and blocks from those two fields alone.</li>
