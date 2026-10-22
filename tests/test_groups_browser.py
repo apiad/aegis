@@ -1,6 +1,5 @@
 """Groups in the client (#586): groups.js's blocks, and the bar that draws them."""
 
-
 import pytest
 
 from .test_browser import (  # noqa: F401
@@ -23,14 +22,14 @@ def page(browser):  # noqa: F811
     pg.close()
 
 
-def m(key, created, group=None, server=None, **kw):
+def m(key, created, group=None, at=None, **kw):
     lid = key.split("/")[-1]
     return {
         "key": key,
         "log_id": lid,
         "created_at": created,
         "group": group,
-        "server": server,
+        "server": at,
         **kw,
     }
 
@@ -51,7 +50,7 @@ def test_blocks_of_a_chain_a_root_gone_and_a_link(server, page):  # noqa: F811
     page.wait_for_selector("#a2[data-view=fleet]")
     a, b, c = m("a", 1), m("b", 2, "a"), m("c", 3, "a")
     lone = m("d", 4)
-    far = m("beta/e", 5, "a@alpha", server="beta")
+    far = m("beta/e", 5, "a@alpha", at="beta")
     term = m("t", 6, "a", kind="term")
     assert blocks(page, [a, b, lone, c, far, term]) == [
         ["a", ["a", "b", "c", "beta/e"]],
