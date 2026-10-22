@@ -3998,18 +3998,19 @@ function sessionMenu(key) {
 function cardMenu(t) {
   return t.dataset?.id && t.matches(".card, .tab") ? sessionMenu(t.dataset.id) : null;
 }
-function attachCardMenu(box) {
-  cmenu.attach(box, cardMenu, { selector: ".card[data-id], .tab[data-id]" });
+function attachCardMenu(box, opts = {}) {
+  cmenu.attach(box, cardMenu, { selector: ".card[data-id], .tab[data-id]", ...opts });
 }
 attachCardMenu($("cards"));
-attachCardMenu($("tablist"));
 // The tab card (#586): a session tab's Fleet card on hover, with the tab menu's
-// items as buttons.
-attachTabCard($("tablist"), {
+// items as buttons; on a touch screen a long press opens it as a sheet instead
+// of the menu.
+const tabCard = attachTabCard($("tablist"), {
   meta: (key) => sessions.get(key),
   card: (m) => fleetCard(m, openCard, (k) => sessions.get(k) && closeSession(sessions.get(k))),
   items: sessionMenu,
 });
+attachCardMenu($("tablist"), { touch: (t) => t.matches(".tab[data-id]") && tabCard.sheet(t) });
 
 // The New session form filled from a source session: its server, agent,
 // model and folder, and a prompt the person goes on writing. The picks come

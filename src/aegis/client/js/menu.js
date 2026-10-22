@@ -30,7 +30,9 @@ function targetOf(el, root, selector) {
 }
 
 export function attach(root, provider, opts = {}) {
-  const entry = { provider, selector: opts.selector };
+  // `opts.touch(target)` may take a long press for itself (the tab sheet,
+  // #586): when it returns true, no menu opens.
+  const entry = { provider, selector: opts.selector, touch: opts.touch };
   roots.set(root, entry);
   let timer = null;
   let at = null;
@@ -41,6 +43,7 @@ export function attach(root, provider, opts = {}) {
   };
   const show = (el, ev, x, y, touch = false) => {
     const target = targetOf(el, root, entry.selector);
+    if (touch && entry.touch?.(target)) return true;
     const m = provider(target, ev);
     if (!m) return false;
     open(m, { x, y, touch }, target);

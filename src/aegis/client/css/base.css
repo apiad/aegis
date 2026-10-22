@@ -52,6 +52,8 @@ body{background:#000}
 .tabcard .acts button.danger:hover{color:var(--err)}
 .tabcard .acts button:disabled{opacity:.4;cursor:default}
 .tabcard .acts .ic{width:15px;height:15px}
+.tabcard.tabsheet{top:auto;left:0;right:0;bottom:0;width:auto;max-width:none;border-radius:14px 14px 0 0;padding-bottom:env(safe-area-inset-bottom)}
+@media (pointer:coarse){.tabcard .acts button{width:44px;height:44px}}
 #a2 .tab{cursor:pointer;user-select:none}
 #a2 .tab .tname{max-width:22ch;overflow:hidden;text-overflow:ellipsis}
 #a2 .tab.home{font-weight:500}

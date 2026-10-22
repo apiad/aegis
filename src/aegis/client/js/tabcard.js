@@ -15,6 +15,7 @@ export function attachTabCard(list, { meta, card, items }) {
   document.body.append(box);
   let key = null;
   let tab = null;
+  let asSheet = false;
   let openT = null;
   let closeT = null;
 
@@ -23,6 +24,8 @@ export function attachTabCard(list, { meta, card, items }) {
     clearTimeout(closeT);
     box.hidden = true;
     key = tab = null;
+    asSheet = false;
+    box.className = "tabcard";
   };
   const draw = () => {
     const m = key && meta(key);
@@ -49,7 +52,12 @@ export function attachTabCard(list, { meta, card, items }) {
       }
     }
     box.replaceChildren(card(m), acts);
+    box.className = asSheet ? "tabcard tabsheet" : "tabcard";
     box.hidden = false;
+    if (asSheet) {
+      box.style.top = box.style.left = "";
+      return;
+    }
     const r = tab.getBoundingClientRect();
     box.style.top = `${r.bottom + 6}px`;
     box.style.left = `${Math.max(8, Math.min(r.left, innerWidth - box.offsetWidth - 8))}px`;
@@ -98,5 +106,14 @@ export function attachTabCard(list, { meta, card, items }) {
     tab = list.querySelector(`.tab[data-id="${CSS.escape(key)}"]`);
     draw();
   }).observe(list, { childList: true, subtree: true });
-  return { hide };
+  // A phone has no hover: a long press opens the same card as a sheet.
+  const sheet = (t) => {
+    clearTimeout(openT);
+    key = t.dataset.id;
+    tab = t;
+    asSheet = true;
+    draw();
+    return true;
+  };
+  return { hide, sheet };
 }

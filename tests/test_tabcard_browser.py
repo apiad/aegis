@@ -56,10 +56,13 @@ def test_the_cards_buttons_are_the_tab_menus_items(server, page):  # noqa: F811
     page.keyboard.press("Escape")
     page.mouse.move(640, 760)
     open_card(page, key)
-    got = page.eval_on_selector_all(".tabcard .acts button", "bs => bs.map(b => b.dataset.id)")
+    got = page.eval_on_selector_all(
+        ".tabcard .acts button", "bs => bs.map(b => b.dataset.id)"
+    )
     assert got == ids
     labels = page.eval_on_selector_all(
-        ".tabcard .acts button", "bs => bs.map(b => !!b.title && !!b.querySelector('svg'))"
+        ".tabcard .acts button",
+        "bs => bs.map(b => !!b.title && !!b.querySelector('svg'))",
     )
     assert all(labels)
     assert page.errors == []
@@ -90,3 +93,51 @@ def test_archiving_from_the_card_closes_it(server, page):  # noqa: F811
     page.wait_for_selector(tab(key), state="detached")
     assert page.is_hidden(".tabcard")
     assert page.errors == []
+
+
+def hold(ctx, pg, sel: str, until: str) -> None:
+    """A finger held on `sel` until `until` shows, then lifted."""
+    box = pg.locator(sel).bounding_box()
+    x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+    cdp = ctx.new_cdp_session(pg)
+    cdp.send(
+        "Input.dispatchTouchEvent",
+        {"type": "touchStart", "touchPoints": [{"x": x, "y": y}]},
+    )
+    pg.wait_for_selector(until, timeout=3000)
+    cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+    pg.wait_for_timeout(300)
+
+
+def test_a_long_press_on_a_tab_opens_the_sheet_and_a_card_keeps_its_menu(
+    server,  # noqa: F811
+    browser,  # noqa: F811
+):
+    ctx = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True)
+    pg = ctx.new_page()
+    errors = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    key = spawn(pg)
+    pg.goto(server.url.split("#")[0] + "#fleet")
+    pg.wait_for_selector(f"#cards .card[data-id='{key}']")
+    hold(ctx, pg, f"#cards .card[data-id='{key}']", ".cmenu")
+    ids = item_ids(pg)
+    pg.keyboard.press("Escape")
+    hold(ctx, pg, tab(key), ".tabsheet:not([hidden])")
+    assert pg.locator(".cmenu").count() == 0
+    assert pg.is_visible(f".tabsheet .card[data-id='{key}']")
+    got = pg.eval_on_selector_all(
+        ".tabsheet .acts button", "bs => bs.map(b => b.dataset.id)"
+    )
+    assert got == ids
+    heights = pg.eval_on_selector_all(
+        ".tabsheet .acts button", "bs => bs.map(b => b.offsetHeight)"
+    )
+    assert min(heights) >= 44
+    assert pg.evaluate("location.hash") == "#fleet"  # the press opened nothing
+    pg.tap("#cards")
+    pg.wait_for_selector(".tabsheet", state="hidden")
+    ctx.close()
+    assert errors == []
