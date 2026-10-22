@@ -144,6 +144,7 @@ async def _run(exe: str) -> str | None:
             stdout=launch.PIPE,
             stderr=launch.DEVNULL,
             new_session=True,
+            user=None,
         )
     except OSError:
         return None

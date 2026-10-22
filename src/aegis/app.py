@@ -116,6 +116,7 @@ from .quota_gate import (
 from .btws import SideNotes
 from .recaps import Recaps
 from .ops import Caller, NoParams, OpError, Principal, Registry as Ops
+from . import launch
 from .tokens import TokenStore
 from .users import MultiUser
 from .registry import Registry
@@ -371,6 +372,7 @@ class App:
         # key is logged once per value and waits for a restart.
         self.multi_user = multi_user
         self._mu_told: list[MultiUser | None] = []
+        launch.configure(multi_user)
         self.server_name = server_name
         self.claude_bin = claude_bin
         self.opencode_bin = opencode_bin

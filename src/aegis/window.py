@@ -51,9 +51,7 @@ def desktop_default() -> str | None:
         return None
     try:
         out = launch.run(
-            [exe, "get", "default-web-browser"],
-            text=True,
-            timeout=2,
+            [exe, "get", "default-web-browser"], text=True, timeout=2, user=None
         ).stdout.strip()
     except (OSError, subprocess.TimeoutExpired):
         return None
@@ -79,9 +77,9 @@ def find_browser(asked: str | None) -> str | None:
 def open_window(url: str, browser: str | None) -> None:
     exe = find_browser(browser)
     if exe is None:
-        launch.browser(url)
+        launch.browser(url, user=None)
         return
-    launch.detach([exe, f"--app={url}"])
+    launch.detach([exe, f"--app={url}"], user=None)
 
 
 def serves(host: str, port: int, token: str) -> bool:

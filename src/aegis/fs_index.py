@@ -122,6 +122,7 @@ def _git_ls(repo: str, *args: str) -> list[str] | None:
         out = launch.run(
             ["git", "-C", repo, "ls-files", "-z", "--exclude-standard", *args],
             timeout=60,
+            user=None,
         )
     except (OSError, subprocess.TimeoutExpired):
         return None

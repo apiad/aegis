@@ -153,3 +153,57 @@ def test_boot_problems_refuses_a_pool_file_others_can_read(tmp_path):
     missing = users.MultiUser(tmp_path / "gone.env")
     out = users.boot_problems(tmp_path, missing, status=FULL, uid=os.getuid())
     assert any("gone.env" in p for p in out)
+
+
+ME = pwd.getpwuid(os.getuid())
+
+
+def test_setpriv_argv_switches_and_drops_everything():
+    assert users.setpriv_argv(ME, "/usr/bin/setpriv") == [
+        "/usr/bin/setpriv",
+        f"--reuid={ME.pw_uid}",
+        f"--regid={ME.pw_gid}",
+        "--init-groups",
+        "--inh-caps=-all",
+        "--ambient-caps=-all",
+        "--bounding-set=-all",
+        "--no-new-privs",
+    ]
+
+
+def test_setpriv_argv_for_the_server_drops_without_switching():
+    assert users.setpriv_argv(None) == [
+        "setpriv",
+        "--inh-caps=-all",
+        "--ambient-caps=-all",
+        "--bounding-set=-all",
+        "--no-new-privs",
+    ]
+
+
+def test_added_is_what_the_caller_set_beyond_the_server_env():
+    base = {"PATH": "/a", "HOME": "/h", "SECRET": "s"}
+    env = {**base, "AEGIS_SESSION": "x", "PATH": "/b"}
+    assert users.added(env, base) == {"AEGIS_SESSION": "x", "PATH": "/b"}
+    assert users.added(None, base) == {}
+
+
+def test_user_env_is_the_users_own_then_aegis_then_the_pool(monkeypatch):
+    monkeypatch.setenv("TERM", "xterm-256color")
+    env = users.user_env(
+        ME,
+        {"AEGIS_SESSION": "x", "A": "aegis"},
+        {"A": "pool", "K": "k"},
+        "/usr/bin:/bin",
+    )
+    assert env == {
+        "HOME": ME.pw_dir,
+        "SHELL": ME.pw_shell or "/bin/sh",
+        "USER": ME.pw_name,
+        "LOGNAME": ME.pw_name,
+        "PATH": "/usr/bin:/bin",
+        "TERM": "xterm-256color",
+        "AEGIS_SESSION": "x",
+        "A": "pool",
+        "K": "k",
+    }

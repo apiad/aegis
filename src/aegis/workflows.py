@@ -154,6 +154,7 @@ async def run_sh(
         stdout=launch.PIPE,
         stderr=launch.PIPE,
         new_session=True,
+        user=None,
     )
     on_pid(proc.pid)
     try:
