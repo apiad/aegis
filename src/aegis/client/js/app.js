@@ -17,7 +17,7 @@ import { Find } from "./find.js";
 import * as artifacts from "./artifacts.js";
 import { TabOrder, patchTab, renderTabs } from "./tabs.js";
 import { linesOf, mine, ownerOf, setWho } from "./me.js";
-import { ago, byNeed, modelLine, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards, tickPlan } from "./fleet.js";
+import { ago, byNeed, modelLine, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards, tickPlan, card as fleetCard } from "./fleet.js";
 import { age, countdown, diskRows, elapsed, hostRow, hostSeverity, mbps, netRows, providerFor, quotaSideRow, quotaTile, tile } from "./gauges.js";
 import { closeCard, initSide, restState, toggleCollapsed } from "./side.js";
 import { installKeys, renderKeys } from "./keys.js";
@@ -25,6 +25,7 @@ import { Palette } from "./palette.js";
 import { entryIcon, glyph, gorgoneion, icon, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
 import * as cmenu from "./menu.js";
+import { attachTabCard } from "./tabcard.js";
 import { clampToRow, insertIntoComposer, quoted, rangeText } from "./quote.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
@@ -4002,6 +4003,13 @@ function attachCardMenu(box) {
 }
 attachCardMenu($("cards"));
 attachCardMenu($("tablist"));
+// The tab card (#586): a session tab's Fleet card on hover, with the tab menu's
+// items as buttons.
+attachTabCard($("tablist"), {
+  meta: (key) => sessions.get(key),
+  card: (m) => fleetCard(m, openCard, (k) => sessions.get(k) && closeSession(sessions.get(k))),
+  items: sessionMenu,
+});
 
 // The New session form filled from a source session: its server, agent,
 // model and folder, and a prompt the person goes on writing. The picks come

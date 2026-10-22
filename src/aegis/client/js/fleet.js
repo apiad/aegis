@@ -142,7 +142,7 @@ function termCard(m, onOpen, onClose) {
   return c;
 }
 
-function card(m, onOpen, onClose) {
+export function card(m, onOpen, onClose) {
   if (m.kind === "term" || m.kind === "browser") return termCard(m, onOpen, onClose);
   const c = el("div", `card ${m.state} at-${m.attention}${m.off ? " off" : ""}${finished(m) ? " finished" : ""}${m.quiet ? " quiet" : ""}`);
   c.dataset.id = m.key;
