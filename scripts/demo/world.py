@@ -118,6 +118,12 @@ class Server:
         while not self.server.started:
             await asyncio.sleep(0.02)
 
+    def call(self, op: str, params: dict) -> dict:
+        """An op of aegis's registry, as the browser calls it."""
+        return asyncio.run_coroutine_threadsafe(
+            self.app.registry.call(op, params), self.loop
+        ).result(60)
+
     def changed(self) -> None:
         """Publish the world now, not at the samplers' next tick."""
 

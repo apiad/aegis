@@ -100,8 +100,9 @@ class DemoModel(FakeModel):
         self.descs: dict[str, str] = {}
 
     def script(self, *rules: Rule) -> None:
-        super().script(*rules)
-        self.descs = {
+        """Add rules: a film's later beats keep the earlier ones live."""
+        super().script(*self.rules, *rules)
+        self.descs |= {
             s.cmd.split("{")[0]: s.desc
             for r in rules
             for s in r.steps
@@ -282,11 +283,21 @@ class Stage:
         self.cues: list[Cue] = []
         self.capture: Capture | None = None
         model.slow = slow
+        self.vars: dict = {}  # what one beat leaves for the next
 
     # -- the model --
     def script(self, *rules: Rule, titles: dict[str, str] | None = None) -> None:
+        """Add the fake's rules and the titles its side calls answer."""
         self.model.script(*rules)
-        self.model.titles = titles or {}
+        self.model.titles |= titles or {}
+
+    def spawn(self, cwd: str, prompt: str, agent: str | None = None) -> dict:
+        """Start a session off camera, as session_spawn does; returns its
+        ``log_id`` and ``handle``. Its tab opens in the client."""
+        Path(cwd).mkdir(parents=True, exist_ok=True)
+        params = {"cwd": cwd, "prompt": prompt} | ({"agent": agent} if agent else {})
+        r = self.server.call("session.spawn", params)
+        return {"log_id": r["log_id"], "handle": r.get("handle", "")}
 
     def pace(self, seconds: float) -> None:
         """How long the fake takes over each step of a turn, in video seconds."""
@@ -318,8 +329,28 @@ class Stage:
         assert box, f"{selector} is not on screen"
         return box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
 
+    def mark(self, selector: str, name: str) -> str:
+        """Tag the first visible element a Playwright selector finds, for the
+        overlays, which take CSS: returns ``[data-demo=name]``."""
+        self.page.locator(selector).locator("visible=true").first.evaluate(
+            "(e, n) => { e.dataset.demo = n; }", name
+        )
+        return f'[data-demo="{name}"]'
+
+    def still(self) -> None:
+        """Wait for the camera's move to end."""
+        self.page.wait_for_function("() => !demo.moving()", timeout=60000)
+
+    def _onscreen(self, x: float, y: float) -> bool:
+        return 0 <= x <= W and 0 <= y <= H
+
     def click(self, selector: str, move: float = 0.6) -> None:
+        self.still()
         x, y = self._center(selector)
+        if not self._onscreen(x, y):
+            # Off camera: the click happens, unseen, as a person's would.
+            self.page.locator(selector).first.evaluate("e => e.click()")
+            return
         self.js("demo.point", x, y)
         self.wait(move)
         self.js("demo.ring", x, y)
@@ -404,6 +435,15 @@ class Stage:
             selector,
         )
         self.camera(ms, s=s, x=(W / 2 - x) * s, y=(H / 2 - y) * s, **tilt)
+
+    def overlay(self, html: str | None = None) -> None:
+        """A full-frame layer of free HTML over the client, faded in; None
+        fades it out. It may use the stage's classes and fonts."""
+        self.js("demo.overlay", html)
+
+    def phone(self, on: bool = True) -> None:
+        """The same client in a phone's frame, sliding in at the right."""
+        self.js("demo.phone", self.server.url if on else None)
 
     def drift(self, amount: float = 1.0) -> None:
         """A slow sway on top of every move, so no shot is ever still; 0 stops it."""

@@ -48,6 +48,14 @@ const boot = () => {
     .d-lifted { position: relative; z-index: 50; transform: scale(1.045) translateY(-4px);
           box-shadow: 0 24px 60px rgba(0,0,0,.6), 0 0 0 1px rgba(224,164,88,.5);
           border-radius: 10px; }
+    .d-over { position: absolute; inset: 0; opacity: 0; transition: opacity .7s ease; }
+    .d-phone { position: absolute; right: 70px; top: 50%; width: 300px; height: 620px;
+          margin-top: -310px; border-radius: 42px; background: #050608; padding: 12px;
+          box-shadow: 0 40px 100px rgba(0,0,0,.7), 0 0 0 2px #2a2b2f;
+          transform: translateX(520px) rotateY(-18deg); transition: transform 1.1s cubic-bezier(.2,.8,.2,1); }
+    .d-phone.on { transform: none; }
+    .d-phone iframe { width: 390px; height: 832px; border: 0; border-radius: 32px;
+          transform: scale(.7179); transform-origin: 0 0; background: #111; }
     .d-ring { position: absolute; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%;
           border: 4px solid #e0a458; animation: d-ring .7s ease-out forwards; }
     @keyframes d-ring { from { transform: scale(.3); opacity: 1 } to { transform: scale(1.6); opacity: 0 } }
@@ -183,8 +191,25 @@ const boot = () => {
     camera(to, ms = 1200) {
       tween = { t0: clock(), ms: Math.max(1, ms), from: { ...cam }, to };
     },
+    moving() { return !!tween; },
     drift(amount) { swayTo = amount; },
     shield(on) { shield.style.display = on ? "block" : "none"; },
+    overlay(html) {
+      const old = stage.querySelector(".d-over.live");
+      if (old) { old.classList.remove("live"); show(old, 0); later(() => old.remove(), 800); }
+      if (!html) return;
+      const o = el("d-over live", html);
+      requestAnimationFrame(() => show(o, 1));
+    },
+    phone(url) {
+      let p = stage.querySelector(".d-phone");
+      if (!url) { if (p) p.classList.remove("on"); return; }
+      if (!p) {
+        p = el("d-phone", `<iframe src="${url}"></iframe>`);
+        p.style.pointerEvents = "none";
+      }
+      later(() => p.classList.add("on"), 50);
+    },
     spotlight(sel) { spotSel = sel; },
     lift(sel) {
       if (lifted) { lifted.classList.remove("d-lifted"); lifted = null; }
