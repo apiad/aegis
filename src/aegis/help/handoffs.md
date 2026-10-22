@@ -62,7 +62,7 @@ tokens (`context:` in `.aegis.yaml` moves the threshold), the agent's
 done, what is next, the files, the decisions, what not to retry.
 
 The reply row then starts with a chip, "continue fresh", and the context
-size. Clicking it shows the brief; "Continue in a fresh session" starts the
+size. Clicking it starts the
 same agent in the same folder with the brief and the last three turns, and
 opens its tab. The old session is archived when the new one finishes its first
 turn, unless you have written to it since; the new one can still `peer_read`

@@ -3371,18 +3371,10 @@ function drawReplies(s) {
     const h = document.createElement("button");
     h.className = "rp hand";
     h.textContent = `continue fresh · ${fmtTokens(s.context_tokens)}`;
-    h.addEventListener("click", () => {
-      $("handoff").hidden = !$("handoff").hidden;
-    });
+    h.addEventListener("click", () => handOff(s));
     chips.unshift(h);
   }
   $("replies-pills").replaceChildren(...chips);
-  $("handoff").hidden = true;
-  $("handoff-brief").textContent = brief || "";
-  $("handoff-go").onclick = () => handOff(s);
-  $("handoff-keep").onclick = () => {
-    $("handoff").hidden = true;
-  };
   const next = s.continued_by && sessions.get(keyOf(s.server, s.continued_by));
   $("handoff-done").hidden = !s.continued_by;
   const who = next ? next.handle : "a fresh session";
