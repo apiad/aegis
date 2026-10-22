@@ -713,6 +713,11 @@ def service_install(
     yes: bool = typer.Option(
         False, "--yes", "-y", help="Take every default without asking."
     ),
+    multi_user: bool = typer.Option(
+        False,
+        "--multi-user",
+        help="Give the server the capabilities multi_user in .aegis.yaml needs.",
+    ),
 ) -> None:
     """Write a systemd unit for `aegis serve` and print the commands that
     install it. Never runs sudo."""
@@ -735,7 +740,14 @@ def service_install(
         path=os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
         memory_high=_ask_or(memory_high, "MemoryHigh", high, yes),
         memory_max=_ask_or(memory_max, "MemoryMax", top, yes),
+        multi_user=multi_user,
     )
+    if multi_user and unit.user == "root":
+        typer.echo(
+            "multi-user mode runs the server as an unprivileged user, never root",
+            err=True,
+        )
+        raise typer.Exit(1)
     for key, v in (("MemoryHigh", unit.memory_high), ("MemoryMax", unit.memory_max)):
         if parse_size(v, total) is None:
             typer.echo(f"{key}={v} is not a size systemd reads, such as 5.5G", err=True)

@@ -46,3 +46,23 @@ closed or open.
 A member sees its own launch and stop lines on the quota gauges in its
 session panel. An admin's agents can spawn on a linked server, where that
 server's policy for the link's token decides.
+
+## Linux users
+
+With `multi_user:` in `.aegis.yaml`, each token also names the Linux user its
+sessions run as. A person's harness, terminals, monitors, workflow steps and
+the git calls aegis makes for them all run as that user, with no special
+permissions, so their commits and pull requests are their own and the kernel
+checks every file they touch. A member's session starts in their home.
+
+`aegis token add ben` names the Linux user `ben`; `--linux-user` names
+another. The user must exist, must be a regular account, and may not be root
+or the server's own user. `--no-linux-user` is for an admin only, such as a
+link from another of your servers, and runs as the server's user. Settings
+shows each token's user and asks for it when you add one.
+
+The server needs three capabilities from its systemd unit for this, which
+`aegis service install --multi-user` writes, and refuses to start without
+them. `aegis doctor` checks the unit, the tokens, the state directory and the
+pool file. A guided setup comes in a later release; until then the mode is
+for trying out.
