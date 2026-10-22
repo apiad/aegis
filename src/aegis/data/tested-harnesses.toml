@@ -16,3 +16,15 @@ package = "@opencode/cli"
 min = "2.0.31"
 max = "2.1.2"
 hint = "aegis drives OpenCode 2, published as @opencode/cli."
+
+[cursor]
+# Not an npm package: the official install is Cursor's own script, and the
+# `cursor-agent` name on npm is an unrelated package (measured, 2026-10).
+# The canary does not cover it (cursor-agent needs a real Cursor login); the
+# session tests run it behind tests/fake_cursor.py, and min was exercised by
+# hand against cursor-agent 2026.10.14-0f9edde, which reads as a pre-release
+# and so asks once to be accepted (harness_versions.accepted).
+package = "cursor-agent"
+min = "2026.10.14"
+max = "2026.10.14"
+hint = "cursor-agent comes from Cursor's installer, not npm."

@@ -141,7 +141,11 @@ class Harness(Protocol):
 
 
 def harness_for(
-    name: str, claude_bin: str, opencode_bin: str, codex_bin: str = "codex"
+    name: str,
+    claude_bin: str,
+    opencode_bin: str,
+    codex_bin: str = "codex",
+    cursor_bin: str = "cursor-agent",
 ) -> Harness:
     if name == "claude-code":
         from .claude.harness import ClaudeCode
@@ -155,4 +159,8 @@ def harness_for(
         from .codex.harness import Codex
 
         return Codex(codex_bin)
+    if name == "cursor":
+        from .cursor.harness import Cursor
+
+        return Cursor(cursor_bin)
     raise ValueError(f"no harness named {name!r}")

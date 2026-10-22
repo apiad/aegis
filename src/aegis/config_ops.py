@@ -39,6 +39,7 @@ def register_config_ops(app: App) -> None:
             "claude-code": app.claude_bin,
             "opencode": app.opencode_bin,
             "codex": app.codex_bin,
+            "cursor": app.cursor_bin,
         }
 
     async def detected() -> list[Found]:

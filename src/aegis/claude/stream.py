@@ -223,8 +223,11 @@ Event = (
 
 # Events that only occur inside a turn. Anything else on the wire (system
 # notices above all) arrives between turns too, and promoting it to a turn
-# parked old-tree sessions on a read that never returned.
-TURN_BEARING = (Text, Thinking, ToolCall, ToolOutput)
+# parked old-tree sessions on a read that never returned. An Echo is the
+# harness reading a prompt, which is the first thing a turn does: Cursor's
+# queued prompts (its second prompt would cancel the running one) start their
+# turn without a send, so their echo is what turns the session back on.
+TURN_BEARING = (Text, Thinking, ToolCall, ToolOutput, Echo)
 
 
 def _usage(d: Any) -> Usage | None:

@@ -369,6 +369,7 @@ class App:
         server_name: str = "aegis",
         opencode_bin: str = "opencode",
         codex_bin: str = "codex",
+        cursor_bin: str = "cursor-agent",
         dictation_dir: Path | None = None,
         user: str | None = None,
         multi_user: MultiUser | None = None,
@@ -385,6 +386,7 @@ class App:
         self.claude_bin = claude_bin
         self.opencode_bin = opencode_bin
         self.codex_bin = codex_bin
+        self.cursor_bin = cursor_bin
         self.dictation = dictation.Store(dictation_dir or dictation.default_dir())
         self.channels = Channels(self._resolve)
         # Every session's card changes go out together, a few times a second at
@@ -402,6 +404,7 @@ class App:
             interrupt_timeout,
             opencode_bin=opencode_bin,
             codex_bin=codex_bin,
+            cursor_bin=cursor_bin,
         )
         self.terminal_cgroups = None
         self.terminals = Terminals(
@@ -740,9 +743,11 @@ class App:
         return meta.get("owner") or self.user
 
     def _bin(self, harness: str) -> str:
-        return {"opencode": self.opencode_bin, "codex": self.codex_bin}.get(
-            harness, self.claude_bin
-        )
+        return {
+            "opencode": self.opencode_bin,
+            "codex": self.codex_bin,
+            "cursor": self.cursor_bin,
+        }.get(harness, self.claude_bin)
 
     async def boot(self) -> None:
         self._config_task = asyncio.create_task(self.config.watch())
@@ -810,7 +815,9 @@ class App:
         # harness_for runs inside the coroutine, so its exception is gathered
         # too, not raised past return_exceptions (#455).
         async def one(n: str) -> harness_versions.Verdict:
-            h = harness_for(n, self.claude_bin, self.opencode_bin, self.codex_bin)
+            h = harness_for(
+                n, self.claude_bin, self.opencode_bin, self.codex_bin, self.cursor_bin
+            )
             return await harness_versions.check(h, hv["accepted"])
 
         verdicts = await asyncio.gather(
@@ -1198,7 +1205,11 @@ class App:
             s.harness
             if s is not None
             else harness_for(
-                harness, self.claude_bin, self.opencode_bin, self.codex_bin
+                harness,
+                self.claude_bin,
+                self.opencode_bin,
+                self.codex_bin,
+                self.cursor_bin,
             )
         )
         v = await harness_versions.check(h, cfg["accepted"])

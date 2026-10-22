@@ -32,16 +32,21 @@ park: {claude-code: 1200}
 
 ## Add an agent
 
-`agents:` in `.aegis.yaml` maps a name to a preset. Each one has:
+To add an agent to `.aegis.yaml`, map its name under `agents:` to a preset.
+Each one has:
 
-- `harness:` one of claude-code, opencode or codex. Each aegis release is
-  tested with a range of versions of each harness; for OpenCode that is
+- `harness:` one of claude-code, opencode, codex or cursor. Each aegis release
+  is tested with a range of versions of each harness; for OpenCode that is
   OpenCode 2 (`npm install -g @opencode/cli`). A version outside the range is
   named, with the command that installs a tested one (below);
 - `model:` the model to run, such as opus or haiku for Claude Code. OpenCode
-  and Codex models are written provider/model. `models:` instead names an
+  and Codex models are written provider/model, Cursor models by their
+  catalog's plain id (an id's own bracketed overrides — effort, context,
+  flags — come with it when it is set). `models:` instead names an
   ordered list, a cascade (below);
-- `effort:` low, medium, high, xhigh or max;
+- `effort:` low, medium, high, xhigh or max; a Cursor model carries the effort
+  inside its id, so a change while it runs is accepted only when it is that
+  same effort, and any other is refused;
 - `permission:` read, write, auto or full (the sessions page says what each
   allows);
 - `priming:` (optional) a system prompt every session from this agent gets;
@@ -309,8 +314,9 @@ positive whole number of seconds, parks nothing, and `aegis doctor` names the
 mistake. Only an admin can change it, in the file or in the Parking section
 of the Settings page, which takes minutes and which members do not see.
 
-Only Claude Code's resume has been measured. Codex and OpenCode sessions park
-when named, and `aegis doctor` warns that how they resume is unmeasured.
+Only Claude Code's and Cursor's resumes have been measured — Cursor's runs
+`session/load` on the same session id. Codex and OpenCode sessions park when
+named, and `aegis doctor` warns that how they resume is unmeasured.
 
 ## Untested harness versions
 

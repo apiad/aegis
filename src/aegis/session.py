@@ -333,6 +333,7 @@ class Session:
         workflow: dict | None = None,
         opencode_bin: str = "opencode",
         codex_bin: str = "codex",
+        cursor_bin: str = "cursor-agent",
         title_set: bool = False,
         standing: dict | None = None,
         unread: list[str] | None = None,
@@ -374,7 +375,9 @@ class Session:
         self.model_id = model_id
         self.status, self.asleep_why = asleep_from(last_status, asleep_why)
         self._stderr_path = stderr_path
-        self.harness = harness_for(spec.harness, claude_bin, opencode_bin, codex_bin)
+        self.harness = harness_for(
+            spec.harness, claude_bin, opencode_bin, codex_bin, cursor_bin
+        )
         self._publish = publish
         self._metas = metas
         self._interrupt_timeout = interrupt_timeout

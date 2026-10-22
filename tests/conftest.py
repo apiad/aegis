@@ -65,6 +65,25 @@ def fake_codex(tmp_path: Path) -> str:
     return str(path)
 
 
+FAKE_CURSOR = Path(__file__).parent / "fake_cursor.py"
+
+
+@pytest.fixture
+def fake_cursor(tmp_path: Path) -> str:
+    """An executable that runs the fake cursor-agent ACP server."""
+    path = tmp_path / "bin-cursor" / "cursor-agent"
+    path.parent.mkdir()
+    home = tmp_path / "fake-cursor-home"
+    home.mkdir()
+    path.write_text(
+        f'#!/bin/sh\nexport FAKE_CURSOR_HOME="{home}"\n'
+        f'export FAKE_CURSOR_LOG="{tmp_path / "fake-cursor.log"}"\n'
+        f'exec "{sys.executable}" "{FAKE_CURSOR}" "$@"\n'
+    )
+    path.chmod(path.stat().st_mode | stat.S_IEXEC)
+    return str(path)
+
+
 async def until(pred, timeout: float = 3.0, what: str = "condition") -> None:
     end = asyncio.get_running_loop().time() + timeout
     while not pred():
