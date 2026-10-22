@@ -113,7 +113,9 @@ queued while offline, goes without the line.
 A session has a handle, two or three lowercase words joined by hyphens, unique
 on this server, and an optional title of one line. Click either at the top of
 the session panel (Alt+B) to edit it, or type `/rename <handle>` or
-`/title <text>`. An agent renames its own session with `session_rename`.
+`/title <text>`. An agent renames its own session with `session_rename`, setting
+both a handle and a title in one call; until it has set both, `turn_end`
+reminds it.
 
 Under the title the panel shows the handle as peers address it,
 `handle@server`, so a session on a linked server says where it runs. A queue
