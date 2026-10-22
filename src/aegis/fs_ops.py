@@ -43,6 +43,7 @@ from pydantic import BaseModel
 from . import launch
 from . import files, fs_trash
 from .fs_index import FsIndex, _is_repo, ignore_dir, ignore_file
+from .as_user import Place
 from .fs_paths import resolve
 from .ops import Caller, NoParams, OpError
 
@@ -92,29 +93,31 @@ class FsWrite(BaseModel):
 
 
 class Tickets:
-    """Ticket to (relative path, expiry): what ``/fs/<ticket>/<name>`` serves."""
+    """Ticket to (relative path, the place it is under, expiry): what
+    ``/fs/<ticket>/<name>`` serves. The place is the issuer's, so a ticket
+    reads with the access of the person it was issued to (as_user.py)."""
 
     def __init__(self) -> None:
-        self._map: dict[str, tuple[str, float]] = {}
+        self._map: dict[str, tuple[str, Place | None, float]] = {}
 
-    def issue(self, rel: str) -> str:
+    def issue(self, rel: str, place: Place | None = None) -> str:
         """A fresh ticket URL for ``rel``; expired tickets are dropped here."""
         now = _now()
-        self._map = {t: v for t, v in self._map.items() if v[1] > now}
+        self._map = {t: v for t, v in self._map.items() if v[2] > now}
         ticket = secrets.token_urlsafe(16)
-        self._map[ticket] = (rel, now + TICKET_S)
+        self._map[ticket] = (rel, place, now + TICKET_S)
         return f"/fs/{ticket}/{quote(Path(rel).name)}"
 
-    def find(self, ticket: str) -> str | None:
-        """The path a live ticket names, or None. A use renews it: a video
-        or a large PDF keeps asking for byte ranges as it plays or scrolls,
-        long after the ticket was issued."""
-        rel, expires = self._map.get(ticket, ("", 0.0))
+    def find(self, ticket: str) -> tuple[str, Place | None] | None:
+        """The path a live ticket names and its place, or None. A use renews
+        it: a video or a large PDF keeps asking for byte ranges as it plays
+        or scrolls, long after the ticket was issued."""
+        rel, place, expires = self._map.get(ticket, ("", None, 0.0))
         now = _now()
         if expires <= now:
             return None
-        self._map[ticket] = (rel, now + TICKET_S)
-        return rel
+        self._map[ticket] = (rel, place, now + TICKET_S)
+        return rel, place
 
 
 def _mtime(st: os.stat_result) -> int:
@@ -226,9 +229,10 @@ def _save(path: Path, rel: str, data: bytes, base: str | None):
     return exists, _write(path, data, mode)
 
 
-def _git_ignored(top: Path, paths: list[Path]) -> set[Path]:
+def _git_ignored(top: Path, paths: list[Path], user: str | None) -> set[Path]:
     """Which of ``paths`` the repository at ``top`` ignores: one
-    ``git check-ignore`` for the whole listing, nothing when git cannot say."""
+    ``git check-ignore`` as ``user`` for the whole listing, nothing when git
+    cannot say."""
     if not paths:
         return set()
     rels = [str(p.relative_to(top)) for p in paths]
@@ -237,7 +241,7 @@ def _git_ignored(top: Path, paths: list[Path]) -> set[Path]:
             ["git", "-C", str(top), "check-ignore", "--stdin", "-z"],
             input="\0".join(rels).encode("utf-8", "surrogateescape"),
             timeout=30,
-            user=None,
+            user=user,
         )
     except (OSError, subprocess.TimeoutExpired):
         return set()
@@ -273,7 +277,9 @@ def _holds_repo(path: Path) -> bool:
         return False
 
 
-def _list(root: Path, state: Path, folder: Path, show_ignored: bool) -> list[dict]:
+def _list(
+    root: Path, state: Path, folder: Path, show_ignored: bool, user: str | None
+) -> list[dict]:
     real_state = state.resolve()
     entries = []
     for e in os.scandir(folder):
@@ -289,7 +295,7 @@ def _list(root: Path, state: Path, folder: Path, show_ignored: bool) -> list[dic
         entries.append((path, is_dir, st, fixed))
     top = _repo_top(folder, root)
     by_git = (
-        _git_ignored(top, [p for p, _, _, fixed in entries if not fixed])
+        _git_ignored(top, [p for p, _, _, fixed in entries if not fixed], user)
         if top
         else set()
     )
@@ -314,15 +320,91 @@ def _list(root: Path, state: Path, folder: Path, show_ignored: bool) -> list[dic
     return out
 
 
+def _entry(place: Place, rel: str) -> Path:
+    """The entry ``rel`` names itself, a symlink rather than its target
+    (a dangling one included), once ``resolve`` has passed both. Never the
+    guarded folder or one above it, the root included: moving ``.aegis``
+    would carry the admin token out to where fs.read reaches."""
+    root, guard = place.root, place.guard
+    real = resolve(root, guard, rel, must_exist=False)
+    if guard.resolve().is_relative_to(real):
+        raise OpError("forbidden", f"{rel} holds aegis's own state")
+    path = resolve(root, guard, str(Path(rel).parent)) / Path(rel).name
+    if not (path.exists() or path.is_symlink()):
+        raise OpError("not_found", f"no file {rel}")
+    return path
+
+
+def _file(place: Place, rel: str) -> Path:
+    path = resolve(place.root, place.guard, rel)
+    if not path.is_file():
+        raise OpError("not_a_file", f"{rel} is a folder")
+    return path
+
+
+def _stat(place: Place, rel: str) -> dict:
+    path = _file(place, rel)
+    st = path.stat()
+    return {"size": st.st_size, "mtime": _mtime(st), "kind": _kind(path)[1]}
+
+
+def _folder(place: Place, rel: str, show_ignored: bool) -> list[dict]:
+    folder = resolve(place.root, place.guard, rel) if rel else place.root.resolve()
+    if not folder.is_dir():
+        raise OpError("not_a_folder", f"{rel} is a file")
+    return _list(place.root, place.guard, folder, show_ignored, place.user)
+
+
+def _mkdir(place: Place, rel: str) -> None:
+    path = resolve(place.root, place.guard, rel, must_exist=False)
+    if path.exists() or path.is_symlink():
+        raise OpError("exists", f"{rel} already exists")
+    path.mkdir()
+
+
+def _move(place: Place, rel: str, to: str) -> int:
+    src = _entry(place, rel)
+    dst = resolve(place.root, place.guard, to, must_exist=False)
+    if dst.is_relative_to(src):
+        raise OpError("forbidden", f"{to} is inside {rel}")
+    if dst.exists() or dst.is_symlink():
+        raise OpError("exists", f"{to} already exists")
+    size = fs_trash.count(src)[1]
+    shutil.move(src, dst)
+    return size
+
+
+def _restore(place: Place, trash_id: str) -> tuple[str, int]:
+    rel = fs_trash.manifest(place.trash, trash_id)["path"]
+    dest = resolve(place.root, place.guard, rel, must_exist=False)
+    fs_trash.restore(place.trash, trash_id, dest)
+    return rel, fs_trash.count(dest)[1]
+
+
 def register_fs_ops(app: App) -> tuple[FsIndex, Tickets]:
+    """The ops, each acting in the caller's place (``App.place_of``): outside
+    multi-user mode the config root with the server's access, in it a
+    member's home with the member's own (as_user.py). Each op runs its
+    whole filesystem body on the place's runner, the path's resolve
+    included, so no path a person names is touched with the server's
+    access."""
     r = app.registry
     root, state = app.roots.config_root, app.roots.state_root
     index = FsIndex(root, state)
+    indexes: dict[str, FsIndex] = {}
+    purged: set[str] = set()
     tickets = Tickets()
     # One save at a time, so two saves on the same base cannot both pass the
     # hash check (_save).
     writing = asyncio.Lock()
     log_path = state / "fs-log.jsonl"
+
+    def index_of(place: Place) -> FsIndex:
+        if place.user is None:
+            return index
+        if place.user not in indexes:
+            indexes[place.user] = FsIndex(place.root, place.guard, place.run)
+        return indexes[place.user]
 
     def log(caller: Caller, op: str, path: str, size: int, to: str | None = None):
         line = {
@@ -340,30 +422,34 @@ def register_fs_ops(app: App) -> tuple[FsIndex, Tickets]:
     @r.op("fs.find", NoParams, local=True)
     async def find(p: NoParams, caller: Caller):
         """Every listed file under the root with its mtime in ms, newest first."""
-        return {"files": [[rel, m] for rel, m in await index.entries()]}
+        entries = await index_of(app.place_of(caller)).entries()
+        return {"files": [[rel, m] for rel, m in entries]}
 
     @r.op("fs.read", FsPath, local=True)
     async def read(p: FsPath, caller: Caller):
         """A file's kind, size, mtime and hash, its text when it is text, and
         a ticket URL for every kind a browser element draws itself."""
-        path = resolve(root, state, p.path)
-        out = {"path": p.path, **await asyncio.to_thread(_read, path)}
+        place = app.place_of(caller)
+        got = await place.run(lambda: _read(resolve(place.root, place.guard, p.path)))
+        out = {"path": p.path, **got}
         if out["kind"] not in ("text", "markdown") or "text" not in out:
-            out["url"] = tickets.issue(p.path)
+            out["url"] = tickets.issue(p.path, place)
         return out
 
     @r.op("fs.ticket", FsPath, local=True)
     async def ticket(p: FsPath, caller: Caller):
         """A ticket URL for one file, such as an image a Markdown file links to."""
-        path = resolve(root, state, p.path)
-        if not path.is_file():
-            raise OpError("not_a_file", f"{p.path} is a folder")
-        return {"url": tickets.issue(p.path)}
+        place = app.place_of(caller)
+        await place.run(_file, place, p.path)
+        return {"url": tickets.issue(p.path, place)}
 
     @r.op("fs.open", FsPath, local=True)
     async def open_(p: FsPath, caller: Caller):
         """Open a file in the desktop's app for it, as file.open does for a
-        sent file: only from a browser on the server's desktop."""
+        sent file: only from a browser on the server's desktop, and never in
+        multi-user mode, whose server has no person at its desktop."""
+        if app.multi_user is not None:
+            raise OpError("not_in_multi_user", "a shared server opens no desktop app")
         if not caller.desktop:
             raise OpError(
                 "not_local", "only a browser on the server's desktop can do this"
@@ -377,11 +463,8 @@ def register_fs_ops(app: App) -> tuple[FsIndex, Tickets]:
     @r.op("fs.stat", FsPath, local=True)
     async def stat(p: FsPath, caller: Caller):
         """A file's size, mtime and kind, polled for the open file."""
-        path = resolve(root, state, p.path)
-        st = path.stat()
-        if not path.is_file():
-            raise OpError("not_a_file", f"{p.path} is a folder")
-        return {"size": st.st_size, "mtime": _mtime(st), "kind": _kind(path)[1]}
+        place = app.place_of(caller)
+        return await place.run(_stat, place, p.path)
 
     @r.op("fs.write", FsWrite, local=True)
     async def write(p: FsWrite, caller: Caller):
@@ -392,94 +475,83 @@ def register_fs_ops(app: App) -> tuple[FsIndex, Tickets]:
             raise OpError(
                 "too_large", f"{len(data)} bytes; the editor saves {TEXT_BYTES}"
             )
-        path = resolve(root, state, p.path, must_exist=False)
-        async with writing:
-            exists, st = await asyncio.to_thread(_save, path, p.path, data, p.base)
-        log(caller, "write" if exists else "create", p.path, len(data))
-        index.touched(p.path)
-        return {"hash": hashlib.sha256(data).hexdigest(), "mtime": _mtime(st)}
+        place = app.place_of(caller)
 
-    def entry(rel: str) -> Path:
-        """The entry ``rel`` names itself, a symlink rather than its target
-        (a dangling one included), once ``resolve`` has passed both. Never
-        the state root's folder or one above it, the root included: moving
-        ``.aegis`` would carry the admin token out to where fs.read reaches."""
-        real = resolve(root, state, rel, must_exist=False)
-        if state.resolve().is_relative_to(real):
-            raise OpError("forbidden", f"{rel} holds aegis's own state")
-        path = resolve(root, state, str(Path(rel).parent)) / Path(rel).name
-        if not (path.exists() or path.is_symlink()):
-            raise OpError("not_found", f"no file {rel}")
-        return path
+        def save():
+            path = resolve(place.root, place.guard, p.path, must_exist=False)
+            return _save(path, p.path, data, p.base)
+
+        async with writing:
+            exists, st = await place.run(save)
+        log(caller, "write" if exists else "create", p.path, len(data))
+        await place.run(index_of(place).touched, p.path)
+        return {"hash": hashlib.sha256(data).hexdigest(), "mtime": _mtime(st)}
 
     @r.op("fs.list", FsList, local=True)
     async def list_(p: FsList, caller: Caller):
         """One folder's entries, folders first, each alphabetical; ignored
         ones only when asked for, except a folder holding a repository."""
-        folder = resolve(root, state, p.dir) if p.dir else root.resolve()
-        if not folder.is_dir():
-            raise OpError("not_a_folder", f"{p.dir} is a file")
-        entries = await asyncio.to_thread(_list, root, state, folder, p.ignored)
+        place = app.place_of(caller)
+        entries = await place.run(_folder, place, p.dir, p.ignored)
         return {"dir": p.dir, "entries": entries}
 
     @r.op("fs.mkdir", FsPath, local=True)
     async def mkdir(p: FsPath, caller: Caller):
         """Create a folder; refuses a name that exists."""
-        path = resolve(root, state, p.path, must_exist=False)
+        place = app.place_of(caller)
         async with writing:
-            if path.exists() or path.is_symlink():
-                raise OpError("exists", f"{p.path} already exists")
-            path.mkdir()
+            await place.run(_mkdir, place, p.path)
         log(caller, "mkdir", p.path, 0)
         return {"path": p.path}
 
     @r.op("fs.move", FsMove, local=True)
     async def move(p: FsMove, caller: Caller):
         """Rename or move a file or folder; refuses a target that exists."""
-        src = entry(p.path)
-        dst = resolve(root, state, p.to, must_exist=False)
-        if dst.is_relative_to(src):
-            raise OpError("forbidden", f"{p.to} is inside {p.path}")
+        place = app.place_of(caller)
         async with writing:
-            if dst.exists() or dst.is_symlink():
-                raise OpError("exists", f"{p.to} already exists")
-            size = await asyncio.to_thread(lambda: fs_trash.count(src)[1])
-            await asyncio.to_thread(shutil.move, src, dst)
+            size = await place.run(_move, place, p.path, p.to)
         log(caller, "move", p.path, size, p.to)
-        index.removed(p.path)
-        index.added(p.to)
+        idx = index_of(place)
+        idx.removed(p.path)
+        await place.run(idx.added, p.to)
         return {"path": p.to}
 
     @r.op("fs.count", FsPath, local=True)
     async def count(p: FsPath, caller: Caller):
         """How many files and bytes a file or folder holds, every file
         counted, ignored ones included: what a delete would take."""
-        path = entry(p.path)
-        files, size = await asyncio.to_thread(fs_trash.count, path)
+        place = app.place_of(caller)
+        files, size = await place.run(lambda: fs_trash.count(_entry(place, p.path)))
         return {"files": files, "size": size}
 
     @r.op("fs.delete", FsPath, local=True)
     async def delete(p: FsPath, caller: Caller):
         """Move a file or folder into the trash: its id there and how many
         files it held."""
-        path = entry(p.path)
+        place = app.place_of(caller)
         who = r.who(caller).name
+        if place.user is not None and place.user not in purged:
+            # A person's own trash is purged the first time it is used.
+            purged.add(place.user)
+            await place.run(fs_trash.purge, place.trash)
+
+        def delete():
+            return fs_trash.delete(place.trash, _entry(place, p.path), p.path, who)
+
         async with writing:
-            t = await asyncio.to_thread(fs_trash.delete, state, path, p.path, who)
+            t = await place.run(delete)
         log(caller, "delete", p.path, t["size"], t["id"])
-        index.removed(p.path)
+        index_of(place).removed(p.path)
         return {"trash_id": t["id"], "files": t["files"]}
 
     @r.op("fs.restore", FsRestore, local=True)
     async def restore(p: FsRestore, caller: Caller):
         """Put a deleted entry back, or ``taken`` when something new is there."""
-        rel = fs_trash.manifest(state, p.trash_id)["path"]
-        dest = resolve(root, state, rel, must_exist=False)
+        place = app.place_of(caller)
         async with writing:
-            await asyncio.to_thread(fs_trash.restore, state, p.trash_id, dest)
-        size = await asyncio.to_thread(lambda: fs_trash.count(dest)[1])
+            rel, size = await place.run(_restore, place, p.trash_id)
         log(caller, "restore", rel, size, p.trash_id)
-        index.added(rel)
+        await place.run(index_of(place).added, rel)
         return {"path": rel}
 
     return index, tickets
