@@ -33,6 +33,11 @@ dependencies = [
     "websockets>=13.0",
 ]
 
+[project.optional-dependencies]
+# Browsers the agent and the person share (browsers.py); also run
+# `playwright install chromium` once.
+browser = ["playwright>=1.63.0"]
+
 [project.urls]
 Repository    = "https://github.com/apiad/aegis"
 Issues        = "https://github.com/apiad/aegis/issues"
