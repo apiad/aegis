@@ -50,6 +50,13 @@ META_KEYS = {"id", "name", "profile", "spec", "title", "cwd", "owner",
              "started_by", "cols", "rows", "state", "code", "reason"}  # fmt: skip
 
 
+def _passwd(user: str) -> pwd.struct_passwd:
+    try:
+        return pwd.getpwnam(user)
+    except KeyError:
+        raise PermissionError(f"Linux user {user} does not exist") from None
+
+
 def mint_term_id() -> str:
     return f"t-{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}"
 
@@ -62,8 +69,9 @@ class Terminals:
         profiles: Callable[[], dict[str, dict]],
         publish: Callable[[str, list[dict]], None],
         cgroups: Callable[[], SessionCgroups | None] = lambda: None,
-        linux_user_of: Callable[[str], str | None] = lambda owner: None,
+        acts_for: Callable[[str], str | None] = lambda owner: None,
         role_of: Callable[[str], str | None] = lambda owner: None,
+        multi_user: bool = False,
     ) -> None:
         self.dir = state_root / "terminals"
         self.config_root = config_root
@@ -71,8 +79,9 @@ class Terminals:
         self._publish = publish
         self._cgroups = cgroups
         # Who a terminal runs as, in multi-user mode (users.py).
-        self._linux_user_of = linux_user_of
+        self._acts_for = acts_for
         self._role_of = role_of
+        self._multi_user = multi_user
         self.open: dict[str, Terminal] = {}
         self.archived: dict[str, dict] = {}
         self.closing: dict[str, Terminal] = {}  # closed, their program not yet ended
@@ -95,11 +104,16 @@ class Terminals:
             raise OpError("no_profile", f"no terminal profile named {profile!r}")
         if "error" in p:
             raise OpError("bad_profile", f"terminal profile {profile}: {p['error']}")
-        user = self._linux_user_of(owner)
-        if user and cwd is None and self._role_of(owner) == "member":
-            # The aegis root is the server's: a member's terminal starts home.
-            where = Path(pwd.getpwnam(user).pw_dir)
-        else:
+        try:
+            user = self._acts_for(owner)
+            if user and cwd is None and self._role_of(owner) == "member":
+                # The aegis root is the server's: a member's terminal starts home.
+                where = Path(_passwd(user).pw_dir)
+            else:
+                where = None
+        except PermissionError as e:
+            raise OpError("no_linux_user", str(e)) from None
+        if where is None:
             where = self._cwd(
                 p["cwd"] if cwd is None else cwd, under_root=cwd is not None
             )
@@ -130,6 +144,19 @@ class Terminals:
             del self.open[tid]
             raise
         return t
+
+    def _user(self, t: Terminal) -> str | None:
+        """The Linux user a terminal runs as: the one recorded when it was
+        opened, in multi-user mode. One opened before the mode for an owner
+        who now has a user may not start as the server."""
+        if not self._multi_user:
+            return None
+        user = t.meta.get("linux_user")
+        if user is None and self._acts_for(t.meta["owner"]) is not None:
+            raise PermissionError(
+                "this terminal was opened before multi-user mode; open a new one"
+            )
+        return user
 
     def _cwd(self, rel: str, under_root: bool) -> Path:
         if under_root:
@@ -290,10 +317,10 @@ class Terminals:
         cg = self._cgroups()
         cgroup = cg.create(t.id) if cg is not None else None
         try:
-            user = t.meta.get("linux_user")
+            user = self._user(t)
             cmd = argv(spec)
             if user and spec["cmd"] is None:
-                cmd = [pwd.getpwnam(user).pw_shell or "/bin/sh", "-l"]
+                cmd = [_passwd(user).pw_shell or "/bin/sh", "-l"]
             await t.start(cmd, Path(t.meta["cwd"]), env, cgroup, user=user)
         except OSError as e:
             if cg is not None:

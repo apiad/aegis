@@ -342,10 +342,20 @@ class Monitors:
         return await run_bash(cmd, cwd, user=user)
 
     async def _check(self, m: Monitor, kind: str) -> tuple[int | None, str, bool]:
-        # As the owner of the session that armed it (users.py).
+        # As the owner of the session that armed it (users.py); in multi-user
+        # mode never as the server for a session that has no user or is gone.
         s = self._registry.sessions.get(m.owner)
-        user = s.spec.linux_user if s is not None else None
-        rc, out, err = await self._run(getattr(m, kind), m.cwd, user)
+        try:
+            if s is None:
+                if self._registry.multi_user:
+                    raise PermissionError("the session that armed it is gone")
+                user = None
+            else:
+                user = self._registry.user_for(s.spec)
+        except PermissionError as e:
+            rc, out, err = None, "", str(e)
+        else:
+            rc, out, err = await self._run(getattr(m, kind), m.cwd, user)
         return rc, out, m.record(kind, rc, out, err)
 
     def _publish(self, m: Monitor) -> None:

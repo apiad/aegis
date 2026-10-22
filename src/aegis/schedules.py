@@ -308,12 +308,15 @@ class Schedules:
             return self._tick(name, tick, "held", why="overlap", **extra)
         stdout, sha = None, None
         if s.d.check is not None and not manual:
-            rc, out, err = await run_bash(
-                s.d.check.bash,
-                self._cwd(s),
-                s.d.check.timeout_s,
-                user=self._reg.linux_user_of(s.owner.get("principal")),
-            )
+            try:
+                user = self._reg.acts_for(s.owner.get("principal"))
+            except PermissionError as e:
+                # Nothing runs as the server for an owner without a user.
+                rc, out, err = None, "", str(e)
+            else:
+                rc, out, err = await run_bash(
+                    s.d.check.bash, self._cwd(s), s.d.check.timeout_s, user=user
+                )
             if rc == 0:
                 sha = hashlib.sha256(out.encode()).hexdigest()
                 if sha == st.sha:

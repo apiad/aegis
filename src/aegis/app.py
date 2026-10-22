@@ -403,8 +403,9 @@ class App:
             lambda: self.config.current().terminals,
             self.publish,
             lambda: self.terminal_cgroups,
-            linux_user_of=lambda owner: self.principals.linux_user_of(owner),
+            acts_for=lambda owner: self.principals.acts_for(owner),
             role_of=lambda owner: self.principals.role_of(owner),
+            multi_user=multi_user is not None,
         )
         self.tokens = Tokens()
         self.monitors = Monitors(self.sessions, roots.state_root / "monitors.json")
@@ -503,7 +504,7 @@ class App:
         reg.gate = self.gate
         # Who each session's processes run as, in multi-user mode (users.py).
         reg.multi_user = multi_user is not None
-        reg.linux_user_of = lambda name: self.principals.linux_user_of(name)
+        reg.acts_for = lambda name: self.principals.acts_for(name)
         reg.role_of = lambda name: self.principals.role_of(name) if name else None
         # Models that fell, and the one timer that releases held work when the
         # first of them is free again (cascade.py).
@@ -847,6 +848,8 @@ class App:
     def _linux_user_of_session(self, log_id: str) -> str | None:
         """The Linux user a session runs as (users.py): the live session's,
         else its meta's, since the journal backfills closed sessions too."""
+        if self.multi_user is None:
+            return None
         s = self.sessions.sessions.get(log_id)
         if s is not None:
             return s.spec.linux_user

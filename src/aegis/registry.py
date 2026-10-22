@@ -108,7 +108,9 @@ class Registry(Host):
         # The multi-user mode (users.py), and who a principal is; the app sets
         # them at boot from its tokens.
         self.multi_user = False
-        self.linux_user_of: Callable[[str | None], str | None] = lambda name: None
+        # tokens.TokenStore.acts_for: the user a principal's processes run
+        # as, raising PermissionError when nothing may run for it.
+        self.acts_for: Callable[[str | None], str | None] = lambda name: None
         self.role_of: Callable[[str | None], str | None] = lambda name: None
         # What boot decided about the turns the last run's end cut (restarts.py):
         # each continued session, and whether that end was a crash; the ones a
@@ -135,11 +137,15 @@ class Registry(Host):
         lives in the server's home: it may not start as the server instead."""
         if not self.multi_user:
             return None
-        if spec.linux_user is None and self.role_of(spec.owner) == "member":
+        if spec.linux_user is not None:
+            return spec.linux_user
+        # An owner that would run as a user now, or none at all (revoked):
+        # its session from before the mode may not start as the server.
+        if self.acts_for(spec.owner) is not None:
             raise PermissionError(
                 "this session was created before multi-user mode; start a new one"
             )
-        return spec.linux_user
+        return None
 
     def cgroup(self, session: Session) -> Path | None:
         return self.cgroups.create(session.log_id) if self.cgroups else None
@@ -687,12 +693,15 @@ class Registry(Host):
     ) -> Session:
         log_id = mint_log_id()
         if self.multi_user:
-            spec = users.place(
-                spec,
-                root=self.roots.harness_cwd,
-                role=self.role_of(spec.owner),
-                linux_user=self.linux_user_of(spec.owner),
-            )
+            try:
+                spec = users.place(
+                    spec,
+                    root=self.roots.harness_cwd,
+                    role=self.role_of(spec.owner),
+                    linux_user=self.acts_for(spec.owner),
+                )
+            except PermissionError as e:
+                raise OpError("no_linux_user", str(e)) from None
         s = self._session(
             {"log_id": log_id, "handle": mint_handle(self._handles())}
             | spec.record()
