@@ -2,6 +2,8 @@
 title: Layouts and the canvas
 kind: tutorial
 when: a tutorial to practise the canvas step by step after getting started: panes, their layout, and window 2
+hints:
+  - Practise the canvas: dock panes, resize them, and move one to a second window.
 ---
 
 This tutorial arranges a session's canvas: the transcript and the panes of

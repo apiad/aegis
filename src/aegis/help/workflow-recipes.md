@@ -2,6 +2,9 @@
 title: Workflow recipes
 kind: howto
 when: writing a workflow for a common shape by copying one: implement and review, merge on green CI, one agent per item, an early output, a nightly run, polling, a judge's check
+hints:
+  - Start a workflow from a recipe: implement, review and fix until approved. #implement-review-and-fix-until-approved
+  - A recipe merges a PR on green CI once you agree. #merge-on-green-ci-after-the-person-agrees
 ---
 
 Each recipe is a whole workflow that lints as it stands. Copy the closest

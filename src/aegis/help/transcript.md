@@ -2,6 +2,10 @@
 title: Reading a transcript
 kind: concept
 when: reading what an agent did, its tool rows and replies, the files it sent and the paths it named
+hints:
+  - Fold the tool rows to read only the agent's replies. #folding
+  - Click a path in a reply to open that file at that line. #paths-in-replies
+  - Dock files and pages beside the transcript in the canvas. #the-canvas
 ---
 
 A session's transcript is everything that happened in it, one row per thing:

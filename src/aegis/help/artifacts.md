@@ -2,6 +2,9 @@
 title: Artifacts
 kind: howto
 when: showing the person a page they can click, tune or answer, instead of asking in prose
+hints:
+  - Ask an agent to show you a page to choose from instead of a question in prose. #write-and-send-one
+  - A page an agent sent can stay docked beside the transcript while you work. #pages-that-stay-in-view
 ---
 
 An artifact is an interactive page you write for the person: a choice among

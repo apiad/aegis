@@ -2,6 +2,9 @@
 title: Commands
 kind: concept
 when: looking up an aegis slash command or an aegis command-line subcommand
+hints:
+  - Type / in the composer to see every command this session takes. #slash-commands
+  - Every aegis tool is also a shell command: aegis call <tool> key=value. #tools-from-an-agent-s-shell
 ---
 
 aegis has two sets of commands: slash commands typed in a session's message
@@ -27,7 +30,7 @@ Tab or Enter picks one. Alt+/ opens the same menu over a draft.
 | `/stop` | alias of `/sleep` |
 | `/restart` | end the process and start a fresh one on the same conversation; nothing is sent. Use it after a change to the agent's MCP config or when the harness hangs |
 | `/btw <question>` | ask a side question about this session, even while the agent works. aegis answers it from the transcript with the agent `btw:` names in `.aegis.yaml`, in one call with no tools, and shows the answer as a block you can fold. The agent never sees the question or the answer. One runs at a time per session; the block's cancel stops it |
-| `/feedback [text]` | report a bug, ask for a feature or point out a docs gap in aegis. The agent reads the help page feedback, asks what it still needs and shows you a draft issue; nothing is filed until you say yes. Claude Code's own /feedback, which reports to Anthropic, is hidden in aegis |
+| `/feedback [text]` | report a bug, ask for a feature or point out a docs gap in aegis. The agent reads the help page feedback, asks what it still needs and shows you a draft issue; nothing is filed until you say yes. Claude Code's own /feedback, which reports to Anthropic, is hidden in aegis. The /feedback row under the new tab's chips starts a new session with the chips you picked there, and the agent asks you what to report |
 | `/workflow [id] [text]` | run a saved workflow now: the agent makes its args from your text and starts it, with no card to approve. Alone, it opens the menu of saved workflows |
 | `/loop <prompt>` | repeat a prompt in this session until the agent says it is done, at a fixed interval when the prompt gives one ("every 5m") or at the agent's pace; Stop on its card ends it |
 | `/spawn <agent>[@server] [prompt]` | start a session, here or on a linked server; flags `--quiet` (no tab until its turn ends; needs a prompt), `--model`, `--effort`, `--permission` and `--cwd` go before the prompt |
@@ -37,6 +40,7 @@ Tab or Enter picks one. Alt+/ opens the same menu over a draft.
 | `/help <query>` | open the Help tab with those words searched, such as `/help queues` |
 | `/tutorial [page]` | start a guide session in a new tab that walks you through a help page, one step per turn. With no page it runs `getting-started`; after the space, the menu lists the tutorial pages. Typed in a session, the guide runs on the agent `default_agent:` names, in that session's directory, and nothing is sent to the session you typed it in. The hint under the new tab's chips does the same with the agent and chips you picked there. |
 | `/whats-new` | start a guide session in a new tab that walks you through what changed in aegis since your last tour, one change per turn, opening each change's help page to show you how to use it. It covers the releases after the last one you toured, up to the version you run, from the release notes that ship with it; if you have toured this version already, it tours it again. Typed in a session, the guide runs on the agent `default_agent:` names, in that session's directory. The hint under the new tab's chips does the same with the chips you picked there, and its × marks this version toured without starting a guide. |
+| `/doctor` | an admin's, listed only while `aegis doctor` finds a warning or an error. It runs the doctor again and starts a session in a new tab, on the agent `default_agent:` names, in the config root, whose first message is the report; the agent works through each problem with you and asks before it edits `.aegis.yaml`, installs or upgrades anything. When nothing is wrong any more it refuses. The new tab's doctor row has the same button, which uses the chips you picked there |
 
 A line that starts with // is sent as text, its first slash turned into a
 space so the harness does not read a command, for when you mean the text. When

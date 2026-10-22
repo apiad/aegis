@@ -2,6 +2,8 @@
 title: Getting started
 kind: tutorial
 when: the first hour with aegis, from one session to plans, files and pages, monitors, helpers and a queue of workers
+hints:
+  - New here? The getting-started page goes from one session to queues in five levels.
 ---
 
 This tutorial takes you from your first session to a queue of workers, in

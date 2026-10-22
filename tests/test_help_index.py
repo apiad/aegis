@@ -14,6 +14,9 @@ PAGE = """\
 title: Monitors
 kind: howto
 when: waiting on a build or CI without polling
+hints:
+  - Wait on a build without polling: a monitor wakes you. #wait-on-a-process
+  - A monitor can wait for other sessions.
 ---
 
 A monitor waits so you do not have to.
@@ -36,6 +39,8 @@ OTHER = """\
 title: Queues
 kind: howto
 when: handing tasks to workers
+hints:
+  - Hand tasks to workers.
 ---
 
 A queue runs tasks in workers, and a task can wait for a build too.
@@ -81,6 +86,36 @@ def test_an_unknown_kind_and_a_missing_frontmatter_are_refused():
 def test_two_sections_that_slug_alike_are_refused():
     with pytest.raises(ValueError, match="two sections slug to wait-on-ci"):
         parse("x", PAGE + "\n## Wait on CI\n\na\n\n## Wait on CI!\n\nb\n")
+
+
+def test_hints_parse_with_their_refs():
+    assert parse("monitors", PAGE).hints == (
+        (
+            "Wait on a build without polling: a monitor wakes you.",
+            "monitors#wait-on-a-process",
+        ),
+        ("A monitor can wait for other sessions.", "monitors"),
+    )
+
+
+def _hints(*items: str) -> str:
+    lines = PAGE.split("hints:\n", 1)
+    rest = lines[1].split("---\n", 1)[1]
+    return lines[0] + "hints:\n" + "".join(f"  - {i}\n" for i in items) + "---\n" + rest
+
+
+@pytest.mark.parametrize(
+    "items, words",
+    [
+        ((), "1 to 3 items, has 0"),
+        (("a", "b", "c", "d"), "1 to 3 items, has 4"),
+        (("x" * 91,), "91 characters"),
+        (("Wait. #no-such-section",), "#no-such-section"),
+    ],
+)
+def test_a_bad_hints_list_is_refused_by_file_name(items, words):
+    with pytest.raises(ValueError, match=rf"monitors\.md: .*{re.escape(words)}"):
+        parse("monitors", _hints(*items))
 
 
 def test_search_ranks_the_page_whose_title_and_when_match():

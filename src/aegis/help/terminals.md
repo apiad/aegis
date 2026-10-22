@@ -2,6 +2,9 @@
 title: Terminals
 kind: howto
 when: you want a shell or a long-running command on the server in a browser tab, or a dev server that comes back after a restart of aegis
+hints:
+  - Open a shell on the server in a browser tab, beside your sessions. #opening-one
+  - A terminal running a dev server comes back after aegis restarts. #closing-restarting-the-archive
 ---
 
 A terminal is a shell or a command that runs on the server, held by aegis. It

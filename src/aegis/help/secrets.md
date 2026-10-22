@@ -2,6 +2,9 @@
 title: Secrets
 kind: howto
 when: handing the person a password, token, API key or private key, or asking them for one, without it entering the chat, the transcript or a log
+hints:
+  - An agent can hand you a password through a card that never enters the transcript. #send-a-new-password
+  - Give an agent a token without pasting it into the chat. #ask-the-person-for-a-secret
 ---
 
 A password, a token or a key must never be written where it is kept: a

@@ -2,6 +2,9 @@
 title: Browsers
 kind: howto
 when: test a web page with the person, see what the user sees in a page, a captcha or a login the person must do, drive a browser on the server
+hints:
+  - An agent can drive a browser on the server and hand you the tab for a login. #handing-over-and-back
+  - Test a web page together: you see the same tab the agent drives. #the-tab
 ---
 
 A browser is a Chromium that runs on the server, held by aegis like a

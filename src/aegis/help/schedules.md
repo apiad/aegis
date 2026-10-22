@@ -2,6 +2,9 @@
 title: Schedules
 kind: howto
 when: firing a prompt on a clock, every few minutes, on a cron line or once on a set date, into a new session or into one already open
+hints:
+  - Schedule a prompt to fire every morning, on a cron line or once on a date. #create-a-schedule
+  - A schedule can fire into a session that is already open. #where-it-fires
 ---
 
 A schedule sends a prompt to an agent when a clock says so. Each tick goes

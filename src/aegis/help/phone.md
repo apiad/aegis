@@ -2,6 +2,9 @@
 title: On a phone: install, offline, push
 kind: howto
 when: installing on a phone home screen, opening with no connection, messages written offline, push notifications, docked panes as tabs on a phone
+hints:
+  - Install aegis on your phone's home screen and get push notifications. #install-it-as-an-app
+  - Write messages without a connection; they send when it comes back. #messages-written-offline
 ---
 
 The client runs in a browser, and on a phone it can live on the home screen

@@ -2,6 +2,10 @@
 title: Sessions
 kind: concept
 when: starting, steering, renaming, sleeping, waking, restarting, parking, archiving and reopening agent sessions
+hints:
+  - Put a session to sleep to free its process; a message wakes it. #sleep-wake-restart-archive-and-reopen
+  - Steer a running agent by typing while it works. #steer-a-running-session
+  - A quiet session works without marking its tab for your attention. #quiet-sessions
 ---
 
 A session is one agent's conversation, run by its harness (Claude Code,

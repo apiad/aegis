@@ -2,6 +2,8 @@
 title: Links
 kind: concept
 when: working with sessions on another aegis server, from this one
+hints:
+  - Link another aegis server and start sessions on it from this one. #add-a-link
 ---
 
 A link makes this server a client of another aegis server. The people on this

@@ -2,6 +2,9 @@
 title: The code map
 kind: howto
 when: learning an unfamiliar repository's layout, finding every caller of a function or what a change would break, measuring a codebase (sizes, complexity, typing, cycles, dead code) or reviewing a branch, instead of grep or a one-off script
+hints:
+  - Run aegis map repo in a repository to see its layout before reading files. #start-with-the-layout
+  - aegis map impact lists everything a change to one definition would touch. #callers-and-impact
 ---
 
 `aegis map` reads a git repository with tree-sitter and answers what grep
