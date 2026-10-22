@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import pwd
 import re
 from pathlib import Path
 from typing import TypeVar
@@ -119,9 +120,17 @@ def parse(stdout: str, out: type[T]) -> tuple[T | None, float, int]:
     return None, cost, ms
 
 
-async def run(argv: list[str], cwd: Path, timeout: float) -> str:
-    """stdout of one call. A cancelled caller kills its claude: one left
-    running would keep billing."""
+async def run(
+    argv: list[str], cwd: Path, timeout: float, user: str | None = None
+) -> str:
+    """stdout of one call, as ``user`` (launch.py). A cancelled caller kills
+    its claude: one left running would keep billing. A call as a user runs in
+    that user's home, since ``cwd`` is under the server's state."""
+    if user is not None:
+        try:
+            cwd = Path(pwd.getpwnam(user).pw_dir)
+        except KeyError:
+            raise OneshotError(f"Linux user {user} does not exist") from None
     cwd.mkdir(parents=True, exist_ok=True)
     try:
         proc = await launch.child(
@@ -131,7 +140,7 @@ async def run(argv: list[str], cwd: Path, timeout: float) -> str:
             stdin=launch.DEVNULL,
             stdout=launch.PIPE,
             stderr=launch.DEVNULL,
-            user=None,
+            user=user,
         )
     except OSError as e:
         raise OneshotError(str(e)) from e

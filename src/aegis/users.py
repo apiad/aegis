@@ -15,10 +15,14 @@ import pwd
 import re
 import shutil
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .ops import OpError
+
+if TYPE_CHECKING:
+    from .session import SpawnSpec
 
 log = logging.getLogger("aegis.users")
 
@@ -266,3 +270,15 @@ def user_env(
     if "TERM" in os.environ:
         env["TERM"] = os.environ["TERM"]
     return env | dict(added) | dict(pool)
+
+
+def place(
+    spec: "SpawnSpec", *, root: Path, role: str | None, linux_user: str | None
+) -> "SpawnSpec":
+    """``spec`` with the Linux user it runs as. A member's session that would
+    start in the aegis root, which belongs to the server, starts in the
+    member's home instead."""
+    cwd = spec.cwd
+    if linux_user and role == "member" and Path(cwd).resolve() == root.resolve():
+        cwd = Path(pwd.getpwnam(linux_user).pw_dir)
+    return replace(spec, linux_user=linux_user, cwd=cwd)

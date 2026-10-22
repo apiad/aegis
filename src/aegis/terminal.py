@@ -105,15 +105,25 @@ class Terminal:
         return self.proc.pid if self.proc is not None and self.running else None
 
     async def start(
-        self, argv: list[str], cwd: Path, env: dict[str, str], cgroup: Path | None
+        self,
+        argv: list[str],
+        cwd: Path,
+        env: dict[str, str],
+        cgroup: Path | None,
+        user: str | None = None,
     ) -> None:
         if self.running or self.starting:
             raise OpError("running", f"terminal {self.meta['name']} is running")
         async with self._starting:
-            await self._start(argv, cwd, env, cgroup)
+            await self._start(argv, cwd, env, cgroup, user)
 
     async def _start(
-        self, argv: list[str], cwd: Path, env: dict[str, str], cgroup: Path | None
+        self,
+        argv: list[str],
+        cwd: Path,
+        env: dict[str, str],
+        cgroup: Path | None,
+        user: str | None,
     ) -> None:
         cols, rows = self.meta["cols"], self.meta["rows"]
         master, slave = os.openpty()
@@ -121,7 +131,7 @@ class Terminal:
         os.set_blocking(master, False)
         try:
             self.proc = await launch.pty(
-                argv, tty=slave, cwd=cwd, env=env, cgroup=cgroup, user=None
+                argv, tty=slave, cwd=cwd, env=env, cgroup=cgroup, user=user
             )
         except BaseException:
             os.close(master)

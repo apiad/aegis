@@ -232,4 +232,5 @@ def register_schedule_ops(app: App) -> None:
             where = s.spec.cwd
         else:
             where = cwd(p.cwd, caller)
-        return await sch.test(clock, p.check, where, p.name)
+        user = app.principals.linux_user_of(app.who(caller).name)
+        return await sch.test(clock, p.check, where, p.name, user)

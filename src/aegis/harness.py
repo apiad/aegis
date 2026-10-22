@@ -78,6 +78,8 @@ class Launch:
     # Harness tools the agent keeps although aegis replaces them
     # (claude/process.py REPLACED_TOOLS); other harnesses ignore it.
     keep_harness_tools: tuple[str, ...] = ()
+    # The Linux user the process runs as, in multi-user mode (launch.py).
+    user: str | None = None
 
 
 SESSION_VAR = "AEGIS_SESSION"

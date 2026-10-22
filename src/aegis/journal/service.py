@@ -66,9 +66,16 @@ def _complete_if(con, token: int) -> None:
 
 class Journal:
     def __init__(
-        self, state_root: Path, publish, db_path: Path | None = None, on_live=None
+        self,
+        state_root: Path,
+        publish,
+        db_path: Path | None = None,
+        on_live=None,
+        user_of=lambda log_id: None,
     ) -> None:
         self.state_root = state_root
+        # The Linux user of a session by log id: its git runs as that user.
+        self.user_of = user_of
         # Called on the writer thread with (log_id, handle, new paths, dirs)
         # when a live record wrote files, or committed, opened or merged a PR
         # or pushed in dirs: the Repos row must see a write before the turn
@@ -239,9 +246,10 @@ class Journal:
         )
 
     def _entry(self, log_id: str, n: int, row: Row) -> db.Entry:
+        user = self.user_of(log_id)
         touches = []
         for op, p in row.touches:
-            repo, rel, top = paths.place(p)
+            repo, rel, top = paths.place(p, user)
             touches.append((op, repo, rel, paths.full(repo, rel), top))
         repo = touches[0][1] if touches else None
         top = touches[0][4] if touches else None
@@ -253,20 +261,20 @@ class Journal:
             directory, h = row.commit
             files = None
             for d in dict.fromkeys((directory, *row.near)):
-                files = paths.commit_files(d, h)
+                files = paths.commit_files(d, h, user)
                 if files is not None:
                     directory = d
                     break
             repo, _, top = (
-                paths.place(directory) if files is not None else (None, "", None)
+                paths.place(directory, user) if files is not None else (None, "", None)
             )
-            sha = paths.full_sha(directory, h) if files is not None else None
+            sha = paths.full_sha(directory, h, user) if files is not None else None
             unknown = files is None
             touches += [
                 ("commit", repo, f, paths.full(repo, f), top) for f in files or []
             ]
         if row.workdir:
-            repo, _, top = paths.place(row.workdir)
+            repo, _, top = paths.place(row.workdir, user)
         return db.Entry(
             log_id,
             row.rec,

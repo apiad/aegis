@@ -5,7 +5,9 @@ edit made in a worktree and one made in the main checkout are the same file to
 the journal. A path in no repo keeps its absolute real path. Claims do not use
 this module: they match real paths, which is what exempts worktrees from them.
 
-Everything here runs git, so it runs on the journal's writer thread.
+Everything here runs git, so it runs on the journal's writer thread. git runs
+as ``user``, the Linux user of the session whose turn it reads (launch.py):
+git refuses a repository another user owns.
 """
 
 from __future__ import annotations
@@ -16,18 +18,18 @@ import subprocess
 from .. import launch
 
 
-def _git(args: list[str], cwd: str) -> str | None:
+def _git(args: list[str], cwd: str, user: str | None = None) -> str | None:
     try:
-        r = launch.run(["git", *args], cwd=cwd, text=True, timeout=10, user=None)
+        r = launch.run(["git", *args], cwd=cwd, text=True, timeout=10, user=user)
     except (OSError, subprocess.TimeoutExpired):
         return None
     return r.stdout if r.returncode == 0 else None
 
 
-def _git_binary(args: list[str], cwd: str) -> bytes | None:
+def _git_binary(args: list[str], cwd: str, user: str | None = None) -> bytes | None:
     """Run git and return binary output (for -z handling)."""
     try:
-        r = launch.run(["git", *args], cwd=cwd, timeout=10, user=None)
+        r = launch.run(["git", *args], cwd=cwd, timeout=10, user=user)
     except (OSError, subprocess.TimeoutExpired):
         return None
     return r.stdout if r.returncode == 0 else None
@@ -44,25 +46,25 @@ def _existing(path: str) -> str:
     return d
 
 
-_checkout_cache: dict[str, tuple[str, str]] = {}
+_checkout_cache: dict[tuple[str, str | None], tuple[str, str]] = {}
 
 
-def _checkout(directory: str) -> tuple[str, str] | None:
+def _checkout(directory: str, user: str | None = None) -> tuple[str, str] | None:
     """(this worktree's top level, the main checkout) for a directory in a repo."""
-    if directory in _checkout_cache:
-        return _checkout_cache[directory]
-    out = _git(["rev-parse", "--show-toplevel", "--git-common-dir"], directory)
+    if (directory, user) in _checkout_cache:
+        return _checkout_cache[(directory, user)]
+    out = _git(["rev-parse", "--show-toplevel", "--git-common-dir"], directory, user)
     if not out:
         return None
     top, common = out.splitlines()[:2]
     common = os.path.realpath(os.path.join(directory, common))
     main = os.path.dirname(common) if os.path.basename(common) == ".git" else common
     result = os.path.realpath(top), main
-    _checkout_cache[directory] = result
+    _checkout_cache[(directory, user)] = result
     return result
 
 
-def place(path: str) -> tuple[str | None, str, str | None]:
+def place(path: str, user: str | None = None) -> tuple[str | None, str, str | None]:
     """(the main checkout, the path inside the worktree, the worktree's top
     level) for a path in a repo; (None, the real path, None) outside one."""
     try:
@@ -70,7 +72,7 @@ def place(path: str) -> tuple[str | None, str, str | None]:
     except ValueError:
         # NUL byte or other invalid input
         return None, path, None
-    hit = _checkout(_existing(path))
+    hit = _checkout(_existing(path), user)
     if hit is None:
         return None, path, None
     top, main = hit
@@ -84,8 +86,8 @@ def place(path: str) -> tuple[str | None, str, str | None]:
     return main, "" if rel == "." else rel, top
 
 
-def name(path: str) -> tuple[str | None, str]:
-    main, rel, _ = place(path)
+def name(path: str, user: str | None = None) -> tuple[str | None, str]:
+    main, rel, _ = place(path, user)
     return main, rel
 
 
@@ -95,15 +97,18 @@ def full(repo: str | None, rel: str) -> str:
     return os.path.join(repo, rel) if rel else repo
 
 
-def full_sha(directory: str, commit: str) -> str | None:
+def full_sha(directory: str, commit: str, user: str | None = None) -> str | None:
     out = _git(
         ["rev-parse", "--verify", "--end-of-options", f"{commit}^{{commit}}"],
         _existing(os.path.realpath(directory)),
+        user,
     )
     return out.strip() if out else None
 
 
-def commit_files(directory: str, commit: str) -> list[str] | None:
+def commit_files(
+    directory: str, commit: str, user: str | None = None
+) -> list[str] | None:
     out = _git_binary(
         [
             "show",
@@ -114,6 +119,7 @@ def commit_files(directory: str, commit: str) -> list[str] | None:
             f"{commit}^{{commit}}",
         ],
         _existing(os.path.realpath(directory)),
+        user,
     )
     if out is None:
         return None

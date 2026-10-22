@@ -140,6 +140,8 @@ async def run_sh(
     on_pid,
     env: dict[str, str] | None = None,
     seen: dict | None = None,
+    *,
+    user: str | None,
 ) -> tuple[int, str, str]:
     """An sh node's command under bash, with ``env`` (its values, see
     shell_command) added to the server's, in its own process group, so a
@@ -154,7 +156,7 @@ async def run_sh(
         stdout=launch.PIPE,
         stderr=launch.PIPE,
         new_session=True,
-        user=None,
+        user=user,
     )
     on_pid(proc.pid)
     try:
@@ -2161,7 +2163,9 @@ class Workflows:
             if any("\0" in v for v in env.values()):
                 raise ValueError(NUL)
             seen = self._seen_out[(st.run, inst)] = {}
-            code, out, err = await run_sh(cmd, self._cwd(st), pid, env, seen)
+            code, out, err = await run_sh(
+                cmd, self._cwd(st), pid, env, seen, user=self._user(st)
+            )
         except ValueError:  # a NUL byte, from a value: every attempt would
             # fail the same way, so it fails once, never retried (below)
             code, out, err = None, "", NUL
@@ -2305,15 +2309,20 @@ class Workflows:
             return "running"
         return await self._check_judge(st, wf, node, prefix)  # task 7
 
+    def _user(self, st: RunState) -> str | None:
+        """The Linux user the run's commands run as: its owner's (users.py)."""
+        owner = self.owner(st)
+        return owner.spec.linux_user if owner is not None else None
+
     async def _probe_sh(
-        self, cmd: str, cwd: str, env: dict[str, str]
+        self, cmd: str, cwd: str, env: dict[str, str], user: str | None
     ) -> tuple[int | None, str, str]:
         """An sh probe's exit code, stdout and stderr, run as an sh node is
         (its own process group, ended when its task is cancelled); the code
         is None when bash did not start or the probe ran too long."""
         try:
             return await asyncio.wait_for(
-                run_sh(cmd, cwd, lambda _: None, env), CONDITION_LIMIT_S
+                run_sh(cmd, cwd, lambda _: None, env, user=user), CONDITION_LIMIT_S
             )
         except TimeoutError:
             return None, "", f"took over {CONDITION_LIMIT_S:g}s"
@@ -2325,7 +2334,9 @@ class Workflows:
     ) -> None:
         try:
             while True:
-                rc, out, err = await self._probe_sh(cmd, self._cwd(st), env)
+                rc, out, err = await self._probe_sh(
+                    cmd, self._cwd(st), env, self._user(st)
+                )
                 self._readings[(st.run, inst)] = (
                     f"exit {rc if rc is not None else '?'} at {iso_now()[11:16]}"
                 )
@@ -2480,7 +2491,7 @@ class Workflows:
         self, st: RunState, inst: str, rnd: str, cmd: str, env: dict[str, str]
     ) -> None:
         try:
-            rc, out, err = await self._probe_sh(cmd, self._cwd(st), env)
+            rc, out, err = await self._probe_sh(cmd, self._cwd(st), env, self._user(st))
             self._readings[(st.run, inst)] = (
                 f"exit {rc if rc is not None else '?'} at {iso_now()[11:16]}"
             )

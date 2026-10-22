@@ -41,6 +41,7 @@ import binascii
 import contextlib
 import dataclasses
 import getpass
+import json
 import logging
 import re
 import time
@@ -402,6 +403,8 @@ class App:
             lambda: self.config.current().terminals,
             self.publish,
             lambda: self.terminal_cgroups,
+            linux_user_of=lambda owner: self.principals.linux_user_of(owner),
+            role_of=lambda owner: self.principals.role_of(owner),
         )
         self.tokens = Tokens()
         self.monitors = Monitors(self.sessions, roots.state_root / "monitors.json")
@@ -437,7 +440,9 @@ class App:
         reg.context = lambda: self.config.current().context
         reg.version_policy = lambda: self.config.current().harness_versions
         reg.quota = self.quota
-        self.journal = Journal(roots.state_root, self.publish)
+        self.journal = Journal(
+            roots.state_root, self.publish, user_of=self._linux_user_of_session
+        )
         reg.journal = self.journal
         self.repos = Repos(
             self.journal.path,
@@ -445,6 +450,7 @@ class App:
             lambda: {s.log_id: s.handle for s in self.sessions.open_sessions()},
             lambda name: self.channels.subscribers(name),
             roots.harness_cwd,
+            user_of=self._linux_user_of_session,
         )
         self.journal.on_live = self.repos.live
         self.schedules = Schedules(self)
@@ -495,6 +501,10 @@ class App:
         self._quota_busy: set[str] = set()
         self.quota.listeners.append(self.on_quota)
         reg.gate = self.gate
+        # Who each session's processes run as, in multi-user mode (users.py).
+        reg.multi_user = multi_user is not None
+        reg.linux_user_of = lambda name: self.principals.linux_user_of(name)
+        reg.role_of = lambda name: self.principals.role_of(name) if name else None
         # Models that fell, and the one timer that releases held work when the
         # first of them is free again (cascade.py).
         self.cooling = Cooling()
@@ -833,6 +843,18 @@ class App:
         await self.repos.stop()
         await asyncio.to_thread(self.journal.stop)
         restarts.stopped(self.roots.state_root, stopping_at)
+
+    def _linux_user_of_session(self, log_id: str) -> str | None:
+        """The Linux user a session runs as (users.py): the live session's,
+        else its meta's, since the journal backfills closed sessions too."""
+        s = self.sessions.sessions.get(log_id)
+        if s is not None:
+            return s.spec.linux_user
+        try:
+            meta = json.loads(self.sessions.metas.path(log_id).read_text())
+        except (OSError, ValueError):
+            return None
+        return meta.get("linux_user") if isinstance(meta, dict) else None
 
     def _on_config(self, snap: Snapshot) -> None:
         """Every change to .aegis.yaml, however it was made: the page and the

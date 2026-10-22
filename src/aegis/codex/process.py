@@ -149,7 +149,7 @@ class CodexProcess:
             new_session=True,
             cgroup=self._launch.cgroup,
             oom=True,
-            user=None,
+            user=self._launch.user,
         )
         self._keep(self._drain(self._proc.stderr))
         self._keep(self._read())

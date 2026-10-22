@@ -33,7 +33,7 @@ def _ci(rollup) -> str:
     return "CI running"
 
 
-def prs(top: str, branch: str) -> list[dict] | None:
+def prs(top: str, branch: str, user: str | None = None) -> list[dict] | None:
     """``[{n, url, title, state, ci}]`` for PRs whose head is ``branch``, newest
     first; ``None`` when gh could not answer."""
     key = (top, branch)
@@ -62,7 +62,7 @@ def prs(top: str, branch: str) -> list[dict] | None:
                 text=True,
                 errors="replace",
                 timeout=TIMEOUT,
-                user=None,
+                user=user,
             )
             if r.returncode == 0:
                 found = [
