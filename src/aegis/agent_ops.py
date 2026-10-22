@@ -878,7 +878,11 @@ def register_agent_ops(app: App) -> None:
         handle and state alone, as `handle@server`: reach one with
         peer_handoff."""
         out = []
+        who = app.who(caller)
+        member = app.own_log_ids(who) is not None
         for s in reg.open_sessions():
+            if not app.sees(who, app.owner_of(s.log_id)):
+                continue
             w = s.wire()
             out.append(
                 {
@@ -892,7 +896,8 @@ def register_agent_ops(app: App) -> None:
                     **{k: w.get(k) for k in LISTED},
                 }
             )
-        if caller.link is None:  # a link asking is not relayed further
+        # A link asking is not relayed further; links are the admin's.
+        if caller.link is None and not member:
             out += await far_sessions()
         return out
 
