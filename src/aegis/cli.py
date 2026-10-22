@@ -285,6 +285,20 @@ def serve(
             err=True,
         )
         raise typer.Exit(1)
+    from .config import Config
+
+    snap = Config(roots.config_root).current()
+    if snap.multi_user_error:
+        typer.echo(snap.multi_user_error, err=True)
+        raise typer.Exit(1)
+    if snap.multi_user is not None:
+        from .users import boot_problems
+
+        if problems := boot_problems(roots.state_root, snap.multi_user):
+            for line in problems:
+                typer.echo(line, err=True)
+            raise typer.Exit(1)
+        roots.state_root.mkdir(mode=0o700, parents=True, exist_ok=True)
     local = "127.0.0.1" if host in ("127.0.0.1", "0.0.0.0", "localhost") else host
     if not _port_free(host, port):
         if window and _open_running(roots.state_root, local, port, browser):
@@ -330,6 +344,7 @@ def serve(
         codex_bin=codex,
         base_url=f"http://{local}:{port}",
         server_name=name or _socket.gethostname(),
+        multi_user=snap.multi_user,
     )
     web = build_web(app, token, allowed, origin)
     typer.echo(f"aegis serving {roots.config_root}")

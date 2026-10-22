@@ -99,3 +99,57 @@ def test_pool_reads_again_when_the_file_changes(tmp_path):
     assert pool.get() == {"A": "2"}
     assert users.Pool(None).get() == {}
     assert users.Pool(tmp_path / "gone").get() == {}
+
+
+FULL = "CapEff:\t00000000000001c0\nCapAmb:\t00000000000001c0\n"
+NONE = "CapEff:\t0000000000000000\nCapAmb:\t0000000000000000\n"
+
+
+def test_caps_of_reads_effective_and_ambient():
+    assert users.caps_of(FULL) == (0x1C0, 0x1C0)
+
+
+def test_boot_problems_names_the_unit_lines_when_caps_are_missing(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    out = users.boot_problems(state, users.MultiUser(), status=NONE, uid=os.getuid())
+    text = "\n".join(out)
+    assert "CAP_SETUID CAP_SETGID CAP_SETPCAP" in text
+    assert all(line in text for line in users.UNIT_LINES)
+    assert "aegis service install --multi-user" in text
+
+
+def test_boot_problems_refuses_root(tmp_path):
+    out = users.boot_problems(tmp_path, users.MultiUser(), status=FULL, uid=0)
+    assert any("root" in p for p in out)
+
+
+def test_boot_problems_tightens_the_state_mode(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir(mode=0o755)
+    assert (
+        users.boot_problems(state, users.MultiUser(), status=FULL, uid=os.getuid())
+        == []
+    )
+    assert state.stat().st_mode & 0o777 == 0o700
+
+
+def test_boot_problems_refuses_a_state_another_user_owns(tmp_path):
+    out = users.boot_problems(
+        tmp_path, users.MultiUser(), status=FULL, uid=os.getuid() + 1
+    )
+    assert any(str(tmp_path) in p for p in out)
+
+
+def test_boot_problems_refuses_a_pool_file_others_can_read(tmp_path):
+    pool = tmp_path / "pool.env"
+    pool.write_text("A=1\n")
+    pool.chmod(0o644)
+    mu = users.MultiUser(pool)
+    out = users.boot_problems(tmp_path, mu, status=FULL, uid=os.getuid())
+    assert any("pool.env" in p and "0600" in p for p in out)
+    pool.chmod(0o600)
+    assert users.boot_problems(tmp_path, mu, status=FULL, uid=os.getuid()) == []
+    missing = users.MultiUser(tmp_path / "gone.env")
+    out = users.boot_problems(tmp_path, missing, status=FULL, uid=os.getuid())
+    assert any("gone.env" in p for p in out)

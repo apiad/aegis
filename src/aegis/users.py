@@ -10,8 +10,10 @@ docs/superpowers/specs/2026-10-21-linux-users-design.html, sections 04 to 06.
 from __future__ import annotations
 
 import logging
+import os
 import pwd
 import re
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -23,6 +25,13 @@ LOGIN_DEFS = Path("/etc/login.defs")
 UID_MIN_DEFAULT = 1000
 ENV_PATH_DEFAULT = "/usr/local/bin:/usr/bin:/bin"
 ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+# The capabilities the server needs to start a child as another user and drop
+# every capability from it (the bounding set needs CAP_SETPCAP), by bit.
+CAPS = {"CAP_SETGID": 6, "CAP_SETUID": 7, "CAP_SETPCAP": 8}
+UNIT_LINES = (
+    "AmbientCapabilities=CAP_SETUID CAP_SETGID CAP_SETPCAP",
+    "CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_SETPCAP",
+)
 
 
 def _login_defs(path: Path) -> dict[str, str]:
@@ -144,3 +153,67 @@ class Pool:
         except OSError:
             self._seen, self._vars = None, {}
         return dict(self._vars)
+
+
+def caps_of(status: str) -> tuple[int, int]:
+    """(CapEff, CapAmb) from the text of /proc/<pid>/status."""
+    sets = {"CapEff": 0, "CapAmb": 0}
+    for line in status.splitlines():
+        key, _, value = line.partition(":")
+        if key in sets:
+            sets[key] = int(value.strip(), 16)
+    return sets["CapEff"], sets["CapAmb"]
+
+
+def boot_problems(
+    state_root: Path,
+    mu: MultiUser,
+    *,
+    status: str | None = None,
+    uid: int | None = None,
+) -> list[str]:
+    """Why this server may not start in multi-user mode, one line each; []
+    when it may. A state directory it owns with a looser mode is set to 0700,
+    not reported."""
+    if status is None:
+        status = Path("/proc/self/status").read_text()
+    if uid is None:
+        uid = os.geteuid()
+    out = []
+    if uid == 0:
+        out.append(
+            "aegis serve runs as root; multi_user needs an unprivileged service user"
+        )
+    eff, amb = caps_of(status)
+    missing = [c for c, bit in CAPS.items() if not (eff & amb) >> bit & 1]
+    if missing:
+        out.append(
+            f"multi_user needs {', '.join(missing)} in the server's effective and "
+            "ambient sets. Add to the unit's [Service]:\n  "
+            + "\n  ".join(UNIT_LINES)
+            + "\nor run aegis service install --multi-user"
+        )
+    if shutil.which("setpriv") is None:
+        out.append("setpriv, from util-linux, is not installed")
+    try:
+        st = state_root.stat()
+    except FileNotFoundError:
+        st = None
+    if st is not None:
+        if st.st_uid != uid:
+            out.append(f"{state_root} belongs to uid {st.st_uid}, not the server's")
+        elif st.st_mode & 0o777 != 0o700:
+            state_root.chmod(0o700)
+            log.warning("aegis: %s set to mode 0700 for multi_user", state_root)
+    if mu.env_file is not None:
+        try:
+            pst = mu.env_file.stat()
+        except OSError as e:
+            out.append(f"multi_user.env_file {mu.env_file}: {e.strerror}")
+        else:
+            if pst.st_uid != uid or pst.st_mode & 0o077:
+                out.append(
+                    f"multi_user.env_file {mu.env_file} must be mode 0600, owned by "
+                    "the server's user"
+                )
+    return out

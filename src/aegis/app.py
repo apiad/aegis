@@ -117,6 +117,7 @@ from .btws import SideNotes
 from .recaps import Recaps
 from .ops import Caller, NoParams, OpError, Principal, Registry as Ops
 from .tokens import TokenStore
+from .users import MultiUser
 from .registry import Registry
 from .roots import Roots
 from .transcript.entries import _sent_file
@@ -357,8 +358,13 @@ class App:
         codex_bin: str = "codex",
         dictation_dir: Path | None = None,
         user: str | None = None,
+        multi_user: MultiUser | None = None,
     ) -> None:
         self.roots = roots
+        # The multi-user mode, fixed at start (users.py); a later edit of the
+        # key is logged once per value and waits for a restart.
+        self.multi_user = multi_user
+        self._mu_told: list[MultiUser | None] = []
         self.server_name = server_name
         self.claude_bin = claude_bin
         self.opencode_bin = opencode_bin
@@ -816,6 +822,11 @@ class App:
         """Every change to .aegis.yaml, however it was made: the page and the
         composer follow it, and the queues start what it now allows."""
         self.channels.publish("config", [{"set": snap.wire()}])
+        if snap.multi_user != self.multi_user and snap.multi_user not in self._mu_told:
+            self._mu_told.append(snap.multi_user)
+            log.warning(
+                "multi_user changed in .aegis.yaml; restart the server to apply it"
+            )
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
