@@ -182,6 +182,7 @@ class Registry(Host):
         if self.quota is not None:
             self.quota.turn_ended()
         self._retire_predecessor(session)
+        self._close_when_finished(session)
         self._maybe_unquiet(session)
         if self.schedules is not None:
             self.schedules.changed()
@@ -222,6 +223,70 @@ class Registry(Host):
             await self.close(s.log_id)
         except Exception:
             log.exception("aegis: could not archive %s after its handoff", s.handle)
+
+    def descendants(self, log_id: str) -> list[Session]:
+        """The open sessions ``log_id`` started, transitively, deepest first."""
+        out: list[Session] = []
+        frontier = {log_id}
+        while frontier:
+            kids = [s for s in self.sessions.values() if s.spec.spawned_by in frontier]
+            out += kids
+            frontier = {s.log_id for s in kids}
+        return out[::-1]
+
+    def close_blockers(self, s: Session) -> list[str]:
+        """What keeps ``s`` and the sessions it started from closing once its
+        turn ends done (turn_end's close), one phrase each: its approved run,
+        monitors, background tasks and callback queue tasks, and each
+        descendant still working, waiting, or whose last turn did not end
+        done. Held messages are not here: they start a new turn, whose own
+        turn_end decides."""
+        n_mon = len(self.monitors.of(s.log_id)) if self.monitors is not None else 0
+        n_tasks = sum(1 for w in self._waiting_for(s) if w["kind"] == "task")
+        counts = (
+            (n_mon, "monitor"),
+            (len(s.open_tasks), "background task"),
+            (n_tasks, "queue task"),
+        )
+        run = self._running(s)
+        out = [f"workflow {run.run}"] if run is not None else []
+        out += [f"{n} {noun}{'' if n == 1 else 's'}" for n, noun in counts if n]
+        for kid in self.descendants(s.log_id):
+            mark = self._attention(kid)["attention"]
+            flow = kid.workflow["run"] if kid.workflow else None
+            if (
+                flow is not None
+                and self.workflows is not None
+                and self.workflows.live(flow)
+            ):
+                out.append(f"{kid.handle} (workflow {flow})")
+            elif mark != "done" or not self.finished(kid):
+                out.append(f"{kid.handle} ({mark})")
+        return out
+
+    def _close_when_finished(self, s: Session) -> None:
+        """Archive a session whose turn ended done with close, and the
+        sessions it started, deepest first. Stateless, like the handoff: the
+        fold drops a report made in an earlier turn, so a later turn without
+        close never closes. Anything still running keeps the whole tree open."""
+        report = s.standing.get("report") or {}
+        if not report.get("close") or report.get("attention") != "done":
+            return
+        if s.standing.get("turn_error") or not self.finished(s):
+            return
+        if self.close_blockers(s):
+            return
+        tree = [*self.descendants(s.log_id), s]
+        asyncio.get_running_loop().create_task(self._archive_tree(tree))
+
+    async def _archive_tree(self, tree: list[Session]) -> None:
+        for s in tree:
+            if s.log_id not in self.sessions:
+                continue
+            try:
+                await self.close(s.log_id)
+            except Exception:
+                log.exception("aegis: could not archive %s on its close", s.handle)
 
     def recorded(self, session: Session, record: dict, events: list | None) -> None:
         if record.get("kind") == "plan" and self.nudges is not None:

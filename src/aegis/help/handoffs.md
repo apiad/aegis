@@ -90,3 +90,19 @@ session, who started it), because a person may be reading that tab, and with
 a one-time token. Call `session_close` again with the same `handle` and that
 `token` to close it after all; the token works once, for you and that session,
 for five minutes.
+
+## Close yourself when you finish
+
+When the person tells you to close when you are done ("merge it and close"),
+or the plan or workflow they approved says so, end your last turn with
+`turn_end` with `attention` done and `close` true. Never pass it on your own
+judgment: a person may still want to read the tab.
+
+aegis archives your session once that turn ends, together with every session
+you started and every session they started, deepest first. It refuses the
+`turn_end` with what is still running when you have a live monitor, an open
+background task, a queue task you wait on or an approved workflow run, or
+when one of those sessions is still working, waiting, or did not end its last
+turn done. Wait for it, cancel or close it, then call `turn_end` again, or
+leave `close` out and the tab stays open. A message the person sends before
+the turn ends starts a new turn, and only that turn's `turn_end` decides.
