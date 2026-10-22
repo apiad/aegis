@@ -156,8 +156,10 @@ Two calls keep the person informed without reading the transcript:
   the person can click to answer. Past 300k tokens of context its answer
   names the size, and at a break the agent calls it again with `handoff`: a
   brief that lets a fresh session continue the work. A done card offers an
-  Archive button, so aegis refuses done while the plan has items not done:
-  the agent finishes or trims the plan first, or passes review.
+  Archive button, so aegis refuses done while the plan has items not done,
+  or while a monitor, queue task, background task or workflow will still
+  wake the agent: it finishes or trims the plan, cancels what it no longer
+  waits on, or passes review.
 
 The mark on the tab and the card comes from `turn_end`, except working,
 waiting and error, which aegis sees for itself; a turn with no `turn_end`
