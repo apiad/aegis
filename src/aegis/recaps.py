@@ -45,7 +45,7 @@ class Recaps:
         return await asyncio.shield(task)
 
     async def shutdown(self) -> None:
-        """Cancel every running call; each kills its claude on the way out."""
+        """Cancel every running call; each kills its child on the way out."""
         tasks = list(self._running.values())
         for t in tasks:
             t.cancel()
@@ -58,11 +58,13 @@ class Recaps:
         prompt = recap.window(s.fold().entries(), s.unread, s.standing)
         try:
             out = await oneshot.run(
-                recap.argv(self.app.claude_bin, cfg["model"]),
+                recap.argv(
+                    self.app._bin(cfg["harness"]), cfg["model"], harness=cfg["harness"]
+                ),
                 self.app.roots.state_root / "oneshot",
                 recap.TIMEOUT_S,
                 self.app.sessions.user_for(s.spec),
-                prompt,
+                oneshot.message(recap.SYSTEM, prompt, cfg["harness"]),
             )
         except (oneshot.OneshotError, PermissionError) as e:
             return {"status": "failed", "why": str(e)}

@@ -2,8 +2,9 @@
 
 The browser asks when it opens a tab; the server decides whether the unread
 stretch is long enough (``needed``), builds the window the model reads
-(``window``), and runs one cheap ``claude -p`` (``argv``, ``parse``) through the
-one-shot path it shares with /btw (oneshot.py, where the flags are explained).
+(``window``), and runs one cheap harness-specific generation call (``argv``,
+``parse``) through the one-shot path it shares with /btw (oneshot.py, where the
+flags are explained).
 The recap is aegis talking to the person; nothing here reaches the agent.
 """
 
@@ -111,8 +112,8 @@ def window(entries: list[dict], unread: set[str], standing: dict) -> str:
     return "\n\n".join(parts)
 
 
-def argv(claude_bin: str, model: str) -> list[str]:
-    return oneshot.argv(claude_bin, model, RecapOut, SYSTEM)
+def argv(binary: str, model: str, *, harness: str = "claude-code") -> list[str]:
+    return oneshot.argv(binary, model, RecapOut, SYSTEM, harness=harness)
 
 
 def parse(stdout: str) -> tuple[RecapOut | None, float, int]:

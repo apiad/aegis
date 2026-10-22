@@ -53,14 +53,20 @@ class SideNotes:
             "model": cfg["model"],
             "header": header,
         }
-        argv = oneshot.argv(self.app.claude_bin, cfg["model"], btw.BtwOut, btw.SYSTEM)
+        argv = oneshot.argv(
+            self.app._bin(cfg["harness"]),
+            cfg["model"],
+            btw.BtwOut,
+            btw.SYSTEM,
+            harness=cfg["harness"],
+        )
         try:
             out = await oneshot.run(
                 argv,
                 self.app.roots.state_root / "oneshot",
                 btw.TIMEOUT_S,
                 self.app.sessions.user_for(s.spec),
-                text,
+                oneshot.message(btw.SYSTEM, text, cfg["harness"]),
             )
         except (oneshot.OneshotError, PermissionError) as e:
             self._answer(s, {**base, "status": "failed", "why": str(e)})
