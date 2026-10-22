@@ -1,0 +1,2 @@
+- **`turn_end` reminds an agent to set both its handle and its title.** Agents often renamed the handle and kept the title aegis drew from the first prompt, so the tab and the card read the prompt instead of the work. Until both are set, `turn_end` answers with one line asking for a `session_rename` with both. Workers never get it, and sessions from before this release count as named.
+help: sessions#rename-it

@@ -46,7 +46,7 @@ import httpx
 from pydantic import BaseModel, Field, field_validator
 
 from . import webpush
-from .ops import Caller, OpError
+from .ops import Caller, OpError, Principal
 
 if TYPE_CHECKING:
     from .app import App
@@ -370,8 +370,14 @@ class Sender:
         if not self._running:
             return  # not started, or stopped
         now = time.monotonic()
+        app = self.app
+        about = app.owner_of(payload["key"])
         for row in self.push.subscriptions.list():
             if source not in row.get("sources", ()):
+                continue
+            # In multi-user mode a member's devices hear of its own only.
+            role = app.principals.role_of(row["owner"]) or "member"
+            if not app.sees(Principal(row["owner"], role), about):
                 continue
             sid = row["id"]
             self._pending.setdefault(sid, deque()).append((payload, now))

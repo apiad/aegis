@@ -17,7 +17,7 @@
 // agent's state reaches the viewer's frame instead.
 
 import { Tray } from "./comments.js";
-import { artifactStage, dockButton, fileActions, fileUrl, fillWorkflow, hold, markdown, popButton, preview, swipe } from "./entries.js";
+import { artifactStage, dockButton, fileActions, fileUrl, fillWorkflow, hold, markdown, phoneButton, popButton, preview, swipe } from "./entries.js";
 import { entryIcon, icon } from "./glyphs.js";
 import { colour, langOfPath, paint } from "./highlight.js";
 import { filesHash } from "./files.js";
@@ -151,10 +151,11 @@ async function drawText(f, body, line, isCurrent, drawn) {
 }
 
 // An artifact's page at full size, drawn into a bar and a body: its glyph,
-// title and status in the bar, Open in a new tab in acts (or the `popout`
+// title and status in the bar, Phone width and Open in a new tab in acts (or the `popout`
 // button a live page's pane or the viewer passes instead), the frame in the body. Who holds the page
 // (entries.hold) is the caller's business.
 export function drawArtifact(e, { bar, body, acts, popout = null }) {
+  acts.append(phoneButton(e.id));
   if (popout) acts.append(popout);
   else {
     const open = el("a", "btn icon open");

@@ -35,6 +35,9 @@ that asks), ``workflow:<run>`` (one run whole, for its card; patches ``set``),
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as pkg_version
+
 import asyncio
 import base64
 import binascii
@@ -56,7 +59,7 @@ from pydantic import BaseModel, Field, model_validator
 from pydantic.json_schema import SkipJsonSchema
 
 from . import archive, attachments as att, commands, dictation, files, restarts
-from . import feedback, harness_versions
+from . import feedback, harness_versions, multiuser, setup
 from . import workflow_store
 from .agent_ops import (
     far_error,
@@ -66,6 +69,7 @@ from .agent_ops import (
     spawn_tail,
 )
 from .artifact_ops import register_artifact_ops
+from .config_suggest import register_config_suggest
 from .secret_ops import register_secret_ops
 from .agents import (
     EFFORTS,
@@ -124,6 +128,7 @@ from .ops import Caller, NoParams, OpError, Principal, Registry as Ops
 from . import as_user, launch
 from .tokens import TokenStore
 from .as_user import Place
+from .member_view import MemberView
 from .users import MultiUser
 from .registry import Registry
 from .roots import Roots
@@ -147,6 +152,20 @@ Permission = Literal["read", "write", "full", "auto"]
 
 class _Strict(BaseModel):
     model_config = {"extra": "forbid"}
+
+
+# The param that names a session by handle in each op that takes one
+# (App._hides): a member may not learn of another's session through it.
+HANDLE_FIELDS = {
+    "peer.read": "target",
+    "peer.handoff": "target",
+    "peer.deliver": "target",
+    "session.close": "handle",
+    "session.quiet": "handle",
+    "monitor.sessions": "sessions",
+    "schedule.test": "session",
+    "journal.search": "session",
+}
 
 
 class SpawnedFrom(_Strict):
@@ -541,6 +560,7 @@ class App:
         self.registry = Ops()
         self.registry.who = self.who
         self.registry.owner_of = self.owner_of
+        self.registry.hides = self._hides
         self.registry.permission_of = lambda log_id: (
             s.spec.permission if (s := self.sessions.sessions.get(log_id)) else None
         )
@@ -550,6 +570,8 @@ class App:
         self._register()
         register_agent_ops(self)
         register_config_ops(self)
+        register_config_suggest(self)
+        self.setup_records = setup.register_setup(self)
         register_artifact_ops(self)
         self.secrets = self.sessions.secrets = register_secret_ops(self)
         register_layout_ops(self)
@@ -744,6 +766,90 @@ class App:
 
     def _live(self, s) -> bool:
         return not s.archived and self.sessions.sessions.get(s.log_id) is s
+
+    def sees(self, who: Principal, owner: str | None) -> bool:
+        """Whether ``who`` may know of a thing ``owner`` owns: always outside
+        multi-user mode and for an admin; in it, a member sees its own only
+        (the spec's section 08). A thing from before owners is the admin's."""
+        if self.multi_user is None or who.is_admin:
+            return True
+        return (owner or self.user) == who.name
+
+    def view_of(self, caller: Caller) -> MemberView | None:
+        """What ``caller``'s next channel subscription may see: None for
+        everything, which is everyone outside multi-user mode and an admin."""
+        who = self.who(caller)
+        if self.multi_user is None or who.is_admin:
+            return None
+        return MemberView(self, who)
+
+    def own_log_ids(self, who: Principal) -> set[str] | None:
+        """The log ids of every session ``who`` may see, open or archived;
+        None for all of them (``sees``)."""
+        if self.multi_user is None or who.is_admin:
+            return None
+        metas = [s.meta() for s in self.sessions.sessions.values()]
+        metas += list(self.sessions.archived.values())
+        return {m["log_id"] for m in metas if self.sees(who, m.get("owner"))}
+
+    def owner_of_handle(self, handle: str) -> str | None:
+        """The owner of the session a handle or a log id names, open or
+        archived; None when it names none here (or a session on another
+        server)."""
+        local, _, server = handle.partition("@")
+        if server and server != self.server_name:
+            return None
+        s = self.sessions.by_handle(local) or self.sessions.sessions.get(local)
+        if s is not None:
+            return self.owner_of(s.log_id)
+        for log_id, m in self.sessions.archived.items():
+            if local in (m.get("handle"), log_id):
+                return m.get("owner") or self.user
+        return None
+
+    def _hides(self, who: Principal, op: str, params) -> OpError | None:
+        """The not-found error an op gives for a thing ``who`` may not see,
+        named in its params; None when it names nothing hidden. A member
+        asking about another's thing gets the answer for no such thing."""
+        if self.multi_user is None or who.is_admin:
+            return None
+        log_id = getattr(params, "log_id", None)
+        if isinstance(log_id, str):
+            if log_id.startswith("t-"):
+                if (o := self.terminals.owner_of(log_id)) and not self.sees(who, o):
+                    return OpError("no_terminal", f"no open terminal {log_id}")
+            elif (o := self.owner_of(log_id)) is not None and not self.sees(who, o):
+                return OpError("no_session", f"no session {log_id!r}")
+        if op.startswith("term.") and isinstance(
+            tid := getattr(params, "id", None), str
+        ):
+            if (o := self.terminals.owner_of(tid)) and not self.sees(who, o):
+                return OpError("no_terminal", f"no open terminal {tid}")
+        field = HANDLE_FIELDS.get(op)
+        named = getattr(params, field, None) if field else None
+        for h in named if isinstance(named, list) else [named]:
+            if isinstance(h, str) and (o := self.owner_of_handle(h)) is not None:
+                if not self.sees(who, o):
+                    return OpError("no_session", f"no open session {h!r}")
+        fire = getattr(params, "fire", None)
+        target = getattr(fire, "session", None) if op.startswith("schedule.") else None
+        if isinstance(target, str) and (o := self.owner_of_handle(target)) is not None:
+            if not self.sees(who, o):
+                return OpError("no_session", f"no open session {target!r}")
+        run = getattr(params, "run", None)
+        if isinstance(run, str) and (st := self.workflows.runs.get(run)) is not None:
+            if not self.sees(who, self.owner_of(st.owner)):
+                return OpError("no_run", f"no workflow run {run!r}")
+        task_id = getattr(params, "task_id", None)
+        if isinstance(task_id, str) and (t := self.queues.tasks.get(task_id)):
+            if not self.sees(who, t.owner):
+                return OpError("no_task", f"no task {task_id!r}")
+        if op.startswith("schedule.") and op != "schedule.create":
+            name = getattr(params, "name", None)
+            if isinstance(name, str) and (s := self.schedules.items.get(name)):
+                if not self.sees(who, s.owner.get("principal")):
+                    return OpError("no_schedule", f"no schedule {name!r}")
+        return None
 
     def owner_of(self, log_id: str) -> str | None:
         """A session's owner by log id, None for no such session. One from
@@ -969,7 +1075,9 @@ class App:
         else:
             self.channels.publish(channel, ops)
 
-    def toast(self, text: str, kind: str = "info", source=None) -> int:
+    def toast(
+        self, text: str, kind: str = "info", source=None, owner: str | None = None
+    ) -> int:
         """Show a toast in every open browser (client/js/toast.js) and return how
         many there are. ``source`` is the session an agent's toast comes from; a
         click on it opens that session's tab. It skips the throttle: a toast
@@ -977,9 +1085,13 @@ class App:
         t: dict = {"text": text, "kind": kind, "ts": time.time()}
         if source is not None:
             t["from"] = {"handle": source.handle, "id": source.log_id}
+        if owner is not None:
+            # About a principal's own thing (a schedule): its browsers only,
+            # in multi-user mode (member_view.py).
+            t["owner"] = owner
         self.channels.publish("toasts", [{"toast": t}])
         self.push.sender.on_toast(t)  # an agent's goes to subscribed devices
-        return self.channels.subscribers("toasts")
+        return self.channels.reached("toasts", {"toast": t})
 
     def _sessions_key(self, op: dict) -> tuple[str, bool]:
         """A session added or removed, or a change to its state, name, model,
@@ -1163,6 +1275,31 @@ class App:
             await s.deliver(
                 *feedback.turn(arg, facts, feedback.issues_url(), iso_now())
             )
+            return {"status": "delivered"}
+        if name == "multiuser":
+            # The agent runs the host work from the help page multi-user with
+            # the person; only an admin may start it, since it changes the server.
+            if not self.who(caller).is_admin:
+                raise OpError(
+                    "not_for_members", "/multiuser is for an admin of this server"
+                )
+            on = self.multi_user is not None
+            await s.deliver(*multiuser.turn(arg, on, multiuser.facts(on), iso_now()))
+            return {"status": "delivered"}
+        if name == "setup":
+            # The agent moves the person's habits into aegis from the help
+            # page setup; anyone may run it, for what they own.
+            cfg = self.config.current()
+            try:
+                ver = pkg_version("aegis-harness")
+            except PackageNotFoundError:
+                ver = "unknown"
+            found = await self.registry.call("config.detect", {})
+            line = setup.facts(
+                ver, found, [a.name for a in cfg.agents], list(cfg.queues)
+            )
+            rec = self.setup_records.get(self.who(caller).name)
+            await s.deliver(*setup.turn(arg, line, rec, iso_now()))
             return {"status": "delivered"}
         if name in ("workflow", "loop"):
             # A person's line launches a saved workflow: the only path, beside
@@ -1381,7 +1518,7 @@ class App:
         pages: dict[str, tuple[list[dict], archive.Position | None]] = {}
         counts: dict[str, int] = {}
         workers = 0
-        for name, fetch in self._archive_sources(only):
+        for name, fetch in self._archive_sources(only, self.who(caller)):
             if name in positions and positions[name] is None:
                 continue  # exhausted on an earlier page
             got = await fetch(p.query, p.limit, positions.get(name), p.workers)
@@ -1412,15 +1549,24 @@ class App:
             "cursor": archive.encode(positions) if more else None,
         }
 
-    def _archive_sources(self, only: str | None):
-        """Each server an archive listing reads, with how to fetch a page."""
+    def _archive_sources(self, only: str | None, who: Principal):
+        """Each server an archive listing reads, with how to fetch a page. A
+        member in multi-user mode reads its own sessions here, and no linked
+        server's: links are the admin's."""
+        member = self.multi_user is not None and not who.is_admin
+
+        def keep(m: dict) -> bool:
+            return self.sees(who, m.get("owner"))
 
         async def local(query, limit, after, workers):
-            items, total, last = self.sessions.archive(query, limit, after, workers)
-            return items, total, self.sessions.archived_workers(query), last
+            k = keep if member else None
+            items, total, last = self.sessions.archive(query, limit, after, workers, k)
+            return items, total, self.sessions.archived_workers(query, k), last
 
         if only in (None, self.server_name):
             yield self.server_name, local
+        if member:
+            return
         for link in self.links.up():
             if only not in (None, link.name):
                 continue
@@ -1923,7 +2069,9 @@ class App:
         @r.op("session.rename", RenameParams, agent=True, read=True, owned="log_id")
         async def rename(p: RenameParams, caller):
             """Rename your session: a handle (2 or 3 lowercase segments joined by
-            hyphens) and/or a title."""
+            hyphens) and a title, both saying what it works on. Set both in
+            one call: turn_end reminds you while either is still the one
+            aegis gave."""
             log_id = p.log_id
             if caller.is_agent:
                 if log_id not in (None, caller.log_id):

@@ -335,6 +335,7 @@ class Session:
         codex_bin: str = "codex",
         cursor_bin: str = "cursor-agent",
         title_set: bool = False,
+        handle_set: bool = True,
         standing: dict | None = None,
         unread: list[str] | None = None,
         last_read_at: float | None = None,
@@ -361,6 +362,9 @@ class Session:
         self.title = title
         # A person or an agent named it; the harness's own title then waits.
         self.title_set = title_set
+        # Whether session_rename gave this session its handle (#586); a meta
+        # from before the field reads as set, so old sessions are not nagged.
+        self.handle_set = handle_set
         self.store = store
         self.channel = f"transcript:{log_id}"
         self.resume_id = resume_id
@@ -491,6 +495,7 @@ class Session:
             "handle": self.handle,
             "title": self.title,
             "title_set": self.title_set,
+            "handle_set": self.handle_set,
             **s.record(),
             "model_id": self.model_id,
             "resume_id": self.resume_id,
@@ -1068,6 +1073,10 @@ class Session:
 
     def record_secret(self, record: dict) -> None:
         """A secret's card or its next state (secret_ops): never plaintext."""
+        self._record(record)
+
+    def record_config(self, record: dict) -> None:
+        """A config suggestion's card or its outcome (config_suggest.py)."""
         self._record(record)
 
     def record_card(self, record: dict) -> None:

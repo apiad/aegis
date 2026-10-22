@@ -40,6 +40,15 @@ TOASTS_PER_WINDOW = 6
 TOAST_WINDOW_S = 60.0
 
 
+# What turn_end answers a session that still has the handle or the title aegis
+# gave it (#586): agents often set the handle and keep the drawn title.
+RENAME_NUDGE = (
+    "noted. This session still has the handle or title aegis gave it. Once the "
+    "task is clear, call session_rename with both a handle and a title that say "
+    "what this session works on."
+)
+
+
 class _Strict(BaseModel):
     model_config = {"extra": "forbid"}
 
@@ -198,7 +207,8 @@ class TurnEnd(_Strict):
         description="needs_you: your message asks the person something. review: it "
         "presents something for them to read, or reports a step while work or waiting "
         "remains. done: the whole task they gave you is over; it puts an archive "
-        "button on the card, and is refused while your plan has unfinished items."
+        "button on the card, and is refused while your plan has unfinished items "
+        "or a monitor, task or workflow will still wake you."
     )
     line: str = Field(
         min_length=1,
@@ -220,6 +230,14 @@ class TurnEnd(_Strict):
         description="Only when turn_end answered with your context size and the task "
         "is at a natural break: a brief for a fresh session that continues this work. "
         "What is done, what is next, the files, the decisions, what not to retry.",
+    )
+    close: bool = Field(
+        False,
+        description="With done only: archive your session, and every session you "
+        "or they started, once this turn ends and all of them are finished. Only "
+        "when the person told you in this conversation to close when you finish, "
+        "or the plan or workflow they approved says so; never on your own "
+        "judgment. Refused while you or they still wait on anything.",
     )
 
 
@@ -531,7 +549,8 @@ def close_refusal(
     if yourself:
         paras.append(
             "If your work is finished, end your turn with turn_end(done) instead: "
-            "the person closes the tab once they have read it."
+            "the person closes the tab once they have read it. If they told you "
+            "to close when you finish, pass close=true to that turn_end."
         )
     else:
         peer = f" (or {starter}, which started it)" if starter else ""
@@ -878,7 +897,11 @@ def register_agent_ops(app: App) -> None:
         handle and state alone, as `handle@server`: reach one with
         peer_handoff."""
         out = []
+        who = app.who(caller)
+        member = app.multi_user is not None and not who.is_admin
         for s in reg.open_sessions():
+            if not app.sees(who, app.owner_of(s.log_id)):
+                continue
             w = s.wire()
             out.append(
                 {
@@ -892,7 +915,8 @@ def register_agent_ops(app: App) -> None:
                     **{k: w.get(k) for k in LISTED},
                 }
             )
-        if caller.link is None:  # a link asking is not relayed further
+        # A link asking is not relayed further; links are the admin's.
+        if caller.link is None and not member:
             out += await far_sessions()
         return out
 
@@ -1124,7 +1148,30 @@ def register_agent_ops(app: App) -> None:
                 "plan_update, then call turn_end again; if not, call turn_end with "
                 "review, or needs_you when you ask something.",
             )
-        rec = {
+        if p.attention == "done" and not p.close and (live := reg.wakers(s)):
+            raise OpError(
+                "still_waiting",
+                "done means the task is over, and this will still wake you: "
+                + ", ".join(live)
+                + ". If it is over, cancel or stop it (monitor_cancel, task_cancel) and "
+                "call turn_end again; if you are waiting on it, end the turn "
+                "without turn_end, or call turn_end with review.",
+            )
+        if p.close and p.attention != "done":
+            raise OpError(
+                "bad_params",
+                "close goes with done only: a session that asks the person "
+                "something or has something for them to read stays open.",
+            )
+        if p.close and (blockers := reg.close_blockers(s)):
+            raise OpError(
+                "close_refused",
+                "Not closed, because this is still running: "
+                + ", ".join(blockers)
+                + ". Wait for it, or cancel or close it, then call turn_end again; "
+                "or call turn_end without close and leave the tab open.",
+            )
+        rec: dict[str, object] = {
             "kind": "turn_end",
             "attention": p.attention,
             "line": p.line,
@@ -1132,13 +1179,26 @@ def register_agent_ops(app: App) -> None:
         }
         if p.handoff and not s.worker:
             rec["handoff"] = p.handoff
+        if p.close:
+            rec["close"] = True
         s.report(rec)
+        if p.close:
+            n = len(reg.descendants(s.log_id))
+            tree = (
+                f" and the {n} session{'s' if n != 1 else ''} it started" if n else ""
+            )
+            return (
+                f"noted. aegis archives this session{tree} when this turn ends; "
+                "your final message is the last thing in its tab."
+            )
         at = app.config.current().context["handoff_at"]
         n = s.context_tokens or 0
+        unnamed = not s.worker and not (s.handle_set and s.title_set)
         if s.worker or p.handoff or not at or n < at:
-            return "noted"
+            return RENAME_NUDGE if unnamed else "noted"
         then = BRIEF_IF if p.attention == "needs_you" else BRIEF_NOW
-        return CONTEXT_LINE.format(k=f"{round(n / 1000)}k") + then
+        line = CONTEXT_LINE.format(k=f"{round(n / 1000)}k") + then
+        return f"{line}\n{RENAME_NUDGE}" if unnamed else line
 
     toasted: dict[str, list[float]] = {}
 

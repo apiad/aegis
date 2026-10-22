@@ -24,7 +24,7 @@ from __future__ import annotations
 import asyncio
 import copy
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Protocol
 
 from .ops import OpError
 
@@ -32,14 +32,28 @@ Send = Callable[[dict], None]
 Snapshot = Callable[[], Any]
 Resolve = Callable[[str, int | None], Snapshot | None]
 
+
+class View(Protocol):
+    """What one subscriber may see (multi-user mode, app.py): whether it may
+    subscribe to a channel at all, and each snapshot and op as it may see
+    it, an op it may not see being None."""
+
+    def allows(self, channel: str) -> bool: ...
+    def snapshot(self, channel: str, data: Any) -> Any: ...
+    def op(self, channel: str, op: dict) -> dict | None: ...
+
+
 # The channels a subscriber may take merges on, and the field that keys a row.
 MERGE_KEYS = {"sessions": "log_id", "workflow-runs": "run"}
 
 
 class Sub:
-    def __init__(self, channel: str, send: Send, merge: bool = False) -> None:
+    def __init__(
+        self, channel: str, send: Send, merge: bool = False, view: View | None = None
+    ) -> None:
         self.channel = channel
         self.send = send
+        self.view = view
         self.seq = 0
         # The rows this subscriber holds, by key; None when it takes whole rows.
         self.rows: dict[Any, dict] | None = {} if merge else None
@@ -78,14 +92,23 @@ class Channels:
         self._subs: dict[str, list[Sub]] = {}
 
     def subscribe(
-        self, channel: str, send: Send, since: int | None = None, merge: bool = False
+        self,
+        channel: str,
+        send: Send,
+        since: int | None = None,
+        merge: bool = False,
+        view: View | None = None,
     ) -> Sub:
+        """``view`` narrows what this subscriber sees; None sees everything.
+        A channel the view does not allow answers as one that does not exist."""
         snapshot = self._resolve(channel, since)
-        if snapshot is None:
+        if snapshot is None or (view is not None and not view.allows(channel)):
             raise OpError("unknown_channel", f"no channel named {channel!r}")
-        sub = Sub(channel, send, merge and channel in MERGE_KEYS)
+        sub = Sub(channel, send, merge and channel in MERGE_KEYS, view)
         self._subs.setdefault(channel, []).append(sub)
         data = snapshot()
+        if view is not None:
+            data = view.snapshot(channel, data)
         if sub.rows is not None:
             key = MERGE_KEYS[channel]
             sub.rows = {row[key]: copy.deepcopy(row) for row in data}
@@ -101,8 +124,14 @@ class Channels:
         if not ops:
             return
         for sub in list(self._subs.get(channel, ())):
+            seen = ops
+            if sub.view is not None:
+                v = sub.view
+                seen = [o for o in (v.op(channel, op) for op in ops) if o is not None]
             out = (
-                ops if sub.rows is None else _merged(MERGE_KEYS[channel], sub.rows, ops)
+                seen
+                if sub.rows is None
+                else _merged(MERGE_KEYS[channel], sub.rows, seen)
             )
             if not out:
                 continue
@@ -111,6 +140,14 @@ class Channels:
 
     def subscribers(self, channel: str) -> int:
         return len(self._subs.get(channel, ()))
+
+    def reached(self, channel: str, op: dict) -> int:
+        """How many subscribers ``op`` reached: those whose view passes it."""
+        return sum(
+            1
+            for sub in self._subs.get(channel, ())
+            if sub.view is None or sub.view.op(channel, op) is not None
+        )
 
 
 class Throttle:

@@ -4,6 +4,7 @@
 // decided in Python. These functions only turn it into the markup the themes
 // style; they compute nothing about tools.
 
+import { who } from "./me.js";
 import markdownit from "../vendor/markdown-it.mjs";
 import { copyButton } from "./copy.js";
 import { money } from "./fleet.js";
@@ -409,6 +410,53 @@ function fillRequest(card, e) {
   form.append(input, go);
   body.append(el("div", "prompt", d.prompt || ""), form, hint);
   card.replaceChildren(bar, body);
+}
+
+// A config change an agent suggested (config_suggest.py): the diff, and for
+// an admin Apply and Not now. The outcome comes back as the folded entry.
+const CONFIG_DONE = {
+  applied: "Applied. .aegis.yaml now holds this text; the agent was told.",
+  declined: "Declined. Nothing was written; the agent was told.",
+  stale: ".aegis.yaml changed since this was suggested. Nothing was written; the agent was told.",
+};
+
+function fillConfig(card, e) {
+  const d = e.detail || {};
+  card.classList.toggle("gone", e.status !== "pending");
+  const bar = el("div", "fbar");
+  const acts = el("span", "acts");
+  bar.append(entryIcon(e.glyph), el("span", "fn", ".aegis.yaml"), el("span", "fs", e.status === "pending" ? "suggested" : e.status), acts);
+  const diff = el("pre", "cdiff");
+  for (const line of String(d.diff || "").split("\n")) {
+    const cls = line.startsWith("+++") || line.startsWith("---") ? "h" : line.startsWith("@@") ? "at" : line[0] === "+" ? "add" : line[0] === "-" ? "del" : null;
+    diff.append(el("span", cls, line + "\n"));
+  }
+  const kids = [bar, el("div", "sbody why", d.why || ""), diff];
+  if (e.status !== "pending") {
+    kids.push(el("div", "sbody dim", CONFIG_DONE[e.status] || e.status));
+  } else if (who.role === "member") {
+    kids.push(el("div", "sbody dim", "An admin applies this."));
+  } else {
+    const hint = el("span", "hint");
+    const press = (op, label) => {
+      const b = el("button", op === "config.suggestion.apply" ? "btn primary" : "btn", label);
+      b.type = "button";
+      b.onclick = async () => {
+        for (const x of acts.querySelectorAll("button")) x.disabled = true;
+        try {
+          await secretCall(op, { id: e.id });
+        } catch (err) {
+          for (const x of acts.querySelectorAll("button")) x.disabled = false;
+          hint.textContent = String(err?.message || err);
+          hint.classList.add("err");
+        }
+      };
+      return b;
+    };
+    acts.append(press("config.suggestion.apply", "Apply"), press("config.suggestion.decline", "Not now"));
+    kids.push(hint);
+  }
+  card.replaceChildren(...kids);
 }
 
 // The workflow a schedule fires, as it is now: its steps, who saved it, and
@@ -1504,6 +1552,15 @@ const RENDERERS = {
     return row(e, "secret", body);
   },
 
+  config(e) {
+    // A config change waiting for a person (fillConfig). Never folded.
+    const body = el("div", "body");
+    const card = el("div", "fcard scard ccard");
+    fillConfig(card, e);
+    body.append(card);
+    return row(e, "config", body);
+  },
+
   secret_request(e) {
     // A secret asked of the person: a password field (fillRequest).
     const body = el("div", "body");
@@ -1564,6 +1621,7 @@ const RENDERERS = {
       open.rel = "noopener noreferrer";
       acts.append(view, open);
     }
+    acts.prepend(phoneButton(e.id));
     if (e.status !== "live") acts.prepend(el("button", "btn show", "Show"));
     card.dataset.md = e.md || ""; // the caption's source, for update() to compare exactly
     bar.append(entryIcon(e.glyph), el("span", "fn", e.title), el("span", "fs", e.summary), acts);
@@ -1684,9 +1742,30 @@ export function hold(id, onEntry, entry, label = "open in the viewer") {
   if (line && entry?.status === "live" && docker.frames()) line.replaceWith(artifactStage(entry));
 }
 
+// Phone width, on every artifact's bar: the frame narrows to a phone's
+// viewport so the page's own media queries answer as on a phone. Per
+// artifact and per tab, so a redrawn card, the viewer and a pane agree.
+const phoneIds = new Set();
+export function phoneButton(id) {
+  const b = iconButton(el("button", "btn phone"), "phone", "Phone width");
+  b.type = "button";
+  b.dataset.phone = id;
+  b.setAttribute("aria-pressed", String(phoneIds.has(id)));
+  b.addEventListener("click", () => {
+    const on = !phoneIds.has(id);
+    if (on) phoneIds.add(id);
+    else phoneIds.delete(id);
+    const sel = CSS.escape(id);
+    for (const f of document.querySelectorAll(`#a2 iframe[data-artifact="${sel}"]`)) f.parentElement.classList.toggle("phone", on);
+    for (const x of document.querySelectorAll(`#a2 .btn.phone[data-phone="${sel}"]`)) x.setAttribute("aria-pressed", String(on));
+  });
+  return b;
+}
+
 // The frame of an artifact's card, live or shown again read-only.
 export function artifactStage(e) {
   const stage = el("div", "stage html");
+  stage.classList.toggle("phone", phoneIds.has(e.id));
   const f = el("iframe");
   f.setAttribute("sandbox", "allow-scripts");
   f.loading = "lazy";

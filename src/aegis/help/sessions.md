@@ -113,7 +113,9 @@ queued while offline, goes without the line.
 A session has a handle, two or three lowercase words joined by hyphens, unique
 on this server, and an optional title of one line. Click either at the top of
 the session panel (Alt+B) to edit it, or type `/rename <handle>` or
-`/title <text>`. An agent renames its own session with `session_rename`.
+`/title <text>`. An agent renames its own session with `session_rename`, setting
+both a handle and a title in one call; until it has set both, `turn_end`
+reminds it.
 
 Under the title the panel shows the handle as peers address it,
 `handle@server`, so a session on a linked server says where it runs. A queue
@@ -121,18 +123,21 @@ worker also carries the `worker · <queue>` badge its Fleet card has.
 
 ## The repos a session works in
 
-The session panel's Repos row lists each repository and worktree the session
-has written a file in or committed to, newest first, one line each: the repo's
-name, its branch (or `⑂` and the directory of a linked worktree), then `~n`
-for files the session wrote and has not committed, `↑n` for its commits no
-remote has yet, its open pull requests as links to GitHub, or `✓` when nothing
-is pending. A dot marks a repo another open session also wrote in. A repo
-stays listed once clean, so the row also records where the session worked.
+The session panel's Repos row lists each repository the session has written
+a file in or committed to, newest first, one line per repo: the repo's name,
+its branch (or `⑂` and the directory of a linked worktree, or `n checkouts`
+when the session worked in several of the repo's checkouts), then `~n` for
+files the session wrote and has not committed, `↑n` for its commits no remote
+has yet, its open pull requests as links to GitHub, or `✓` when nothing is
+pending. A dot marks a repo another open session also wrote in. A repo stays
+listed once clean, so the row also records where the session worked.
 
-Hover the row, or tap it on a phone, for its card: per repo the branch and
-upstream, the uncommitted files, the unpushed commits, the commits the session
+Hover the row, or tap it on a phone, for its card: one section per repo, and
+in it one block per checkout (the main checkout first, then the worktrees)
+with the branch and upstream, the uncommitted files, the unpushed commits, the commits the session
 left there and its PRs with their state and CI, files other sessions left
-dirty in the same checkout, and the other sessions working there. A commit
+dirty in the same checkout. Below them each other session working in the repo
+is named once, with the checkouts it wrote in. A commit
 counts as pushed once a remote has it or an equivalent patch, so a PR merged
 by rebase with its branch deleted reads as clean. A write shows within
 seconds, mid-turn; git is asked at most every 10 seconds per worktree, and
@@ -153,8 +158,10 @@ Two calls keep the person informed without reading the transcript:
   the person can click to answer. Past 300k tokens of context its answer
   names the size, and at a break the agent calls it again with `handoff`: a
   brief that lets a fresh session continue the work. A done card offers an
-  Archive button, so aegis refuses done while the plan has items not done:
-  the agent finishes or trims the plan first, or passes review.
+  Archive button, so aegis refuses done while the plan has items not done,
+  or while a monitor, queue task, background task or workflow will still
+  wake the agent: it finishes or trims the plan, cancels what it no longer
+  waits on, or passes review.
 
 The mark on the tab and the card comes from `turn_end`, except working,
 waiting and error, which aegis sees for itself; a turn with no `turn_end`
@@ -260,7 +267,8 @@ itself when its turn ends done, review, needs_you or error, and stays there
 until it is quieted again; a queue worker comes back only on an error.
 
 - The Quiet button in the session panel, beside Sleep, quiets a session that
-  is working or waiting.
+  is working or waiting. Alt+Q does the same for the session in front, from
+  the message box too.
 - An agent calls `session_quiet` with a handle, its own included.
 - Clicking a quiet card in the Fleet brings the session back at once.
 
@@ -298,7 +306,7 @@ and Go to session) and the archive's rows (Read and Reopen).
 | Wake | the menu, on an asleep session | starts the process and sends nothing. Like a message, it is refused while the quota gate is closed, and it asks before starting a harness version outside the tested range |
 | Continue | the menu and the panel, on a session that is not working | sends "Continue" to the agent, which wakes an asleep one |
 | Restart | the menu, the panel, `/restart` | ends the process and starts a fresh one on the same conversation; nothing is sent. On a working session it asks first, typed or clicked, since it cuts the turn. Use it after a change to the agent's MCP config or when the harness hangs |
-| Archive | the menu, the panel, `/archive` (`/close` is an alias), a middle click on the tab or card | archives the session, and its tab goes away in every browser. A session that is not done asks first |
+| Archive | the menu, the panel, `/archive` (`/close` is an alias), a middle click on the tab or card, Alt+A in a session | archives the session, and its tab goes away in every browser. A session that is not done asks first |
 | Reopen | the archive, an archived session's panel | gives the session a tab again, asleep, ready for the next message |
 
 An asleep session's card is marked `zz` with the reason it has no process:

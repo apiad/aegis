@@ -165,7 +165,9 @@ async def test_a_check_fires_on_new_stdout_and_passes_it_in_the_prompt(world, tm
 async def test_three_errors_in_a_row_pause_the_schedule_and_raise_a_toast(world):
     t = frozen(world)
     toasts = []
-    world.app.toast = lambda text, kind="info", source=None: toasts.append((text, kind))
+    world.app.toast = lambda text, kind="info", source=None, owner=None: toasts.append(
+        (text, kind)
+    )
     create(world, "main-red", DONE, check={"bash": "echo 'gh: HTTP 502' >&2; exit 4"})
     for _ in range(4):
         await tick(world, t)

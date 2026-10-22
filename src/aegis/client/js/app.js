@@ -1067,15 +1067,26 @@ const tabbed = () => ordered.filter((m) => !m.quiet);
 const quietSeen = new Map(); // key -> whether it was quiet when last drawn
 const quietChanged = () => ordered.some((m) => !!m.quiet !== (quietSeen.get(m.key) ?? !!m.quiet));
 
-function leaveIfQuieted(r) {
-  const fresh = r.view === "session" && sessions.get(r.id)?.quiet && quietSeen.get(r.id) === false;
+// Archiving the open tab, here or elsewhere, leaves it the same way: to the next
+// tab, not to the Fleet. The order is the one last drawn, which still holds it.
+// Whether the list that would hold this key has arrived: a far session's
+// server's, or this server's live one rather than the device's saved list.
+function settled(key) {
+  const far = forKey(key).server;
+  return far ? linksLoaded && !(linkOf(far) && !remote.get(far)?.loaded) : homeLive;
+}
+
+function leaveIfGone(r) {
+  const id = tabFocus(r);
+  const was = [...quietSeen.keys()];
+  const drawn = id && quietSeen.get(id) === false;
+  const fresh = drawn && (sessions.get(id) ? r.view === "session" && sessions.get(id).quiet : settled(id));
   quietSeen.clear();
   for (const m of ordered) quietSeen.set(m.key, !!m.quiet);
   if (!fresh) return false;
-  const all = ordered.map((m) => m.key);
-  const at = all.indexOf(r.id);
-  const next = all.slice(at + 1).concat(all.slice(0, at).reverse()).find((k) => !quietSeen.get(k));
-  go(next ? `#s=${next}` : "#fleet");
+  const at = was.indexOf(id);
+  const next = was.slice(at + 1).concat(was.slice(0, at).reverse()).find((k) => quietSeen.get(k) === false);
+  go(next ? hashOf(next) : "#fleet");
   return true;
 }
 
@@ -1129,7 +1140,7 @@ function render() {
   }
   if (r.view !== "term") closeTerm();
   if (r.view !== "browser") closeBrowser();
-  if (leaveIfQuieted(r)) return;
+  if (leaveIfGone(r)) return;
   // A session's link to a terminal, or the reverse, opens the right view.
   if ((r.view === "session" || r.view === "term" || r.view === "browser") && sessions.has(r.id) && `#${r.view[0]}=${r.id}` !== hashOf(r.id)) {
     history.replaceState(null, "", hashOf(r.id));
@@ -1152,13 +1163,11 @@ function render() {
     return;
   }
   if ((r.view === "session" || r.view === "term") && !sessions.has(r.id)) {
-    const far = forKey(r.id).server;
-    // A far session whose server's list has not arrived yet: wait for it.
-    if (far && (!linksLoaded || (linkOf(far) && !remote.get(far)?.loaded))) return;
-    // Likewise a home session while only the device's saved list is drawn: a
-    // notification's tap or a link opens a session the saved list may predate.
-    if (!far && !homeLive) return;
-    go("#fleet"); // closed here or elsewhere
+    // A far session whose server's list has not arrived yet waits for it; a
+    // home one waits for the live list, since a notification's tap or a link
+    // opens a session the device's saved list may predate.
+    if (!settled(r.id)) return;
+    go("#fleet"); // a link to a session no tab held: gone before this page drew it
     return;
   }
   renderTabs($("tablist"), tabbed(), tabFocus(r), tabActions);
@@ -1883,22 +1892,51 @@ function prLink(pr) {
   return a;
 }
 
-function repoLine(r) {
+// The lines of one repo, its main checkout and worktrees, form one group: the
+// main checkout first, then the worktrees in the server's order (newest
+// first). The server puts the same peers on every line of a repo, one entry
+// per checkout they wrote in; a group names each peer once.
+function repoGroups(repos) {
+  const by = new Map();
+  for (const r of repos) {
+    if (!by.has(r.main)) by.set(r.main, []);
+    by.get(r.main).push(r);
+  }
+  return [...by.values()].map((lines) => {
+    lines.sort((a, b) => a.worktree - b.worktree);
+    const peers = new Map();
+    for (const r of lines) for (const p of r.peers) {
+      if (!peers.has(p.handle)) peers.set(p.handle, []);
+      if (!peers.get(p.handle).includes(p.where)) peers.get(p.handle).push(p.where);
+    }
+    return { name: lines[0].name, main: lines[0].main, lines, peers };
+  });
+}
+
+function repoLine(g) {
   const line = document.createElement("div");
   line.className = "rp-line";
-  if (r.peers.length) {
+  if (g.peers.size) {
     const dot = span("rp-dot", "");
-    dot.title = r.peers.map((p) => `${p.handle} is also here`).join("\n");
+    dot.title = [...g.peers.keys()].map((h) => `${h} is also here`).join("\n");
     line.append(dot);
   }
-  line.append(span("n", r.name), span("rp-br", r.worktree ? `⑂ ${rpBase(r.top)}` : r.branch || "detached"));
+  const [r] = g.lines;
+  const where = g.lines.length > 1 ? `${g.lines.length} checkouts` : r.worktree ? `⑂ ${rpBase(r.top)}` : r.branch || "detached";
+  line.append(span("n", g.name), span("rp-br", where));
   const right = span("rp-r", "");
-  if (r.removed) right.append(span("rp-gone", "removed"));
-  if (r.op) right.append(span("rp-op", r.op));
-  if (r.dirty_n) right.append(span("rp-dirty", `~${r.dirty_n}`));
-  if (r.unpushed_n) right.append(span("rp-ahead", `↑${r.unpushed_n}`));
-  for (const pr of r.prs) if (pr.state === "open") right.append(prLink(pr));
-  if (r.clean) right.prepend(span("rp-clean", "✓"));
+  const sum = (k) => g.lines.reduce((a, l) => a + l[k], 0);
+  if (g.lines.every((l) => l.removed)) right.append(span("rp-gone", "removed"));
+  for (const op of new Set(g.lines.map((l) => l.op).filter(Boolean))) right.append(span("rp-op", op));
+  if (sum("dirty_n")) right.append(span("rp-dirty", `~${sum("dirty_n")}`));
+  if (sum("unpushed_n")) right.append(span("rp-ahead", `↑${sum("unpushed_n")}`));
+  const seen = new Set();
+  for (const l of g.lines) for (const pr of l.prs) {
+    if (pr.state !== "open" || seen.has(pr.n)) continue;
+    seen.add(pr.n);
+    right.append(prLink(pr));
+  }
+  if (g.lines.every((l) => l.clean)) right.prepend(span("rp-clean", "✓"));
   line.append(right);
   return line;
 }
@@ -1930,14 +1968,13 @@ function rpList(items, shown, total) {
   return ul;
 }
 
-function repoSection(r, ghOk) {
+// One checkout inside its repo's section: what this session left there.
+function checkoutBlock(r, ghOk) {
   const sec = document.createElement("div");
-  sec.className = "csec";
-  const h = document.createElement("h5");
-  h.className = "rp-h";
-  h.append(span("", r.name));
-  if (r.worktree) h.append(span("rp-wt", "worktree"));
-  h.append(span("p", r.path));
+  sec.className = "rp-co";
+  const h = document.createElement("h6");
+  h.append(span("", r.worktree ? `worktree ${rpBase(r.top)}` : "main checkout"));
+  if (r.worktree) h.append(span("p", r.path));
   sec.append(h);
   if (r.removed) sec.append(rpKv("state", "removed: the directory is gone"));
   else if (r.branch || r.upstream) sec.append(rpKv("branch", r.upstream ? `${r.branch} → ${r.upstream}` : `${r.branch || "detached"}, no upstream`));
@@ -1963,11 +2000,23 @@ function repoSection(r, ghOk) {
   }
   if (r.prs.length && !ghOk) sec.append(rpKv("", "PR state unknown: gh unavailable"));
   if (r.others_n) sec.append(rpKv("others' dirt", `${rpPlural(r.others_n, "file")} this session never wrote`));
-  for (const p of r.peers) {
+  return sec;
+}
+
+function repoSection(g, ghOk) {
+  const sec = document.createElement("div");
+  sec.className = "csec";
+  const h = document.createElement("h5");
+  h.className = "rp-h";
+  h.append(span("", g.name));
+  const main = g.lines.find((l) => !l.worktree);
+  h.append(span("p", main ? main.path : g.main));
+  sec.append(h, ...g.lines.map((r) => checkoutBlock(r, ghOk)));
+  for (const [handle, wheres] of g.peers) {
     const d = document.createElement("div");
     d.className = "rp-peer";
-    d.textContent = `● ${p.handle} is also here: ${p.where}`;
-    sec.append(d);
+    d.textContent = `● ${handle} is also here`;
+    sec.append(d, rpList(wheres.map((w) => [w]), wheres.length, wheres.length));
   }
   return sec;
 }
@@ -1976,19 +2025,20 @@ function drawRepos(d) {
   const repos = d.repos || [];
   $("s-repos-sec").hidden = !repos.length;
   if (!repos.length) return;
-  $("s-repos-n").textContent = String(repos.length);
-  const lines = repos.slice(0, 5).map(repoLine);
-  if (repos.length > 5) lines.push(span("rp-more", `+${repos.length - 5} more`));
+  const groups = repoGroups(repos);
+  $("s-repos-n").textContent = String(groups.length);
+  const lines = groups.slice(0, 5).map(repoLine);
+  if (groups.length > 5) lines.push(span("rp-more", `+${groups.length - 5} more`));
   $("s-repos").replaceChildren(...lines);
   const sum = (k) => repos.reduce((a, r) => a + r[k], 0);
-  const open = repos.reduce((a, r) => a + r.prs.filter((p) => p.state === "open").length, 0);
+  const open = new Set(repos.flatMap((r) => r.prs.filter((p) => p.state === "open").map((p) => `${r.main}#${p.n}`))).size;
   $("s-repos-sum").textContent = [
-    rpPlural(repos.length, "repo"),
+    rpPlural(groups.length, "repo"),
     `${rpPlural(sum("dirty_n"), "file")} uncommitted`,
     `${rpPlural(sum("unpushed_n"), "commit")} unpushed`,
     `${rpPlural(open, "PR")} open`,
   ].join(" · ");
-  $("s-repos-all").replaceChildren(...repos.map((r) => repoSection(r, d.gh)));
+  $("s-repos-all").replaceChildren(...groups.map((g) => repoSection(g, d.gh)));
 }
 
 // A window tab: its panes, and the session's name in its title so the
@@ -3123,6 +3173,14 @@ installKeys(
     },
     help: () => help(),
     side: () => toggleSide(),
+    archive() {
+      const b = $("close");
+      if (route().view === "session" && !b.disabled) b.click();
+    },
+    quiet() {
+      const b = $("quiet-session");
+      if (route().view === "session" && !b.disabled) b.click();
+    },
     palette: () => palette.toggle(),
   },
   () => (booted ? route().view : "boot"),
