@@ -399,7 +399,7 @@ def harness_versions_from(raw: object) -> dict:
 SECTIONS = {
     "generators": (
         "Recaps and side notes",
-        "A Claude Code agent writes a recap when a person returns to a long unread"
+        "A configured agent writes a recap when a person returns to a long unread"
         " stretch, and answers /btw side questions. Blank turns each off.",
     ),
     "memory": (
@@ -438,7 +438,7 @@ SECTIONS = {
 
 def fields() -> list[dict]:
     """The keys the Settings page draws from the wire, in order. ``kind`` says
-    which control: agent (a Claude Code agent), size, int, number, bool, list
+    which control: agent (a configured generation agent), size, int, number, bool, list
     (of strings) or switch (a notice kind, written ``false`` when off);
     ``off`` marks a number the file may set to false."""
     out: list[dict] = []
@@ -985,12 +985,6 @@ def _validate_settings(doc: ConfigDoc, err: Callable[[str, str, str], None]) -> 
         a = agents.get(str(name))
         if a is None:
             err(key, f"{key}.agent", f"no agent named {name!r}")
-        elif a.harness != "claude-code":
-            err(
-                key,
-                f"{key}.agent",
-                f"{key} needs a claude-code agent; {name} runs {a.harness}",
-            )
 
 
 def _put(node: dict, key: str, value: object) -> None:

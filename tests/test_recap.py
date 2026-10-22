@@ -121,13 +121,21 @@ def test_load_recap_names_an_agent_or_says_what_is_wrong(tmp_path):
         "  oc: {harness: opencode, model: a/b, effort: low, permission: read}\n"
         "recap: {agent: haiku}\n"
     )
-    assert load_recap(tmp_path) == {"agent": "haiku", "model": "m"}
+    assert load_recap(tmp_path) == {
+        "agent": "haiku",
+        "harness": "claude-code",
+        "model": "m",
+    }
     (tmp_path / ".aegis.yaml").write_text("agents: {}\nrecap: {agent: nope}\n")
     assert "nope" in load_recap(tmp_path)["error"]
     (tmp_path / ".aegis.yaml").write_text(
         "agents:\n  oc: {harness: opencode, model: a/b, effort: low, permission: read}\nrecap: {agent: oc}\n"
     )
-    assert "claude-code" in load_recap(tmp_path)["error"]
+    assert load_recap(tmp_path) == {
+        "agent": "oc",
+        "harness": "opencode",
+        "model": "a/b",
+    }
     (tmp_path / ".aegis.yaml").write_text("recap: {}\n")
     assert "agent" in load_recap(tmp_path)["error"]
 

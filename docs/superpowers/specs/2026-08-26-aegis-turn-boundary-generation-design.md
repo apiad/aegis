@@ -464,6 +464,16 @@ TDD per repo convention: failing test first, commit per logical unit.
   payload with `TurnFacts` is the seam that would let both move later,
   toward `2026-08-23-aegis-plugin-first-core-vision.md`.
 
+## Harness portability amendment — implemented 2026-10-22
+
+The generation seam is harness-aware rather than Claude-specific. `recap:` and
+`btw:` may name any configured Claude Code, OpenCode or Codex agent. The
+one-shot adapter translates the call to Claude Code's structured print mode,
+OpenCode's standalone plan-mode JSON stream, or Codex's ephemeral read-only JSON
+stream, then validates the same Pydantic output model for all three. This keeps
+recaps tool-less and prevents a workspace from requiring a second vendor merely
+to summarize a session.
+
 [codex-issue]: https://github.com/openai/codex/issues/27352
 [codex-blog]: https://developers.openai.com/blog/run-long-horizon-tasks-with-codex
 [cc-issue]: https://github.com/anthropics/claude-code/issues/56346

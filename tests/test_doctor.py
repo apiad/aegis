@@ -123,16 +123,20 @@ async def test_a_valid_recap_is_ok_and_not_an_unknown_key(
     assert r.message == "opus, opus"
 
 
-async def test_a_recap_naming_no_agent_or_another_harness_is_an_error(
+async def test_a_recap_naming_an_unknown_agent_is_an_error(
     tmp_path, fake_claude, fake_opencode
 ):
-    for agent, why in (
-        ("nope", "does not define"),
-        ("pro", "needs a claude-code agent"),
-    ):
-        text = GOOD + f"recap: {{agent: {agent}}}\n"
-        (r,) = at(await run(tmp_path, text, fake_claude, fake_opencode), "recap")
-        assert r.level == "error" and why in r.message
+    text = GOOD + "recap: {agent: nope}\n"
+    (r,) = at(await run(tmp_path, text, fake_claude, fake_opencode), "recap")
+    assert r.level == "error" and "does not define" in r.message
+
+
+async def test_a_recap_can_use_an_opencode_agent(tmp_path, fake_claude, fake_opencode):
+    found = await run(
+        tmp_path, GOOD + "recap: {agent: pro}\n", fake_claude, fake_opencode
+    )
+    (r,) = at(found, "recap")
+    assert r.level == "ok" and r.message == "pro, opencode-go/fake-pro"
 
 
 async def test_legacy_state_is_an_error_and_the_doctor_writes_nothing(
