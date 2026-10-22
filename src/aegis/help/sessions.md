@@ -121,18 +121,21 @@ worker also carries the `worker · <queue>` badge its Fleet card has.
 
 ## The repos a session works in
 
-The session panel's Repos row lists each repository and worktree the session
-has written a file in or committed to, newest first, one line each: the repo's
-name, its branch (or `⑂` and the directory of a linked worktree), then `~n`
-for files the session wrote and has not committed, `↑n` for its commits no
-remote has yet, its open pull requests as links to GitHub, or `✓` when nothing
-is pending. A dot marks a repo another open session also wrote in. A repo
-stays listed once clean, so the row also records where the session worked.
+The session panel's Repos row lists each repository the session has written
+a file in or committed to, newest first, one line per repo: the repo's name,
+its branch (or `⑂` and the directory of a linked worktree, or `n checkouts`
+when the session worked in several of the repo's checkouts), then `~n` for
+files the session wrote and has not committed, `↑n` for its commits no remote
+has yet, its open pull requests as links to GitHub, or `✓` when nothing is
+pending. A dot marks a repo another open session also wrote in. A repo stays
+listed once clean, so the row also records where the session worked.
 
-Hover the row, or tap it on a phone, for its card: per repo the branch and
-upstream, the uncommitted files, the unpushed commits, the commits the session
+Hover the row, or tap it on a phone, for its card: one section per repo, and
+in it one block per checkout (the main checkout first, then the worktrees)
+with the branch and upstream, the uncommitted files, the unpushed commits, the commits the session
 left there and its PRs with their state and CI, files other sessions left
-dirty in the same checkout, and the other sessions working there. A commit
+dirty in the same checkout. Below them each other session working in the repo
+is named once, with the checkouts it wrote in. A commit
 counts as pushed once a remote has it or an equivalent patch, so a PR merged
 by rebase with its branch deleted reads as clean. A write shows within
 seconds, mid-turn; git is asked at most every 10 seconds per worktree, and
