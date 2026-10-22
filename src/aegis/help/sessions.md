@@ -299,7 +299,7 @@ and Go to session) and the archive's rows (Read and Reopen).
 | Wake | the menu, on an asleep session | starts the process and sends nothing. Like a message, it is refused while the quota gate is closed, and it asks before starting a harness version outside the tested range |
 | Continue | the menu and the panel, on a session that is not working | sends "Continue" to the agent, which wakes an asleep one |
 | Restart | the menu, the panel, `/restart` | ends the process and starts a fresh one on the same conversation; nothing is sent. On a working session it asks first, typed or clicked, since it cuts the turn. Use it after a change to the agent's MCP config or when the harness hangs |
-| Archive | the menu, the panel, `/archive` (`/close` is an alias), a middle click on the tab or card | archives the session, and its tab goes away in every browser. A session that is not done asks first |
+| Archive | the menu, the panel, `/archive` (`/close` is an alias), a middle click on the tab or card, Alt+A in a session | archives the session, and its tab goes away in every browser. A session that is not done asks first |
 | Reopen | the archive, an archived session's panel | gives the session a tab again, asleep, ready for the next message |
 
 An asleep session's card is marked `zz` with the reason it has no process:

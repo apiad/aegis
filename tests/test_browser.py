@@ -1159,6 +1159,20 @@ def test_alt_q_quiets_a_working_session_and_leaves_an_idle_one(server, page):
     assert page.errors == []
 
 
+def test_alt_a_archives_the_session_in_front(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a = spawn(page, "stays")
+    b = spawn(page, "goes")
+    page.wait_for_selector("#s-status.at-done")
+    page.focus("#input")
+    page.keyboard.press("Alt+a")
+    page.wait_for_function("id => location.hash === '#s=' + id", arg=a)
+    assert tab_ids(page) == [a]
+    assert b not in tab_ids(page)
+    assert page.errors == []
+
+
 def test_a_closed_session_is_in_the_archive_without_a_reload(server, page):
     """#160: the Fleet's archive was read before the Close and nothing read it
     again, so the closed session appeared only after a reload."""
