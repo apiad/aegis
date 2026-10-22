@@ -22,7 +22,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from .archive import Position, count_workers, page as archive_page
-from . import attention, cache, restarts
+from . import attention, cache, restarts, users
 from .cgroups import SessionCgroups
 from .config import CONTEXT_DEFAULTS
 from .harness import harness_for
@@ -105,6 +105,11 @@ class Registry(Host):
         # One cgroup per session, when the unit is delegated (cgroups.py); the
         # app sets it at boot.
         self.cgroups: SessionCgroups | None = None
+        # The multi-user mode (users.py), and who a principal is; the app sets
+        # them at boot from its tokens.
+        self.multi_user = False
+        self.linux_user_of: Callable[[str | None], str | None] = lambda name: None
+        self.role_of: Callable[[str | None], str | None] = lambda name: None
         # What boot decided about the turns the last run's end cut (restarts.py):
         # each continued session, and whether that end was a crash; the ones a
         # person must continue.
@@ -123,6 +128,18 @@ class Registry(Host):
         if priming:
             prompt += "\n\n" + priming
         return (self.mcp_url, self.tokens.mint(session.log_id)), prompt
+
+    def user_for(self, spec: SpawnSpec) -> str | None:
+        """The Linux user a session's process runs as. In multi-user mode a
+        member's session made before the mode has none, and its transcript
+        lives in the server's home: it may not start as the server instead."""
+        if not self.multi_user:
+            return None
+        if spec.linux_user is None and self.role_of(spec.owner) == "member":
+            raise PermissionError(
+                "this session was created before multi-user mode; start a new one"
+            )
+        return spec.linux_user
 
     def cgroup(self, session: Session) -> Path | None:
         return self.cgroups.create(session.log_id) if self.cgroups else None
@@ -669,6 +686,13 @@ class Registry(Host):
         launch_by: str = "agent",
     ) -> Session:
         log_id = mint_log_id()
+        if self.multi_user:
+            spec = users.place(
+                spec,
+                root=self.roots.harness_cwd,
+                role=self.role_of(spec.owner),
+                linux_user=self.linux_user_of(spec.owner),
+            )
         s = self._session(
             {"log_id": log_id, "handle": mint_handle(self._handles())}
             | spec.record()

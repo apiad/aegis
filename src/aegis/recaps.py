@@ -61,6 +61,7 @@ class Recaps:
                 recap.argv(self.app.claude_bin, cfg["model"], prompt),
                 self.app.roots.state_root / "oneshot",
                 recap.TIMEOUT_S,
+                s.spec.linux_user,
             )
         except oneshot.OneshotError as e:
             return {"status": "failed", "why": str(e)}

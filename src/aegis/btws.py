@@ -58,7 +58,10 @@ class SideNotes:
         )
         try:
             out = await oneshot.run(
-                argv, self.app.roots.state_root / "oneshot", btw.TIMEOUT_S
+                argv,
+                self.app.roots.state_root / "oneshot",
+                btw.TIMEOUT_S,
+                s.spec.linux_user,
             )
         except oneshot.OneshotError as e:
             self._answer(s, {**base, "status": "failed", "why": str(e)})

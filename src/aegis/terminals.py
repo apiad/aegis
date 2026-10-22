@@ -24,6 +24,7 @@ import asyncio
 import json
 import logging
 import os
+import pwd
 import secrets
 import time
 from collections.abc import Callable
@@ -61,12 +62,17 @@ class Terminals:
         profiles: Callable[[], dict[str, dict]],
         publish: Callable[[str, list[dict]], None],
         cgroups: Callable[[], SessionCgroups | None] = lambda: None,
+        linux_user_of: Callable[[str], str | None] = lambda owner: None,
+        role_of: Callable[[str], str | None] = lambda owner: None,
     ) -> None:
         self.dir = state_root / "terminals"
         self.config_root = config_root
         self._profiles = profiles
         self._publish = publish
         self._cgroups = cgroups
+        # Who a terminal runs as, in multi-user mode (users.py).
+        self._linux_user_of = linux_user_of
+        self._role_of = role_of
         self.open: dict[str, Terminal] = {}
         self.archived: dict[str, dict] = {}
         self.closing: dict[str, Terminal] = {}  # closed, their program not yet ended
@@ -89,7 +95,14 @@ class Terminals:
             raise OpError("no_profile", f"no terminal profile named {profile!r}")
         if "error" in p:
             raise OpError("bad_profile", f"terminal profile {profile}: {p['error']}")
-        where = self._cwd(p["cwd"] if cwd is None else cwd, under_root=cwd is not None)
+        user = self._linux_user_of(owner)
+        if user and cwd is None and self._role_of(owner) == "member":
+            # The aegis root is the server's: a member's terminal starts home.
+            where = Path(pwd.getpwnam(user).pw_dir)
+        else:
+            where = self._cwd(
+                p["cwd"] if cwd is None else cwd, under_root=cwd is not None
+            )
         tid = mint_term_id()
         meta = {
             "id": tid,
@@ -99,6 +112,7 @@ class Terminals:
             "title": p["cmd"] or login_shell(),
             "cwd": str(where),
             "owner": owner,
+            "linux_user": user,
             "started_by": started_by,
             "cols": COLS,
             "rows": ROWS,
@@ -276,7 +290,11 @@ class Terminals:
         cg = self._cgroups()
         cgroup = cg.create(t.id) if cg is not None else None
         try:
-            await t.start(argv(spec), Path(t.meta["cwd"]), env, cgroup)
+            user = t.meta.get("linux_user")
+            cmd = argv(spec)
+            if user and spec["cmd"] is None:
+                cmd = [pwd.getpwnam(user).pw_shell or "/bin/sh", "-l"]
+            await t.start(cmd, Path(t.meta["cwd"]), env, cgroup, user=user)
         except OSError as e:
             if cg is not None:
                 cg.release(t.id)

@@ -69,19 +69,19 @@ def classify(attention: str) -> str:
 
 
 async def run_bash(
-    cmd: str, cwd: str, timeout: float = CONDITION_LIMIT_S
+    cmd: str, cwd: str, timeout: float = CONDITION_LIMIT_S, *, user: str | None
 ) -> tuple[int | None, str, str]:
-    """Run ``cmd`` under bash in ``cwd``: its exit code, stdout and stderr. The
-    code is None when bash could not start or the command took over
-    ``timeout`` seconds, and stderr then says which. A monitor's conditions
-    and a schedule's check both run through here."""
+    """Run ``cmd`` under bash in ``cwd``, as ``user`` (launch.py): its exit
+    code, stdout and stderr. The code is None when bash could not start or the
+    command took over ``timeout`` seconds, and stderr then says which. A
+    monitor's conditions and a schedule's check both run through here."""
     try:
         proc = await launch.child(
             ["bash", "-c", cmd],
             cwd=cwd,
             stdout=launch.PIPE,
             stderr=launch.PIPE,
-            user=None,
+            user=user,
         )
     except OSError as e:
         return None, "", str(e)
@@ -336,11 +336,16 @@ class Monitors:
     def _arm(self, m: Monitor) -> None:
         self._tasks[m.id] = asyncio.get_running_loop().create_task(self._watch(m))
 
-    async def _run(self, cmd: str, cwd: str) -> tuple[int | None, str, str]:
-        return await run_bash(cmd, cwd)
+    async def _run(
+        self, cmd: str, cwd: str, user: str | None = None
+    ) -> tuple[int | None, str, str]:
+        return await run_bash(cmd, cwd, user=user)
 
     async def _check(self, m: Monitor, kind: str) -> tuple[int | None, str, bool]:
-        rc, out, err = await self._run(getattr(m, kind), m.cwd)
+        # As the owner of the session that armed it (users.py).
+        s = self._registry.sessions.get(m.owner)
+        user = s.spec.linux_user if s is not None else None
+        rc, out, err = await self._run(getattr(m, kind), m.cwd, user)
         return rc, out, m.record(kind, rc, out, err)
 
     def _publish(self, m: Monitor) -> None:

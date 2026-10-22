@@ -56,6 +56,7 @@ class ClaudeSession:
             launch.on_exit,
             env=session_env(launch),
             cgroup=launch.cgroup,
+            user=launch.user,
         )
 
     @property

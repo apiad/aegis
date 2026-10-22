@@ -28,7 +28,11 @@ async def test_a_session_with_a_working_child_is_not_finished(world):
 
 
 async def test_run_bash_says_the_code_the_output_and_why_it_could_not_run():
-    assert await run_bash("echo hi; exit 3", "/") == (3, "hi\n", "")
-    assert await run_bash("sleep 5", "/", timeout=0.2) == (None, "", "took over 0.2s")
-    rc, _, err = await run_bash("true", "/no/such/dir")
+    assert await run_bash("echo hi; exit 3", "/", user=None) == (3, "hi\n", "")
+    assert await run_bash("sleep 5", "/", timeout=0.2, user=None) == (
+        None,
+        "",
+        "took over 0.2s",
+    )
+    rc, _, err = await run_bash("true", "/no/such/dir", user=None)
     assert rc is None and "No such file" in err

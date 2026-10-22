@@ -188,7 +188,7 @@ class OpenCodeProcess:
             [self._bin, "serve", "--hostname", "127.0.0.1", "--port", "0"],
             cwd=self._launch.cwd, env=session_env(self._launch, env),
             stdin=launch.DEVNULL, stdout=launch.PIPE, stderr=launch.PIPE,
-            cgroup=self._launch.cgroup, oom=True, user=None
+            cgroup=self._launch.cgroup, oom=True, user=self._launch.user
         )  # fmt: skip
         self._keep(self._drain(self._proc.stderr))
         try:

@@ -161,8 +161,10 @@ class ClaudeProcess:
         on_exit: Callable[[int, list[str]], None],
         env: dict[str, str] | None = None,
         cgroup: Path | None = None,
+        user: str | None = None,
     ) -> None:
         self.argv = argv
+        self.user = user
         self.cwd = cwd
         self.cgroup = cgroup
         self.stderr_path = stderr_path
@@ -195,7 +197,7 @@ class ClaudeProcess:
             limit=LINE_LIMIT,
             cgroup=self.cgroup,
             oom=True,
-            user=None,
+            user=self.user,
         )
         err = asyncio.create_task(self._pump_stderr())
         self._tasks = [err, asyncio.create_task(self._pump_stdout(err))]

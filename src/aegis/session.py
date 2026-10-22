@@ -132,6 +132,11 @@ class Host:
         """The cgroup a new process starts in (cgroups.py), or None."""
         return None
 
+    def user_for(self, spec: "SpawnSpec") -> str | None:
+        """The Linux user a new process runs as (launch.py); None for the
+        server's own."""
+        return spec.linux_user
+
     def released(self, session: "Session") -> None:
         """The session's process ended: empty and remove its cgroup."""
 
@@ -233,6 +238,10 @@ class SpawnSpec:
     # model; () otherwise. Fixed at spawn: the position in use is the index
     # of ``model`` in it.
     cascade: tuple[str, ...] = ()
+    # The Linux user its processes run as, in multi-user mode (users.py):
+    # fixed at creation, so a later change of the token's user reaches new
+    # sessions only. None runs as the server's own user.
+    linux_user: str | None = None
 
     def record(self) -> dict:
         """The fields a spawn record and a meta carry."""
@@ -260,6 +269,8 @@ class SpawnSpec:
             d["keep_harness_tools"] = list(self.keep_harness_tools)
         if self.cascade:
             d["cascade"] = list(self.cascade)
+        if self.linux_user:
+            d["linux_user"] = self.linux_user
         return d
 
     @classmethod
@@ -281,6 +292,7 @@ class SpawnSpec:
             continues=d.get("continues"),
             keep_harness_tools=tuple(d.get("keep_harness_tools") or ()),
             cascade=_cascade_of(d.get("cascade")),
+            linux_user=d.get("linux_user") or None,
         )
 
 
@@ -690,6 +702,7 @@ class Session:
                 read_dirs=(inbox,),
                 cgroup=self._host.cgroup(self),
                 log_id=self.log_id,
+                user=self._host.user_for(self.spec),
                 keep_harness_tools=self.spec.keep_harness_tools,
             )
         )

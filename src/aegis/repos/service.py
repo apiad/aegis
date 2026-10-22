@@ -50,8 +50,13 @@ class Repos:
         open_sessions: Callable[[], dict[str, str]],
         subscribers: Callable[[str], int],
         root: Path,
+        user_of: Callable[[str], str | None] = lambda log_id: None,
     ) -> None:
         self.db_path = db_path
+        # git and gh run as the Linux user of the session that names a top
+        # (users.py): git refuses a repository another user owns.
+        self.user_of = user_of
+        self._users: dict[str, str | None] = {}
         self._publish = publish
         self._open = open_sessions
         self._subscribers = subscribers
@@ -184,7 +189,9 @@ class Repos:
 
     async def _probe_and_refresh(self, top: str) -> None:
         try:
-            self._probes[top] = await asyncio.to_thread(probe.probe, top)
+            self._probes[top] = await asyncio.to_thread(
+                probe.probe, top, self._users.get(top)
+            )
         except Exception:
             log.exception("repos: probing %s failed", top)
             self._probes[top] = None
@@ -198,11 +205,16 @@ class Repos:
     ) -> None:
         if self._loop is None:
             return
-        places = [(p, *paths.place(p)) for p in written]
-        tops = [paths.place(d)[2] for d in dirs]
+        user = self.user_of(log_id)
+        places = [(p, *paths.place(p, user)) for p in written]
+        tops = [paths.place(d, user)[2] for d in dirs]
         self._loop.call_soon_threadsafe(self._on_live, log_id, places, tops)
 
     def _on_live(self, log_id: str, places: list, tops: list[str | None]) -> None:
+        user = self.user_of(log_id)
+        for top in [t for *_, t in places] + list(tops):
+            if top is not None:
+                self._users[top] = user
         mine = dict(self._live.get(log_id, {}))
         now = time.time()
         for _, main, rel, top in places:
@@ -238,10 +250,12 @@ class Repos:
 
     def _build(self, con, log_id: str, live: dict, open_: dict) -> dict:
         repos: dict[str, dict[str, Any]] = {}
+        user = self.user_of(log_id)
 
         def at(top: str, main: str, ts: float) -> dict:
             r: dict[str, Any] | None = repos.get(top)
             if r is None:
+                self._users[top] = user
                 r = repos[top] = {
                     "top": top,
                     "main": main,
@@ -319,7 +333,7 @@ class Repos:
         top, main = r["top"], r["main"]
         exists = os.path.isdir(top)
         if top not in self._probes and exists:
-            self._probes[top] = probe.probe(top)
+            self._probes[top] = probe.probe(top, self._users.get(top))
             self._probed_at[top] = time.monotonic()
         p = self._probes.get(top) if exists else None
         rel = os.path.relpath(top, self.root)
@@ -357,7 +371,7 @@ class Repos:
         # its main checkout.
         ask = top if exists else (main if os.path.isdir(main) else None)
         for b in sorted(branches):
-            found = gh.prs(ask, b) if ask else None
+            found = gh.prs(ask, b, self._users.get(top)) if ask else None
             if found is None:
                 ok = False
                 continue
@@ -366,8 +380,9 @@ class Repos:
                 if pr["state"] == "merged":
                     merged_branches.add(b)
         shas = [s for s, _, _, b in commits if s and b not in merged_branches]
-        base = probe.base(top, p.upstream) if p else ""
-        found_left = probe.unpushed(top, shas, base) if p else []
+        user = self._users.get(top)
+        base = probe.base(top, p.upstream, user) if p else ""
+        found_left = probe.unpushed(top, shas, base, user) if p else []
         if found_left is None:
             line["stale"] = True  # git could not tell: never read as pushed
         left = set(found_left or ())

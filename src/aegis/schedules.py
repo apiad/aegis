@@ -309,7 +309,10 @@ class Schedules:
         stdout, sha = None, None
         if s.d.check is not None and not manual:
             rc, out, err = await run_bash(
-                s.d.check.bash, self._cwd(s), s.d.check.timeout_s
+                s.d.check.bash,
+                self._cwd(s),
+                s.d.check.timeout_s,
+                user=self._reg.linux_user_of(s.owner.get("principal")),
             )
             if rc == 0:
                 sha = hashlib.sha256(out.encode()).hexdigest()
@@ -756,7 +759,12 @@ class Schedules:
             self._busy.discard(name)
 
     async def test(
-        self, clock: Clock, check: Check | None, cwd: Path, name: str | None
+        self,
+        clock: Clock,
+        check: Check | None,
+        cwd: Path,
+        name: str | None,
+        user: str | None = None,
     ) -> dict:
         """The next three ticks, and what the check would do now. Writes nothing."""
         now = int(self.now())
@@ -765,7 +773,9 @@ class Schedules:
             "tz": time.strftime("%Z"),
         }
         if check is not None:
-            rc, stdout, err = await run_bash(check.bash, str(cwd), check.timeout_s)
+            rc, stdout, err = await run_bash(
+                check.bash, str(cwd), check.timeout_s, user=user
+            )
             st = self.state.get(name or "")
             sha = hashlib.sha256(stdout.encode()).hexdigest() if rc == 0 else None
             fires = rc == 0 and sha != (st.sha if st else None)

@@ -227,7 +227,9 @@ async def test_twenty_writes_in_the_window_probe_at_most_twice(
     monkeypatch.setattr(service, "PROBE_EVERY", 0.3)
     calls = []
     real = probe.probe
-    monkeypatch.setattr(probe, "probe", lambda top: calls.append(top) or real(top))
+    monkeypatch.setattr(
+        probe, "probe", lambda top, user=None: calls.append(top) or real(top, user)
+    )
     world.repos.start()
     try:
         for k in range(20):
@@ -285,7 +287,7 @@ def test_a_removed_worktree_asks_gh_from_its_main_checkout(
     world, repo, tmp_path, monkeypatch
 ):
     asked = []
-    monkeypatch.setattr(gh, "prs", lambda top, b: asked.append(top) or [])
+    monkeypatch.setattr(gh, "prs", lambda top, b, user=None: asked.append(top) or [])
     gone = tmp_path / "gone"
     world.wrote("L1", gone, "x.py", main=repo)
     world.committed("L1", gone, "0" * 40, "add x", branch="topic")
