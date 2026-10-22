@@ -15,6 +15,7 @@ class Codex:
     name = "codex"
     src = "codex"
     label = LABEL
+    steers_mid_turn = True  # turn/steer
     # The name Codex shows the model for aegis's server (config.SERVER).
     tool_prefix = f"mcp__{SERVER}__"
 

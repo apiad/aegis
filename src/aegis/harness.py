@@ -134,6 +134,8 @@ class Harness(Protocol):
     src: str
     label: str
     tool_prefix: str
+    # Reads a message sent mid-turn inside that turn (Session.deliver's urgent).
+    steers_mid_turn: bool
     bin: str
 
     def process(self, launch: Launch) -> Process: ...
