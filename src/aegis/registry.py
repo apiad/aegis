@@ -21,6 +21,8 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from .as_user import Runners
+
 from .archive import Position, count_workers, page as archive_page
 from . import attention, cache, restarts, users
 from .cgroups import SessionCgroups
@@ -112,6 +114,8 @@ class Registry(Host):
         # as, raising PermissionError when nothing may run for it.
         self.acts_for: Callable[[str | None], str | None] = lambda name: None
         self.role_of: Callable[[str | None], str | None] = lambda name: None
+        # Threads that open files as a session's user (as_user.py).
+        self.runners = Runners()
         # What boot decided about the turns the last run's end cut (restarts.py):
         # each continued session, and whether that end was a crash; the ones a
         # person must continue.

@@ -43,11 +43,13 @@ import dataclasses
 import getpass
 import json
 import logging
+import os
 import pwd
 import re
 import time
 from collections import OrderedDict
 from pathlib import Path
+from collections.abc import Callable
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -511,6 +513,7 @@ class App:
         reg.multi_user = multi_user is not None
         reg.acts_for = lambda name: self.principals.acts_for(name)
         reg.role_of = lambda name: self.principals.role_of(name) if name else None
+        reg.runners = self.runners
         # Models that fell, and the one timer that releases held work when the
         # first of them is free again (cascade.py).
         self.cooling = Cooling()
@@ -864,6 +867,23 @@ class App:
         except (OSError, ValueError):
             return None
         return meta.get("linux_user") if isinstance(meta, dict) else None
+
+    def _deliver(self, s) -> Callable[[Path, str], Path] | None:
+        """How an upload reaches ``s``'s inbox in its user's home, as that
+        user: the server opens the staged file, the user's runner writes the
+        copy (attachments.commit). None for an inbox under the state root."""
+        if s.spec.linux_user is None:
+            return None
+        run, box = self.runners.get(s.spec.linux_user), s.inbox
+
+        def deliver(staged: Path, name: str) -> Path:
+            fd = os.open(staged, os.O_RDONLY | os.O_CLOEXEC)
+            try:
+                return run.call(att.write_into, box, name, fd)
+            finally:
+                os.close(fd)
+
+        return deliver
 
     def place_of(self, caller: Caller) -> Place:
         """Where the files a person reaches are, and the runner that opens
@@ -1572,7 +1592,11 @@ class App:
                 if p.attachments:
                     try:
                         sent = await asyncio.to_thread(
-                            att.commit, self.roots.state_root, p.log_id, p.attachments
+                            att.commit,
+                            self.roots.state_root,
+                            p.log_id,
+                            p.attachments,
+                            deliver=self._deliver(s),
                         )
                     except files.FileError as e:
                         raise OpError(e.code, e.message) from e

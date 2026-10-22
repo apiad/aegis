@@ -12,7 +12,7 @@ import pwd
 
 import pytest
 
-from aegis import launch, users
+from aegis import as_user, launch, users
 from aegis.ops import Caller, Principal
 from aegis.users import MultiUser
 
@@ -74,6 +74,8 @@ def ben_home(tmp_path, monkeypatch):
     real = pwd.getpwnam
     monkeypatch.setattr(pwd, "getpwnam", lambda n: ben if n == "ben" else real(n))
     monkeypatch.setattr(users, "allowed", lambda name, **kw: ben)
+    # Taking ben's file credentials needs capabilities: tests/multiuser/.
+    monkeypatch.setattr(as_user, "become", lambda pw: None)
     return home
 
 

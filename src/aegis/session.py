@@ -41,8 +41,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+import pwd
 from typing import Any
 
+from .as_user import Runners
 from . import attachments, cache, harness_versions, restarts
 from . import layout as canvas
 from .artifacts import ArtifactError, Board
@@ -120,6 +122,9 @@ class Host:
     """What a session asks of the server around it. The registry implements
     it; the default does nothing, which is what a bare session in a test or
     the bench needs."""
+
+    # Threads that open files as a session's user (as_user.py).
+    runners = Runners()
 
     def spawn_args(
         self, session: "Session"
@@ -685,7 +690,10 @@ class Session:
         await self._check_version()
         resume = self.resume_id
         mcp, system_prompt = self._host.spawn_args(self)
-        inbox = attachments.ensure_inbox(self.state_root, self.log_id)
+        user = self._host.user_for(self.spec)
+        inbox = await self._host.runners.get(user)(
+            attachments.ensure_inbox, self.state_root, self.log_id, self._home()
+        )
         proc = self.harness.process(
             Launch(
                 cwd=self.spec.cwd,
@@ -702,7 +710,7 @@ class Session:
                 read_dirs=(inbox,),
                 cgroup=self._host.cgroup(self),
                 log_id=self.log_id,
-                user=self._host.user_for(self.spec),
+                user=user,
                 keep_harness_tools=self.spec.keep_harness_tools,
             )
         )
@@ -881,7 +889,12 @@ class Session:
     @property
     def inbox(self) -> Path:
         """Where the files a person attaches land (attachments.py)."""
-        return attachments.inbox(self.state_root, self.log_id)
+        return attachments.inbox(self.state_root, self.log_id, self._home())
+
+    def _home(self) -> Path | None:
+        """The home of the Linux user this session runs as, or None."""
+        user = self.spec.linux_user
+        return Path(pwd.getpwnam(user).pw_dir) if user else None
 
     async def send(
         self,

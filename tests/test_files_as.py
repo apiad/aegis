@@ -191,3 +191,29 @@ async def test_a_members_agent_sends_a_file_read_on_its_runner(
     file_id = sent[0]["url"].split("/")[2]
     stored = world.app.roots.state_root / "files" / file_id / "chart.txt"
     assert stored.read_text() == "42"
+
+
+async def test_a_members_attachment_lands_in_its_home_inbox(world, ben_home, became):
+    import base64
+
+    log_id = await ben_session(world)
+    s = world.app.sessions.sessions[log_id]
+    box = ben_home / ".aegis" / "inbox" / log_id
+    assert s.inbox == box and box.is_dir() and box.stat().st_mode & 0o777 == 0o700
+    uid = await as_ben(
+        world, "attachment.begin", {"log_id": log_id, "name": "a.txt", "size": 2}
+    )
+    up = uid["upload_id"] if isinstance(uid, dict) else uid
+    data = base64.b64encode(b"hi").decode()
+    await as_ben(
+        world,
+        "attachment.put",
+        {"log_id": log_id, "upload_id": up, "offset": 0, "data": data},
+    )
+    await as_ben(
+        world, "session.send", {"log_id": log_id, "text": "see", "attachments": [up]}
+    )
+    landed = list(box.glob("*-a.txt"))
+    assert [p.read_bytes() for p in landed] == [b"hi"]
+    assert not (world.app.roots.state_root / "inbox" / log_id / "a.txt").exists()
+    assert not list((world.app.roots.state_root / "inbox" / log_id).glob("*-a.txt"))

@@ -71,6 +71,18 @@ class Runner:
                 f"cannot act as Linux user {self.user}; see the server's log"
             ) from None
 
+    def call(self, fn: Callable[..., T], *args: Any, **kw: Any) -> T:
+        """``fn`` run as ``user`` from a thread that is not the event loop's,
+        waiting for it."""
+        if self._pool is None:
+            return fn(*args, **kw)
+        try:
+            return self._pool.submit(fn, *args, **kw).result()
+        except BrokenExecutor:
+            raise PermissionError(
+                f"cannot act as Linux user {self.user}; see the server's log"
+            ) from None
+
 
 class Runners:
     """One Runner per user, made on first use, for the server's whole run."""
