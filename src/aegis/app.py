@@ -43,6 +43,7 @@ import dataclasses
 import getpass
 import json
 import logging
+import pwd
 import re
 import time
 from collections import OrderedDict
@@ -117,8 +118,9 @@ from .quota_gate import (
 from .btws import SideNotes
 from .recaps import Recaps
 from .ops import Caller, NoParams, OpError, Principal, Registry as Ops
-from . import launch
+from . import as_user, launch
 from .tokens import TokenStore
+from .as_user import Place
 from .users import MultiUser
 from .registry import Registry
 from .roots import Roots
@@ -374,6 +376,8 @@ class App:
         self.multi_user = multi_user
         self._mu_told: list[MultiUser | None] = []
         launch.configure(multi_user)
+        # Threads that open files as one person's Linux user (as_user.py).
+        self.runners = as_user.Runners()
         self.server_name = server_name
         self.claude_bin = claude_bin
         self.opencode_bin = opencode_bin
@@ -844,6 +848,7 @@ class App:
         await self.sessions.shutdown()
         await self.repos.stop()
         await asyncio.to_thread(self.journal.stop)
+        self.runners.shutdown()
         restarts.stopped(self.roots.state_root, stopping_at)
 
     def _linux_user_of_session(self, log_id: str) -> str | None:
@@ -859,6 +864,31 @@ class App:
         except (OSError, ValueError):
             return None
         return meta.get("linux_user") if isinstance(meta, dict) else None
+
+    def place_of(self, caller: Caller) -> Place:
+        """Where the files a person reaches are, and the runner that opens
+        them as their Linux user (as_user.py). Raises PermissionError for a
+        member with no user in multi-user mode."""
+        who = self.who(caller)
+        return self._place(self.principals.acts_for(who.name), who.role == "member")
+
+    def place_of_session(self, log_id: str) -> Place:
+        """The place of a session's owner, as the user its process runs as."""
+        spec = self.sessions.open(log_id).spec
+        member = self.principals.role_of(spec.owner or self.user) != "admin"
+        return self._place(self.sessions.user_for(spec), member)
+
+    def _place(self, user: str | None, member: bool) -> Place:
+        root, state = self.roots.config_root, self.roots.state_root
+        run = self.runners.get(user)
+        if user is None:
+            return Place(root, state, state, run)
+        own = Path(pwd.getpwnam(user).pw_dir) / ".aegis"
+        # A member's view is its home; an admin with a user keeps the root.
+        # Neither may write the server's state, so both trash in their home.
+        if member:
+            return Place(own.parent, own / "trash", own, run)
+        return Place(root, state, own, run)
 
     def _on_config(self, snap: Snapshot) -> None:
         """Every change to .aegis.yaml, however it was made: the page and the
