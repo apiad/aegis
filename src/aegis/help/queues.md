@@ -26,6 +26,10 @@ while it waits for a slot, its position in the queue. With a slot free, the
 worker has already started, and the status says running.
 An unknown queue is refused with the names of the queues there are, and a
 queue whose entry in `.aegis.yaml` is broken is refused with what is wrong.
+Over a [trusted link](links#trusted-links), `queue@server` enqueues on the
+other server: the task id comes back as `task-id@server`, which
+`task_status`, `task_cancel` and `task_resume` take, and the result reaches
+your inbox headed `> from queue:<queue>@<server> · task#<id>@<server>`.
 
 Tasks wait first in, first out, for a free slot. A queue runs at most
 `max_parallel:` workers at once. A pending task also waits, without failing,

@@ -84,7 +84,8 @@ class MonitorSessions(_Strict):
     sessions: list[str] = Field(
         min_length=1,
         max_length=20,
-        description="Handles of open sessions on this server, from session_list.",
+        description="Handles of open sessions from session_list: on this "
+        "server, or handle@server on one linked with trust.",
     )
     interval_s: float = Field(10, ge=1, le=3600)
     # Other sessions' work runs longer than a build.
@@ -95,6 +96,13 @@ class MonitorId(_Strict):
     monitor_id: str
 
 
+class FarAgent(_Strict):
+    """An agent on a server linked with trust, as that server's link names it."""
+
+    handle: str
+    server: str
+
+
 class Enqueue(_Strict):
     queue: str
     payload: str = Field(
@@ -103,6 +111,23 @@ class Enqueue(_Strict):
     callback: bool = Field(
         True, description="Deliver the worker's result to your inbox."
     )
+    # Set only by a trusted link, for the agent there that enqueued: the
+    # result goes back to it over the link (queue.deliver).
+    from_agent: SkipJsonSchema[FarAgent | None] = Field(None, exclude=True)
+
+
+class QueueDeliver(_Strict):
+    target: str
+    queue: str
+    task_id: str
+    outcome: Literal["ok", "error"]
+    body: str
+
+
+class PeerClose(_Strict):
+    target: str
+    token: str | None = None
+    sender: FarAgent
 
 
 class TaskId(_Strict):
@@ -483,6 +508,8 @@ def far_error(
 
 
 USER = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+QUEUE_NAME = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+TASK_ID = re.compile(r"^task-[0-9a-f]{1,32}$")
 
 # What session_list adds from a session's card, so one agent can follow
 # another's plan and state. replies, mark and blink describe the person's tab,
@@ -642,6 +669,35 @@ def register_agent_ops(app: App) -> None:
             )
         return handle
 
+    def across(server: str, caller: Caller):
+        """The link for an agent's call to ``server``, which only a link both
+        servers trust carries (links.py, #684); the refusal otherwise."""
+        if caller.link is not None:
+            raise OpError("not_relayed", "a link is not relayed to another server")
+        if not app.links.trusted(server):
+            raise OpError("not_across_links", f"{server} is another server; {ACROSS}")
+        if not app.who(caller).is_admin:
+            raise OpError(
+                "not_for_members", "acting across a link is for an admin's agents"
+            )
+        link = app.links.get(server)
+        assert link is not None
+        return link
+
+    def from_trusted(caller: Caller, sender: FarAgent) -> str:
+        """A trusted link speaking for one of its own agents: its address."""
+        if (
+            caller.link is None
+            or sender.server != caller.link
+            or not app.links.trusted(caller.link)
+        ):
+            raise OpError(
+                "not_a_link", "only a trusted link, for its own server, says this"
+            )
+        if not valid_handle(sender.handle):
+            raise OpError("bad_sender", "a sender is a handle")
+        return f"{sender.handle}@{sender.server}"
+
     def target(handle: str):
         handle = here(handle)
         s = reg.by_handle(handle) or reg.sessions.get(handle)
@@ -709,6 +765,22 @@ def register_agent_ops(app: App) -> None:
         s = own(caller)
         picked: dict[str, dict] = {}
         for handle in p.sessions:
+            h, server = split_address(handle, app.server_name)
+            if server is not None:
+                link = across(server, caller)
+                try:
+                    listed = await link.call("session.list")
+                except OpError as e:
+                    raise far_error(e, server, h, True) from None
+                if not any(
+                    isinstance(e, dict) and e.get("handle") == h for e in listed or []
+                ):
+                    raise OpError("no_session", f"no open session {h}@{server}")
+                key = f"{h}@{server}"
+                picked.setdefault(
+                    key, {"log_id": key, "handle": key, "server": server, "far": h}
+                )
+                continue
             t = target(handle)
             if t.log_id == s.log_id:
                 raise OpError(
@@ -765,34 +837,101 @@ def register_agent_ops(app: App) -> None:
     async def queue_enqueue(p: Enqueue, caller):
         """Hand a self-contained task to a fresh worker on a queue. Returns at once
         with the task id; the worker's final message reaches your inbox when it
-        finishes (with callback). Keep working meanwhile."""
-        here(p.queue)
-        if p.queue not in app.queues.queues:
+        finishes (with callback). Keep working meanwhile. `queue@server`
+        enqueues on a server linked with trust; the result still reaches your
+        inbox, and the task id comes back as `task-id@server`."""
+        name, server = split_address(p.queue, app.server_name)
+        if server is not None:
+            link = across(server, caller)
+            me = own(caller)
+            try:
+                r = await link.call(
+                    "queue.enqueue",
+                    {
+                        "queue": name,
+                        "payload": p.payload,
+                        "callback": p.callback,
+                        "from_agent": {"handle": me.handle, "server": app.server_name},
+                    },
+                )
+            except OpError as e:
+                raise far_error(e, server, trusted=True) from None
+            return {**r, "task_id": f"{r['task_id']}@{server}"}
+        far = None
+        if p.from_agent is not None:
+            from_trusted(caller, p.from_agent)
+            far = p.from_agent.model_dump()
+        if name not in app.queues.queues:
             known = ", ".join(sorted(app.queues.queues)) or "none configured"
-            raise OpError("unknown_queue", f"no queue {p.queue!r}; queues: {known}")
-        if err := app.queues.queues[p.queue].get("error"):
-            raise OpError("bad_config", f"queue {p.queue!r} in .aegis.yaml: {err}")
+            raise OpError("unknown_queue", f"no queue {name!r}; queues: {known}")
+        if err := app.queues.queues[name].get("error"):
+            raise OpError("bad_config", f"queue {name!r} in .aegis.yaml: {err}")
         enqueuer = own(caller) if caller.is_agent else None
         cwd = str(enqueuer.spec.cwd if enqueuer else app.roots.harness_cwd)
         t = await app.queues.enqueue(
-            p.queue,
+            name,
             p.payload,
             p.callback,
             enqueuer.log_id if enqueuer else None,
             cwd,
             owner=app.who(caller).name,
+            far_enqueuer=far,
         )
         return {"task_id": t.id, "status": t.status, "position": app.queues.position(t)}
 
+    @r.op("queue.deliver", QueueDeliver)
+    async def queue_deliver(p: QueueDeliver, caller):
+        """A task's result from a server linked with trust, for the agent here
+        that enqueued it. Only that link may call it; the header is composed
+        here from values checked here."""
+        if caller.link is None or not app.links.trusted(caller.link):
+            raise OpError("not_a_link", "only a trusted link delivers a task's result")
+        if not (QUEUE_NAME.match(p.queue) and TASK_ID.match(p.task_id)):
+            raise OpError("bad_sender", "a queue and a task id, one word each")
+        to = target(p.target)
+        where = caller.link
+        await to.deliver(
+            f"> from queue:{p.queue}@{where} · task#{p.task_id}@{where} · "
+            f"{p.outcome} · {iso_now()}",
+            p.body,
+            through_lock=True,
+        )
+
+    async def far_task(op: str, p: TaskId, caller):
+        """A task on a server linked with trust, ``task-id@server``: the call
+        goes there, or None when the task is here."""
+        task_id, server = split_address(p.task_id, app.server_name)
+        if server is None:
+            return None
+        link = across(server, caller)
+        try:
+            return {"result": await link.call(op, {"task_id": task_id})}
+        except OpError as e:
+            raise far_error(e, server, trusted=True) from None
+
+    def far_mine(t, caller: Caller) -> None:
+        """A trusted link changes only the tasks its own server enqueued."""
+        if (
+            caller.link is not None
+            and (t.far_enqueuer or {}).get("server") != caller.link
+        ):
+            raise OpError("not_yours", f"{t.id} was not enqueued from {caller.link}")
+
     @r.op("task.status", TaskId, agent=True, read=True)
     async def task_status(p: TaskId, caller):
-        """A task's status, its worker, and its result once finished."""
+        """A task's status, its worker, and its result once finished.
+        `task-id@server` reads one on a server linked with trust."""
+        if (far := await far_task("task.status", p, caller)) is not None:
+            return far["result"]
         return app.queues.status(task(p.task_id))
 
     @r.op("task.cancel", TaskId, agent=True)
     async def task_cancel(p: TaskId, caller):
         """Cancel a task you enqueued: drop it if pending, stop and archive its worker if running."""
+        if (far := await far_task("task.cancel", p, caller)) is not None:
+            return far["result"]
         t = task(p.task_id)
+        far_mine(t, caller)
         mine(t, caller)
         await app.queues.cancel(t)
         return app.queues.status(t)
@@ -800,7 +939,10 @@ def register_agent_ops(app: App) -> None:
     @r.op("task.resume", TaskId, agent=True)
     async def task_resume(p: TaskId, caller):
         """Put a failed or cancelled task's worker back to work, with its conversation intact."""
+        if (far := await far_task("task.resume", p, caller)) is not None:
+            return far["result"]
         t = task(p.task_id)
+        far_mine(t, caller)
         mine(t, caller)
         if t.status not in ("failed", "cancelled"):
             raise OpError("not_resumable", f"the task is {t.status}")
@@ -991,6 +1133,13 @@ def register_agent_ops(app: App) -> None:
                     "worker": s.worker,
                     "you": caller.log_id == s.log_id,
                     **{k: w.get(k) for k in LISTED},
+                    # Whether its last turn ended with turn_end: a monitor on
+                    # another server waits for that (monitors.py).
+                    **(
+                        {"reported": bool(s.standing.get("report"))}
+                        if caller.link
+                        else {}
+                    ),
                 }
             )
         # A link asking is not relayed further; links are the admin's.
@@ -1066,6 +1215,20 @@ def register_agent_ops(app: App) -> None:
         me = own(caller)
         if p.handle is None:
             raise OpError("bad_params", "handle is required")
+        h, server = split_address(p.handle, app.server_name)
+        if server is not None:
+            link = across(server, caller)
+            try:
+                return await link.call(
+                    "peer.close",
+                    {
+                        "target": h,
+                        "token": p.token,
+                        "sender": {"handle": me.handle, "server": app.server_name},
+                    },
+                )
+            except OpError as e:
+                raise far_error(e, server, h, True) from None
         s = target(p.handle)
         s.check_lock()
         card = s.wire()
@@ -1100,6 +1263,58 @@ def register_agent_ops(app: App) -> None:
         handle = s.handle
         await reg.close(s.log_id)
         return f"closed {handle}: its tab is gone, and it stays in the archive"
+
+    def far_origin(s, key: str) -> str:
+        """Who started ``s``, as a clause, told to an agent on another server
+        whose address is ``key``."""
+        if s.worker:
+            return f"it is queue {s.worker['queue']}'s worker for task#{s.worker['task_id']}"
+        if s.spec.spawned_from:
+            by = s.spec.spawned_from
+            return "you started it" if by == key else f"{by} started it"
+        who = name(s.spec.spawned_by)
+        return f"{who} started it" if who else "a person opened it"
+
+    @r.op("peer.close", PeerClose)
+    async def peer_close(p: PeerClose, caller):
+        """session_close from an agent on a server linked with trust, under
+        the same rule as here: a session it started closes at once when done,
+        any other on a second call with the token it was given."""
+        key = from_trusted(caller, p.sender)
+        s = target(p.target)
+        s.check_lock()
+        card = s.wire()
+        t = app.queues.tasks.get(s.worker["task_id"]) if s.worker else None
+        mine = s.spec.spawned_from == key or (
+            t is not None and t.far_enqueuer == p.sender.model_dump()
+        )
+        if not (mine and card["attention"] == "done"):
+            why = None
+            if p.token is not None:
+                why = app.confirmations.redeem(p.token, "session.close", key, s.log_id)
+            if p.token is None or why is not None:
+                raise OpError(
+                    "second_thought",
+                    close_refusal(
+                        handle=f"{s.handle}@{app.server_name}",
+                        title=s.title or "",
+                        status=s.status,
+                        card=card,
+                        origin=far_origin(s, key),
+                        starter=None,
+                        mine=mine,
+                        yourself=False,
+                        idle_s=time.time() - s.last_activity,
+                        token=app.confirmations.issue("session.close", key, s.log_id),
+                        why=why,
+                    ),
+                )
+        handle = s.handle
+        await reg.close(s.log_id)
+        return (
+            f"closed {handle}@{app.server_name}: its tab is gone, and it stays in "
+            "the archive"
+        )
 
     @r.op("session.quiet", Quiet, agent=True, owned="log_id")
     async def session_quiet(p: Quiet, caller):

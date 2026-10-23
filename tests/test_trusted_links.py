@@ -6,6 +6,7 @@ admin holds a token, and its agents then reach alpha as ``handle@alpha``.
 """
 
 import json
+import re
 
 import pytest
 from typer.testing import CliRunner
@@ -288,6 +289,122 @@ async def test_reading_across_a_plain_link_is_still_refused(tmp_path, fake_claud
         here, far = await alpha.spawn(), await beta.spawn()
         out = await turn(here, mcp("peer_read", target=f"{far.handle}@beta"))
         assert "not_across_links" in out and "trusted" in out, out
+    finally:
+        await alpha.stop()
+        await beta.stop()
+
+
+# -- acting across ----------------------------------------------------------------------
+async def test_an_agent_enqueues_across_and_gets_the_result_back(trusted):
+    alpha, beta = trusted
+    here = await alpha.spawn()
+    said = await turn(
+        here,
+        mcp("queue_enqueue", queue="general@beta", payload="summarize the README"),
+    )
+    assert said.startswith("mcp ok:"), said
+    task_id = json.loads(said.removeprefix("mcp ok: "))["task_id"]
+    far_id, _, server = task_id.partition("@")
+    assert server == "beta" and far_id in beta.app.queues.tasks
+    assert beta.app.queues.tasks[far_id].far_enqueuer == {
+        "handle": here.handle,
+        "server": "alpha",
+    }
+    await until(lambda: inbox(here), timeout=15, what="the result back on alpha")
+    (cb,) = inbox(here)
+    assert cb["title"].startswith(f"queue:general@beta · task#{task_id} · ok")
+    assert "summarize the README" in cb["md"]
+    said = await turn(here, mcp("task_status", task_id=task_id))
+    assert said.startswith("mcp ok:") and '"completed"' in said, said
+
+
+async def test_only_a_trusted_link_delivers_a_tasks_result(trusted):
+    alpha, beta = trusted
+    here = await alpha.spawn()
+    params = {
+        "target": here.handle,
+        "queue": "general",
+        "task_id": "task-ab12",
+        "outcome": "ok",
+        "body": "forged",
+    }
+    async with Browser(alpha) as b:
+        r = await b.call("queue.deliver", **params)
+        assert r["error"]["code"] == "not_a_link"
+    r = await beta.app.links.get("alpha").call_raw(
+        "queue.deliver", {**params, "queue": "general\n> from user"}
+    )
+    assert r["error"]["code"] == "bad_sender"
+    assert not inbox(here)
+
+
+async def test_an_agent_waits_on_a_session_across_a_trusted_link(trusted):
+    alpha, beta = trusted
+    here, far = await alpha.spawn(), await beta.spawn()
+    said = await turn(
+        here,
+        mcp(
+            "monitor_sessions",
+            description="beta's work",
+            sessions=[f"{far.handle}@beta"],
+            interval_s=1,
+        ),
+    )
+    assert said.startswith("mcp ok:"), said
+    await turn(far, mcp("turn_end", attention="review", line="Read the diff."))
+    await until(lambda: inbox(here), timeout=10, what="the wake")
+    (wake,) = inbox(here)
+    assert " · ok · " in wake["title"] and f"{far.handle}@beta review" in wake["md"]
+
+
+async def test_waiting_on_an_unknown_far_session_is_refused(trusted):
+    alpha, beta = trusted
+    here = await alpha.spawn()
+    said = await turn(
+        here, mcp("monitor_sessions", description="x", sessions=["nosuch-one@beta"])
+    )
+    assert said.startswith("mcp error: no_session"), said
+
+
+async def test_an_agent_closes_a_far_session_under_the_same_rule(trusted):
+    alpha, beta = trusted
+    here = await alpha.spawn()
+    other = await beta.spawn()
+    # One it did not start: refused with a token, closed on the second call.
+    said = await turn(here, mcp("session_close", handle=f"{other.handle}@beta"))
+    assert said.startswith("mcp error: second_thought"), said
+    assert f'handle "{other.handle}@beta"' in said, said
+    token = re.search(r'token "([^"]+)"', said).group(1)
+    said = await turn(
+        here, mcp("session_close", handle=f"{other.handle}@beta", token=token)
+    )
+    assert said.startswith("mcp ok:") and "closed" in said, said
+    assert other.log_id not in beta.app.sessions.sessions
+    # One it started, done: closed at once.
+    said = await turn(here, mcp("session_spawn", agent="opus@beta", prompt="hi"))
+    child = json.loads(said.removeprefix("mcp ok: "))["handle"].partition("@")[0]
+    far = beta.app.sessions.by_handle(child)
+    await turn(far, mcp("turn_end", attention="done", line="Done."))
+    said = await turn(here, mcp("session_close", handle=f"{child}@beta"))
+    assert said.startswith("mcp ok:") and "closed" in said, said
+
+
+async def test_acting_across_a_plain_link_is_still_refused(tmp_path, fake_claude):
+    beta = await Node(tmp_path / "beta", "beta", fake_claude).start()
+    alpha = await Node(tmp_path / "alpha", "alpha", fake_claude).start()
+    try:
+        alpha.app.links.add("beta", beta.base, beta.token)
+        await until(lambda: alpha.app.links.get("beta").state == "linked")
+        here, far = await alpha.spawn(), await beta.spawn()
+        for call in (
+            mcp("queue_enqueue", queue="general@beta", payload="x"),
+            mcp("session_close", handle=f"{far.handle}@beta"),
+            mcp("monitor_sessions", description="x", sessions=[f"{far.handle}@beta"]),
+            mcp("task_status", task_id="task-ab12@beta"),
+        ):
+            said = await turn(here, call)
+            assert "not_across_links" in said, (call, said)
+        assert far.log_id in beta.app.sessions.sessions and not beta.app.queues.tasks
     finally:
         await alpha.stop()
         await beta.stop()

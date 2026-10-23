@@ -100,7 +100,7 @@ svg text{font-family:var(--font-mono)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · trusted links</span>
-  <span class="st"><span class="pill acc">approved; PRs 1 and 2 built</span><span class="pill">2026-10-23</span><span class="pill">#684</span></span>
+  <span class="st"><span class="pill acc">built</span><span class="pill">2026-10-23</span><span class="pill">#684</span></span>
 </div>
 
 <div class="wrap">
@@ -115,11 +115,12 @@ svg text{font-family:var(--font-mono)}
   <a href="#delivery">Delivery</a>
   <a href="#testing">Testing</a>
   <a href="#nongoals">Non-goals and open questions</a>
+  <a href="#departs">Where the build departs</a>
 </nav>
 
 <main>
 <h1>Trusted links: two servers one person owns reach each other both ways</h1>
-<div class="meta"><span>spec</span><span>·</span><span>status: approved 2026-10-23; PR 1 (trust and the way back) and PR 2 (reading across) built</span><span>·</span><span>issue <a href="https://github.com/apiad/aegis/issues/684">#684</a></span><span>·</span><span>amends <code>2026-10-08-aegis-links-design.md</code></span></div>
+<div class="meta"><span>spec</span><span>·</span><span>status: approved 2026-10-23; built in three PRs</span><span>·</span><span>issue <a href="https://github.com/apiad/aegis/issues/684">#684</a></span><span>·</span><span>amends <code>2026-10-08-aegis-links-design.md</code></span></div>
 <p class="lede">A link today goes one way: a laptop that links a host can use the host, and nothing on the host can reach the laptop. That rule protects a laptop from other people's agents on a shared host. When one person is the only user of both servers, it only gets in the way. A trusted link is one socket that carries calls both ways and lifts the limits on what agents may do across it, and the far server grants it only when nobody else could use it.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
@@ -294,6 +295,14 @@ team             https://team.example  trusted
 <li><strong>Trust between servers with several users.</strong> It needs per-user isolation on the far server first, as the links spec's precondition says.</li>
 <li><strong>Chains.</strong> A trusted link from A to B and from B to C does not let A reach C.</li>
 <li><strong>Open:</strong> should a trusted link also merge the two servers' journals in <code>journal_search</code>? Left out; it is reading, not acting, and the journal is per server by design.</li>
+</ul>
+<h2 id="departs"><span class="n">11</span>Where the build departs</h2>
+<ul>
+<li><strong>Any other token refuses trust</strong>, a second admin&#39;s included, not only a member&#39;s: a second admin is a second person (<code>TokenStore.has_members</code>).</li>
+<li><strong><code>aegis link list</code> shows what was asked</strong>, from <code>links.json</code>; whether the far server granted it is live state, shown in Settings.</li>
+<li><strong>A task&#39;s result goes back through <code>queue.deliver</code></strong>, a link-only op that composes the header on the receiving server (<code>&gt; from queue:general@beta · task#task-…@beta</code>), rather than through <code>peer.deliver</code>, whose header names an agent.</li>
+<li><strong><code>session.list</code> answers a link with <code>reported</code></strong>, whether the last turn ended with <code>turn_end</code>, so a monitor across the link releases its waiter on the same rule as at home.</li>
+<li><strong>Two fixes on the way.</strong> <code>Link.stop</code> now closes its socket, which the far server needs to drop a way back; and a <code>peer.handoff</code> that came over a link is refused <code>not_relayed</code> instead of going on to a third server.</li>
 </ul>
 </main>
 </div>
