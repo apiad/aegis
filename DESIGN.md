@@ -634,7 +634,8 @@ sessions it watches.
 A person's `/spawn` makes nobody's child, but its first message carries the
 last turns of the tab it was typed in and that tab's handle, so the new agent
 can find the referent of a three-word task (`agent_ops.spawn_opening`).
-An agent never enqueues on or reads another server: across a link it hands off,
+Across a plain link an agent never enqueues on or reads another server, and
+across a trusted one it does all of it (`agent_ops.across`): it hands off,
 to `handle@server`, and an admin's agent spawns, as the link's token there, so
 the far server's quota policy for that token decides (`app._spawn_far`). Its
 permission is capped at the agent's, and the far session records where it came
@@ -719,7 +720,13 @@ relayed to a third server, and the archive merges outbound links alone. On a
 plain link an `rcall` is dropped like any unknown frame. Text does travel over
 a trusted link: `session_list` passes the other server's entries whole,
 `peer_read` reads across it, and `agent_ops.far_error` passes its errors
-through, since the far server is this person's own.
+through, since the far server is this person's own. Acting goes the same way:
+`queue@server` enqueues there with the agent as the task's `far_enqueuer`, and
+the result comes back through the link-only `queue.deliver`; `session_close`
+goes through the link-only `peer.close`, which applies the local two-step rule
+with `spawned_from` as the starter; `monitor_sessions` reads the far session
+list each interval (`App._far_list`), keeping the last reading while the link
+is down.
 
 **The client knows no subsystem by name.** Server state reaches the browser as
 named channels: a snapshot on subscribe, then numbered patches. A gap in the

@@ -575,6 +575,8 @@ class App:
             )
         self.links = Links(roots.state_root, server_name, self.user, self.publish)
         self.links.answer = self.answer_link
+        self.queues.far_callback = self._far_callback
+        self.monitors.far_list = self._far_list
         # Sessions a pause or a continue is under way for, so a reading that
         # lands before it finishes does not start a second one.
         self._quota_busy: set[str] = set()
@@ -662,6 +664,41 @@ class App:
             return {
                 "error": {"code": "internal", "message": f"{type(e).__name__}: {e}"}
             }
+
+    async def _far_callback(self, t, outcome: str, body: str) -> None:
+        """A task an agent on a server linked with trust enqueued here
+        finished: its result goes back to that agent over the link."""
+        far = t.far_enqueuer or {}
+        server = str(far.get("server"))
+        link = self.links.get(server)
+        if link is None or not self.links.trusted(server):
+            log.warning("the result of %s has no trusted link to %s", t.id, server)
+            return
+        try:
+            await link.call(
+                "queue.deliver",
+                {
+                    "target": far.get("handle"),
+                    "queue": t.queue,
+                    "task_id": t.id,
+                    "outcome": outcome,
+                    "body": body,
+                },
+            )
+        except OpError as e:
+            log.warning("%s refused the result of %s: %s", server, t.id, e.message)
+
+    async def _far_list(self, server: str) -> list | None:
+        """A trusted server's open sessions, for a monitor here; None when
+        they cannot be read now."""
+        link = self.links.get(server)
+        if link is None or not self.links.trusted(server):
+            return None
+        try:
+            listed = await link.call("session.list")
+        except OpError:
+            return None
+        return listed if isinstance(listed, list) else None
 
     def who(self, caller: Caller) -> Principal:
         """The principal a caller acts as. An agent acts as its session's

@@ -118,7 +118,10 @@ for as long as it waits. One that went idle after a turn that ended without
 `turn_end`, waiting on nothing, counts as running for two minutes, the moment
 a finished task takes to reach it; past that, the wait ends `blocked`. You
 cannot wait on your own session. A watched session is followed
-through a rename and a close. Sessions on a linked server cannot be watched.
+through a rename and a close. Sessions on a linked server cannot be watched,
+unless the link is [trusted](links#trusted-links): then `handle@server` is
+read from that server's session list at each interval, and a link that drops
+keeps the last reading rather than ending the wait.
 
 ## The wake
 

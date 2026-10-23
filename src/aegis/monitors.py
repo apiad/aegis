@@ -36,6 +36,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 from . import launch, notice_sources
@@ -246,6 +247,9 @@ def monitor_items(
 class Monitors:
     def __init__(self, registry: Registry, path: Path) -> None:
         self._registry = registry
+        # A server linked with trust's session list, or None when it cannot
+        # be read (app.py sets it), for a monitor watching sessions there.
+        self.far_list: Callable[[str], Awaitable[list | None]] | None = None
         self._path = path
         self.items: dict[str, Monitor] = {}
         self._tasks: dict[str, asyncio.Task] = {}
@@ -411,9 +415,18 @@ class Monitors:
                 m, "fail", f"the monitor itself failed: {type(e).__name__}: {e}"
             )
 
-    def _read_sessions(self, m: Monitor) -> list[dict]:
+    async def _read_sessions(self, m: Monitor) -> list[dict]:
         rows, now = [], time.time()
+        lists: dict[str, list | None] = {}
         for r in m.sessions:
+            if r.get("server"):
+                server = r["server"]
+                if server not in lists:
+                    lists[server] = (
+                        await self.far_list(server) if self.far_list else None
+                    )
+                rows.append(self._far_row(r, lists[server], now))
+                continue
             s = self._registry.sessions.get(r["log_id"])
             if s is None:
                 attention, handle, line = "closed", r["handle"], ""
@@ -441,6 +454,39 @@ class Monitors:
             rows.append(row)
         return rows
 
+    @staticmethod
+    def _far_row(r: dict, listed: list | None, now: float) -> dict:
+        """A watched session on a server linked with trust, read from that
+        server's session list. A list that could not be read keeps the last
+        reading, so a link that drops never releases the waiter."""
+        if listed is None:
+            return r
+        e = next(
+            (x for x in listed if isinstance(x, dict) and x.get("handle") == r["far"]),
+            None,
+        )
+        if e is None:
+            attention, line = "closed", ""
+        else:
+            attention = str(e.get("attention") or "idle")
+            line = str(e.get("attention_line") or "")
+            if attention == "done" and not e.get("reported"):
+                attention = "idle"
+        row = {
+            "log_id": r["log_id"],
+            "handle": r["handle"],
+            "server": r["server"],
+            "far": r["far"],
+            "attention": attention,
+            "state": classify(attention),
+            "line": line,
+        }
+        if attention == "idle":
+            row["silent_since"] = r.get("silent_since") or now
+            if now - row["silent_since"] >= SILENT_GRACE_S:
+                row["state"] = "blocked"
+        return row
+
     async def _watch_sessions(self, m: Monitor) -> None:
         while True:
             if time.time() - m.started_at > m.timeout_s:
@@ -448,7 +494,7 @@ class Monitors:
                     m, "timeout", f"it ran out of time after {_elapsed(m.timeout_s)}"
                 )
                 return
-            rows = self._read_sessions(m)
+            rows = await self._read_sessions(m)
             if rows != m.sessions:
                 m.sessions = rows
                 done = sum(1 for r in rows if r["state"] == "finished")
