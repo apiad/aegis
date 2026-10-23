@@ -86,7 +86,7 @@ class Server:
 
     def __init__(
         self,
-        root: str | Path | None = None,
+        root: str | Path,
         *,
         port: int = 0,
         host: str = "127.0.0.1",
@@ -97,7 +97,8 @@ class Server:
         cursor: str = "cursor-agent",
         origins: Iterable[str] = (),
     ) -> None:
-        self._root = Path(root) if root is not None else None
+        # Required: nothing below the CLI reads the working directory (test_no_cwd).
+        self._root = Path(root)
         self._port = port
         self._host = host
         self._name = name
@@ -142,7 +143,7 @@ class Server:
         from .app import App
         from .web import build_web, load_or_create_token, ws_protocol
 
-        p = prepare(Path.cwd(), self._root)
+        p = prepare(self._root, self._root)
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:

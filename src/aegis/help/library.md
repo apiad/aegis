@@ -28,8 +28,9 @@ async def main():
 asyncio.run(main())
 ```
 
-`Server` takes the options of `aegis serve`: the root (default: the nearest
-folder holding `.aegis.yaml`), `port` (0, the default, takes a free one),
+`Server` takes the options of `aegis serve`: the root, the folder holding
+`.aegis.yaml` (required, since a library never guesses from the working
+directory), `port` (0, the default, takes a free one),
 `host`, `name`, and the harness binaries (`claude`, `opencode`, `codex`,
 `cursor`). Entering the block runs the startup checks, boots aegis and
 listens. Leaving it shuts aegis down as a stopped `aegis serve` does.
