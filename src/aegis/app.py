@@ -105,6 +105,7 @@ from .push import register_push_ops
 from .queues import Queues
 from .journal.ops import register_journal_ops
 from .journal.service import Journal
+from .knowledge.service import Knowledge
 from .repos.service import Repos
 from .layout_ops import register_layout_ops
 from .fs_ops import register_fs_ops
@@ -525,6 +526,9 @@ class App:
             roots.state_root, self.publish, user_of=self._linux_user_of_session
         )
         reg.journal = self.journal
+        self.knowledge = Knowledge(roots.state_root)
+        reg.knowledge = self.knowledge
+        reg.principal_of = lambda s: s.spec.owner or self.user
         self.repos = Repos(
             self.journal.path,
             self.publish,

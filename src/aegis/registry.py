@@ -134,6 +134,10 @@ class Registry(Host):
         self.browsers = None  # browsers.py, set by the app: docked browser panes
         self.quota = None
         self.notices = None  # notices.Notices, set by App
+        # knowledge.Knowledge, and whose knowledge a session's sends are
+        # hinted from (its owner, else the admin); both set by App.
+        self.knowledge = None
+        self.principal_of: Callable[[Session], str] = lambda s: s.spec.owner or ""
         self.nudges = None  # nudges.Nudges, set by App
         # The live config's context block (config.py); the app points it at
         # Config.current().
@@ -395,6 +399,13 @@ class Registry(Host):
 
     def notice_blocks(self, session: Session, at: str) -> str:
         return "" if self.notices is None else self.notices.pending(session, at)
+
+    def knowledge_hint(self, session: Session, text: str) -> str:
+        if self.knowledge is None:
+            return ""
+        return self.knowledge.hint_for(
+            self.principal_of(session), session.log_id, text, str(session.spec.cwd)
+        )
 
     def compacted(self, session: Session) -> None:
         if self.notices is not None:
@@ -884,6 +895,8 @@ class Registry(Host):
             self.monitors.drop_owner(log_id)
         if self.side_notes is not None:
             self.side_notes.drop(log_id)
+        if self.knowledge is not None:
+            self.knowledge.forget(log_id)
         await s.stop()
         if self.secrets is not None:
             # Pads and open requests die with the session, and so do the

@@ -192,6 +192,11 @@ class Host:
         ``at`` is "send" for a prompt, "tool" for a tool result."""
         return ""
 
+    def knowledge_hint(self, session: "Session", text: str) -> str:
+        """The skills and memories that may matter to a send of ``text``
+        (knowledge/hint.py), or ""."""
+        return ""
+
     def compacted(self, session: "Session") -> None:
         """The harness compacted the session's context."""
 
@@ -984,12 +989,16 @@ class Session:
             self._set(title=default_title(typed or text))
         if self.cascade_exhausted:
             self.cascade_exhausted = False  # a new turn starts
-        if not text.startswith("/") and (
-            blocks := self._host.notice_blocks(self, "send")
-        ):
-            # The record and the harness get the same text, so the fold pairs
-            # them; the fold splits the blocks off into their own rows.
-            text = f"{text}\n\n{blocks}"
+        if not text.startswith("/"):
+            # The hint first, then the notices. The record and the harness get
+            # the same text, so the fold pairs them; the fold splits the
+            # blocks off into their own rows.
+            blocks = [
+                self._host.knowledge_hint(self, text),
+                self._host.notice_blocks(self, "send"),
+            ]
+            if extra := "\n\n".join(b for b in blocks if b):
+                text = f"{text}\n\n{extra}"
         record: dict = {"kind": "send", "text": text}
         if attached:
             record |= {"typed": typed or "", "files": attached}
