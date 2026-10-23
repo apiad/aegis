@@ -1579,7 +1579,7 @@ class App:
         try:
             listed = await link.call("agents.list", {})
         except OpError as e:
-            raise far_error(e, far) from None
+            raise far_error(e, far, trusted=self.links.trusted(far)) from None
         # What the far server says of its agents only lowers the permission.
         presets = listed.get("agents") if isinstance(listed, dict) else None
         agent = name or (listed.get("default") if isinstance(listed, dict) else None)
@@ -1617,7 +1617,7 @@ class App:
                 "session.spawn", {k: v for k, v in params.items() if v is not None}
             )
         except OpError as e:
-            raise far_error(e, far) from None
+            raise far_error(e, far, trusted=self.links.trusted(far)) from None
         if not isinstance(r, dict):
             raise OpError("far_error", f"{far} answered the spawn with something else")
         handle, log_id = r.get("handle"), r.get("log_id")

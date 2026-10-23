@@ -422,7 +422,7 @@ ACROSS = (
     "(session_spawn with agent@server, gated by that server's quota policy for "
     "the link) and by handing off to a session there (peer_handoff to "
     "handle@server); reading, sending to and enqueueing on another server are "
-    "for people"
+    "for people, unless the link is trusted (help: links#trusted-links)"
 )
 
 
@@ -469,9 +469,14 @@ def far_entry(e: dict, server: str) -> dict | None:
     return {"handle": handle, "server": server, "state": "asleep", "asleep_why": why}
 
 
-def far_error(e: OpError, server: str, handle: str = "") -> OpError:
+def far_error(
+    e: OpError, server: str, handle: str = "", trusted: bool = False
+) -> OpError:
     """A linked server's refusal as this server words it: the code if it is
-    on the allowlist, never the far server's text."""
+    on the allowlist, never the far server's text. Over a trusted link the
+    far server is this person's own, and its words pass through."""
+    if trusted:
+        return OpError(e.code, f"{server}: {e.message}")
     if e.code in FAR_ERRORS:
         return OpError(e.code, FAR_ERRORS[e.code].format(handle=handle, server=server))
     return OpError("far_error", f"{server} refused the call")
@@ -881,10 +886,8 @@ def register_agent_ops(app: App) -> None:
                 },
             )
         except OpError as e:
-            if e.code in FAR_ERRORS:
-                raise OpError(
-                    e.code, FAR_ERRORS[e.code].format(handle=handle, server=server)
-                ) from None
+            if e.code in FAR_ERRORS or app.links.trusted(server):
+                raise far_error(e, server, handle, app.links.trusted(server)) from None
             raise OpError("far_error", f"{server} refused the handoff") from None
         r = r if isinstance(r, dict) else {}
         did = "steered" if r.get("steered") else "held" if r.get("held") else "sent"
@@ -945,7 +948,19 @@ def register_agent_ops(app: App) -> None:
 
     @r.op("peer.read", Read, agent=True, read=True)
     async def peer_read(p: Read, caller):
-        """The last entries of another session's transcript, one line each."""
+        """The last entries of another session's transcript, one line each.
+        `handle@server` reads a session on a server this one links with
+        trust."""
+        handle, server = split_address(p.target, app.server_name)
+        if server is not None and caller.link is None and app.links.trusted(server):
+            link = app.links.get(server)
+            assert link is not None  # trusted() found it
+            try:
+                return await link.call(
+                    "peer.read", {"target": handle, "last": p.last, "tools": p.tools}
+                )
+            except OpError as e:
+                raise far_error(e, server, handle, True) from None
         entries = readable(p.target, caller)
         lines = [x for e in entries[-p.last * 3 :] if (x := _render(e, p.tools))]
         return "\n".join(lines[-p.last :]) or "(nothing yet)"
@@ -957,7 +972,8 @@ def register_agent_ops(app: App) -> None:
         doing now, its model (`model` as configured, `model_id` as the harness
         resolved it, null until it has) and spend; then each linked server's by
         handle and state alone, as `handle@server`: reach one with
-        peer_handoff."""
+        peer_handoff. A server linked with trust lists its sessions in full,
+        with `server`."""
         out = []
         who = app.who(caller)
         member = app.multi_user is not None and not who.is_admin
@@ -985,17 +1001,22 @@ def register_agent_ops(app: App) -> None:
     async def far_sessions() -> list[dict]:
         """Every linked server's open sessions, cut to handle and state: a title
         is text an agent over there wrote, and nothing written there reaches an
-        agent here (links.py)."""
+        agent here (links.py). A server linked with trust is this person's
+        own, and its entries come whole."""
         out = []
         for link in app.links.up():
             try:
                 listed = await link.call("session.list")
             except OpError:
                 continue
+            trusted = app.links.trusted(link.name)
             for e in listed if isinstance(listed, list) else []:
                 if not isinstance(e, dict) or "server" in e:
                     continue
-                if (entry := far_entry(e, link.name)) is not None:
+                if trusted:
+                    e = {k: v for k, v in e.items() if k != "you"}
+                    out.append({**e, "server": link.name})
+                elif (entry := far_entry(e, link.name)) is not None:
                     out.append(entry)
         return out
 
