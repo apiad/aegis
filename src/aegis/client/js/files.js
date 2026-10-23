@@ -26,12 +26,19 @@ import { Tray } from "./comments.js";
 import { ask, choose } from "./dialog.js";
 import { diffView } from "./diff.js";
 import { fileGlyph, open as openEditor } from "./editor.js";
-import { icon } from "./glyphs.js";
+import { CARET_ICON, icon } from "./glyphs.js";
 import { markdown } from "./entries.js";
 import * as menu from "./menu.js";
 import { ago } from "./fleet.js";
 import { langName, paint } from "./highlight.js";
 import { docLocator, headingOf, offsetsIn, rangeAtPoint, rangeText, textLocator } from "./quote.js";
+
+// A tree row's caret: open or shut for a folder, empty for a file.
+function twisty(dir, open) {
+  const s = el("span", "tw");
+  if (dir) s.append(icon(CARET_ICON[open ? "open" : "shut"]));
+  return s;
+}
 
 const SHOWN = 200; // rows the picker draws
 const CONTEXT = 3; // unchanged lines around each change in the conflict's diff
@@ -412,7 +419,7 @@ export class FileTree {
         const open = isDir && this.open.has(path);
         if (isDir) r.setAttribute("aria-expanded", String(open));
         r.dataset.glyph = fileGlyph(path, isDir, open);
-        r.append(el("span", "tw", isDir ? (open ? "▾" : "▸") : ""), icon(r.dataset.glyph), el("span", "nm", e.name));
+        r.append(twisty(isDir, open), icon(r.dataset.glyph), el("span", "nm", e.name));
         if (e.repo) r.append(el("span", "tag", "repo"));
         out.push(r);
         if (open) walk(path, depth + 1);
@@ -493,7 +500,7 @@ export class FileTree {
     const depth = dir ? dir.split("/").length : 0;
     const row = el("div", "trow new");
     row.style.setProperty("--depth", depth);
-    row.append(el("span", "tw", kind === "dir" ? "▸" : ""), icon(kind === "dir" ? "folder" : "file"), el("span", "nm"));
+    row.append(twisty(kind === "dir", false), icon(kind === "dir" ? "folder" : "file"), el("span", "nm"));
     const first = [...this.rows.children].find((r) => parentOf(r.dataset.path) === dir);
     if (first) first.before(row);
     else if (dir) this.row(dir).after(row);
@@ -665,8 +672,8 @@ export class Files {
     this.tray = null; // the open file's comments
     this.viewMode = null; // "view" or "src" for a kind with a rendered view
     box.innerHTML =
-      '<div class="fbar"><button class="btn tbtn" type="button" title="Folders" aria-label="Folders">☰</button>' +
-      '<span class="crumbs"></span><span class="dirty" title="Unsaved changes" hidden>●</span>' +
+      '<div class="fbar"><button class="btn tbtn" type="button" title="Folders" aria-label="Folders"><svg class="ic i-folder" aria-hidden="true"><use href="#g-folder"/></svg></button>' +
+      '<span class="crumbs"></span><span class="dirty" title="Unsaved changes" hidden><svg class="ic i-dot" aria-hidden="true"><use href="#g-dot"/></svg></span>' +
       '<span class="gap"></span><button class="btn pick" type="button" title="Open a file (Alt+O)">Alt+O</button>' +
       '<button class="btn primary save" type="button" disabled>Save</button></div>' +
       '<div class="fbody"><nav class="ftree"></nav><div class="fmain">' +
