@@ -107,6 +107,8 @@ AEGIS: dict[str, Command] = {
             "tutorial", "[page]", "Start a guided tour of a help page", "tutorials"
         ),
         Command("whats-new", "", "Tour what changed since your last tour"),
+        # An admin's, listed only while the doctor finds a problem (app.py).
+        Command("doctor", "", "Fix what aegis doctor finds wrong here, with an agent"),
     )
 }
 

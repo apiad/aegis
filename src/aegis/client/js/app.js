@@ -274,6 +274,8 @@ $("send").append(icon("send"));
 $("sp-go").append(icon("send"));
 $("hint-tutorial-x").append(icon("close"));
 $("hint-whats-new-x").append(icon("close"));
+$("hint-doctor-more").append(icon("caret-r"));
+$("hint-tip").querySelector(".lab").append(icon("sparkle"));
 $("interrupt").append(icon("stop"));
 $("replies-g").append(icon("prompt"));
 $("queued-g").append(icon("prompt"));
@@ -2981,6 +2983,8 @@ $("sp-text").addEventListener("keydown", (ev) => {
 // changes with the window and with what sits around the box (files, hints, an
 // error), so those are watched too. A hidden view has no height to fill.
 function spawnGrow() {
+  // The tip and /feedback rows give way to a first message (base.css).
+  $("sp-hints").toggleAttribute("data-typing", $("sp-text").value !== "");
   const t = $("sp-text");
   const view = t.closest(".view");
   if (!view.clientHeight) return;
@@ -2996,11 +3000,14 @@ const spawnRoom = new ResizeObserver(spawnGrow);
 for (const el of [$("sp-text").closest(".view"), $("sp-atts"), $("sp-hints"), $("sp-error")]) spawnRoom.observe(el);
 
 // -- the new tab's hints --------------------------------------------------------
-// Up to two lines under the chips: /tutorial while this person has started no
+// The rows under the chips. /tutorial while this person has started no
 // tutorial, /whats-new while the release it runs is newer than their last
-// tour. The record is the server's, per principal (helpstate.py), read each time the
-// new tab opens, so every device shows the same hint. It acts on this server
-// only: a linked server keeps its own record and may not know help.guide.
+// tour, /feedback always. For an admin, the doctor row while the server's last
+// doctor run found a problem (doctor_watch.py). Last, one hint from the help
+// pages at a time. The record is the server's, per principal (helpstate.py),
+// read each time the new tab opens, so every device shows the same rows. The
+// actions act on this server only: a linked server keeps its own record and
+// may not know help.guide. The tip stays, since the Help tab is this server's.
 async function loadHints() {
   delete $("sp-hints").dataset.ready;
   try {
@@ -3008,7 +3015,9 @@ async function loadHints() {
   } catch {
     helpState = null; // no hint rather than a wrong one
   }
+  tips = shuffled(helpState?.hints || []);
   drawHints();
+  rotateTip(true);
   $("sp-hints").dataset.ready = "";
 }
 
@@ -3017,7 +3026,98 @@ function drawHints() {
   $("hint-tutorial").hidden = away || helpState.tutorial;
   $("hint-whats-new").hidden = away || !helpState.whats_new;
   $("hint-whats-new-v").textContent = helpState?.whats_new || "";
+  $("hint-feedback").hidden = away;
+  drawDoctor(away ? null : helpState.doctor);
 }
+
+// The doctor row: a count, /doctor, and the findings folded under the caret,
+// each named after what it is about rather than the doctor's dotted key.
+const HARNESS_LABEL = { "claude-code": "Claude Code", opencode: "OpenCode", codex: "Codex", cursor: "Cursor Agent" };
+function findingLabel(where) {
+  const [head, name] = where.split(".");
+  if (head === "agents" && name) return `Agent ${name}`;
+  if (head === "queues" && name) return `Queue ${name}`;
+  if (head === "harness" && name) return HARNESS_LABEL[name] || name;
+  if (head === "service" && name) {
+    // service.<unit>.<Directive>, and a unit's name has its own dot.
+    const rest = where.slice(8);
+    const cut = rest.search(/\.[A-Z][A-Za-z]*$/);
+    return cut < 0 ? `Service ${rest}` : `Service ${rest.slice(0, cut)} · ${rest.slice(cut + 1)}`;
+  }
+  return { file: ".aegis.yaml", default_agent: "The default agent", state: "The state directory" }[where] || where;
+}
+const counted = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+function drawDoctor(d) {
+  const row = $("hint-doctor");
+  row.hidden = !d;
+  if (!d) return;
+  row.classList.toggle("err", d.errors > 0);
+  row.classList.toggle("warn", d.errors === 0);
+  const parts = [d.errors && counted(d.errors, "error"), d.warns && counted(d.warns, "warning")].filter(Boolean);
+  const sum = $("hint-doctor-sum");
+  sum.replaceChildren("This server's setup has ", Object.assign(document.createElement("b"), { textContent: parts.join(" and ") }),
+    `. Fix ${d.findings.length === 1 ? "it" : "them"} with`);
+  const items = d.findings.map((f) => {
+    const li = document.createElement("li");
+    li.className = f.level;
+    li.append(Object.assign(document.createElement("span"), { className: "w", textContent: findingLabel(f.where) }), f.message);
+    return li;
+  });
+  const tail = Object.assign(document.createElement("li"), { className: "tail" });
+  const a = Object.assign(document.createElement("a"), { href: "#settings", textContent: "Settings" });
+  tail.append("Each one is also marked on its row in ", a, ".");
+  $("hint-doctor-list").replaceChildren(...items, tail);
+}
+$("hint-doctor-more").addEventListener("click", () => {
+  const open = $("hint-doctor").classList.toggle("open");
+  $("hint-doctor-list").hidden = !open;
+  $("hint-doctor-more").setAttribute("aria-expanded", String(open));
+});
+
+// The tip: one hint at a time, the next every TIP_MS, held while the pointer
+// or the keyboard is on it or the page is hidden. A click opens its help page.
+const TIP_MS = 8000;
+let tips = [];
+let tipAt = 0;
+let tipHeld = false;
+let tipTimer = null;
+function shuffled(list) {
+  const out = list.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+function showTip(fade) {
+  const go = $("hint-tip-go");
+  const put = () => {
+    const tip = tips[tipAt % tips.length];
+    go.textContent = tip.text;
+    go.title = tip.text;
+    go.dataset.ref = tip.ref;
+    go.classList.remove("fade");
+  };
+  if (!fade || matchMedia("(prefers-reduced-motion: reduce)").matches) return put();
+  go.classList.add("fade");
+  setTimeout(put, 300);
+}
+function rotateTip(fresh = false) {
+  clearInterval(tipTimer);
+  $("hint-tip").hidden = !tips.length;
+  if (!tips.length) return;
+  if (fresh) tipAt = 0;
+  showTip(false);
+  tipTimer = setInterval(() => {
+    if (tipHeld || document.hidden || $("hint-tip").closest(".view")?.hidden) return;
+    tipAt++;
+    showTip(true);
+  }, TIP_MS);
+}
+for (const [ev, held] of [["mouseenter", true], ["mouseleave", false], ["focusin", true], ["focusout", false]]) {
+  $("hint-tip").addEventListener(ev, () => (tipHeld = held));
+}
+$("hint-tip-go").addEventListener("click", (e) => go(`#help=${encodeURIComponent(e.currentTarget.dataset.ref)}`));
 
 // What running or dismissing a hint records, as the server records it
 // (help_ops.help_guide, help_dismiss), so the hint hides without a new read.
@@ -3049,11 +3149,14 @@ async function guideFromComposer(kind, btn) {
   btn.disabled = true;
   $("sp-error").textContent = "";
   try {
-    await startGuide({ agent: a.name, cwd: $("sp-cwd").value.trim() || null, ...overrides() }, kind);
+    const marks = kind === "tutorial" || kind === "whats_new";
+    // /doctor runs in the config root unless the person typed a directory.
+    await startGuide({ agent: a.name, cwd: $("sp-cwd").value.trim() || null, ...overrides() }, kind, marks);
     localStorage.setItem(LAST_AGENT, a.name);
     pickAgent(a.name);
   } catch (e) {
     toast(e.message, { kind: "error" });
+    if (kind === "doctor") loadHints(); // fixed meanwhile: the row goes
   } finally {
     btn.disabled = false;
   }
@@ -3077,6 +3180,12 @@ for (const [kind, id] of [
 ]) {
   $(`${id}-go`).addEventListener("click", () => guideFromComposer(kind, $(`${id}-go`)));
   $(`${id}-x`).addEventListener("click", () => dismissHint(kind, $(id)));
+}
+for (const [kind, id] of [
+  ["feedback", "hint-feedback-go"],
+  ["doctor", "hint-doctor-go"],
+]) {
+  $(id).addEventListener("click", () => guideFromComposer(kind, $(id)));
 }
 
 // -- tab bar and keys -----------------------------------------------------------
@@ -3666,7 +3775,7 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
     if (shown === s.key) transcript.toBottom();
     // /tutorial and /whats-new start a guide in a new session (help.guide):
     // open its tab, on the server that runs it, as a spawn from the new tab does.
-    if (/^\/(tutorial|whats-new)(\s|$)/.test(text) && r?.log_id) go(`#s=${keyOf(forKey(s.key).server, r.log_id)}`);
+    if (/^\/(tutorial|whats-new|doctor)(\s|$)/.test(text) && r?.log_id) go(`#s=${keyOf(forKey(s.key).server, r.log_id)}`);
   };
   if (fromComposer) {
     sending.add(s.key);

@@ -2,6 +2,8 @@
 title: Linked servers
 kind: tutorial
 when: a tutorial to practise linked servers step by step after getting started
+hints:
+  - Practise linked servers: add one, start a session there, hand it work.
 ---
 
 This tutorial links a second aegis server to this one and works with its

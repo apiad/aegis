@@ -2,6 +2,9 @@
 title: Handoffs and peers
 kind: concept
 when: reading another session, giving it work or context, or starting one to work beside you
+hints:
+  - An agent can read another session and hand it work without you copying text. #hand-work-over
+  - Near the end of a long context, continue in a fresh session with a brief. #continue-in-a-fresh-session
 ---
 
 Sessions on one server can see each other. An agent can list the open

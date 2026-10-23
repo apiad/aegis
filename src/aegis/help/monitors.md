@@ -2,6 +2,9 @@
 title: Monitors
 kind: howto
 when: waiting on a build, a test run, CI or other sessions without polling
+hints:
+  - Agents wait on builds and CI with a monitor that wakes them, never by polling. #wait-on-a-process
+  - A monitor can wait until other sessions finish. #wait-on-other-sessions
 ---
 
 A monitor waits so you do not have to. You give aegis a bash condition and end

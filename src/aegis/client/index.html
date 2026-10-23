@@ -112,8 +112,14 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
         <button type="button" class="reset" id="sp-reset" hidden>reset</button>
       </div>
       <div class="hints" id="sp-hints">
+        <div class="doc" id="hint-doctor" hidden>
+          <div class="row"><span class="dot"></span><span class="sum" id="hint-doctor-sum"></span><button class="run" id="hint-doctor-go" type="button">/doctor</button><button class="more" id="hint-doctor-more" type="button" aria-expanded="false" title="What the doctor found" aria-label="What the doctor found"></button></div>
+          <ul id="hint-doctor-list" hidden></ul>
+        </div>
         <div class="hint" id="hint-tutorial" hidden><button class="go" id="hint-tutorial-go" type="button">Run <code>/tutorial</code> for a quick guide.</button><button class="x" id="hint-tutorial-x" type="button" title="Dismiss" aria-label="Dismiss"></button></div>
         <div class="hint" id="hint-whats-new" hidden><button class="go" id="hint-whats-new-go" type="button">Run <code>/whats-new</code> to learn what's new in <span id="hint-whats-new-v"></span>.</button><button class="x" id="hint-whats-new-x" type="button" title="Dismiss" aria-label="Dismiss"></button></div>
+        <div class="hint" id="hint-feedback" hidden><button class="go" id="hint-feedback-go" type="button">Run <code>/feedback</code> to report a bug or ask for a feature.</button></div>
+        <div class="hint tip" id="hint-tip" hidden><span class="lab"></span><button class="go" id="hint-tip-go" type="button"></button></div>
       </div>
       <p class="err-text" id="sp-error"></p>
       <section id="sp-terms" class="sp-terms" aria-label="Terminals">

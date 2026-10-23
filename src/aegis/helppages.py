@@ -3,7 +3,9 @@ index that agents and people search.
 
 A page is one file whose stem is its id. It opens with a frontmatter block of
 three keys: ``title``, ``kind`` (concept, howto or tutorial) and ``when``, one
-line saying when to read it. Every ``## `` heading outside a code fence starts
+line saying when to read it, and ``hints:``, one to three items of at most
+90 characters that the new tab rotates, each optionally ending in ``#slug``,
+a section of the same page that a click opens. Every ``## `` heading outside a code fence starts
 a section, addressed as ``page#slug``; the text before the first heading is the
 page's first section, addressed as the bare page id.
 
@@ -32,6 +34,7 @@ HELP_DIR: Path = Path(__file__).parent / "help"
 KINDS = ("concept", "howto", "tutorial")
 K1, B = 1.2, 0.75
 TITLE_WEIGHT, WHEN_WEIGHT = 3, 2
+MAX_HINTS, HINT_CHARS = 3, 90
 FRONT = re.compile(r"\A---\n(.*?)\n---\n", re.S)
 WORD = re.compile(r"[a-z0-9]+")
 
@@ -52,6 +55,8 @@ class Page:
     when: str
     body: str
     sections: tuple[Section, ...]
+    # The new tab's hints: (text, ref), ref being ``page`` or ``page#slug``.
+    hints: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -75,7 +80,11 @@ def parse(id: str, text: str) -> Page:
     if m is None:
         raise ValueError(f"{id}.md: no frontmatter (--- title, kind, when ---)")
     keys: dict[str, str] = {}
+    items: list[str] = []
     for line in m.group(1).splitlines():
+        if line.startswith("  - ") and "hints" in keys:
+            items.append(line[4:].strip())
+            continue
         key, sep, value = line.partition(":")
         if sep:
             keys[key.strip()] = value.strip()
@@ -92,7 +101,31 @@ def parse(id: str, text: str) -> Page:
     if len(set(slugs)) != len(slugs):
         twice = sorted({s for s in slugs if slugs.count(s) > 1})
         raise ValueError(f"{id}.md: two sections slug to {', '.join(twice)}")
-    return Page(id, keys["title"], keys["kind"], keys["when"], body, sections)
+    hints = _hints(id, items, set(slugs))
+    return Page(id, keys["title"], keys["kind"], keys["when"], body, sections, hints)
+
+
+def _hints(id: str, items: list[str], slugs: set[str]) -> tuple[tuple[str, str], ...]:
+    if not 1 <= len(items) <= MAX_HINTS:
+        raise ValueError(
+            f"{id}.md: hints: needs 1 to {MAX_HINTS} items, has {len(items)}"
+        )
+    out = []
+    for item in items:
+        text, ref = item, id
+        head, sep, tail = item.rpartition(" #")
+        if sep:
+            if tail not in slugs:
+                raise ValueError(
+                    f"{id}.md: hint names #{tail}, no section of this page"
+                )
+            text, ref = head.strip(), f"{id}#{tail}"
+        if len(text) > HINT_CHARS:
+            raise ValueError(
+                f"{id}.md: a hint is {len(text)} characters, at most {HINT_CHARS}: {text}"
+            )
+        out.append((text, ref))
+    return tuple(out)
 
 
 def _sections(page: str, title: str, body: str) -> tuple[Section, ...]:
@@ -217,6 +250,14 @@ class Index:
                 return f"## {s.heading}\n\n{s.text}\n"
         have = ", ".join(s.slug for s in p.sections[1:])
         raise KeyError(f"{page} has no section {section!r}; its sections are {have}")
+
+    def hints(self) -> list[dict]:
+        """Every page's hints as ``{text, ref}``, by page id."""
+        return [
+            {"text": text, "ref": ref}
+            for _, p in sorted(self.pages.items())
+            for text, ref in p.hints
+        ]
 
     def listing(self) -> list[dict]:
         """Every page's id, title, kind and when, by kind then title."""

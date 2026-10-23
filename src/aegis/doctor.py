@@ -50,6 +50,7 @@ from .ops import OpError
 from .session import SpawnSpec
 
 PROBE_TIMEOUT_S = 20.0
+MARK = {"ok": "ok   ", "warn": "warn ", "error": "ERROR"}
 LABELS = {
     "claude-code": "Claude Code",
     "opencode": "OpenCode",
@@ -342,7 +343,12 @@ def _queue(name: str, q: dict, by_name: dict[str, Agent]) -> Finding:
         return Finding("error", row, q["error"], row)
     a = by_name.get(q["agent"])
     if a is None:
-        return Finding("error", f"{row}.agent", f"no agent named {q['agent']!r}", row)
+        return Finding(
+            "error",
+            f"{row}.agent",
+            f"uses the agent {q['agent']!r}, which is not defined",
+            row,
+        )
     if a.error:
         return Finding(
             "error", f"{row}.agent", f"agent {a.name!r} cannot spawn: {a.error}", row
@@ -727,3 +733,12 @@ async def doctor(
             {h: bins.get(h, h) for h in used},
         )
     return out
+
+
+def render(findings: Iterable[Finding]) -> str:
+    """The findings as ``aegis doctor`` prints them, a count on the last line."""
+    findings = list(findings)
+    lines = [f"{MARK[f.level]} {f.where:<26} {f.message}" for f in findings]
+    errors = sum(f.level == "error" for f in findings)
+    warns = sum(f.level == "warn" for f in findings)
+    return "\n".join([*lines, f"{errors} errors, {warns} warnings"])

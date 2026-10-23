@@ -2,6 +2,10 @@
 title: Workflows
 kind: howto
 when: work that needs several agents coordinated, checked or gated, which the person should approve as a plan before it runs
+hints:
+  - Coordinate several agents with a workflow you approve as a plan before it runs. #write-one
+  - Type /loop with a prompt to repeat it until the agent says it is done. #repeat-a-prompt-with-loop
+  - Save a workflow and run it later with /workflow. #save-a-workflow
 ---
 
 A workflow is a plan the server runs. You write it as a YAML tree in which

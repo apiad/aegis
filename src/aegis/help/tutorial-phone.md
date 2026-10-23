@@ -2,6 +2,8 @@
 title: Phone: install, offline, push
 kind: tutorial
 when: learning step by step to use aegis on a phone, installed on the home screen, without a connection and with push notifications
+hints:
+  - Learn aegis on a phone step by step: install it, turn on push, write offline.
 ---
 
 This tutorial puts aegis on a phone and uses it the way a phone is used:

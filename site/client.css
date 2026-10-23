@@ -272,6 +272,37 @@ body{background:#000}
 .a2 .spawn .hint .x{flex:none;display:flex;align-items:center;justify-content:center;background:none;border:0;color:var(--faint);padding:4px 6px;cursor:pointer}
 .a2 .spawn .hint .x:hover{color:var(--err)}
 .a2 .spawn .hint .x .ic{width:12px;height:12px}
+/* The doctor row: a summary in the worst level's colour, /doctor, and the
+   findings folded under the caret (app.js drawDoctor). */
+.a2 .spawn .doc{margin:2px 0 4px;border:1px solid var(--rule);border-left:2px solid var(--lvl);border-radius:var(--r);background:var(--surface)}
+.a2 .spawn .doc.warn{--lvl:var(--warn)}
+.a2 .spawn .doc.err{--lvl:var(--err)}
+.a2 .spawn .doc .row{display:flex;align-items:center;gap:10px;padding:4px 6px 4px 10px;font-family:var(--font-ui);font-size:12.5px;color:var(--ink)}
+.a2 .spawn .doc .dot{flex:none;width:7px;height:7px;border-radius:50%;background:var(--lvl);box-shadow:0 0 0 3px color-mix(in srgb,var(--lvl) 18%,transparent)}
+.a2 .spawn .doc .sum{flex:1;min-width:0}
+.a2 .spawn .doc .sum b{font-weight:500;color:var(--lvl)}
+.a2 .spawn .doc .run{flex:none;font-family:var(--font-mono);font-size:11.5px;background:var(--lvl);color:var(--on-accent);border:0;border-radius:var(--r);padding:4px 10px;cursor:pointer}
+.a2 .spawn .doc .run:disabled{opacity:.5;cursor:default}
+.a2 .spawn .doc .more{flex:none;display:flex;align-items:center;background:none;border:0;color:var(--faint);cursor:pointer;padding:4px 6px;transition:transform .15s}
+.a2 .spawn .doc .more:hover{color:var(--strong)}
+.a2 .spawn .doc .more .ic{width:12px;height:12px}
+.a2 .spawn .doc.open .more{transform:rotate(90deg)}
+.a2 .spawn .doc ul{list-style:none;margin:0;padding:2px 12px 8px 27px;border-top:1px solid var(--rule)}
+.a2 .spawn .doc li{font-family:var(--font-ui);font-size:12.5px;line-height:1.45;margin:7px 0 0;color:var(--ink)}
+.a2 .spawn .doc li .w{display:block;font-family:var(--font-mono);font-size:10.5px;color:var(--faint)}
+.a2 .spawn .doc li.error .w::before{content:"error · ";color:var(--err)}
+.a2 .spawn .doc li.warn .w::before{content:"warning · ";color:var(--warn)}
+.a2 .spawn .doc li.tail{font-size:11.5px;color:var(--muted)}
+.a2 .spawn .doc li.tail a{color:var(--accent)}
+/* The tip: one help-page hint at a time (app.js rotateTip). It and /feedback
+   give their room to the first message once it has text. */
+.a2 .spawn .hints[data-typing] :is(.tip,#hint-feedback){display:none}
+.a2 .spawn .hint.tip{margin-top:4px;border-top:1px solid var(--rule);padding-top:4px}
+.a2 .spawn .hint.tip .lab{flex:none;display:flex;color:var(--faint)}
+.a2 .spawn .hint.tip .lab .ic{width:12px;height:12px}
+.a2 .spawn .hint.tip .go{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:opacity .3s}
+.a2 .spawn .hint.tip .go.fade{opacity:0}
+@media (prefers-reduced-motion:reduce){.a2 .spawn .hint.tip .go,.a2 .spawn .doc .more{transition:none}}
 .a2 .pa{display:flex;gap:10px;justify-content:flex-end;align-items:center}
 .a2 .err-text{color:var(--err);font-size:12px;font-family:var(--font-chrome);margin-right:auto}
 
@@ -1814,7 +1845,8 @@ body{background:#000}
 @media (prefers-reduced-motion:reduce){.a2 .side{transition:none}}
 /* Touch, at any width: 44 px targets. */
 @media (pointer:coarse){
-  .a2 .spawn .hint .go,.a2 .spawn .hint .x{min-height:44px}
+  .a2 .spawn .hint .go,.a2 .spawn .hint .x,.a2 .spawn .doc .run,.a2 .spawn .doc .more{min-height:44px}
+  .a2 .spawn .doc .more{min-width:44px;justify-content:center}
   .a2 .spawn .hint .x{min-width:44px}
   .a2 .rp{min-height:44px;padding:10px 14px;font-size:14.5px}
   .a2 .row.queued .ctl .btn{min-height:44px;padding:10px 16px;font-size:14.5px}
