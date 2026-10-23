@@ -4,7 +4,7 @@
 // session and those it started, groups.js) is drawn as one block headed by its
 // oldest member, which can fold it to one tab (#586).
 
-import { LABEL } from "./glyphs.js";
+import { iconText, LABEL, PANE_ICON } from "./glyphs.js";
 import { closeOnMiddle, markNode } from "./fleet.js";
 import { blocksOf, hueOf } from "./groups.js";
 import { shownOwner } from "./me.js";
@@ -132,7 +132,7 @@ function tab(m, focusId, { onFocus, onMove, onClose }, role) {
     // A terminal is named by its name; its command is in the title.
     t.title = said;
     const name = Object.assign(document.createElement("span"), { className: "tname" });
-    name.textContent = `${m.kind === "term" ? "▸_" : "◫"} ${m.name}`;
+    name.replaceChildren(...iconText(PANE_ICON[m.kind === "term" ? "term" : "browser"], m.name));
     t.append(mark, name);
   } else {
     // The whole handle, and the title under it cut to the handle's width (#586).

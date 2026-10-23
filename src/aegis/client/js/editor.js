@@ -52,9 +52,11 @@ export function kindOf(path) {
   return lang ? KIND_BY_LANG[lang] || "code" : "file";
 }
 
+const FOLDER_ICON = { open: "folder-open", shut: "folder" };
+
 // The glyph id for a Files row: a folder open or closed, or the file's kind.
 export function fileGlyph(path, isDir, open = false) {
-  if (isDir) return open ? "folder-open" : "folder";
+  if (isDir) return FOLDER_ICON[open ? "open" : "shut"];
   const kind = kindOf(path);
   return kind === "file" ? "file" : `f-${kind}`;
 }

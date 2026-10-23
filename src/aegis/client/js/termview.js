@@ -4,6 +4,7 @@
 // time; switching tabs disposes it, and coming back replays the snapshot.
 
 import { mountTerminal } from "./terminal.js";
+import { iconText } from "./glyphs.js";
 import { toast } from "./toast.js";
 
 const $ = (id) => document.getElementById(id);
@@ -41,7 +42,7 @@ export function closeTerm() {
 export function drawCard(card) {
   if (!live || card.id !== live.id) return;
   live.card = card;
-  document.querySelector("#v-term .term-name").textContent = `▸_ ${card.name}`;
+  document.querySelector("#v-term .term-name").replaceChildren(...iconText("terminal", card.name));
   const state = card.state === "exited" ? `exited (${card.code})` : card.state === "ended" ? `ended: ${card.reason}` : "running";
   document.querySelector("#v-term .term-state").textContent = state;
   const rows = [

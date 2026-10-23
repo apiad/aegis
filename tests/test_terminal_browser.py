@@ -145,7 +145,7 @@ def test_a_terminal_tab_is_marked_and_closes(server, browser):  # noqa: F811
     page = browser.new_page()
     tid = open_term(page, server, "sh")
     tab = page.locator(f".tab[data-id='{tid}']")
-    assert "▸_" in tab.inner_text()
+    assert tab.locator('.tname use[href="#g-terminal"]').count() == 1
     assert tab.locator(".dot.ready").count() == 1
     page.click("#term-close")
     page.wait_for_selector(f".tab[data-id='{tid}']", state="detached")

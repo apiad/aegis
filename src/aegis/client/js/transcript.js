@@ -29,7 +29,7 @@
 // window above still holds; the walks below skip them.
 
 import { applyKinds, fadeTables, hhmm, render, update } from "./entries.js";
-import { icon } from "./glyphs.js";
+import { CARET_ICON, icon } from "./glyphs.js";
 import { unwatch, watch } from "./highlight.js";
 import * as menu from "./menu.js";
 import { offsetsIn, rangeIn } from "./quote.js";
@@ -752,7 +752,7 @@ function drawLine(head, run, next, open) {
   const [t, g, rs] = b.children;
   const text = runText(run, next);
   const time = hhmm(run[0].ts);
-  const caret = open ? "caret-d" : "caret-r";
+  const caret = CARET_ICON[open ? "open" : "shut"];
   if (t.textContent !== time) t.textContent = time;
   if (g.dataset.caret !== caret) {
     g.dataset.caret = caret;

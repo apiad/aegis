@@ -1,6 +1,8 @@
-// The status badges, as one inline SVG sprite: Unicode marks render differently
-// in each font. Python decides a session's attention; this only maps it to a
-// symbol and a word. Drawn in currentColor; the knocked-out glyph inside a badge
+// Every icon the client draws, as one inline SVG sprite: Unicode marks render
+// differently in each font, and an emoji keeps its own colours. The status
+// badges come first; Python decides a session's attention, this only maps it
+// to a symbol and a word. A new symbol needs a row on help/icons.md, and
+// nothing outside this file draws SVG of its own (tests/test_glyphs.py). Drawn in currentColor; the knocked-out glyph inside a badge
 // uses --knock, which base.css sets to the theme's background.
 
 import { MARK } from "./mark.js";
@@ -86,7 +88,29 @@ const SPRITE = `<defs>
 <symbol id="g-archive" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2.8" width="12" height="3.2" rx=".8"/><path d="M3.2 6v6.4a1 1 0 0 0 1 1h7.6a1 1 0 0 0 1-1V6M6.5 8.6h3"/></symbol>
 <symbol id="g-dot" viewBox="0 0 16 16"><circle cx="8" cy="8" r="3.4" fill="currentColor"/></symbol>
 <symbol id="g-pip" viewBox="0 0 16 16"><circle cx="8" cy="8" r="1.5" fill="currentColor"/></symbol>
+<symbol id="g-panel" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="M10 2.5v11"/></symbol>
+<symbol id="g-clip" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 4.5 5.8 9.2a1.5 1.5 0 0 0 2.1 2.1l5-5a3 3 0 0 0-4.2-4.2l-5 5a4.5 4.5 0 0 0 6.4 6.4l4.2-4.2"/></symbol>
+<symbol id="g-mic" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5" fill="currentColor"/><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5V15" fill="none"/></symbol>
+<symbol id="g-reopen" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9"/><path d="M2.5 2.5v3h3"/></symbol>
+<symbol id="g-branch" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="3.5" r="1.5"/><circle cx="5" cy="12.5" r="1.5"/><circle cx="11" cy="5" r="1.5"/><path d="M5 5v6M11 6.5c0 2.6-6 2-6 4.5"/></symbol>
+<symbol id="g-h-claude-code" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 2v4M8 10v4M2 8h4M10 8h4M3.8 3.8l2.8 2.8M9.4 9.4l2.8 2.8M3.8 12.2l2.8-2.8M9.4 6.6l2.8-2.8"/></symbol>
+<symbol id="g-h-opencode" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 2.5H5A1.5 1.5 0 0 0 3.5 4v2.5L2 8l1.5 1.5V12A1.5 1.5 0 0 0 5 13.5h.5M10.5 2.5h.5A1.5 1.5 0 0 1 12.5 4v2.5L14 8l-1.5 1.5V12a1.5 1.5 0 0 1-1.5 1.5h-.5"/></symbol>
+<symbol id="g-h-codex" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.8l5.4 3.1v6.2L8 14.2l-5.4-3.1V4.9z"/><circle cx="8" cy="8" r="2"/></symbol>
+<symbol id="g-h-cursor" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M3.5 2.5l9 5.2-4 1-1.8 3.8z"/></symbol>
+<symbol id="g-e-low" viewBox="0 0 16 16" fill="currentColor"><rect x="1.6" y="10.5" width="1.6" height="3" rx=".5"/><rect x="4.4" y="8.5" width="1.6" height="5" rx=".5" opacity=".3"/><rect x="7.2" y="6.5" width="1.6" height="7" rx=".5" opacity=".3"/><rect x="10.0" y="4.5" width="1.6" height="9" rx=".5" opacity=".3"/><rect x="12.8" y="2.5" width="1.6" height="11" rx=".5" opacity=".3"/></symbol>
+<symbol id="g-e-medium" viewBox="0 0 16 16" fill="currentColor"><rect x="1.6" y="10.5" width="1.6" height="3" rx=".5"/><rect x="4.4" y="8.5" width="1.6" height="5" rx=".5"/><rect x="7.2" y="6.5" width="1.6" height="7" rx=".5" opacity=".3"/><rect x="10.0" y="4.5" width="1.6" height="9" rx=".5" opacity=".3"/><rect x="12.8" y="2.5" width="1.6" height="11" rx=".5" opacity=".3"/></symbol>
+<symbol id="g-e-high" viewBox="0 0 16 16" fill="currentColor"><rect x="1.6" y="10.5" width="1.6" height="3" rx=".5"/><rect x="4.4" y="8.5" width="1.6" height="5" rx=".5"/><rect x="7.2" y="6.5" width="1.6" height="7" rx=".5"/><rect x="10.0" y="4.5" width="1.6" height="9" rx=".5" opacity=".3"/><rect x="12.8" y="2.5" width="1.6" height="11" rx=".5" opacity=".3"/></symbol>
+<symbol id="g-e-xhigh" viewBox="0 0 16 16" fill="currentColor"><rect x="1.6" y="10.5" width="1.6" height="3" rx=".5"/><rect x="4.4" y="8.5" width="1.6" height="5" rx=".5"/><rect x="7.2" y="6.5" width="1.6" height="7" rx=".5"/><rect x="10.0" y="4.5" width="1.6" height="9" rx=".5"/><rect x="12.8" y="2.5" width="1.6" height="11" rx=".5" opacity=".3"/></symbol>
+<symbol id="g-e-max" viewBox="0 0 16 16" fill="currentColor"><rect x="1.6" y="10.5" width="1.6" height="3" rx=".5"/><rect x="4.4" y="8.5" width="1.6" height="5" rx=".5"/><rect x="7.2" y="6.5" width="1.6" height="7" rx=".5"/><rect x="10.0" y="4.5" width="1.6" height="9" rx=".5"/><rect x="12.8" y="2.5" width="1.6" height="11" rx=".5"/></symbol>
+<symbol id="g-p-read" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1.8 8S4 3.8 8 3.8 14.2 8 14.2 8 12 12.2 8 12.2 1.8 8 1.8 8z"/><circle cx="8" cy="8" r="1.9"/></symbol>
+<symbol id="g-p-write" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.2 2.4l2.4 2.4-6.4 6.4-3 .6.6-3zM2.5 13.8h11"/></symbol>
+<symbol id="g-p-auto" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.8l5 1.9v4c0 3.2-2.2 5.4-5 6.5-2.8-1.1-5-3.3-5-6.5v-4z"/><path d="M5.8 8l1.6 1.6 2.9-3"/></symbol>
+<symbol id="g-p-full" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 4.9-.7"/></symbol>
 </defs>`;
+
+// A caret, open or shut: the transcript's runs, the Files tree, a workflow's
+// prompt.
+export const CARET_ICON = { open: "caret-d", shut: "caret-r" };
 
 const SYMBOL = { working: "work", needs_you: "need", error: "err", review: "rev", waiting: "wait", done: "done" };
 
@@ -132,6 +156,23 @@ export function icon(name) {
   svg.append(use);
   return svg;
 }
+
+// A symbol and a text after it, as nodes to append: a pane's name, a mark
+// before a count.
+export function iconText(name, text) {
+  return [icon(name), document.createTextNode(` ${text}`)];
+}
+
+// A session's harness, effort or permission as its family's symbol
+// (h-claude-code, e-high, p-full); nothing for a value with no symbol, such
+// as a harness a newer linked server knows.
+export function factIcon(family, value) {
+  const name = `${family}-${value}`;
+  return document.getElementById(`g-${name}`) ? icon(name) : document.createTextNode("");
+}
+
+// A pane that is not a session: a terminal or a browser.
+export const PANE_ICON = { term: "terminal", browser: "globe" };
 
 // An entry's glyph, which Python names (describe.py). A linked server older
 // than the names still sends a character, which stays text.

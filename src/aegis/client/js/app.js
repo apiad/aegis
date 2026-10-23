@@ -22,7 +22,7 @@ import { age, countdown, diskRows, elapsed, hostRow, hostSeverity, mbps, netRows
 import { closeCard, initSide, restState, toggleCollapsed } from "./side.js";
 import { installKeys, renderKeys } from "./keys.js";
 import { Palette } from "./palette.js";
-import { entryIcon, glyph, gorgoneion, icon, installGlyphs, LABEL } from "./glyphs.js";
+import { entryIcon, factIcon, glyph, gorgoneion, icon, iconText, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
 import * as cmenu from "./menu.js";
 import { attachTabCard } from "./tabcard.js";
@@ -1990,8 +1990,8 @@ function repoLine(g) {
     line.append(dot);
   }
   const [r] = g.lines;
-  const where = g.lines.length > 1 ? `${g.lines.length} checkouts` : r.worktree ? `⑂ ${rpBase(r.top)}` : r.branch || "detached";
-  line.append(span("n", g.name), span("rp-br", where));
+  const where = g.lines.length > 1 ? `${g.lines.length} checkouts` : r.worktree ? rpBase(r.top) : r.branch || "detached";
+  line.append(span("n", g.name), span("rp-br", where, g.lines.length === 1 && r.worktree ? RP_ICON.worktree : ""));
   const right = span("rp-r", "");
   const sum = (k) => g.lines.reduce((a, l) => a + l[k], 0);
   if (g.lines.every((l) => l.removed)) right.append(span("rp-gone", "removed"));
@@ -2004,7 +2004,7 @@ function repoLine(g) {
     seen.add(pr.n);
     right.append(prLink(pr));
   }
-  if (g.lines.every((l) => l.clean)) right.prepend(span("rp-clean", "✓"));
+  if (g.lines.every((l) => l.clean)) right.prepend(span("rp-clean", "", RP_ICON.clean));
   line.append(right);
   return line;
 }
@@ -2083,7 +2083,7 @@ function repoSection(g, ghOk) {
   for (const [handle, wheres] of g.peers) {
     const d = document.createElement("div");
     d.className = "rp-peer";
-    d.textContent = `● ${handle} is also here`;
+    d.append(...iconText("dot", `${handle} is also here`));
     sec.append(d, rpList(wheres.map((w) => [w]), wheres.length, wheres.length));
   }
   return sec;
@@ -2131,12 +2131,12 @@ function renderMeta(s) {
   // colour (harness_versions.py, #456).
   const u = s.untested_version;
   const hEl = $("s-harness");
-  hEl.textContent = (s.harness_label || s.harness || "") + (u ? ` ${u.version || "?"}` : "");
+  hEl.replaceChildren(factIcon("h", s.harness), `${s.harness_label || s.harness || ""}${u ? ` ${u.version || "?"}` : ""}`);
   hEl.classList.toggle("warn", !!u);
   hEl.title = u ? `${u.state === "unknown" ? "version unknown" : `${u.state} than tested`} · tested with ${u.range}` : "";
   $("s-model").textContent = s.model_id && s.model_id !== s.model ? `${modelLine(s)} → ${s.model_id}` : modelLine(s);
-  $("s-effort").textContent = s.effort || "";
-  $("s-perm").textContent = s.permission || "";
+  $("s-effort").replaceChildren(factIcon("e", s.effort), s.effort || "");
+  $("s-perm").replaceChildren(factIcon("p", s.permission), s.permission || "");
   $("s-server").textContent = s.server || conn.server || "this server";
   // The handle as peers address it, handle@server, and the badge a Fleet card
   // gives a queue worker.
@@ -2162,10 +2162,10 @@ function renderMeta(s) {
   drawCold(s);
   drawClosing(s);
   $("s-cwd").textContent = s.cwd;
-  $("chip-model").textContent = s.model;
+  $("chip-model").replaceChildren(factIcon("h", s.harness), s.model);
   $("chip-model").title = s.model_id || "";
-  $("chip-effort").textContent = `${s.effort} effort`;
-  $("chip-perm").textContent = s.permission;
+  $("chip-effort").replaceChildren(factIcon("e", s.effort), `${s.effort} effort`);
+  $("chip-perm").replaceChildren(factIcon("p", s.permission), s.permission);
   const p = sideProvider(s);
   if (`${s.server || ""}:${p ? p.name : ""}` !== sideQuotaKey) drawSideQuota(s);
   drawSideUsage(s);
@@ -2273,6 +2273,9 @@ setInterval(() => {
 // -- version: the running aegis and the latest release ------------------------
 // Asked again every hour, so a tab left open learns about a new release; the
 // server caches PyPI's answer for that long anyway.
+
+// A repo line's marks: a linked worktree, and nothing left to commit or push.
+const RP_ICON = { worktree: "branch", clean: "read" };
 
 function span(cls, text, name) {
   const el = document.createElement("span");
@@ -4178,7 +4181,7 @@ const MARK_ICON = { needs_you: "need", working: "work", waiting: "wait", error: 
 function sizeTabMore() {
   const list = $("tablist");
   $("tab-more").hidden = list.scrollWidth <= list.clientWidth + 1;
-  $("tab-more").textContent = `${tabbed().length} ▾`;
+  $("tab-more").replaceChildren(`${tabbed().length} `, icon("caret-d"));
 }
 new ResizeObserver(sizeTabMore).observe($("tablist"));
 new MutationObserver(sizeTabMore).observe($("tablist"), { childList: true });
