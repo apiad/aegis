@@ -722,6 +722,7 @@ async def doctor(
     out.append(_workflows(snap.workflows, tuple(a.name for a in snap.agents)))
     out.append(_session_memory(snap))
     out.append(_state(roots))
+    out += _knowledge(roots)
     if snap.multi_user_error:
         out.append(Finding("error", "multi_user", snap.multi_user_error))
     elif snap.multi_user is not None:
@@ -733,6 +734,22 @@ async def doctor(
             {h: bins.get(h, h) for h in used},
         )
     return out
+
+
+def _knowledge(roots: Roots) -> list[Finding]:
+    """A warning when someone keeps skills or memories and git is missing:
+    every save and delete is a commit, so each one would fail."""
+    kn = roots.state_root / "knowledge"
+    if not kn.is_dir() or not any(kn.iterdir()) or shutil.which("git"):
+        return []
+    return [
+        Finding(
+            "warn",
+            "knowledge",
+            "git is not on PATH: saving or deleting a skill or memory fails"
+            " until it is installed",
+        )
+    ]
 
 
 def render(findings: Iterable[Finding]) -> str:

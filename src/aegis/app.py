@@ -105,6 +105,8 @@ from .push import register_push_ops
 from .queues import Queues
 from .journal.ops import register_journal_ops
 from .journal.service import Journal
+from .knowledge.service import Knowledge
+from .knowledge_ops import register_knowledge_ops, remember_turn
 from .repos.service import Repos
 from .layout_ops import register_layout_ops
 from .fs_ops import register_fs_ops
@@ -525,6 +527,9 @@ class App:
             roots.state_root, self.publish, user_of=self._linux_user_of_session
         )
         reg.journal = self.journal
+        self.knowledge = Knowledge(roots.state_root)
+        reg.knowledge = self.knowledge
+        reg.principal_of = lambda s: s.spec.owner or self.user
         self.repos = Repos(
             self.journal.path,
             self.publish,
@@ -622,6 +627,7 @@ class App:
         self.push = register_push_ops(self)
         register_journal_ops(self)
         register_help_ops(self)
+        register_knowledge_ops(self)
         register_notice_ops(self)
         register_schedule_ops(self)
         register_workflow_ops(self)
@@ -1114,6 +1120,7 @@ class App:
         await self.sessions.shutdown()
         await self.repos.stop()
         await asyncio.to_thread(self.journal.stop)
+        await asyncio.to_thread(self.knowledge.usage.stop)
         self.runners.shutdown()
         restarts.stopped(self.roots.state_root, stopping_at)
 
@@ -1448,6 +1455,18 @@ class App:
             )
             rec = self.setup_records.get(self.who(caller).name)
             await s.deliver(*setup.turn(arg, line, rec, iso_now()))
+            return {"status": "delivered"}
+        if name == "remember":
+            # The agent saves the text as a memory the person asked for
+            # (knowledge_ops.py), in their own store. An agent with read
+            # permission cannot call memory_save, so the turn would only fail.
+            if s.spec.permission == "read":
+                raise OpError(
+                    "read_only",
+                    "this session has read permission, so its agent cannot save"
+                    " a memory; use /remember in a session that can write",
+                )
+            await s.deliver(*remember_turn(arg, iso_now()))
             return {"status": "delivered"}
         if name in ("workflow", "loop"):
             # A person's line launches a saved workflow: the only path, beside

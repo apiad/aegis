@@ -799,6 +799,72 @@ async def test_real_claude_searches_the_help_before_answering_how(tmp_path: Path
         await asyncio.wait_for(task, 30)
 
 
+async def test_a_real_agent_uses_a_knowledge_memory_from_the_hint(tmp_path: Path):
+    """The knowledge hint, followed by a real model (#694): a memory the agent
+    was never told about is named in the hint on the message, and the agent
+    reads it with memory_read to answer. The description leaves the host out,
+    so only a read gives the answer."""
+    import asyncio
+
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.knowledge.items import Item
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  sonnet: {{harness: claude-code, model: {SONNET}, effort: low, permission: full}}\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        claude_bin=claude,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+    try:
+        await app.knowledge.store.save(
+            app.user,
+            Item(
+                "memory",
+                "quill-staging",
+                "Which host project quill deploys to for staging",
+                "The staging host for project quill is ben-staging-2.\n",
+                {"type": "project"},
+            ),
+            "test",
+        )
+        r = await app.registry.call("session.spawn", {"agent": "sonnet"})
+        s = app.sessions.sessions[r["log_id"]]
+        await s.send("which host do I deploy quill to? answer with the host only")
+        await until(
+            lambda: s.status == "idle" and s.cost_usd,
+            timeout=180,
+            what="the answer",
+        )
+        said = " ".join(e.get("md") or "" for e in s.entries() if e["kind"] == "prose")
+        assert "ben-staging-2" in said, said
+        events = [
+            r["event"] for r in app.knowledge.usage.rows(app.user, "quill-staging")
+        ]
+        assert "hinted" in events and "read" in events, events
+        assert events.index("hinted") < events.index("read"), events
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)
+
+
 async def test_real_claude_reports_its_turns_with_turn_end(tmp_path: Path):
     """A real Sonnet primed by aegis calls turn_end: needs_you with replies after
     laying out two options, done without needs_you after finished work. Sonnet,

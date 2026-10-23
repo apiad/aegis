@@ -1,0 +1,2 @@
+- **Memories that every session finds.** aegis keeps each person's memories on the server, one Markdown file per fact with a git history, and every message to a session carries a short block naming the three memories that may matter, which the agent reads with `memory_read`. Agents search, save and delete them with `memory_search`, `memory_save` and `memory_delete`, `knowledge_stats` says which are used, and `/remember` saves one you ask for. A member's agents never see another member's memories.
+help: knowledge

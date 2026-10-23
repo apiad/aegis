@@ -519,3 +519,16 @@ def test_multi_user_names_a_machine_it_cannot_switch_files_on(tmp_path):
     assert row.level == "error" and "riscv64" in row.message
     found = _multi_user(roots, users.MultiUser(), [], FULL_UNIT, {}, "x86_64")
     assert not rows(found, "multi_user.files")
+
+
+def test_knowledge_in_use_without_git_warns(tmp_path, monkeypatch):
+    from aegis.doctor import _knowledge
+
+    roots = make_roots(tmp_path, tmp_path)
+    monkeypatch.setattr("aegis.doctor.shutil.which", lambda b: None)
+    assert _knowledge(roots) == []  # no knowledge yet: nothing to say
+    (roots.state_root / "knowledge" / "ana").mkdir(parents=True)
+    [f] = _knowledge(roots)
+    assert (f.level, f.where) == ("warn", "knowledge") and "git" in f.message
+    monkeypatch.setattr("aegis.doctor.shutil.which", lambda b: "/usr/bin/git")
+    assert _knowledge(roots) == []
