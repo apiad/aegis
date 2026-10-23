@@ -41,7 +41,8 @@ made. ``FAKE_OPENCODE_LOG=<file>`` gets one ``METHOD path`` line per request.
 connected after. ``FAKE_OPENCODE_DIE=1`` exits with code 1 before listening;
 ``FAKE_OPENCODE_FAIL_SESSION=1`` answers ``POST /api/session`` with a 500. The
 log also gets ``START <pid>`` when the server starts, so a test can check every
-child it caused is gone. A prompt whose text is ``FAIL500`` is answered 500.
+child it caused is gone. ``FAKE_OPENCODE_SLOW_START=<s>`` waits that long after
+it before listening. A prompt whose text is ``FAIL500`` is answered 500.
 ``FAKE_OPENCODE_EXHAUSTED=<id>,<id>`` names models (``provider/model``) whose
 every turn fails with Zen's ``429 FreeUsageLimitError``, as an exhausted free
 model's does. A prompt ``OVERFLOW`` fails its turn with a
@@ -639,6 +640,7 @@ def main() -> None:
     if LOG:
         with open(LOG, "a") as f:
             f.write(f"START {os.getpid()}\n")
+    time.sleep(float(os.environ.get("FAKE_OPENCODE_SLOW_START", "0")))
     port = int(args[args.index("--port") + 1]) if "--port" in args else 0
     srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     srv.daemon_threads = True

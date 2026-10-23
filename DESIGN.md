@@ -313,7 +313,12 @@ token still dies with the harness process.
 stored line through the parser its `src` tag names. Claude Code
 (`claude/harness.py`) speaks stream-json on stdio; OpenCode
 (`opencode/process.py`) is one `opencode serve` per session over HTTP, because its
-MCP token, like Claude's, is per process. Codex (`codex/process.py`) is one
+MCP token, like Claude's, is per process. Its server is of no use once the process that
+started it is gone (only that one knows its password) and holds about 300 MB,
+so it is started to die with its parent (`launch.child`'s `die_with_parent`,
+`setpriv --pdeathsig`), every failed or cancelled start or probe ends it, and
+`aegis serve` ends at boot any whose owner, named in its environment, is gone
+(`opencode/sweep.py`, #620). Codex (`codex/process.py`) is one
 `codex app-server` per session over JSON-RPC on stdio, for the same reason, and
 the only harness whose model, effort and sandbox travel with every turn, so only
 a new provider restarts it. Its process writes `aegis/*` lines of its own for what
