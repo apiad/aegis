@@ -70,3 +70,10 @@ def test_a_crlf_memory_loads():
     text = "---\r\nname: crlf\r\ndescription: from windows\r\n---\r\nLine one.\r\n"
     it = parse_memory(text, "crlf")
     assert it.description == "from windows" and it.body == "Line one.\n"
+
+
+def test_dump_writes_one_key_per_line():
+    it = Item("memory", "m", "d", "B\n", {"type": "user", "paths": ["a/*", "b"]})
+    assert dump(it) == (
+        "---\nname: m\ndescription: d\ntype: user\npaths:\n- a/*\n- b\n---\nB\n"
+    )

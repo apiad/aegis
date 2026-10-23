@@ -1,6 +1,8 @@
 import os
 import subprocess
 
+import pytest
+
 from aegis.knowledge import history
 
 
@@ -77,3 +79,22 @@ def test_git_variables_in_the_server_env_have_no_effect(tmp_path, monkeypatch):
         env={k: v for k, v in os.environ.items() if not k.startswith("GIT_")},
     ).stdout.strip()
     assert author == "aegis"
+
+
+def test_a_failed_revert_is_aborted_and_raises(tmp_path):
+    history.ensure_repo(tmp_path)
+    for text in ("one\n", "two\n", "three\n"):
+        _write(tmp_path, "a.md", text)
+        sha = history.commit(tmp_path, ["a.md"], "edit a", "s1")
+        if text == "two\n":
+            middle = sha
+    with pytest.raises(Exception):
+        history.revert(tmp_path, middle, "s1")  # conflicts with "three"
+    assert (tmp_path / "a.md").read_text() == "three\n"
+    assert not (tmp_path / ".git" / "REVERT_HEAD").exists()
+    status = subprocess.run(
+        ["git", "-C", str(tmp_path), "status", "--porcelain"],
+        capture_output=True,
+        text=True,
+    ).stdout
+    assert status == ""

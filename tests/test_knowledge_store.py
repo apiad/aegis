@@ -94,3 +94,24 @@ async def test_a_save_with_git_missing_leaves_no_file_behind(tmp_path, monkeypat
     with pytest.raises(OpError):
         await st.save("ben", mem("c"), "s1")
     assert not (tmp_path / "ben" / "memories" / "c.md").exists()
+
+
+@pytest.mark.parametrize(
+    "rel", ["./SKILL.md", "x/../SKILL.md", "x/../../y", "/etc/y", "..", "."]
+)
+async def test_extra_files_are_checked_after_normalizing(tmp_path, rel):
+    st = Store(tmp_path)
+    with pytest.raises(OpError) as e:
+        await st.save("ana", skill("release"), "s1", extra={rel: b"x"})
+    assert e.value.code == "bad_params"
+
+
+async def test_replacing_a_skill_drops_extra_files_it_no_longer_has(tmp_path):
+    st = Store(tmp_path)
+    extra = {"a.py": b"a\n", "lib/b.py": b"b\n"}
+    await st.save("ana", skill("release"), "s1", extra=extra)
+    await st.save("ana", skill("release"), "s1", extra={"./a.py": b"a2\n"})
+    folder = tmp_path / "ana" / "skills" / "release"
+    assert sorted(p.name for p in folder.rglob("*")) == ["SKILL.md", "a.py"]
+    assert (folder / "a.py").read_bytes() == b"a2\n"
+    assert history.show(tmp_path / "ana", "skills/release/lib/b.py", "HEAD") is None

@@ -85,7 +85,7 @@ class Item:
 
 def _yaml() -> YAML:
     y = YAML(typ="safe", pure=True)
-    y.default_flow_style = None
+    y.default_flow_style = False  # one key per line, a list item per line
     y.allow_unicode = True
     y.width = 4096
     y.sort_base_mapping_type_on_output = False  # name and description first

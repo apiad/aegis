@@ -93,6 +93,12 @@ def show(root: Path, relpath: str, sha: str) -> str | None:
 
 
 def revert(root: Path, sha: str, author: str) -> str:
-    """Undo the commit ``sha`` with a new commit; the new sha."""
-    _git(root, "revert", "--no-edit", "--no-commit", sha)
+    """Undo the commit ``sha`` with a new commit; the new sha. A revert that
+    fails (a conflict with a later change) is aborted, so the work tree is
+    left as it was, and the error raised."""
+    try:
+        _git(root, "revert", "--no-edit", "--no-commit", sha)
+    except subprocess.CalledProcessError:
+        _git(root, "revert", "--abort", check=False)
+        raise
     return commit(root, ["."], f"revert {sha[:12]}", author)

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import posixpath
 import shutil
 import subprocess
 from pathlib import Path
@@ -141,15 +142,15 @@ class Store:
         check_name(item.name)
         files = {}
         for rel, data in (extra or {}).items():
-            parts = Path(rel).parts
+            norm = posixpath.normpath(rel)
             if (
                 item.kind != "skill"
-                or not parts
-                or Path(rel).is_absolute()
-                or (".." in parts or rel == "SKILL.md")
+                or posixpath.isabs(norm)
+                or norm in (".", "..", "SKILL.md")
+                or norm.startswith("../")
             ):
                 raise OpError("bad_params", f"{rel!r} is not a file of the skill")
-            files[rel] = data
+            files[norm] = data
         async with self._lock(principal):
             other = "skill" if item.kind == "memory" else "memory"
             if self._path(base, other, item.name).exists():
@@ -171,8 +172,19 @@ class Store:
             path = base / "memories" / f"{item.name}.md"
         else:
             path = base / "skills" / item.name / "SKILL.md"
-        before = _snapshot([path, *(path.parent / rel for rel in files)])
+        # A replaced skill keeps only the extra files of the new save.
+        stale = [
+            p
+            for p in (sorted(path.parent.rglob("*")) if item.kind == "skill" else [])
+            if p.is_file()
+            and p != path
+            and p.relative_to(path.parent).as_posix() not in files
+        ]
+        before = _snapshot([path, *stale, *(path.parent / rel for rel in files)])
         try:
+            for p in stale:
+                p.unlink()
+            _prune_dirs(path.parent, [p.parent for p in stale])
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(dump(item), encoding="utf-8")
             for rel, data in files.items():
@@ -229,11 +241,19 @@ def _restore(base: Path, before: dict[Path, bytes | None], rels: list[str]) -> N
         else:
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_bytes(data)
-    for p in sorted({q.parent for q in before}, key=lambda q: -len(q.parts)):
-        while p != base and p.is_dir() and not any(p.iterdir()):
+    _prune_dirs(base, [q.parent for q in before])
+    history.unstage(base, rels)
+
+
+def _prune_dirs(top: Path, dirs: list[Path]) -> None:
+    """Remove each of ``dirs`` that is empty, and its empty parents, up to
+    but not including ``top``."""
+    for p in sorted(set(dirs), key=lambda q: -len(q.parts)):
+        while (
+            p != top and p.is_relative_to(top) and p.is_dir() and not any(p.iterdir())
+        ):
             p.rmdir()
             p = p.parent
-    history.unstage(base, rels)
 
 
 def _history_failed(e: Exception) -> OpError:
