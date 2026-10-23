@@ -733,6 +733,9 @@ body{background:#000}
 #a2 .card.asleep.at-error{opacity:1}
 #a2 .card .hd{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px}
 #a2 .card .hd>*{white-space:nowrap}
+#a2 .card .hd .badge{max-width:100%;box-sizing:border-box;overflow:hidden;text-overflow:ellipsis}
+#a2 .card .hd .badge.wf{display:inline-flex;white-space:pre}
+#a2 .card .hd .badge.wf .t{min-width:0;overflow:hidden;text-overflow:ellipsis}
 #a2 .card .hd .h{font-family:var(--font-chrome);color:var(--strong);font-weight:500}
 #a2 .card .hd .s{color:var(--faint);font-family:var(--font-chrome);margin-left:auto}
 #a2 .card .hd .btn.archive{padding:2px 9px;font-size:11.5px;font-family:var(--font-chrome);flex:none}
