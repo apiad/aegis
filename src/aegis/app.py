@@ -1120,6 +1120,7 @@ class App:
         await self.sessions.shutdown()
         await self.repos.stop()
         await asyncio.to_thread(self.journal.stop)
+        await asyncio.to_thread(self.knowledge.usage.stop)
         self.runners.shutdown()
         restarts.stopped(self.roots.state_root, stopping_at)
 

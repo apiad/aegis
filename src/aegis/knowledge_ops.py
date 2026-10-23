@@ -11,6 +11,7 @@ memories an agent saves on its own initiative come with the approval card.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING, Literal
@@ -215,7 +216,7 @@ def register_knowledge_ops(app: App) -> None:
         hinted, read, invoked or run, and when it was last used. unused_days
         keeps only the items not used in that many days."""
         owner = principal(caller)
-        used = kn.usage.summary(owner)
+        used = await asyncio.to_thread(kn.usage.summary, owner)
         cutoff = time.time() - p.unused_days * 86400 if p.unused_days else None
         out = []
         for it in kn.store.items(owner):

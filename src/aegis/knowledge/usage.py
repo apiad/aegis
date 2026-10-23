@@ -4,17 +4,27 @@ Every hint writes one ``hinted`` row per item shown, with its rank; a read of
 an item hinted earlier to the same session keeps that rank in ``detail``. The
 pair is how the engine is judged on real use: the share of reads that came
 from the hint, and at which rank. Stats and the Knowledge view are queries
-over this table. Rows older than a year are dropped by a daily prune. Only
-the server writes it, so it opens with WAL, as the journal does, and no
-cross-process schema dance.
+over this table. Rows older than a year are dropped by a daily prune, which
+then runs VACUUM.
+
+Writes never run on the event loop: as the journal does, the loop only
+enqueues and one writer thread owns the writing connection (WAL,
+``synchronous=NORMAL``, a short busy timeout). A row the thread cannot write
+(the file locked past the timeout, the disk full) is logged and dropped, so a
+send never waits on or fails for the log. Reads use their own connection and
+first wait for what is queued; callers on the loop run them in a thread.
 """
 
 from __future__ import annotations
 
+import logging
+import queue
 import sqlite3
 import threading
 import time
 from pathlib import Path
+
+log = logging.getLogger("aegis.knowledge")
 
 EVENTS = (
     "hinted",
@@ -28,6 +38,7 @@ EVENTS = (
     "flagged",
 )
 KEEP_S = 365 * 86400
+BUSY_MS = 1000
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS usage(
   ts REAL, principal TEXT, session TEXT, item_kind TEXT, item_name TEXT,
@@ -37,16 +48,84 @@ CREATE INDEX IF NOT EXISTS usage_ts ON usage(ts)
 """
 
 
+def _connect(path: Path) -> sqlite3.Connection:
+    con = sqlite3.connect(
+        path, timeout=BUSY_MS / 1000, isolation_level=None, check_same_thread=False
+    )
+    con.execute(f"PRAGMA busy_timeout={BUSY_MS}")
+    con.execute("PRAGMA journal_mode=WAL")
+    con.execute("PRAGMA synchronous=NORMAL")
+    con.executescript(SCHEMA)
+    return con
+
+
 class Usage:
     def __init__(self, path: Path) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        self._con = sqlite3.connect(
-            path, timeout=30, isolation_level=None, check_same_thread=False
+        self.path = path
+        self._q: queue.SimpleQueue = queue.SimpleQueue()
+        self._failed: set[str] = set()  # causes already logged
+        self._read: sqlite3.Connection | None = None
+        self._read_lock = threading.Lock()
+        self._thread = threading.Thread(
+            target=self._write, name="knowledge-usage", daemon=True
         )
-        self._con.execute("PRAGMA journal_mode=WAL")
-        self._con.executescript(SCHEMA)
-        self._lock = threading.Lock()
+        self._thread.start()
 
+    # -- the writer thread ---------------------------------------------------
+    def _write(self) -> None:
+        con: sqlite3.Connection | None = None
+        while True:
+            item = self._q.get()
+            if item is None:
+                if con is not None:
+                    con.close()
+                return
+            if item[0] == "sync":
+                item[1].set()
+                continue
+            try:
+                if con is None:
+                    self.path.parent.mkdir(parents=True, exist_ok=True)
+                    con = _connect(self.path)
+                _, sql, args = item
+                cur = con.execute(sql, args)
+                if sql.startswith("DELETE") and cur.rowcount > 0:
+                    con.execute("VACUUM")
+            except (sqlite3.Error, OSError) as e:
+                cause = f"{type(e).__name__}: {e}"
+                if cause not in self._failed:
+                    self._failed.add(cause)
+                    log.warning("knowledge usage: dropped a write: %s", cause)
+
+    def flush(self) -> None:
+        """Wait until everything queued is written or dropped."""
+        if not self._thread.is_alive():
+            return
+        done = threading.Event()
+        self._q.put(("sync", done))
+        while not done.wait(0.1):
+            if not self._thread.is_alive():
+                return
+
+    def stop(self) -> None:
+        """Write what is queued, then end the writer thread."""
+        if self._thread.is_alive():
+            self._q.put(None)
+            self._thread.join(timeout=10)
+        with self._read_lock:
+            if self._read is not None:
+                self._read.close()
+                self._read = None
+
+    def _query(self, sql: str, args) -> list:
+        self.flush()
+        with self._read_lock:
+            if self._read is None:
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+                self._read = _connect(self.path)
+            return self._read.execute(sql, args).fetchall()
+
+    # -- the API ----------------------------------------------------------------
     def add(
         self,
         principal: str,
@@ -57,23 +136,25 @@ class Usage:
         detail: str | None = None,
         ts: float | None = None,
     ) -> None:
+        """Queue one row; returns at once."""
         if event not in EVENTS:
             raise ValueError(f"unknown usage event {event!r}")
-        with self._lock:
-            self._con.execute(
+        self._q.put(
+            (
+                "sql",
                 "INSERT INTO usage VALUES (?,?,?,?,?,?,?)",
                 (ts or time.time(), principal, session, kind, name, event, detail),
             )
+        )
 
     def summary(self, principal: str) -> dict[str, dict]:
         """Per item name: kind, a count per event, and ``last_used``, the
         last read, invocation or run (None when never)."""
-        with self._lock:
-            rows = self._con.execute(
-                "SELECT item_name, item_kind, event, count(*), max(ts) FROM usage"
-                " WHERE principal = ? GROUP BY item_name, item_kind, event",
-                (principal,),
-            ).fetchall()
+        rows = self._query(
+            "SELECT item_name, item_kind, event, count(*), max(ts) FROM usage"
+            " WHERE principal = ? GROUP BY item_name, item_kind, event",
+            (principal,),
+        )
         out: dict[str, dict] = {}
         for name, kind, event, n, last in rows:
             s = out.setdefault(
@@ -99,15 +180,12 @@ class Usage:
         if name is not None:
             sql += " AND item_name = ?"
             args.append(name)
-        with self._lock:
-            got = self._con.execute(sql + " ORDER BY ts, rowid", args).fetchall()
+        got = self._query(sql + " ORDER BY ts, rowid", args)
         keys = ("ts", "session", "kind", "name", "event", "detail")
         return [dict(zip(keys, r)) for r in got]
 
-    def prune(self, now: float | None = None) -> int:
-        """Drop rows older than a year; how many went."""
-        with self._lock:
-            cur = self._con.execute(
-                "DELETE FROM usage WHERE ts < ?", ((now or time.time()) - KEEP_S,)
-            )
-        return cur.rowcount
+    def prune(self, now: float | None = None) -> None:
+        """Queue dropping the rows older than a year, then VACUUM."""
+        self._q.put(
+            ("sql", "DELETE FROM usage WHERE ts < ?", ((now or time.time()) - KEEP_S,))
+        )
