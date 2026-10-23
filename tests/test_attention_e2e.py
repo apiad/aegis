@@ -103,6 +103,16 @@ async def test_a_dead_process_is_an_error_until_the_next_send(world):
     assert a.wire()["attention"] == "done"
 
 
+async def test_a_clean_exit_between_turns_is_asleep_not_an_error(world):
+    a = await world.spawn()
+    await turn(a, "/quit 0.3")
+    await until(lambda: a.status == "asleep", timeout=8, what="the exit")
+    c = a.wire()
+    assert c["attention"] != "error", c["attention_line"]
+    assert c["asleep_why"] == "exited"
+    assert a.entries()[-1]["summary"] == "asleep: Claude Code exited between turns"
+
+
 async def test_a_parent_waits_on_a_working_child(world, published):
     a = await world.spawn()
     said = await turn(a, mcp("session_spawn", agent="opus", prompt="/busy 1"))

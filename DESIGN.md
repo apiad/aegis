@@ -48,7 +48,8 @@ gives.
 `opencode serve`, `codex app-server` or `cursor-agent acp`, is running), asleep (no process, the
 conversation kept), or archived (no process, no tab). An asleep session carries
 `asleep_why`: `slept` (Sleep or `session.stop`), `idle` (a park), `exited` (the
-harness ended on its own) or `server` (the server restarted under it). A meta
+harness ended on its own; mid-turn or with a non-zero code it is an error,
+between turns with code 0 it is not) or `server` (the server restarted under it). A meta
 written before that state says `stopped` or `parked`, and loads through
 `session.asleep_from`, so nothing on disk is migrated. Quiet is the other axis:
 it hides the tab and never touches the process. A prompt to an asleep session starts the harness again on the same
@@ -526,8 +527,9 @@ canvas pane kind, `wf-<run>`: it docks through `layout.place`, opens in the
 viewer and moves windows through the paths pages and files use, and a run
 armed again before approval takes its predecessor's pane. A node's session
 stays without a tab while its run lives: `session.unquiet`, `session.stop`,
-`session.restart`, `session.close`, `session.configure` and `session.rename` refuse it, and
-the card and the Fleet open it read-only. A step's `see` is a fixed path,
+`session.restart`, `session.close`, `session.configure` and `session.rename` refuse it (once its
+step is done, the refusal names the later steps that may still continue in it),
+and the card and the Fleet open it read-only. A step's `see` is a fixed path,
 resolved on the server from the run and the step by `workflow.see`, an
 operation not marked for agents, so the browser never names a path and no
 value filled in after approval chooses it. A step with `session: <id>`

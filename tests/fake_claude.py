@@ -18,6 +18,8 @@ stdout. The text of a prompt picks a script:
     /notice        three system notices and nothing else.
     /big           a Read whose result is 2 MB on one line.
     /exit N        a few stderr lines, then exit with code N.
+    /quit N        a reply and a result, then N seconds later exit with code 0,
+                   between turns.
     /recall        text listing the prompts this session id received before.
     /stream N      N words of text, one every 0.25 s, then a result. With
                    --include-partial-messages each word is a stream_event delta
@@ -145,6 +147,7 @@ SCRIPTS = (
     "notice",
     "big",
     "exit",
+    "quit",
     "recall",
     "mcp",
     "bgtask",
@@ -811,6 +814,10 @@ def run(text: str) -> None:
     elif word == "/recall":
         assistant({"type": "text", "text": "earlier: " + " | ".join(before)})
         result()
+    elif word == "/quit":
+        assistant({"type": "text", "text": "bye"})
+        result()
+        threading.Timer(float(arg or 0.2), os._exit, (0,)).start()
     elif word == "/exit":
         sys.stderr.write("fatal: something broke\nsecond line\n")
         sys.stderr.flush()
