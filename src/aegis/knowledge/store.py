@@ -101,6 +101,40 @@ class Store:
             return self._read(p, parse_skill, name)
         return None
 
+    def _skill_dir(self, principal: str, name: str) -> Path:
+        folder = self.dir(principal) / "skills" / check_name(name)
+        if not (folder / "SKILL.md").is_file():
+            raise OpError("not_found", f"no skill named {name!r}")
+        return folder
+
+    def files(self, principal: str, name: str) -> list[str]:
+        """The files of a skill's folder, relative and sorted. A symlink is
+        left out, since ``read_file`` would refuse it."""
+        folder = self._skill_dir(principal, name)
+        return sorted(
+            p.relative_to(folder).as_posix()
+            for p in folder.rglob("*")
+            if p.is_file() and not p.is_symlink()
+        )
+
+    def read_file(self, principal: str, name: str, rel: str) -> bytes:
+        """One file of a skill's folder. A path that leaves the folder, by
+        ``..``, an absolute path or a symlink, is ``bad_params``."""
+        folder = self._skill_dir(principal, name)
+        norm = posixpath.normpath(rel) if rel else ""
+        p = folder / norm
+        if (
+            not norm
+            or posixpath.isabs(norm)
+            or norm == ".."
+            or norm.startswith("../")
+            or any(q.is_symlink() for q in [p, *p.parents] if q.is_relative_to(folder))
+        ):
+            raise OpError("bad_params", f"{rel!r} is not a file of the skill")
+        if not p.is_file():
+            raise OpError("not_found", f"the skill {name!r} has no file {rel!r}")
+        return p.read_bytes()
+
     def version(self, principal: str) -> int:
         return self._versions.get(principal, 0)
 

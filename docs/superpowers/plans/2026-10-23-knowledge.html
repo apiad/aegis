@@ -548,7 +548,7 @@ async def test_a_member_is_never_hinted_another_principals_memory(world):
 <!-- ============================================================ SLICE 2 -->
 <div class="slice" id="s2">slice 2 · skills · one PR</div>
 
-<details class="task" id="task-9" data-state="pending">
+<details class="task" id="task-9" data-state="done">
 <summary><span class="num">9</span><span><span class="ttl">Skills in the store, the index and the hint</span><span class="files">knowledge/store.py · knowledge/service.py · tests/test_knowledge_skills.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <p>The store already writes skills (Task 3). Here: <code>items</code> reads <code>skills/*/SKILL.md</code>, <code>Store.files(principal, name) -&gt; list[str]</code> lists a skill folder, and <code>Store.read_file(principal, name, rel) -&gt; bytes</code> refuses a path that leaves the folder. The hint's skills line comes from the skill index.</p>
