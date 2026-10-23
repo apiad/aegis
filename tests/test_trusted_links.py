@@ -177,7 +177,8 @@ async def test_an_agent_on_beta_lists_alphas_sessions(trusted):
     alpha, beta = trusted
     here, far = await alpha.spawn(), await beta.spawn()
     listed = json.loads((await turn(far, mcp("session_list"))).removeprefix("mcp ok: "))
-    assert {"handle": here.handle, "server": "alpha", "state": here.status} in listed
+    (entry,) = [e for e in listed if e.get("server") == "alpha"]
+    assert entry["handle"] == here.handle and entry["state"] == here.status
 
 
 async def test_a_person_on_beta_calls_alpha_but_cannot_watch_it(trusted):
@@ -243,3 +244,50 @@ def test_aegis_link_add_trusted_names_the_refusal(tmp_path, monkeypatch):
     )
     assert r.exit_code == 1
     assert "not linked: beta has tokens besides its admin's" in r.output
+
+
+# -- reading across ---------------------------------------------------------------------
+async def test_session_list_shows_a_trusted_servers_sessions_in_full(trusted):
+    alpha, beta = trusted
+    here, far = await alpha.spawn(), await beta.spawn()
+    beta.app.sessions.rename(far.log_id, None, "a far title")
+    listed = json.loads(
+        (await turn(here, mcp("session_list"))).removeprefix("mcp ok: ")
+    )
+    (entry,) = [e for e in listed if e.get("server") == "beta"]
+    assert entry["handle"] == far.handle and entry["title"] == "a far title"
+    assert "attention" in entry and "cwd" in entry and "you" not in entry
+
+
+async def test_an_agent_reads_a_session_across_a_trusted_link_both_ways(trusted):
+    alpha, beta = trusted
+    here, far = await alpha.spawn(), await beta.spawn()
+    await turn(far, "say the far marker")
+    await turn(here, "say the near marker")
+    out = await turn(here, mcp("peer_read", target=f"{far.handle}@beta"))
+    assert out.startswith("mcp ok:") and "the far marker" in out, out
+    out = await turn(far, mcp("peer_read", target=f"{here.handle}@alpha"))
+    assert out.startswith("mcp ok:") and "the near marker" in out, out
+
+
+async def test_a_trusted_servers_error_text_reaches_the_agent(trusted):
+    alpha, beta = trusted
+    here = await alpha.spawn()
+    out = await turn(here, mcp("peer_handoff", target="nosuch-one@beta", context="x"))
+    assert out.startswith("mcp error:") and "beta: no open session 'nosuch-one'" in out
+    out = await turn(here, mcp("peer_read", target="nosuch-one@beta"))
+    assert "beta: no open session 'nosuch-one'" in out, out
+
+
+async def test_reading_across_a_plain_link_is_still_refused(tmp_path, fake_claude):
+    beta = await Node(tmp_path / "beta", "beta", fake_claude).start()
+    alpha = await Node(tmp_path / "alpha", "alpha", fake_claude).start()
+    try:
+        alpha.app.links.add("beta", beta.base, beta.token)
+        await until(lambda: alpha.app.links.get("beta").state == "linked")
+        here, far = await alpha.spawn(), await beta.spawn()
+        out = await turn(here, mcp("peer_read", target=f"{far.handle}@beta"))
+        assert "not_across_links" in out and "trusted" in out, out
+    finally:
+        await alpha.stop()
+        await beta.stop()

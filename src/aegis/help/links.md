@@ -61,7 +61,8 @@ A session on a linked server is addressed `handle@server`. An agent here can:
 - see those sessions in `session_list`, by handle and state only.
 
 It cannot read a session there, enqueue there, close one there or wait on one
-with `monitor_sessions`; those calls are refused and say so. Text a far server
+with `monitor_sessions`; those calls are refused and say so. Over a
+[trusted link](#trusted-links) it can read. Text a far server
 wrote, such as titles, messages or error text, never reaches an agent here.
 Only an admin's agents act through a link.
 
@@ -92,6 +93,10 @@ the far server later ends the trust at its next call back.
 Over a trusted link, an agent on the far server reaches this one as an agent
 here reaches it: `session_spawn` with `agent@<this server>`, `peer_handoff`
 to `handle@<this server>`, and `session_list` lists this server's sessions.
+Agents on both servers also read across it as at home: `session_list` gives
+the other server's sessions in full (title, attention, plan, cwd) with
+`server`, `peer_read` reads `handle@server`, and an error the other server
+returns reaches the agent in its own words.
 A person in the far server's browser can call this server too, with
 `/spawn agent@<this server>`, but its Fleet and tabs do not show this
 server's sessions: live views still go one way. Nothing is relayed: a call

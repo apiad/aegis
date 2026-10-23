@@ -483,7 +483,7 @@ class _peer:
     ) -> Any:
         """Give another session context or an instruction; it arrives as a user turn headed `> from agent:<you>`. A busy target gets it when its turn ends, and is told meanwhile who waits; urgent reaches it inside the turn instead, at its next tool step, and interrupt cuts that turn first. `handle@server` reaches a session on a server this one links; nothing there can reach you back, unless the link is trusted."""
     async def read(self, *, target: str, last: int = ..., tools: bool = ...) -> Any:
-        """The last entries of another session's transcript, one line each."""
+        """The last entries of another session's transcript, one line each. `handle@server` reads a session on a server this one links with trust."""
 
 class _plan:
     async def update(self, *, items: builtins.list[dict[str, Any]]) -> Any:
@@ -623,7 +623,7 @@ class _session:
     async def kills(self, *, log_id: str) -> Any:
         """What Sleep would end with the process, one plain line each: what a park waits for, the stray processes included (park.kills). Asked when Sleep is chosen, since the /proc scan is too dear per publish."""
     async def list(self) -> Any:
-        """The open sessions on this server, each with its state, what it needs (attention and its line, what it waits on), its plan and what it is doing now, its model (`model` as configured, `model_id` as the harness resolved it, null until it has) and spend; then each linked server's by handle and state alone, as `handle@server`: reach one with peer_handoff."""
+        """The open sessions on this server, each with its state, what it needs (attention and its line, what it waits on), its plan and what it is doing now, its model (`model` as configured, `model_id` as the harness resolved it, null until it has) and spend; then each linked server's by handle and state alone, as `handle@server`: reach one with peer_handoff. A server linked with trust lists its sessions in full, with `server`."""
     async def quiet(self, *, handle: str | None = ...) -> Any:
         """Hide a session's tab while it works: it stays in the Fleet, dimmed, and its tab comes back by itself when its turn ends done, review, needs_you or error. Only a working or waiting session can be quiet. Use it for a session doing background work the person need not watch, your own included."""
     async def read(self, *, log_id: str, ids: builtins.list[str]) -> Any:

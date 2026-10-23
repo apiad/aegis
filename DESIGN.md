@@ -716,7 +716,10 @@ router find by name like any link. The far server checks the rule again before
 every call back and ends the trust with a `trust` frame when it fails. A way
 back carries calls only: subscriptions are refused (`not_both_ways`), nothing is
 relayed to a third server, and the archive merges outbound links alone. On a
-plain link an `rcall` is dropped like any unknown frame.
+plain link an `rcall` is dropped like any unknown frame. Text does travel over
+a trusted link: `session_list` passes the other server's entries whole,
+`peer_read` reads across it, and `agent_ops.far_error` passes its errors
+through, since the far server is this person's own.
 
 **The client knows no subsystem by name.** Server state reaches the browser as
 named channels: a snapshot on subscribe, then numbered patches. A gap in the
