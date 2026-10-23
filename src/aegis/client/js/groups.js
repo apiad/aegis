@@ -1,6 +1,8 @@
 // Groups (#586). A session belongs to the group of the session that started
 // it (SpawnSpec.group on the server); the bar and the Fleet draw each group as
-// one block, headed by its oldest open member. Pure functions over metas.
+// one block, headed by the session that started it, else the handoff that
+// continues that session (`leads`, #641), else its oldest open member. Pure
+// functions over metas.
 
 const tool = (m) => m.kind === "term" || m.kind === "browser";
 
@@ -21,6 +23,8 @@ export function hueOf(key) {
 }
 
 const older = (a, b) => (a.created_at || 0) - (b.created_at || 0);
+// The head first: the group's own session, then its handoff, then the rest.
+const rank = (m) => (!m.group ? 0 : m.leads ? 1 : 2);
 
 // The blocks in bar order: [{key, head, members}], members starting with the
 // head. A block stands where its first member stands in `metas`, which is in
@@ -34,7 +38,7 @@ export function blocksOf(metas, here) {
   }
   return [...groups].map(([key, ms]) => {
     const on = ms.filter((m) => !m.off);
-    const head = (on.length ? on : ms).slice().sort(older)[0];
+    const head = (on.length ? on : ms).slice().sort((a, b) => rank(a) - rank(b) || older(a, b))[0];
     return { key, head, members: [head, ...ms.filter((m) => m !== head)] };
   });
 }

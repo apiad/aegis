@@ -1880,11 +1880,28 @@ class App:
                     "busy", f"{old.handle} is working; hand it off when its turn ends"
                 )
             report = old.standing.get("report") or {}
+            # The new session takes the old one's place in its group (#641):
+            # it joins it, heads it when the old one did, and adopts the old
+            # one's children once the old one is archived (_retire_predecessor).
+            leads = old.spec.group is None or old.spec.leads
+            kids = tuple(
+                k.handle
+                for k in reg.sessions.values()
+                if k.spec.spawned_by == old.log_id
+            )
             prompt = handoff_opening(
-                old.handle, report.get("handoff"), spawn_tail(old.entries())
+                old.handle,
+                report.get("handoff"),
+                spawn_tail(old.entries()),
+                kids=kids,
+                leads=leads and bool(kids),
             )
             spec = dataclasses.replace(
-                old.spec, continues=old.log_id, spawned_by=None, spawned_from=None
+                old.spec,
+                continues=old.log_id,
+                spawned_from=None,
+                group=old.group_key(),
+                leads=leads,
             )
             spec, g = self.start_spec(spec)
             if not g.may_start:

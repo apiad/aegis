@@ -2,6 +2,7 @@
 
 import pytest
 
+from .test_agents import mcp
 from .test_browser import (  # noqa: F401
     browser,
     report,
@@ -61,6 +62,17 @@ def test_blocks_of_a_chain_a_root_gone_and_a_link(server, page):  # noqa: F811
     assert blocks(page, [b, lone, c]) == [["b", ["b", "c"]], ["d", ["d"]]]
     # An offline head yields to an online member.
     assert blocks(page, [dict(a, off=True), b]) == [["b", ["b", "a"]]]
+    assert page.errors == []
+
+
+def test_a_handoff_of_the_root_heads_its_group(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a, b = m("a", 1), m("b", 2, "a")
+    h = m("h", 3, "a", leads=True)  # a's handoff (#641)
+    # While a is open it heads; once archived, its handoff does, though newer.
+    assert blocks(page, [a, b, h]) == [["a", ["a", "b", "h"]]]
+    assert blocks(page, [b, h]) == [["h", ["h", "b"]]]
     assert page.errors == []
 
 
@@ -224,4 +236,30 @@ def test_a_form_left_unsent_forgets_its_source(server, page):  # noqa: F811
     page.click("#sp-go")
     page.wait_for_function("document.querySelectorAll('#tablist .tab').length === 2")
     assert len(bar(page)) == 2
+    assert page.errors == []
+
+
+def test_a_handoff_takes_its_place_at_the_head_of_its_group(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    old = spawn(page, mcp("session_spawn", agent="opus", prompt="hello"))
+    page.wait_for_function("document.querySelectorAll('#tablist .tab').length === 2")
+    [[head, kid]] = bar(page)
+    assert head == old
+    page.fill("#input", "/ctx 342000")
+    page.press("#input", "Enter")
+    turns_done(page, 2)
+    report(page, attention="done", line="Shipped.", handoff="Done: A. Next: B.")
+    turns_done(page, 3)
+    page.click("#replies .rp.hand >> text=continue fresh")
+    page.wait_for_function("k => location.hash.slice(3) !== k", arg=old)
+    new = page.evaluate("location.hash.slice(3)")
+    page.wait_for_selector(".row >> text=you head it now")
+    page.wait_for_function(
+        "k => !document.querySelector(`#tablist .tab[data-id='${k}']`)",
+        arg=old,
+        timeout=8000,
+    )
+    # The new tab heads the old group, ahead of the older child.
+    assert bar(page) == [[new, kid]]
     assert page.errors == []

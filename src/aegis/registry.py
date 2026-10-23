@@ -15,6 +15,7 @@ names one conversation for as long as the server keeps it.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 import re
 import secrets
@@ -254,6 +255,12 @@ class Registry(Host):
         ):
             old.mark_continued(None)
             return
+        # The sessions the old one started report to the new one now (#641).
+        for kid in self.sessions.values():
+            if kid.spec.spawned_by == old.log_id:
+                kid.spec = dataclasses.replace(kid.spec, spawned_by=new.log_id)
+                self.metas.write(kid.meta())
+        self.refresh_card(new.log_id)
         asyncio.get_running_loop().create_task(self._archive(old))
 
     async def _archive(self, s: Session) -> None:
