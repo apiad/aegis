@@ -26,7 +26,10 @@ from .ops import Caller
 
 if TYPE_CHECKING:
     from .api.ops import Ops
+    from .api.queues import Queues
+    from .api.schedules import Schedules
     from .api.sessions import Sessions
+    from .api.workflows import Workflows
     from .app import App
     from .roots import Roots
     from .users import MultiUser
@@ -206,6 +209,24 @@ class Server:
         from .api.sessions import Sessions
 
         return Sessions(self)
+
+    @property
+    def queues(self) -> Queues:
+        from .api.queues import Queues
+
+        return Queues(self)
+
+    @property
+    def workflows(self) -> Workflows:
+        from .api.workflows import Workflows
+
+        return Workflows(self)
+
+    @property
+    def schedules(self) -> Schedules:
+        from .api.schedules import Schedules
+
+        return Schedules(self)
 
     @property
     def ops(self) -> Ops:

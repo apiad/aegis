@@ -5,13 +5,15 @@ when: building your own program on aegis, starting an aegis server from Python, 
 hints:
   - Run aegis inside your own Python program and drive its sessions from code. #start-a-server
   - session.ask() sends a message and returns the turn it started, typed. #drive-a-session
+  - Enqueue tasks, run workflows and set schedules from Python. #queues-workflows-and-schedules
 ---
 
 A Python program can run an aegis server inside its own event loop and drive
 it through typed objects: a `Server`, its sessions as `Session` handles, and
 every other operation as a typed method on `srv.ops`. The names exported by
-`aegis` itself (`Server`, `Session`, `Turn`, `StartError`, `OpError`,
-`SessionNotFound`) and by `aegis.api` are the stable surface. Every other
+`aegis` itself (`Server`, `Session`, `Turn`, `Task`, `WorkflowRun`,
+`Schedule`, `StartError`, `OpError`, `SessionNotFound`) and by `aegis.api`
+are the stable surface. Every other
 module is internal and may change in any release.
 
 ## Start a server
@@ -88,6 +90,43 @@ on the real session, so a Session kept in a variable never goes stale:
   `TurnEnded` when a turn ends. Leaving the loop unsubscribes.
 - `entries()`, `interrupt()`, `stop()`, `close()` and `rename(handle, title)`
   do what their names say. A closed session raises `SessionNotFound`.
+
+## Queues, workflows and schedules
+
+```python
+task = await srv.queues.enqueue("review", "Review the diff in PR 12 ...")
+info = await task.wait(timeout=1800)          # TaskInfo
+print(info.status, info.result)               # completed, the worker's final message
+
+run = await srv.workflows.arm(definition, owner=s, approve=True)
+info = await run.wait(timeout=3600)           # RunInfo: ended, or waiting on an answer
+for item in info.open:
+    await run.answer(item.to, choice="continue")
+
+sch = await srv.schedules.create("nightly-check", cron="0 6 * * 1-5", prompt="...")
+await sch.pause()
+```
+
+These are live handles too, by task id, run id and schedule name:
+
+- `srv.queues.enqueue(queue, payload)` hands a self-contained prompt to a
+  fresh worker on a queue from `.aegis.yaml` and returns a `Task`, with
+  `info()`, `wait()`, `cancel()`, `resume()` and `worker()`. A task a program
+  enqueues has no enqueuer session, so its result reaches no inbox: read it
+  from `TaskInfo.result`.
+- `srv.workflows.arm(definition, owner=session)` arms a workflow, written as
+  for `workflow_arm`, with `owner` as its main agent. aegis wakes that
+  session when a gate, a worker's question or a failed step needs an answer,
+  so a run always has one. It runs once approved: pass `approve=True`, or call
+  `approve()` later. A `WorkflowRun` has `info()` (its status and a typed row
+  per node), `wait()`, which returns when the run ends or when `open` lists
+  something to answer, `answer(to, choice=..., value=..., text=...)`, sent as
+  the owner, and `stop()`, `reject()` and `owner()`.
+- `srv.schedules.create(name, prompt=..., every=|cron=|at=...)` fires a
+  prompt on a clock, into a new session from `agent` or into an existing
+  `session`'s inbox, after an optional bash `check`. A `Schedule` has
+  `info()`, `update(...)`, `pause()`, `resume()`, `fire()` and `delete()`. A
+  schedule a program creates is the admin's, so it starts unpaused.
 
 ## Call any operation
 

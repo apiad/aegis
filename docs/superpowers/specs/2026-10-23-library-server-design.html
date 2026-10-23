@@ -309,10 +309,16 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <li><code>src/aegis/__init__.py</code>: <code>__all__</code> with <code>Server</code>, <code>Session</code>, <code>Turn</code>, <code>StartError</code>, <code>OpError</code> and <code>SessionNotFound</code>, loaded lazily through a module <code>__getattr__</code> so <code>aegis call</code> stays fast. <code>src/aegis/py.typed</code>.</li>
   <li><code>make ops-stubs</code>, the help page <code>src/aegis/help/library.md</code>, a paragraph in <code>DESIGN.md</code>, and <code>changelog.d/646-library-server.added.md</code> naming <code>help: library</code>.</li>
 </ul>
-<h3>Slice 2, its own PR</h3>
-<ul>
-  <li><code>srv.queues</code> with <code>Task</code> (<code>status</code>, <code>wait</code>, <code>cancel</code>, <code>resume</code>), <code>srv.workflows</code> with <code>WorkflowRun</code> (<code>status</code>, <code>wait</code>, <code>answer</code>, <code>stop</code>, <code>result</code>), and <code>srv.schedules</code> with <code>Schedule</code>. Each follows the live-handle pattern from slice 1.</li>
-</ul>
+<h3>Slice 2, its own PR (built on feat/646-library-slice2)</h3>
+<table class="tbl">
+<thead><tr><th>Handle</th><th>Methods</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>srv.queues · Task</td><td><code>enqueue(queue, payload)</code>, <code>get</code>; <code>info() -&gt; TaskInfo</code>, <code>wait</code>, <code>cancel</code>, <code>resume</code>, <code>worker() -&gt; Session | None</code></td><td>A program's task has no enqueuer session, so its result is read from <code>TaskInfo.result</code>, not an inbox.</td></tr>
+<tr><td>srv.workflows · WorkflowRun</td><td><code>arm(definition, *, owner, args, approve)</code>, <code>get</code>, <code>list</code>; <code>info() -&gt; RunInfo</code>, <code>wait</code>, <code>answer</code>, <code>approve</code>, <code>reject</code>, <code>stop</code>, <code>owner</code></td><td><span class="who q">proposed</span> A run always has a main agent that aegis wakes, so <code>arm</code> and <code>answer</code> act as the <code>owner</code> session (an agent caller, which <code>workflow.arm</code> requires). <code>wait</code> returns when the run ends or when <code>open</code> lists something to answer.</td></tr>
+<tr><td>srv.schedules · Schedule</td><td><code>create(name, *, prompt, every | cron | at, agent | session, check, ...)</code>, <code>get</code>, <code>list</code>; <code>info() -&gt; ScheduleInfo</code>, <code>update</code>, <code>pause</code>, <code>resume</code>, <code>fire</code>, <code>delete</code></td><td>The definition is flattened into keyword arguments; exactly one clock. A program's schedule is the admin's and starts unpaused.</td></tr>
+</tbody>
+</table>
+<p>The spec's <code>WorkflowRun.result</code> is left out: a run has no value of its own, and each node's summary is in <code>RunInfo.nodes</code>. A schedule's run log stays <code>srv.ops.schedule.runs</code>.</p>
 
 <h2 id="testing"><span class="n">11</span>Testing</h2>
 <p>A new <code>tests/test_library.py</code>, with the fake claude and a temporary root:</p>
