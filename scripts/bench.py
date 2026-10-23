@@ -22,7 +22,11 @@ tests/fixtures/session.jsonl:
 - the Files view (#458) on a generated tree of 25,000 files: its first open of
   a Python file in a fresh browser context, the time from Alt+O to a listed
   picker (the first, which walks the tree, and the warm ones), and the
-  CodeMirror bytes the client loads for that file (core plus Python).
+  CodeMirror bytes the client loads for that file (core plus Python);
+- knowledge retrieval: the share of the labelled queries in the public library
+  tests/fixtures/knowledge/ with no relevant item in the top three, in
+  percent. A miss rate, not a hit rate, so it is lower-is-better like every
+  other row, and deterministic, so one sample is the figure.
 
 Each figure is the median of several samples taken after a warm-up, and
 the samples are kept in the result's ``samples``: one run's figures moved by
@@ -653,6 +657,13 @@ async def _term_echo(samples: int = 200) -> dict:
     }
 
 
+def knowledge_retrieval() -> dict:
+    sys.path.insert(0, str(ROOT))
+    from tests.knowledge_samples import fixture_hit_at_3
+
+    return {"knowledge_miss_at_3_pct": round(100 * (1 - fixture_hit_at_3()), 2)}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -666,6 +677,7 @@ def main() -> None:
     metrics.update(asyncio.run(server_cost(harness="codex")))
     metrics.update(boot_cost())
     metrics.update(asyncio.run(_term_echo()))
+    metrics.update(knowledge_retrieval())
     with sync_playwright() as p:
         metrics.update(browser_runs(p))
         metrics.update(fleet_load(p))
