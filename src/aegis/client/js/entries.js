@@ -571,6 +571,15 @@ function kindTag(r) {
 
 // The command or expression a row runs, never folded: a person approves the
 // action itself. An sh's is rendered once it has started.
+// A step's progress reading (#682) as a thin bar, the client's .bar.
+function progressBar(r) {
+  const bar = el("div", "bar thin");
+  const fill = el("i");
+  fill.style.width = `${r.percent}%`;
+  bar.append(fill);
+  return bar;
+}
+
 function commandOf(r) {
   if (r.kind === "sh") return `$ ${r.cmd}`;
   if (r.probe?.sh) return `$ ${r.cmd || r.probe.sh}`;
@@ -705,7 +714,10 @@ function nowSection(w) {
     const line = el("div", "nowline");
     line.dataset.node = r.id;
     const what = r.kind === "agent" ? stepLink(r) : el("span", "w", commandOf(r) || r.reading || kindTag(r));
-    line.append(el("span", "dot running"), el("span", "say", r.say), what, el("span", "dur", since(r.started, r.ended)));
+    line.append(el("span", "dot running"), el("span", "say", r.say), what);
+    if (r.percent != null) line.append(el("span", "pct", `${r.percent}%`));
+    line.append(el("span", "dur", since(r.started, r.ended)));
+    if (r.percent != null) line.append(progressBar(r));
     box.append(line);
   }
   for (const r of next) {
@@ -907,8 +919,13 @@ export function fillWorkflow(card) {
     main.append(tags);
     const cmd = commandOf(r);
     if (cmd) main.append(el("pre", "cmd", cmd));
+    if (r.progress) main.append(el("pre", "cmd progress", `progress $ ${r.progress}`));
     if (prompt && openPrompts.has(key)) main.append(el("pre", null, prompt));
-    if (r.reading) main.append(el("div", "out", r.reading));
+    if (r.reading || r.percent != null) {
+      const out = el("div", "out", [r.reading, r.percent != null && `${r.percent}%`].filter(Boolean).join(" · "));
+      if (r.percent != null) out.append(progressBar(r));
+      main.append(out);
+    }
     const counted = r.rounds ? el("div", "out", `round ${r.rounds.round} of ${r.rounds.max}`) : r.count ? el("div", "out", countLine(r.count)) : null;
     if (counted) {
       if (foldable(r)) counted.append(" · ", foldButton(w, r));
