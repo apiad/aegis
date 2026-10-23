@@ -22,6 +22,15 @@ sessions', and only the types the fold reads (``stream.STORED``) plus deltas.
 If the event stream closes while the child runs, the child is ended and its
 exit reported: a session that can no longer hear its harness must not look
 alive.
+
+Whatever starts a child ends it, on every path (#620): an OpenCode server holds
+about 300 MB doing nothing, and a day of leaked ones took a 32 GB host into the
+OOM killer. Ending one signals it before any await, so a cancellation part way
+through cannot skip the signal; a start or a probe that fails or is cancelled
+ends its child; the child dies with the process that started it (``launch``'s
+``die_with_parent``), so a server or a test killed outright leaves none behind;
+and it carries its owner (``sweep.OWNER``), so ``aegis serve`` reaps at start
+any child whose owner is gone (sweep.py).
 """
 
 from __future__ import annotations
@@ -42,6 +51,7 @@ from ..claude.control import Catalog
 from .. import launch
 from ..harness import Launch, session_env
 from .config import catalog_from, child_config, split_model
+from .sweep import OWNER, owner_tag
 from .stream import DELTAS, STORED, TURN_ENDS, _dict
 
 START_S = 15.0
@@ -115,6 +125,9 @@ class OpenCodeProcess:
         except (httpx.HTTPError, OSError, TimeoutError, KeyError, TypeError) as e:
             await self._end_child()
             raise ConnectionError(f"opencode serve did not start a session: {e}") from e
+        except BaseException:  # a cancellation too: the child must not outlive it
+            await self._end_child()
+            raise
         early, self._early = self._early, []
         for raw in early:
             self._deliver(raw)
@@ -182,33 +195,31 @@ class OpenCodeProcess:
                 child_config(self._launch.mcp, self.permission, self._launch.read_dirs)
             ),
             "OPENCODE_SERVER_PASSWORD": password,
+            OWNER: owner_tag(),
         }
         self._launch.stderr_path.parent.mkdir(parents=True, exist_ok=True)
         self._proc = await launch.child(
             [self._bin, "serve", "--hostname", "127.0.0.1", "--port", "0"],
             cwd=self._launch.cwd, env=session_env(self._launch, env),
             stdin=launch.DEVNULL, stdout=launch.PIPE, stderr=launch.PIPE,
-            cgroup=self._launch.cgroup, oom=True, user=self._launch.user
+            cgroup=self._launch.cgroup, oom=True, user=self._launch.user,
+            die_with_parent=True,
         )  # fmt: skip
-        self._keep(self._drain(self._proc.stderr))
         try:
+            self._keep(self._drain(self._proc.stderr))
             url = await asyncio.wait_for(self._listening(), START_S)
-        except (TimeoutError, OSError):
-            await self._end_child()
-            raise
-        self._keep(self._drain(self._proc.stdout))
-        self._client = httpx.AsyncClient(
-            base_url=url,
-            auth=("opencode", password),
-            params={"directory": str(self._launch.cwd)},
-            timeout=httpx.Timeout(REQUEST_S, read=None),
-        )
-        self._connected = asyncio.Event()
-        self._commands_ready = asyncio.Event()
-        self._pump_task = asyncio.create_task(self._pump())
-        try:
+            self._keep(self._drain(self._proc.stdout))
+            self._client = httpx.AsyncClient(
+                base_url=url,
+                auth=("opencode", password),
+                params={"directory": str(self._launch.cwd)},
+                timeout=httpx.Timeout(REQUEST_S, read=None),
+            )
+            self._connected = asyncio.Event()
+            self._commands_ready = asyncio.Event()
+            self._pump_task = asyncio.create_task(self._pump())
             await asyncio.wait_for(self._connected.wait(), START_S)
-        except TimeoutError:
+        except BaseException:  # a cancellation too: the child must not outlive it
             await self._end_child()
             raise
         self._wait_task = asyncio.create_task(self._wait())
@@ -266,10 +277,13 @@ class OpenCodeProcess:
 
     async def _end_child(self) -> None:
         self._quiet = True
-        await self._close()
         proc = self._proc
         if proc is not None and proc.returncode is None:
-            proc.terminate()
+            proc.terminate()  # before any await, which a cancellation can cut
+        else:
+            proc = None
+        await self._close()
+        if proc is not None:
             try:
                 await asyncio.wait_for(proc.wait(), TERM_GRACE_S)
             except TimeoutError:
@@ -491,8 +505,8 @@ async def probe(bin: str, cwd: Path, stderr_path: Path) -> Catalog:
             on_line=lambda line: None, on_exit=lambda code, tail: None,
         ),
     )  # fmt: skip
-    await p._spawn()
     try:
+        await p._spawn()
         return await p._read_catalog()
     except httpx.HTTPError as e:
         raise ConnectionError(f"opencode serve gave no catalog: {e}") from e

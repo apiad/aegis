@@ -208,3 +208,32 @@ async def test_a_start_that_fails_after_listening_ends_the_child(
         what="the child gone",
     )
     assert not r.proc.running
+
+
+def _gone(pid: int) -> bool:
+    p = Path(f"/proc/{pid}/status")
+    return not p.exists() or "State:\tZ" in p.read_text()
+
+
+async def test_a_probe_cancelled_while_starting_ends_its_child(
+    tmp_path, fake_opencode, monkeypatch
+):
+    """The doctor's probe runs under a timeout and a server's shutdown cancels
+    it: cut before the child listens, it must still end the child (#620)."""
+    log = tmp_path / "fake.log"
+    monkeypatch.setenv("FAKE_OPENCODE_LOG", str(log))
+    monkeypatch.setenv("FAKE_OPENCODE_SLOW_START", "30")
+    task = asyncio.create_task(probe(fake_opencode, tmp_path, tmp_path / "p.log"))
+    await until(lambda: log.exists() and "START" in log.read_text(), what="the start")
+    (pid,) = [int(x.split()[1]) for x in log.read_text().splitlines()]
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    await until(lambda: _gone(pid), what="the child gone")
+
+
+async def test_a_child_carries_its_owner(rig):
+    from aegis.opencode.sweep import OWNER, owner_tag
+
+    env = Path(f"/proc/{rig.proc.pid}/environ").read_bytes().split(b"\0")
+    assert f"{OWNER}={owner_tag()}".encode() in env

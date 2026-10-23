@@ -127,6 +127,7 @@ from .btws import SideNotes
 from .recaps import Recaps
 from .ops import Caller, NoParams, OpError, Principal, Registry as Ops
 from . import as_user, launch
+from .opencode import sweep as opencode_sweep
 from .tokens import TokenStore
 from .as_user import Place
 from .member_view import MemberView
@@ -903,6 +904,9 @@ class App:
         }.get(harness, self.claude_bin)
 
     async def boot(self) -> None:
+        # Before any session starts its own: the OpenCode servers a server or
+        # test that is gone left behind (#620).
+        opencode_sweep.sweep()
         self._config_task = asyncio.create_task(self.config.watch())
         # Before any session starts, so every harness child gets its cgroup.
         self.sessions.cgroups = SessionCgroups.setup(
