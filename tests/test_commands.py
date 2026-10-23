@@ -176,6 +176,26 @@ async def test_commands_list_puts_aegis_first_and_hides_what_it_shadows(app):
     assert r["permissions"] == ["read", "write", "full", "auto"]
 
 
+async def test_commands_preview_lists_aegis_then_the_harness_a_session_listed(app):
+    # The new tab's menu (#632): no session yet, so no probe.
+    r = await app.registry.call("commands.preview", {"harness": "claude-code"})
+    names = {c["name"] for c in r["commands"]}
+    assert {"effort", "model", "help"} <= names and "compact" not in names
+    assert r["complete"] is False
+    lid = await spawn(app)
+    s = app.sessions.sessions[lid]
+    assert s.spec.harness == "claude-code"
+    await s.catalog_task  # the process lists its commands after it starts
+    r = await app.registry.call(
+        "commands.preview", {"harness": s.spec.harness, "cwd": str(s.spec.cwd)}
+    )
+    assert "compact" in {c["name"] for c in r["commands"]}
+    r = await app.registry.call(
+        "commands.preview", {"harness": s.spec.harness, "cwd": "/nowhere"}
+    )
+    assert "compact" not in {c["name"] for c in r["commands"]}
+
+
 @pytest.mark.slow
 async def test_a_stopped_session_after_a_restart_gets_its_catalog_from_a_probe(
     tmp_path, fake_claude
