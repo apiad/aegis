@@ -1,0 +1,1 @@
+- **The tab card wears the theme again.** Hovering a tab drew its card huge and see-through, in serif, with the clock icon at full width: the card sat outside the app root, where no theme variable and no Fleet card rule reached it. It now mounts inside it.

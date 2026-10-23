@@ -47,6 +47,22 @@ def test_hover_opens_the_card_and_moving_onto_it_keeps_it(server, page):  # noqa
     assert page.errors == []
 
 
+def test_the_card_wears_the_theme(server, page):  # noqa: F811
+    # The theme's variables and the Fleet card's rules live under #a2 (#657).
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    key = spawn(page, "hello")
+    page.goto(server.url.split("#")[0] + "#fleet")
+    open_card(page, key)
+    style = page.eval_on_selector(
+        ".tabcard",
+        """c => ({bg: getComputedStyle(c).backgroundColor,
+                 card: getComputedStyle(c.querySelector('.card')).display})""",
+    )
+    assert style["bg"] != "rgba(0, 0, 0, 0)"
+    assert style["card"] == "flex"
+
+
 def test_the_cards_buttons_are_the_tab_menus_items(server, page):  # noqa: F811
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
