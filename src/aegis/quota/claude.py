@@ -15,6 +15,7 @@ import json
 import os
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .core import (
@@ -103,6 +104,42 @@ def parse_quota(payload: dict, *, now: float) -> QuotaSnapshot:
             )
         )
     return QuotaSnapshot(windows=tuple(windows), fetched_at=now)
+
+
+# Claude Code's stream names its windows apart from the endpoint's kinds.
+STREAM_KINDS = {
+    "five_hour": "session",
+    "seven_day": "weekly_all",
+    "seven_day_opus": "weekly_opus",
+}
+
+
+def parse_stream(windows: dict, *, now: float) -> QuotaSnapshot | None:
+    """A snapshot from a ``rate_limit_event``'s ``unifiedWindows``, where
+    utilization is a fraction and ``resetsAt`` Unix seconds; None when no
+    window can be read."""
+    out: list[QuotaWindow] = []
+    for name, raw in windows.items():
+        kind = STREAM_KINDS.get(name)
+        if kind is None or not isinstance(raw, dict):
+            continue
+        u = raw.get("utilization")
+        if not isinstance(u, (int, float)) or isinstance(u, bool):
+            continue
+        percent = round(float(u) * 100, 1)
+        resets = raw.get("resetsAt")
+        out.append(
+            QuotaWindow(
+                kind=kind,
+                percent=percent,
+                severity=_severity(percent, None),
+                resets_at=datetime.fromtimestamp(resets, timezone.utc)
+                if isinstance(resets, (int, float)) and not isinstance(resets, bool)
+                else None,
+                is_active=False,
+            )
+        )
+    return QuotaSnapshot(windows=tuple(out), fetched_at=now) if out else None
 
 
 def fetch_quota(
