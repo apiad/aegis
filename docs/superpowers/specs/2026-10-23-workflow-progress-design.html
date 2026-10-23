@@ -156,7 +156,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · progress on waiting workflow steps</span>
-  <span class="st"><span class="pill acc">proposed</span><span class="pill">2026-10-23</span><span class="pill">#682</span></span>
+  <span class="st"><span class="pill acc">built: on branch feat/682-workflow-progress</span><span class="pill">2026-10-23</span><span class="pill">#682</span></span>
 </div>
 
 <div class="wrap">
@@ -173,7 +173,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 
 <main>
 <h1>A progress bar for each step a workflow waits on</h1>
-<div class="meta"><span>docs/superpowers/specs/2026-10-23-workflow-progress-design.html</span><span>·</span><span>proposed</span></div>
+<div class="meta"><span>docs/superpowers/specs/2026-10-23-workflow-progress-design.html</span><span>·</span><span>built</span></div>
 <p class="lede">A monitor takes a <code>progress</code> command that prints 0 to 100, and the person watches its bar. A workflow's <code>sh</code> and <code>check</code> steps wait on the same kind of thing (CI, a build, a deploy) but show only their command and how long they have run. This spec adds the same <code>progress</code> command to both, and draws its bar on the workflow card.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>

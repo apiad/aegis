@@ -115,6 +115,23 @@ an agent once for a yes or a no, with each of `inputs` (references such as
 `impl` or `review.verdict`) given to it as JSON. A judge counts in the same
 limits as an agent node. Without a deadline above it, a check gives up after
 an hour and a command after 30 minutes. `wait: 20m` pauses on wall time.
+An `sh` step, or a `check` whose probe is `sh`, can carry `progress:` beside
+it: a command that prints a number from 0 to 100, as a monitor's does. The
+card draws it as a bar on the step's line in Now and on its row, so the person
+can tell a step nearly done from one that is stuck. A check reads it after each
+probe that does not pass, and an `sh` every 15 seconds while its command runs.
+The last line of its output is the number; anything else keeps the last
+reading and never fails the step. It takes values as any command does, the
+person approves it with the rest, and a restart loses the reading until the
+next one.
+
+```yaml
+- check: {sh: "test -f build/done", every: 1m}
+  progress: "ls build/*.o | wc -l | awk '{print int($1 * 100 / 120)}'"
+  deadline: 2h
+  say: Wait for the build, counting its objects.
+```
+
 A wait whose length is filled in at run time can carry `between: [1m, 1h]`
 beside it, and the length is clamped into those bounds, so a value an agent
 gives never waits longer than the definition allows.

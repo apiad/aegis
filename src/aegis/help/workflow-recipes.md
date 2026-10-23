@@ -99,6 +99,7 @@ root:
               id: settle
               say: Give CI a moment to start on the latest push.
             - check: {sh: "gh pr checks {{args.pr}} --json bucket -q 'length > 0 and all(.[]; .bucket != \"pending\")' | grep -qx true", every: 1m}
+              progress: "gh pr checks {{args.pr}} --json bucket -q '(map(select(.bucket != \"pending\")) | length) * 100 / ([length, 1] | max) | floor'"
               id: finished
               deadline: 1h
               retries: 1
