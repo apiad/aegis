@@ -8,7 +8,7 @@
 
 import { Connection } from "./protocol.js";
 import { Transcript } from "./transcript.js";
-import { artifactStage, btwFolds, fadeTables, fileUrl, refreshApprovals, refreshWorkflows, setApprovals, setDocker, setFileBase, setOpener, setSecrets, setWorkflows, syncDock, tickWorkflows, workflowLocked, workflowTitle } from "./entries.js";
+import { artifactStage, btwFolds, fadeTables, fileUrl, refreshApprovals, refreshWorkflows, setApprovals, setDocker, setFileBase, setOpener, setSecrets, setSpeaker, setWorkflows, syncDock, tickWorkflows, workflowLocked, workflowTitle } from "./entries.js";
 import { setScroller } from "./highlight.js";
 import { Viewer, peekRoots } from "./viewer.js";
 import { Canvas } from "./canvas.js";
@@ -42,6 +42,7 @@ import { Dictation } from "./dictation.js";
 import { Attachments } from "./attach.js";
 import { dur, planTimes } from "./plantime.js";
 import { setToastOpener, toast } from "./toast.js";
+import { Speaker } from "./speak.js";
 import { closeTerm, drawCard, openTerm } from "./termview.js";
 import { browserSources, closeBrowser, drawBrowser, mountBrowser, openBrowser } from "./browserview.js";
 import { applyUpdate, checkForUpdate, setAutoApply, startWorker } from "./appworker.js";
@@ -129,6 +130,7 @@ const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
     }
   },
   onSelect: drawNav,
+  onReply: (id) => speaker.arrived(id),
   // In tab mode with another tab open the transcript is laid out but hidden.
   seen: () => canvas.transcriptShown(),
   loadDetail: (ids) => {
@@ -342,6 +344,38 @@ function foldLevel(level) {
 }
 foldLevel(Number(localStorage.getItem("aegis.foldLevel")) % 3 || 0);
 $("nav-fold").addEventListener("click", () => foldLevel((transcript.foldLevel + 1) % 3));
+// Reading replies aloud (speak.js): one speaker for this browser. The
+// composer's toggle, beside the mic, follows a session, reading each new reply as it arrives;
+// which sessions are followed is this tab's, kept across a reload.
+const speaker = new Speaker({
+  prepare: () => conn.call("speech.prepare"),
+  row: (id) => transcript.nodes.get(id) || null,
+  onError: (message) => toast(`Read aloud: ${message}`, { kind: "error" }),
+});
+setSpeaker(speaker);
+const followed = new Set(JSON.parse(sessionStorage.getItem("aegis.speakFollow") || "[]"));
+$("speak-follow").append(icon("speak"));
+function drawSpeak() {
+  const on = !!shown && followed.has(shown);
+  $("speak-follow").classList.toggle("on", on);
+  $("speak-follow").setAttribute("aria-pressed", String(on));
+  $("speak-follow").title = on ? "Stop reading new replies aloud" : "Read new replies aloud";
+  speaker.setFollowing(on);
+}
+$("speak-follow").addEventListener("click", () => {
+  if (!shown) return;
+  if (followed.has(shown)) followed.delete(shown);
+  else followed.add(shown);
+  sessionStorage.setItem("aegis.speakFollow", JSON.stringify([...followed]));
+  drawSpeak();
+});
+$("entries").addEventListener("click", (ev) => {
+  const b = ev.target.closest("button.speak");
+  const row = b?.closest(".row.prose");
+  if (!row) return;
+  ev.preventDefault();
+  speaker.toggle(row);
+});
 // How the Fleet orders its cards: this browser's choice, like the tab order.
 let fleetOrder = localStorage.getItem("aegis.fleetOrder") || "attention";
 // Unfolded groups in the Fleet (#586), this browser's own and apart from the
@@ -590,7 +624,7 @@ document.addEventListener("visibilitychange", () => {
   conn.retryNow();
   if (conn.open) checkPush(); // otherwise the connect does
 });
-const settings = new Settings(conn, $("settings"), { themes: THEMES, setTheme });
+const settings = new Settings(conn, $("settings"), { themes: THEMES, setTheme, speaker });
 let landEntry = null; // {key, id}: reveal this entry once its transcript lands
 const journal = new Journal(conn, $("journal"), {
   onOpen: (r) => {
@@ -1658,7 +1692,9 @@ function follow(id) {
   drawNavNow(); // at once: the old session's navigator goes with its rows
   find.close(false); // it searched the old session
   if (dictation.target?.el === input) dictation.stop("tab"); // a recording belongs to its session
+  speaker.stop(); // what is being read belongs to the session on screen
   shown = id;
+  drawSpeak();
   if (sessions.has(id)) sessionStorage.setItem("aegis.lastShown", (lastShown = id));
   tellView();
   const turn = ++follows;
