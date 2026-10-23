@@ -252,6 +252,7 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
       <div class="side-acts live-only">
         <button class="act stop needs-net" id="stop-session" title="Sleep: end the process and keep the conversation; the next message wakes it"><svg class="ic i-sleep" aria-hidden="true"><use href="#g-sleep"/></svg><span>Sleep</span></button>
         <button class="act" id="quiet-session" title="Quiet: hide the tab until the turn ends; its card stays in the Fleet"><svg class="ic i-quiet" aria-hidden="true"><use href="#g-quiet"/></svg><span>Quiet</span></button>
+        <button class="act needs-net" id="autoclose-session" aria-pressed="false" title="Autoclose: once on, the agent must end done with close, so the session closes when it finishes"><svg class="ic i-archive" aria-hidden="true"><use href="#g-archive"/></svg><span>Autoclose</span></button>
         <button class="act needs-net" id="continue" title="Continue: send “Continue” to the agent"><svg class="ic i-play" aria-hidden="true"><use href="#g-play"/></svg><span>Continue</span></button>
         <button class="act needs-net" id="restart" title="Restart: a fresh process on the same conversation; nothing is sent"><svg class="ic i-restart" aria-hidden="true"><use href="#g-restart"/></svg><span>Restart</span></button>
         <button class="act needs-net" id="close" title="Archive: the tab goes away in every browser; Reopen brings it back"><svg class="ic i-archive" aria-hidden="true"><use href="#g-archive"/></svg><span>Archive</span></button>

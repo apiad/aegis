@@ -118,8 +118,11 @@ for five minutes.
 ## Close yourself when you finish
 
 When the person tells you to close when you are done ("merge it and close"),
-or the plan or workflow they approved says so, end your last turn with
-`turn_end` with `attention` done and `close` true. Never pass it on your own
+or the plan or workflow they approved says so, or your session is in
+autoclose ([sessions#autoclose](sessions#autoclose)), end your last turn with
+`turn_end` with `attention` done and `close` true. In autoclose, `turn_end`
+refuses done without `close`: end done with `close`, or with review or
+needs_you while the work is not over. Never pass it on your own
 judgment: a person may still want to read the tab.
 
 aegis archives your session once that turn ends, together with every session

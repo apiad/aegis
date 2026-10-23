@@ -284,8 +284,9 @@ class TurnEnd(_Strict):
         description="With done only: archive your session, and every session you "
         "or they started, once this turn ends and all of them are finished. Only "
         "when the person told you in this conversation to close when you finish, "
-        "or the plan or workflow they approved says so; never on your own "
-        "judgment. Refused while you or they still wait on anything.",
+        "or the plan or workflow they approved says so, or your session is in "
+        "autoclose; never on your own judgment. Refused while you or they still "
+        "wait on anything.",
     )
 
 
@@ -1445,6 +1446,16 @@ def register_agent_ops(app: App) -> None:
                 "unfinished items. If it is over, mark them done or drop them with "
                 "plan_update, then call turn_end again; if not, call turn_end with "
                 "review, or needs_you when you ask something.",
+            )
+        # The person turned autoclose on (#691): their word to close is
+        # given ahead of time, so done without close is the one ending left out.
+        if p.attention == "done" and not p.close and s.autoclose:
+            raise OpError(
+                "autoclose",
+                "this session is in autoclose: the person asked for it to close "
+                "when you finish. If the task is over, call turn_end with done and "
+                "close true; if it is not, call turn_end with review, or needs_you "
+                "when you ask something.",
             )
         if p.attention == "done" and not p.close and (live := reg.wakers(s)):
             raise OpError(

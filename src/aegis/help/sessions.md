@@ -300,6 +300,27 @@ Quiet is about the tab, not the process: a quiet session keeps working, and
 sleeping one keeps it quiet. Wake, Continue and Restart leave it quiet too;
 Reopen clears it.
 
+## Autoclose
+
+Autoclose is your word, given ahead of time, that a session should close
+once its agent finishes. While it is on, the agent can end a turn in three
+ways only: done with `close`, which archives the session as soon as nothing
+it started still runs; review; or needs_you. A `turn_end` with done and no
+`close` is refused with a message that says so, and the agent picks one of
+the three. You no longer have to tell it "close when you are done".
+
+- The Autoclose button in the session panel turns it on and off; it shows
+  in the accent colour while on.
+- The menu of a session's card or tab has Autoclose on and Autoclose off.
+- `/autoclose` in a session's box toggles it; `/autoclose on` and
+  `/autoclose off` set it.
+
+Only a person turns it on or off: no agent tool does. It stays on across a
+sleep, a restart and a reopen. Everything that refuses `close` still
+refuses it: a live monitor, a queue task, a workflow run, or a session it
+started that has not ended done. The agent waits for those, or cancels
+them, before it ends done.
+
 ## Menus
 
 A session's card in the Fleet and its tab carry the same menu. Open it with a

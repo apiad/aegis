@@ -1144,6 +1144,23 @@ def test_quiet_is_disabled_on_an_idle_session(server, page):
     assert page.is_disabled("#quiet-session")
 
 
+def test_the_autoclose_button_toggles_and_the_agent_must_then_close(server, page):
+    """#691: Autoclose is pressed while on, and a done without close is then
+    refused, so the agent's answer is the refusal."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    page.wait_for_selector("#s-status.at-done")
+    page.click("#autoclose-session")
+    page.wait_for_selector("#autoclose-session[aria-pressed=true]")
+    page.fill("#input", '/mcp turn_end {"attention": "done", "line": "over"}')
+    page.click("#send")
+    page.wait_for_selector("text=this session is in autoclose")
+    page.click("#autoclose-session")
+    page.wait_for_selector("#autoclose-session[aria-pressed=false]")
+    assert page.errors == []
+
+
 def test_alt_q_quiets_a_working_session_and_leaves_an_idle_one(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
