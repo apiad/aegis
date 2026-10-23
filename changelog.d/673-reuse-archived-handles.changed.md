@@ -1,0 +1,2 @@
+- **A rename can take an archived session's handle.** Handles had to be unique across every session the server ever ran, so a finished session kept its name reserved and `session_rename` refused it with `handle_taken`. Now only open sessions hold their handles. Reopening an archived session whose handle an open one took gives it a numbered form (`docs-sweep-2`). New handles aegis picks itself still avoid archived ones.
+help: sessions#rename-it

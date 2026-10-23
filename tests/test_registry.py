@@ -211,6 +211,22 @@ async def test_handles_never_repeat_across_archive_and_restart(world):
     await r2.shutdown()
 
 
+async def test_a_rename_takes_an_archived_handle_and_a_reopen_frees_it(world):
+    r = world.registry()
+    old, new = await r.spawn(world.spec()), await r.spawn(world.spec())
+    r.rename(old.log_id, "docs-sweep", None)
+    await r.close(old.log_id)
+    assert r.rename(new.log_id, "docs-sweep", None)["handle"] == "docs-sweep"
+    await r.shutdown()
+    r2 = world.registry()
+    assert r2.sessions[new.log_id].handle == "docs-sweep"
+    assert r2.archived[old.log_id]["handle"] == "docs-sweep"
+    reopened = r2.reopen(old.log_id)
+    assert reopened.handle == "docs-sweep-2"
+    assert r2.sessions[new.log_id].handle == "docs-sweep"
+    await r2.shutdown()
+
+
 async def test_archive_filters_and_pages(world):
     sessions = world.roots.state_root / "sessions"
     sessions.mkdir(parents=True)

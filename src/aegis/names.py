@@ -1,8 +1,11 @@
 """Session handles and default titles.
 
 A handle is ``<adjective>-<laureate>`` with a shared initial (``lucid-lamport``),
-unique among every session on the server, archived ones included. It is a label a
-person reads and renames; the log id is the key (DESIGN.md). The word lists are
+unique among the open sessions on the server. A minted handle also avoids every
+archived one, so a fresh name never repeats; a rename may take an archived
+session's handle, and that session gets a free form of it if it is reopened
+(#673). It is a label a person reads and renames; the log id is the key
+(DESIGN.md). The word lists are
 copied from the old tree's handle pool.
 """
 
@@ -64,6 +67,19 @@ def mint_handle(taken: set[str], rng: random.Random | None = None) -> str:
     while f"{base}-{i}" in taken:
         i += 1
     return f"{base}-{i}"
+
+
+def free_handle(handle: str, taken: set[str]) -> str:
+    """``handle``, or ``handle-2``, ``handle-3``... when it is taken; a fresh
+    one when no such form is a valid handle."""
+    if valid_handle(handle) and handle not in taken:
+        return handle
+    n = 2
+    while valid_handle(f"{handle}-{n}"):
+        if f"{handle}-{n}" not in taken:
+            return f"{handle}-{n}"
+        n += 1
+    return mint_handle(taken)
 
 
 # The first and last markers of a /spawn opening (agent_ops.spawn_opening), here
