@@ -979,6 +979,14 @@ model read things in. An answer takes the pending send whose text it answers,
 else the oldest of its kind, because a slash command waits for the turn to end
 while a prompt is read at the next tool boundary.
 
+**An echo that is only Claude Code's own wake is an inbox row, never the person's
+words.** When a background command or a subagent ends, Claude Code sends a
+`<task-notification>` prompt. `describe.task_notices` reads it into a header
+(`background · failed · exit 1`), a label (the command's opening comment, its
+description, or the subagent's name) and a fold (the command or the subagent's
+report, and the output file), and drops its ids. A failed or killed task is an
+`err` row. Any other text in the prompt keeps it a user row.
+
 **System notices never start a turn.** Hook, init, thinking-token and task notices
 arrive both inside and outside turns. Only a sent prompt or a turn-bearing event
 moves a session to working, and only `result` or the end of the stream moves it

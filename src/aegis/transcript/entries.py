@@ -1153,6 +1153,24 @@ class Fold:
             self._clock(ts, "work")
             # The notices it carried follow it as their own rows.
             head, notices = split_notices(ev.text)
+            if tasks := d.task_notices(head):
+                # Claude Code's own wake for a background command or a
+                # subagent that ended: a row like aegis's wakes, never the
+                # person's words (#699).
+                for i, t in enumerate(tasks):
+                    ops += self._upsert(
+                        _entry(
+                            id if i == 0 else f"{id}:task:{i}",
+                            "inbox",
+                            t["status"],
+                            ts,
+                            d.COMMS_GLYPH,
+                            title=t["title"],
+                            md=t["md"],
+                            detail=t["detail"],
+                        )
+                    )
+                return ops + self._notice_rows(id, ts, notices)
             if head.startswith("> from "):
                 # An inbox message: a monitor wake, a queue result, a handoff.
                 header = head.splitlines()[0].removeprefix("> from ").strip()

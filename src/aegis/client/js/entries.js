@@ -1553,7 +1553,17 @@ const RENDERERS = {
     body.append(from);
     const text = (e.md || "").split("\n").filter((l) => !l.startsWith("> from ")).join("\n");
     body.append(markdown(text));
-    return row(e, "inbox", body);
+    // A background command's or a subagent's notice: the command or the
+    // report, and where its output went, folded under the label (#699).
+    const det = e.detail || {};
+    if (det.fold || det.output) {
+      const d = el("details");
+      d.append(el("summary", null, det.lang ? "command" : det.fold ? "report" : "output"));
+      if (det.fold) d.append(det.lang ? argsView(det.fold, det.lang) : markdown(det.fold));
+      if (det.output) d.append(el("div", "outfile", det.output));
+      body.append(d);
+    }
+    return row(e, `inbox ${e.status}`, body);
   },
 
   file(e) {
