@@ -1320,3 +1320,36 @@ def test_required_names_only_properties_there_are():
     assert lint_args("{type: object, required: [a]}") == [
         "$.args.required: a is not one of its properties"
     ]
+
+
+def test_progress_sits_beside_sh_and_an_sh_check_only():
+    base = "id: w\ntitle: T\nsay: S.\nroot:\n  %s\n  say: Wait.\n"
+    wf, errors = parse(base % "sh: make\n  progress: echo 50", AGENTS)
+    assert wf is not None and wf.root.body["progress"] == "echo 50", errors
+    wf, errors = parse(
+        base % "check: {sh: 'true', every: 1m}\n  progress: echo 50", AGENTS
+    )
+    assert wf is not None and wf.root.body["progress"] == "echo 50", errors
+    for other in (
+        "check: {expr: 'true'}",
+        "check: {judge: {agent: opus, prompt: p}}",
+        "wait: 5m",
+        "agent: {agent: opus, prompt: p}",
+    ):
+        _, errors = parse(base % f"{other}\n  progress: echo 50", AGENTS)
+        assert [e.path for e in errors] == ["$.root.progress"], (other, errors)
+    for bad in ("''", "[echo, 50]", "3"):
+        _, errors = parse(base % f"sh: make\n  progress: {bad}", AGENTS)
+        assert [e.path for e in errors] == ["$.root.progress"], (bad, errors)
+
+
+def test_progress_is_linted_as_a_command_and_drawn_on_its_row():
+    base = (
+        "id: w\ntitle: T\nsay: S.\nargs: {type: object, properties: {t: {type: string}}}\n"
+        "root:\n  sh: make\n  progress: %s\n  say: Build.\n"
+    )
+    _, errors = parse(base % "\"echo '{{args.t}}'\"", AGENTS)
+    assert [e.path for e in errors] == ["$.root.progress"], errors
+    wf, errors = parse(base % '"count {{args.t}}"', AGENTS)
+    assert wf is not None, errors
+    assert rows(wf)[0]["progress"] == "count {{args.t}}"

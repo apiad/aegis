@@ -42,7 +42,7 @@ KINDS = (
 )
 RUNS = frozenset(KINDS)  # the kinds this version runs
 COMMON = frozenset(
-    {"id", "say", "after", "deadline", "retries", "see", "cap", "between"}
+    {"id", "say", "after", "deadline", "retries", "see", "cap", "between", "progress"}
 )
 MAP_FIELDS = frozenset({"over", "as", "cap", "do"})
 TYPES = frozenset({"object", "array", "string", "integer", "number", "boolean"})
@@ -766,6 +766,8 @@ def rows(wf: Workflow, items=lambda path: None) -> list[dict]:
             row["cmd"] = n.body.get("sh", "")
         if n.body.get("probe"):
             row["probe"] = n.body["probe"]
+        if n.body.get("progress"):
+            row["progress"] = n.body["progress"]
         if n.kind == "wait":
             row["wait"] = n.body.get("wait")
         if n.kind == "gate":
@@ -966,6 +968,8 @@ class _Parser:
             node.body = {"sh": body}
         elif kind == "check":
             node.body = {"probe": self.probe(body, f"{path}.check")}
+        if "progress" in raw:
+            self.progress(raw["progress"], kind, node, f"{path}.progress")
         elif kind == "wait":
             if duration(body) is None and not (
                 isinstance(body, str) and WHOLE.match(body)
@@ -1043,6 +1047,17 @@ class _Parser:
                 "value there"
             )
             self.err(path, f"{tpl} sits inside {where}, {why}")
+
+    def progress(self, raw, kind: str, node: Node, path: str) -> None:
+        """A command printing 0 to 100 for the card's bar, beside an sh or
+        an sh check: only those wait long enough to measure (#682)."""
+        if not (kind == "sh" or (kind == "check" and "sh" in node.body["probe"])):
+            self.err(path, "progress sits beside sh, or a check whose probe is sh")
+        elif not isinstance(raw, str) or not raw.strip():
+            self.err(path, "progress holds a command, as one string")
+        else:
+            self.command(raw, path)
+            node.body["progress"] = raw
 
     def probe(self, raw, path: str) -> dict:
         """One of three probes (spec §04): sh passes on exit 0, expr on a
@@ -1933,6 +1948,7 @@ PART = {
     "at_max": "what it is at its last round",
     "wait": "its wait",
     "between": "its bounds",
+    "progress": "its progress command",
     "show": "what it shows",
     "by": "who decides",
 }

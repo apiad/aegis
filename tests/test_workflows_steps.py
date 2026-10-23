@@ -639,6 +639,8 @@ async def test_a_judge_gives_one_verdict_and_no_early_output(world):
         '{sh: "echo {{args.t}}", id: s, retries: 2, say: Echo.}',
         '{check: {sh: "test -n {{args.t}}"}, id: s, retries: 2, say: Echo.}',
         '{if: {when: {sh: "test -n {{args.t}}"}, then: {wait: 1s, say: T.}}, id: s, say: Echo.}',
+        '{sh: "true", progress: "echo {{args.t}}", id: s, retries: 2, say: Echo.}',
+        '{check: {sh: "true"}, progress: "echo {{args.t}}", id: s, retries: 2, say: E.}',
     ],
 )
 async def test_a_nul_byte_in_a_value_fails_its_command(world, node):
@@ -795,3 +797,52 @@ async def test_more_is_refused_for_a_step_that_is_not_a_spent_loop(world):
             Caller("agent", st.owner),
         )
     assert e.value.code == "bad_choice"
+
+
+def row_of(world, run_id: str, node: str) -> dict:
+    return next(r for r in world.app.workflows.wire(run_id)["tree"] if r["id"] == node)
+
+
+async def test_a_check_reads_its_progress_until_its_probe_passes(world):
+    (world.root / "n").write_text("40\n")
+    run_id = await run(
+        world,
+        flow(
+            '{check: {sh: "test -f flag", every: 5s}, progress: "cat n", id: ci, say: W.}'
+        ),
+    )
+    await until(lambda: row_of(world, run_id, "ci").get("percent") == 40, timeout=10)
+    assert row_of(world, run_id, "ci")["progress"] == "cat n"
+    (world.root / "flag").write_text("")
+    st = await ended(world, run_id, timeout=20)
+    assert st.status == "done"
+    assert row_of(world, run_id, "ci")["percent"] == 100  # its probe passed
+
+
+async def test_an_sh_reads_its_progress_while_it_runs(world, monkeypatch):
+    monkeypatch.setattr("aegis.workflows.SH_PROGRESS_EVERY_S", 0.2)
+    (world.root / "n").write_text("20\n")
+    run_id = await run(
+        world,
+        flow(
+            '{sh: "while [ ! -f stop ]; do sleep 0.1; done", progress: "cat n", id: b, say: B.}'
+        ),
+    )
+    await until(lambda: row_of(world, run_id, "b").get("percent") == 20, timeout=10)
+    (world.root / "n").write_text("not a number\n")
+    await asyncio.sleep(0.8)
+    assert row_of(world, run_id, "b")["percent"] == 20  # kept, never failed
+    (world.root / "n").write_text("250\n")
+    await until(lambda: row_of(world, run_id, "b").get("percent") == 100, timeout=10)
+    (world.root / "stop").write_text("")
+    st = await ended(world, run_id, timeout=20)
+    assert st.status == "done"
+
+
+async def test_the_approval_counts_a_progress_command_with_the_probes(world):
+    definition = flow('{sh: "make", progress: "echo 1", say: B.}')
+    r = await world.app.registry.call("session.spawn", {"agent": "opus"})
+    main = world.app.sessions.sessions[r["log_id"]]
+    armed = ok(await turn(main, mcp("workflow_arm", definition=definition)))
+    got = world.app.workflows.wire(armed["run"])["commands"]
+    assert (got["sh"], got["probes"]) == (1, 1), got
