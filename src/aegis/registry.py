@@ -31,7 +31,7 @@ from .cgroups import SessionCgroups
 from .config import CONTEXT_DEFAULTS
 from .harness import harness_for
 from .meta import MetaStore, rebuild
-from .names import TITLE_MAX, mint_handle, valid_handle
+from .names import TITLE_MAX, free_handle, mint_handle, valid_handle
 from . import notice_sources
 from .notice_sources import Item
 from .notices import TEXT_MAX
@@ -595,14 +595,16 @@ class Registry(Host):
     def _stderr_path(self, log_id: str) -> Path:
         return self.roots.state_root / "stderr" / f"{log_id}.log"
 
-    def _handles(self, *, except_id: str | None = None) -> set[str]:
-        hs = {s.handle for i, s in self.sessions.items() if i != except_id}
-        hs |= {
-            m["handle"]
-            for i, m in self.archived.items()
-            if i != except_id and m.get("handle")
+    def _open_handles(self, *, except_id: str | None = None) -> set[str]:
+        """The handles a session may not take: an archived session's is free
+        to rename to (#673)."""
+        return {s.handle for i, s in self.sessions.items() if i != except_id}
+
+    def _handles(self) -> set[str]:
+        """Every handle, archived ones included, for minting a fresh one."""
+        return self._open_handles() | {
+            m["handle"] for m in self.archived.values() if m.get("handle")
         }
-        return hs
 
     # -- building sessions -------------------------------------------------------
     def _session(self, meta: dict) -> Session:
@@ -690,7 +692,9 @@ class Registry(Host):
             self._admit(m)
 
     def _admit(self, meta: dict) -> None:
-        if not meta.get("handle") or meta["handle"] in self._handles():
+        if not meta.get("handle") or (
+            not meta.get("archived") and meta["handle"] in self._open_handles()
+        ):
             meta["handle"] = mint_handle(self._handles())
         if meta.get("archived"):
             self.archived[meta["log_id"]] = meta
@@ -922,8 +926,13 @@ class Registry(Host):
             "continued_by": None,
             "quiet": False,  # a person reopening it wants to see it (#386)
         }
-        s = self._session(meta)
+        # An open session may have taken its handle meanwhile (#673).
+        handle = free_handle(str(meta["handle"]), self._open_handles())
+        renamed = handle != meta["handle"]
+        s = self._session({**meta, "handle": handle})
         self.sessions[log_id] = s
+        if renamed:
+            s.report({"kind": "name", "handle": s.handle, "title": s.title})
         self.metas.write(s.meta())
         self._publish("sessions", [{"upsert": s.wire()}])
         return s
@@ -941,7 +950,7 @@ class Registry(Host):
                     "bad_handle",
                     "a handle is 2 or 3 lowercase segments joined by hyphens",
                 )
-            if handle in self._handles(except_id=log_id):
+            if handle in self._open_handles(except_id=log_id):
                 raise OpError("handle_taken", f"{handle} is already a session's handle")
         if title is not None and (len(title) > TITLE_MAX or "\n" in title):
             raise OpError(
