@@ -98,10 +98,17 @@ what a local run cannot.
    `gh run view <id> --log-failed` on both, and diff the failure lists.
 4. **Merge on green, only on green.** The author merges its own PR once every
    check passes, not only the required ones, without waiting to be asked; the
-   smoke test waits for the release. Check the merge landed. `gh pr merge` run from
+   smoke test waits for the release, unless the person asks for one. Check the
+   merge landed. `gh pr merge` run from
    inside a worktree prints `fatal: 'main' is already used by worktree` after
    the merge has already succeeded on GitHub; read `gh pr view <n> --json state`
    rather than believing the error.
+5. **End the PR with screenshots that prove it.** Shoot the changed screens in
+   the real client, at desktop and at phone width (390 px), and a terminal
+   capture of the command and its output when nothing on screen changed. Push
+   them to `<issue>/` on the orphan `pr-shots` branch, which never merges, link
+   their raw URLs in the PR body, and send them to the person; a PR without
+   them is not done.
 
 The PR body carries what the reviewer cannot re-derive: what was measured, what
 was tried and rejected, and what was deliberately left out. Wrong guesses you

@@ -1,0 +1,1 @@
+- **On a phone, the header fits on one row.** It wrapped, leaving the help button alone on a second row, while Fleet and the panel toggle took the width the tabs needed. Fleet now starts the tab row, and the session panel's toggle is the last button of the transcript's navigation pill, as on a desktop.
