@@ -3,7 +3,10 @@
 
 import json
 
+import pytest
+
 from aegis.knowledge import history
+from aegis.ops import OpError
 
 from .conftest import until
 from .knowledge_samples import mem
@@ -133,3 +136,16 @@ async def test_stats_join_usage_with_items(agents_world):
     assert [i["name"] for i in got["items"]] == ["idle"]
     got = ok(await turn(s, mcp("knowledge_stats")))
     assert {i["name"]: i["read"] for i in got["items"]} == {"idle": 0, "used": 1}
+
+
+async def test_remember_refuses_empty_text_and_read_permission(agents_world):
+    app = agents_world.app
+    s = await agents_world.spawn()
+    for text in ("/remember", "/remember   "):
+        with pytest.raises(OpError) as e:
+            await send(app, s.log_id, text)
+        assert e.value.code == "missing_argument"
+    r = await app.registry.call("session.spawn", {"agent": "reviewer"})
+    with pytest.raises(OpError) as e:
+        await send(app, r["log_id"], "/remember the demo is on friday")
+    assert e.value.code == "read_only" and "read permission" in e.value.message

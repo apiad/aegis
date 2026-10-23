@@ -1458,7 +1458,14 @@ class App:
             return {"status": "delivered"}
         if name == "remember":
             # The agent saves the text as a memory the person asked for
-            # (knowledge_ops.py), in their own store.
+            # (knowledge_ops.py), in their own store. An agent with read
+            # permission cannot call memory_save, so the turn would only fail.
+            if s.spec.permission == "read":
+                raise OpError(
+                    "read_only",
+                    "this session has read permission, so its agent cannot save"
+                    " a memory; use /remember in a session that can write",
+                )
             await s.deliver(*remember_turn(arg, iso_now()))
             return {"status": "delivered"}
         if name in ("workflow", "loop"):
