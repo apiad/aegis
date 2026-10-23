@@ -1,15 +1,15 @@
 ---
 title: Memories and the knowledge hint
 kind: concept
-when: remembering a fact for later sessions, finding what aegis remembers, or reading the knowledge line under a message
+when: remembering a fact for later sessions, finding what aegis remembers, or reading the knowledge block under a message
 hints:
   - Type /remember and a fact; every later session can find it. #remember-something
-  - The knowledge line under your message names what may help the agent. #the-hint
+  - The knowledge block under your message names what may help the agent. #the-hint
 ---
 
 aegis keeps your memories on the server, one Markdown file per fact, and
 every session you start, in any harness, can find them. Nothing is loaded
-up front: each message carries a short line naming the few memories that
+up front: each message carries a short block naming the few memories that
 may matter, and the agent reads the ones it needs. Each person on a server
 has their own memories, and nobody else's agents see them.
 
@@ -27,13 +27,14 @@ Names are unique across your memories and skills: a memory cannot take the
 name of a skill. A link to another item is written `[[name]]`.
 
 Every change goes through aegis and is one commit in a git history kept
-with your memories on the server, so a delete can be restored.
+with your memories on the server, so a deleted memory is kept there. The
+Knowledge view, in a later release, will restore one.
 
 ## The hint
 
-When a message reaches a session, aegis searches your memories and skills
-with its text and adds one line under it, folded into its own row in the
-transcript:
+When a message reaches a session, aegis searches your memories with its
+text and adds a short block under it, of up to five lines, folded into its
+own row in the transcript:
 
 ```text
 > from aegis:notice · knowledge · may be relevant
@@ -42,9 +43,9 @@ memories: deploy-host: Where the bot runs; check before any ssh · ...
 read with memory_read · search with memory_search
 ```
 
-It names the three best memories and the three best skills, with no
-threshold, and the tools that read and search them: the agent decides whether any matters. A message that matches
-nothing, or a slash command, gets no line. An expired memory is never
+It names the three best memories, with no threshold, and the tools that
+read and search them: the agent decides whether any matters. A message
+that matches nothing, or a slash command, gets no block. An expired memory is never
 named, but a search still finds it.
 
 The search is BM25 over the name, the description and the start of the

@@ -432,7 +432,7 @@ class _link:
 
 class _memory:
     async def delete(self, *, name: str) -> Any:
-        """Delete a memory that is no longer true. The deletion is a commit in the store's history and can be restored."""
+        """Delete a memory that is no longer true. The deletion is kept in the store's history; the Knowledge view, in a later release, will restore it."""
     async def read(self, *, names: builtins.list[str]) -> Any:
         """Read one or more memories in full, by name: the ones the hint on your message names, or memory_search's hits."""
     async def save(

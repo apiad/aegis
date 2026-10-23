@@ -140,3 +140,21 @@ async def test_the_index_is_incremental_and_sees_edits_after_the_scan(tmp_path):
     await kn.hint_for("ana", "s1", "where is the kettle", None)
     assert kn.store.parses == parsed + 1  # a scan with no change parses nothing
     kn.usage.stop()
+
+
+def test_the_docs_promise_only_what_this_release_has():
+    from pathlib import Path
+
+    import aegis
+
+    page = (Path(aegis.__file__).parent / "help" / "knowledge.md").read_text()
+    assert "can be restored" not in page and "one line" not in page
+    assert "skills" not in page.split("## The hint", 1)[1].split("##", 1)[0]
+    stub = (Path(aegis.__file__).parent / "api" / "ops.pyi").read_text()
+    delete = (
+        stub.split("class _memory:", 1)[1]
+        .split("async def delete", 1)[1]
+        .split('"""', 2)[1]
+    )
+    assert "can be restored" not in delete and "Knowledge view" in delete
+    assert not hasattr(hint, "FOOTER")

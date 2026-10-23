@@ -202,8 +202,9 @@ def register_knowledge_ops(app: App) -> None:
 
     @r.op("memory.delete", DeleteMemory, agent=True)
     async def memory_delete(p: DeleteMemory, caller):
-        """Delete a memory that is no longer true. The deletion is a commit in
-        the store's history and can be restored."""
+        """Delete a memory that is no longer true. The deletion is kept in
+        the store's history; the Knowledge view, in a later release, will
+        restore it."""
         owner = principal(caller)
         memory(owner, p.name)
         sha = await kn.store.delete(owner, p.name, author(caller))

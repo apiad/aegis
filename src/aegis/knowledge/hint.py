@@ -14,7 +14,6 @@ from aegis.transcript.entries import NOTICE_HEADER
 
 HEADER = f"{NOTICE_HEADER}knowledge · may be relevant"
 DESCRIPTION_CHARS = 120
-FOOTER = "read with skill_read / memory_read · search with skill_search / memory_search"
 
 
 def _line(label: str, hits: list[Hit]) -> str:
