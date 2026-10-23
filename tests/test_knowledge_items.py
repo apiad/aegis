@@ -2,7 +2,14 @@ from datetime import date
 
 import pytest
 
-from aegis.knowledge.items import check_name, dump_memory, parse_memory, parse_skill
+from aegis.knowledge.items import (
+    Item,
+    check_name,
+    dump,
+    dump_memory,
+    parse_memory,
+    parse_skill,
+)
 from aegis.ops import OpError
 
 MEM = """---
@@ -50,3 +57,16 @@ def test_broken_frontmatter_raises_value_error():
 def test_a_file_without_frontmatter_raises_value_error():
     with pytest.raises(ValueError):
         parse_memory("just text\n", "x")
+
+
+def test_a_dash_run_inside_a_value_is_not_a_delimiter():
+    it = Item("memory", "sep", "use a---b separator", "Body.\n", {"type": "user"})
+    back = parse_memory(dump(it), "sep")
+    assert back.description == "use a---b separator"
+    assert back.meta == {"type": "user"} and back.body == "Body.\n"
+
+
+def test_a_crlf_memory_loads():
+    text = "---\r\nname: crlf\r\ndescription: from windows\r\n---\r\nLine one.\r\n"
+    it = parse_memory(text, "crlf")
+    assert it.description == "from windows" and it.body == "Line one.\n"

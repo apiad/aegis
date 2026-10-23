@@ -24,7 +24,8 @@ from ruamel.yaml import YAML, YAMLError
 from aegis.ops import OpError
 
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
-FRONT = re.compile(r"\A---\n(.*?)\n?---\n?", re.S)
+# Each ``---`` is a whole line, so a value holding "a---b" never closes it.
+FRONT = re.compile(r"\A---[ \t]*\n(.*?)^---[ \t]*(?:\n|\Z)", re.S | re.M)
 
 Kind = Literal["skill", "memory"]
 
@@ -92,6 +93,7 @@ def _yaml() -> YAML:
 
 
 def _split(text: str) -> tuple[dict[str, Any], str]:
+    text = text.replace("\r\n", "\n")  # a file saved on Windows
     m = FRONT.match(text)
     if m is None:
         raise ValueError("no frontmatter (--- name, description ---)")
