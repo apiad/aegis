@@ -178,6 +178,16 @@ without `turn_end` when nothing explains the silence (a live monitor or queue
 task does). The `nudges:` block in `.aegis.yaml` sets both (see the config
 page).
 
+## When a background task ends
+
+Claude Code wakes the agent with a message of its own when a background
+command or a subagent it started ends. The transcript draws it as an inbox
+row, not as your message: a header such as `background · failed · exit 1`
+(red when the task failed or was stopped), the command's
+opening comment or the subagent's name under it, and the command, or the
+subagent's report, and the file its output went to, folded below. Click the
+fold to open it.
+
 ## Toasts
 
 Refusals and failures, and the "Nobody needs you" note, show as cards in the
@@ -235,16 +245,6 @@ over. cpu and announce have no asker.
 
 The `notices:` block in `.aegis.yaml` moves the lines or turns a kind off
 (see the config page).
-
-### When a background task ends
-
-Claude Code wakes the agent with a message of its own when a background
-command or a subagent it started ends. The transcript draws it as an inbox
-row, not as your message: a header such as `background · failed · exit 1`
-(red when the task failed or was stopped), the command's
-opening comment or the subagent's name under it, and the command, or the
-subagent's report, and the file its output went to, folded below. Click the
-fold to open it.
 
 ### Notices about the agent's own work
 
