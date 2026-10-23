@@ -956,6 +956,33 @@ def test_a_session_from_spawn_to_close(server, page):
     assert page.errors == []
 
 
+def test_claude_codes_task_notices_draw_as_inbox_rows(server, page):
+    # Claude Code wakes the agent with this prompt when a background command
+    # ends (#699); the fake echoes it as Claude does.
+    notice = (
+        "<task-notification>\n<task-id>b1</task-id>\n"
+        "<tool-use-id>toolu_01abc</tool-use-id>\n"
+        "<output-file>/tmp/tasks/b1.output</output-file>\n"
+        "<status>failed</status>\n"
+        '<summary>Background command "# Smoke the build\nmake smoke &amp;&amp; '
+        'git push" failed with exit code 1</summary>\n</task-notification>'
+    )
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    page.fill("#input", notice)
+    page.press("#input", "Enter")
+    turns_done(page, 1)
+    row = page.locator(".row.inbox.err")
+    assert row.locator(".from").inner_text() == "background · failed · exit 1"
+    assert row.locator(".body > .md").inner_text() == "Smoke the build"
+    assert not page.is_visible(".row.user") and "toolu_01abc" not in row.inner_text()
+    row.locator("summary").click()
+    assert "make smoke && git push" in row.locator(".args").inner_text()
+    assert row.locator(".outfile").inner_text() == "/tmp/tasks/b1.output"
+    assert page.errors == []
+
+
 def test_a_prompt_sent_mid_turn_shows_pending_until_read(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
