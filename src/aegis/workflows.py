@@ -439,6 +439,62 @@ class Workflows:
         st = self.runs.get(run)
         return st is not None and st.status in LIVE
 
+    def lock(self, s: Session) -> str | None:
+        """Why nobody but the engine may steer ``s``, a node's session, or
+        None. It is the run's while the run is live. Once its step is done
+        and a later step may still continue in it (``session:``), the reason
+        names those steps and says the run closes it once none can (#678)."""
+        ref = s.workflow
+        if not ref or not self.live(ref["run"]):
+            return None
+        run, inst = ref["run"], ref["node"]
+        st, wf = self.runs.get(run), self.defs.get(run)
+        n = st.nodes.get(inst) if st is not None else None
+        head = f"{s.handle} is node {inst} of workflow {run}"
+        if (
+            st is None
+            or wf is None
+            or n is None
+            or ref.get("probe")
+            or n.status not in ("done", "skipped")
+        ):
+            return f"{head}; stop the workflow to talk to it"
+        later = self._may_continue(st, wf, inst, s.log_id)
+        if not later:
+            return f"{head}; stop the workflow to talk to it"
+        return (
+            f"{head}, which is done, but {', '.join(later)} may still continue "
+            "in its session, so the run keeps it open and closes it once none "
+            "can; stop the workflow to talk to it or close it sooner"
+        )
+
+    def _may_continue(
+        self, st: RunState, wf: Workflow, inst: str, log_id: str
+    ) -> list[str] | None:
+        """The ids of the steps that may still run in the session ``log_id``
+        that step ``inst`` ran in, as _close_spent decides them; None when
+        its owner's instance is not found."""
+        key = template_key(inst)
+        owner = wf.by_key.get(wf.session_of.get(key, key))
+        if owner is None:
+            return None
+        oinst = next(
+            (
+                i
+                for i, x in st.nodes.items()
+                if template_key(i) == owner.key and x.log_id == log_id
+            ),
+            None,
+        )
+        if oinst is None:
+            return None
+        prefix = oinst[: -len(owner.id)]
+        return [
+            u.id
+            for u in (wf.by_key[k] for k in wf.users.get(owner.key, []))
+            if self._may_run(st, wf, owner, u, prefix)
+        ]
+
     def of_owner(self, log_id: str) -> RunState | None:
         return next(
             (

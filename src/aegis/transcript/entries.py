@@ -668,6 +668,20 @@ class Fold:
             return self._upsert(
                 _entry(f"e{i}", "error", "err", ts, d.ERROR_GLYPH, summary=line)
             )
+        if kind == "exit" and rec.get("code") == 0 and rec.get("status") == "idle":
+            # A clean exit between turns cut nothing: the session is asleep
+            # and the next message wakes it, as a parked one (#678). A record
+            # from before "status" was kept reads as an error, as it did.
+            return self._upsert(
+                _entry(
+                    f"e{i}",
+                    "system",
+                    "ok",
+                    ts,
+                    d.SYSTEM_GLYPH,
+                    summary=f"asleep: {rec.get('harness') or 'claude'} exited between turns",
+                )
+            )
         if kind == "exit":
             stderr = "\n".join(rec.get("stderr_tail") or [])
             self._end_turn(ts)

@@ -1429,6 +1429,7 @@ class Session:
                 "code": code,
                 "stderr_tail": stderr_tail,
                 "harness": self.harness.label,
+                "status": self.last_exit["status"],
             }
         )
         self._set(status="asleep", asleep_why="exited")

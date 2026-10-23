@@ -338,7 +338,8 @@ An asleep session's card is marked `zz` with the reason it has no process:
 - `slept`: someone slept it (Sleep, `/sleep`, or an agent through
   `session.stop`);
 - `idle`: aegis parked it (see below);
-- `exited`: the harness ended on its own;
+- `exited`: the harness ended on its own. Mid-turn or with a non-zero code
+  the card also shows the error; between turns with code 0 it does not;
 - `server`: the server restarted under it.
 
 - The archive is the list at the bottom of the Fleet. Filter it by title,
