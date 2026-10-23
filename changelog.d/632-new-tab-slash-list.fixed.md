@@ -1,1 +1,0 @@
-- **Typing `/` in the new tab opens the command list.** A whole command typed there already ran in the new session, but nothing showed which commands exist. The list now opens under the box with aegis's commands, and the harness's own once a session in that directory has listed them.

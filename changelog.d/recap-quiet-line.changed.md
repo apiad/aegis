@@ -1,2 +1,0 @@
-- **A recap is one quiet line, and asks only when the session waits on you.** The latest recap was a bordered card that outshouted the transcript; it now reads like the older ones. While a session waited on a monitor or CI, the recap sometimes turned the agent's next step into an order from you ("Merge #636 when CI passes"); it now names what the session needs only when it needs you, and its prompt keeps both lines addressed to you.
-help: config#recaps

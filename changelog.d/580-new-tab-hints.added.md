@@ -1,2 +1,0 @@
-- **The new tab teaches one feature at a time and flags a broken setup.** Under the chips, a tip from the help pages changes every few seconds and opens its page when clicked; every help page now declares its hints. A `/feedback` row starts a session that drafts an issue for aegis. For an admin, a row says when `aegis doctor` finds errors or warnings, unfolds each one as a sentence, and its `/doctor` button, or `/doctor` typed in any session, starts a session that fixes them with the agent.
-help: config#check-it

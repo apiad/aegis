@@ -5,6 +5,32 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [2.15.0] - 2026-10-23
+
+### Added
+
+- **The new tab teaches one feature at a time and flags a broken setup.** Under the chips, a tip from the help pages changes every few seconds and opens its page when clicked; every help page now declares its hints. A `/feedback` row starts a session that drafts an issue for aegis. For an admin, a row says when `aegis doctor` finds errors or warnings, unfolds each one as a sentence, and its `/doctor` button, or `/doctor` typed in any session, starts a session that fixes them with the agent.
+  help: config#check-it
+
+- **Agent replies can be read aloud.** A speaker button on each reply reads it and the rest of its turn, and one beside the microphone reads each new reply as it arrives. Speech is made in the browser with its own voice, or with Phonon, a neural voice for English replies that a browser opts in to in Settings after a 65 MB download and a speed check.
+  help: transcript#read-replies-aloud
+
+### Changed
+
+- **/feedback shows the issue draft as a rendered page.** The draft used to arrive as one fenced block of raw Markdown; it now lands as a page laid out as GitHub will show it, with "File it" and "Change something" buttons, and falls back to the fenced block when no browser is open.
+  help: feedback#show-the-draft
+
+- **A recap is one quiet line, and asks only when the session waits on you.** The latest recap was a bordered card that outshouted the transcript; it now reads like the older ones. While a session waited on a monitor or CI, the recap sometimes turned the agent's next step into an order from you ("Merge #636 when CI passes"); it now names what the session needs only when it needs you, and its prompt keeps both lines addressed to you.
+  help: config#recaps
+
+### Fixed
+
+- **On a phone, the header fits on one row.** It wrapped, leaving the help button alone on a second row, while Fleet and the panel toggle took the width the tabs needed. Fleet now starts the tab row, and the session panel's toggle is the last button of the transcript's navigation pill, as on a desktop.
+
+- **Typing `/` in the new tab opens the command list.** A whole command typed there already ran in the new session, but nothing showed which commands exist. The list now opens under the box with aegis's commands, and the harness's own once a session in that directory has listed them.
+
+- **Continuing in a fresh session keeps its group.** The new session joins the group of tabs the old one was in and heads it when the old one did, instead of opening alone at the end of the bar. Its first message names the sessions the old one started and asks it to tell them it continues the work, and once the old session is archived they count as the new one's: its card lists them and it waits on them.
+
 ## [2.14.0] - 2026-10-22
 
 ### Added
