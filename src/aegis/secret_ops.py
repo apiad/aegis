@@ -255,4 +255,16 @@ def register_secret_ops(app: App) -> ss.SecretStore:
         )
         return "ok"
 
+    @r.op("claude.token", SecretProvide, owned="log_id")
+    async def claude_token(p: SecretProvide, caller):
+        """The sign-in card's field (claude/login.py): check a setup-token,
+        keep it, restart the sessions that failed to sign in."""
+        s = reg.open(p.log_id)
+        if reg.sign_in is None:
+            raise OpError("off", "this server keeps no Claude token")
+        try:
+            return await reg.sign_in.provide(s, p.id, p.secret)
+        except ValueError as e:
+            raise OpError("refused", str(e)) from None
+
     return store

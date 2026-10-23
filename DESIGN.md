@@ -336,6 +336,20 @@ so its chunk lines each carry the block's text so far as a keyed part and are
 stored — they are the only copy, and a fresh fold rebuilds exactly what
 streamed (`cursor/stream.py`).
 
+**Claude Code signs in with a token nobody refreshes.** Claude Code processes
+sharing one stored sign-in race to refresh its single-use token, and the losers
+are logged out. So every Claude Code process the server starts as itself
+(sessions, recaps, side notes) gets `CLAUDE_CODE_OAUTH_TOKEN` from a 0600 file
+(`claude/login.py`), read at each spawn, unless the server's environment or the
+pool file already sets it. A turn that fails to sign in (`Result.auth_failed`)
+raises one card, in the first failing session's transcript, which every later
+failure joins. Its field goes to the person-only `claude.token` operation, which
+checks the shape, asks Claude Code itself with one `claude -p` in a scratch
+config directory, writes the file and restarts the sessions on the card. aegis
+runs no step of the OAuth flow. The usage endpoint refuses that token, so each
+turn's `rate_limit_event` (`stream.RateLimit`) feeds `QuotaService.observe`, and
+once one has, an unauthorized fetch no longer marks the gauges failed.
+
 **Where aegis has a tool, the harness's twin is off.** A Claude Code session
 with aegis's tools starts with `--disallowedTools` naming every Claude Code tool
 aegis replaces (`claude/process.py` `REPLACED_TOOLS`: subagents, messaging,

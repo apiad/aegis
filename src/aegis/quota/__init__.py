@@ -30,7 +30,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .claude import PROVIDER as CLAUDE
+from .claude import PROVIDER as CLAUDE, parse_stream
 from .core import (
     FAILURE_TEXT,
     QuotaProvider,
@@ -138,6 +138,7 @@ class Quota:
         self._publish = publish
         self._providers = providers
         self._wall = wall
+        self._clock = clock
         root = cache_dir() if cache is None else cache
         self.services = {
             p.name: QuotaService(
@@ -200,6 +201,14 @@ class Quota:
         for t in list(self._nudges):
             await cancel_and_wait(t)
         await cancel_and_wait(task)
+
+    def observe(self, windows: dict) -> None:
+        """A Claude session's stream reported the account's windows."""
+        snap = parse_stream(windows, now=self._clock())
+        if snap is None:
+            return
+        self.services[CLAUDE.name].observe(snap)
+        self.check()
 
     def turn_ended(self) -> None:
         """A Claude turn just spent quota: refresh Claude before its cadence

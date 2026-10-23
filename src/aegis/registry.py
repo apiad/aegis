@@ -134,6 +134,7 @@ class Registry(Host):
         self.browsers = None  # browsers.py, set by the app: docked browser panes
         self.quota = None
         self.notices = None  # notices.Notices, set by App
+        self.sign_in = None  # claude.login.SignIn, set by App
         self.nudges = None  # nudges.Nudges, set by App
         # The live config's context block (config.py); the app points it at
         # Config.current().
@@ -404,6 +405,15 @@ class Registry(Host):
     def compacted(self, session: Session) -> None:
         if self.notices is not None:
             self.notices.forget(session.log_id)
+
+    def sign_in_failed(self, session: Session) -> None:
+        if self.sign_in is not None:
+            self.sign_in.failed(session)
+
+    def rate_limit(self, session: Session, windows: dict) -> None:
+        # A member's stream reports the member's account, not the server's.
+        if self.quota is not None and session.spec.linux_user is None:
+            self.quota.observe(windows)
 
     def quota_hold(self, session: Session) -> str | None:
         """A paused session waits for its gate to open; any other may start a

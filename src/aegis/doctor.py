@@ -21,12 +21,14 @@ import platform
 import shlex
 import shutil
 import tempfile
+import time
 from asyncio.subprocess import PIPE, STDOUT
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
 from . import launch, users
+from .claude import login
 from .agents import EFFORTS, HARNESSES, Agent
 from .cgroups import parse_size, total_ram
 from .claude.control import Catalog, Model
@@ -698,6 +700,9 @@ async def doctor(
             out.append(
                 Finding("ok", where, f"{f.bin}, {f.version}, {len(f.models)} models")
             )
+    if any(a.harness == "claude-code" for a in snap.agents):
+        if (token := _claude_token(time.time())) is not None:
+            out.append(token)
     by_name = {a.name: a for a in snap.agents}
     for a in snap.agents:
         out += _agent(a, found.get(a.harness))
@@ -733,6 +738,35 @@ async def doctor(
             {h: bins.get(h, h) for h in used},
         )
     return out
+
+
+def _claude_token(now: float) -> Finding | None:
+    """The token Claude Code sessions sign in with (claude/login.py): None
+    when there is no file, so the stored sign-in is in use."""
+    path = login.token_path()
+    if not path.exists():
+        return None
+    if why := login.file_problem(path):
+        return Finding("error", "claude.token", why)
+    when = login.expiry(path)
+    if when is None:
+        return Finding(
+            "error", "claude.token", f"{path} does not hold a Claude Code token"
+        )
+    written, expires = when
+    day = lambda t: time.strftime("%Y-%m-%d", time.gmtime(t))  # noqa: E731
+    if expires - now < login.WARN_S:
+        return Finding(
+            "warn",
+            "claude.token",
+            f"{path} expires about {day(expires)}: run claude setup-token "
+            "and paste the new token into the sign-in card or the file",
+        )
+    return Finding(
+        "ok",
+        "claude.token",
+        f"{path}, written {day(written)}, expires about {day(expires)}",
+    )
 
 
 def render(findings: Iterable[Finding]) -> str:

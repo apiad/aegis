@@ -65,6 +65,7 @@ class Recaps:
                 recap.TIMEOUT_S,
                 self.app.sessions.user_for(s.spec),
                 oneshot.message(recap.SYSTEM, prompt, cfg["harness"]),
+                harness=cfg["harness"],
             )
         except (oneshot.OneshotError, PermissionError) as e:
             return {"status": "failed", "why": str(e)}

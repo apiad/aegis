@@ -56,6 +56,7 @@ from .claude.stream import (
     Delta,
     Init,
     Notice,
+    RateLimit,
     Result,
     Title,
     ToolCall,
@@ -193,6 +194,12 @@ class Host:
 
     def compacted(self, session: "Session") -> None:
         """The harness compacted the session's context."""
+
+    def sign_in_failed(self, session: "Session") -> None:
+        """A turn failed because the harness could not sign in (claude/login.py)."""
+
+    def rate_limit(self, session: "Session", windows: dict) -> None:
+        """The harness reported the account's usage windows (quota/claude.py)."""
 
 
 NO_HOST = Host()
@@ -1307,6 +1314,10 @@ class Session:
                     changes["model_id"] = ev.model
                 if ev.session_id:
                     changes["resume_id"] = ev.session_id
+            if isinstance(ev, RateLimit):
+                self._host.rate_limit(self, ev.windows)
+            if isinstance(ev, Result) and ev.auth_failed:
+                self._host.sign_in_failed(self)
             if isinstance(ev, Notice) and ev.task_id:
                 if ev.subtype == "task_started":
                     self.open_tasks.add(ev.task_id)

@@ -71,6 +71,7 @@ from .agent_ops import (
 from .artifact_ops import register_artifact_ops
 from .config_suggest import register_config_suggest
 from .secret_ops import register_secret_ops
+from .claude.login import SignIn
 from .agents import (
     EFFORTS,
     HARNESSES,
@@ -506,6 +507,11 @@ class App:
         reg.context = lambda: self.config.current().context
         reg.version_policy = lambda: self.config.current().harness_versions
         reg.quota = self.quota
+        reg.sign_in = SignIn(
+            reg.sessions,
+            lambda: self.claude_bin,
+            lambda text, s: self.toast(text, "error", source=s),
+        )
         self.journal = Journal(
             roots.state_root, self.publish, user_of=self._linux_user_of_session
         )
