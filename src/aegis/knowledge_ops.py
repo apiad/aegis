@@ -136,7 +136,7 @@ def register_knowledge_ops(app: App) -> None:
         they want you to work) with your own words. Returns the best names with
         their description, score, status and flags; read one with memory_read.
         Proposed and expired memories are included and marked."""
-        hits = kn.index(principal(caller)).rank(p.query, "memory", p.limit)
+        hits = (await kn.index(principal(caller))).rank(p.query, "memory", p.limit)
         return {
             "hits": [
                 {
@@ -219,7 +219,7 @@ def register_knowledge_ops(app: App) -> None:
         used = await asyncio.to_thread(kn.usage.summary, owner)
         cutoff = time.time() - p.unused_days * 86400 if p.unused_days else None
         out = []
-        for it in kn.store.items(owner):
+        for it in await kn.items(owner):
             if p.kind and it.kind != p.kind:
                 continue
             u = used.get(it.name, {})

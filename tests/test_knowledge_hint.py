@@ -1,6 +1,7 @@
 import pytest
 
 from aegis.knowledge import hint
+from aegis.knowledge.service import Knowledge
 from aegis.knowledge.search import Hit
 from aegis.transcript.entries import split_notices
 from aegis.transcript.store import read_store
@@ -117,3 +118,25 @@ async def test_a_failing_hint_never_breaks_a_send(app, monkeypatch, caplog):  # 
     await until(lambda: len(sends(app, lid)) == 2, what="turn two")
     assert sends(app, lid) == ["first", "second"]
     assert sum("index broke" in r.getMessage() for r in caplog.records) == 1
+
+
+async def test_the_index_is_incremental_and_sees_edits_after_the_scan(tmp_path):
+    kn = Knowledge(tmp_path)
+    now = [1000.0]
+    kn._clock = lambda: now[0]
+    await kn.store.save("ana", mem("bot-host", "the bot runs on host b"), "t")
+    await kn.store.save("ana", mem("tea", "green tea in the morning"), "t")
+    assert "bot-host" in await kn.hint_for("ana", "s1", "deploy the bot", None)
+    parsed = kn.store.parses
+    path = kn.store.dir("ana") / "memories" / "bot-host.md"
+    path.write_text("---\ndescription: the kettle sits in room c\n---\nKettle.\n")
+    # Inside the scan interval the edit is not seen yet, and nothing is parsed.
+    assert "bot-host" not in await kn.hint_for("ana", "s1", "where is the kettle", None)
+    assert kn.store.parses == parsed
+    now[0] += 6
+    assert "bot-host" in await kn.hint_for("ana", "s1", "where is the kettle", None)
+    assert kn.store.parses == parsed + 1  # only the edited file
+    now[0] += 6
+    await kn.hint_for("ana", "s1", "where is the kettle", None)
+    assert kn.store.parses == parsed + 1  # a scan with no change parses nothing
+    kn.usage.stop()

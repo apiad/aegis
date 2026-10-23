@@ -1,10 +1,12 @@
 """The per-principal store: ``<state>/knowledge/<principal>/`` with
 ``memories/<name>.md`` and ``skills/<name>/SKILL.md``.
 
-Files are read on each call; the search index is what is cached, keyed by
-``version``, which every change through the store bumps. A file whose
-frontmatter does not parse is skipped and logged once per path and mtime, so
-one bad hand edit or import never hides the rest. Saves and deletes hold one
+Parsed items are cached per principal, keyed by each file's path, mtime_ns
+and size, so a scan stats every file and parses only the ones that changed,
+whether through aegis or by hand; ``version`` moves on every change through
+the store, so the service rescans at once after one. A file whose frontmatter
+does not parse is skipped and logged once per path and mtime, so one bad hand
+edit or import never hides the rest. Saves and deletes hold one
 lock per principal, so two sessions saving at once both land as two commits;
 the file write and the git commit run in a thread, off the event loop.
 """
@@ -29,6 +31,9 @@ class Store:
         self._locks: dict[str, asyncio.Lock] = {}
         self._versions: dict[str, int] = {}
         self._logged: set[tuple[str, float]] = set()
+        # principal -> path -> ((mtime_ns, size), the item or None if bad)
+        self._parsed: dict[str, dict[Path, tuple[tuple[int, int], Item | None]]] = {}
+        self.parses = 0  # files parsed, for the tests
 
     def dir(self, principal: str) -> Path:
         if not principal or "/" in principal or principal.startswith("."):
@@ -37,19 +42,40 @@ class Store:
 
     def items(self, principal: str) -> list[Item]:
         """Every memory and skill of ``principal``, memories first, by name."""
+        return self.scan(principal)[0]
+
+    def scan(self, principal: str) -> tuple[list[Item], bool]:
+        """``items``, and whether any file changed since the last scan. Stats
+        every file; parses only new or changed ones. Blocking: the service
+        runs it in a thread."""
         base = self.dir(principal)
-        out: list[Item] = []
-        for p in sorted((base / "memories").glob("*.md")):
-            it = self._read(p, parse_memory, p.stem)
-            if it is not None:
-                out.append(it)
-        for p in sorted((base / "skills").glob("*/SKILL.md")):
-            it = self._read(p, parse_skill, p.parent.name)
-            if it is not None:
-                out.append(it)
-        return out
+        held = self._parsed.get(principal, {})
+        fresh: dict[Path, tuple[tuple[int, int], Item | None]] = {}
+        changed = False
+        found = [
+            (p, parse_memory, p.stem) for p in sorted((base / "memories").glob("*.md"))
+        ] + [
+            (p, parse_skill, p.parent.name)
+            for p in sorted((base / "skills").glob("*/SKILL.md"))
+        ]
+        for p, parse, name in found:
+            try:
+                st = p.stat()
+            except OSError:
+                changed = True
+                continue
+            key = (st.st_mtime_ns, st.st_size)
+            got = held.get(p)
+            if got is None or got[0] != key:
+                changed = True
+                got = (key, self._read(p, parse, name))
+            fresh[p] = got
+        changed = changed or fresh.keys() != held.keys()
+        self._parsed[principal] = fresh
+        return [it for _, it in fresh.values() if it is not None], changed
 
     def _read(self, path: Path, parse, name: str) -> Item | None:
+        self.parses += 1
         try:
             return parse(path.read_text(encoding="utf-8"), name, path)
         except (OSError, UnicodeDecodeError, ValueError) as e:
@@ -75,6 +101,16 @@ class Store:
 
     def version(self, principal: str) -> int:
         return self._versions.get(principal, 0)
+
+    def _changed(self, principal: str, item: Item) -> None:
+        """A change through the store: bump the version and forget the cached
+        parse, which a rewrite of the same size in the same clock tick would
+        otherwise keep."""
+        self._versions[principal] = self.version(principal) + 1
+        f = self._path(self.dir(principal), item.kind, item.name)
+        self._parsed.get(principal, {}).pop(
+            f if item.kind == "memory" else f / "SKILL.md", None
+        )
 
     def _lock(self, principal: str) -> asyncio.Lock:
         return self._locks.setdefault(principal, asyncio.Lock())
@@ -120,7 +156,7 @@ class Store:
             held = self._path(base, item.kind, item.name).exists()
             verb = "update" if held else "save"
             await asyncio.to_thread(self._write, base, item, files, verb, author)
-            self._versions[principal] = self.version(principal) + 1
+            self._changed(principal, item)
         return self.get(principal, item.name) or item
 
     def _write(
@@ -149,7 +185,7 @@ class Store:
             if item is None:
                 raise OpError("not_found", f"no item named {name!r}")
             sha = await asyncio.to_thread(self._remove, base, item, author)
-            self._versions[principal] = self.version(principal) + 1
+            self._changed(principal, item)
         return sha
 
     def _remove(self, base: Path, item: Item, author: str) -> str:
