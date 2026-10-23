@@ -198,6 +198,9 @@ def test_a_waiting_row_opens_the_card_of_the_session_it_names(
     assert page.locator(".tabcard:not([hidden]) .acts button").count() > 0
     page.mouse.move(640, 760)
     page.wait_for_selector(".tabcard:not([hidden])", state="detached")
+    page.click(row, button="right")  # the tab menu, as on its tab
+    assert item_ids(page)
+    page.keyboard.press("Escape")
     assert page.errors == []
 
 
