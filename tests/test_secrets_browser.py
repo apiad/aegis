@@ -42,8 +42,8 @@ def reveal_then_gone(page, browser, url):
 def provide(page, value):
     page.fill(f"{ASK} input[type=password]", value)
     page.click(f"{ASK} button:has-text('Provide')")
-    page.wait_for_selector(f"{ASK}.gone")
-    assert "Provided:" in page.inner_text(ASK)
+    # On a linked server the line can land a render after the class.
+    page.wait_for_selector(f"{ASK}.gone:has-text('Provided:')")
 
 
 def test_a_secret_is_revealed_once_and_a_request_writes_its_file(server, page, browser):  # noqa: F811

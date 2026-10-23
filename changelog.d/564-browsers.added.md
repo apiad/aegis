@@ -1,2 +1,0 @@
-- **Browsers the agent and the person share.** A Chromium runs on the server, held like a terminal and streamed live into a tab. The person clicks and types into it; an agent reads and drives it with the `browser_*` tools, hands the page over for a captcha, a sign-in or a step to try, and is woken with what the person did when they give it back. Profiles keep sign-ins between opens. Needs the `browser` extra.
-help: browsers

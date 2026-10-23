@@ -1,5 +1,6 @@
 """A browser's tab in a real browser against a real aegis serve (#564)."""
 
+import time
 from pathlib import Path
 
 import pytest
@@ -22,14 +23,25 @@ def server(tmp_path: Path, fake_claude: str, fake_opencode: str):
 
 
 def frame_drawn(page) -> None:
-    page.wait_for_selector("#br-wait", state="hidden", timeout=15_000)
-    page.wait_for_function("document.getElementById('br-screen').width > 0")
+    """The first frame is drawn, and the frame size has settled: opening a
+    browser fits its viewport to the tab, so the first frames may be of the
+    old size."""
+    page.wait_for_selector("#v-browser .br-wait", state="hidden", timeout=15_000)
+    size = "(() => { const c = document.querySelector('#v-browser .br-screen');"
+    size += " return c ? `${c.width}x${c.height}` : ''; })()"
+    seen, deadline = None, time.time() + 10
+    while time.time() < deadline:
+        now = page.evaluate(size)
+        if now and now != "0x0" and now == seen:
+            return
+        seen = now
+        page.wait_for_timeout(600)
 
 
 def tap(page, x: int, y: int) -> None:
     """Click the canvas where the page's point (x, y) is drawn."""
     r = page.evaluate(
-        "(() => { const c = document.getElementById('br-screen');"
+        "(() => { const c = document.querySelector('#v-browser .br-screen');"
         " const b = c.getBoundingClientRect();"
         " return {l: b.left, t: b.top, sx: b.width / c.width, sy: b.height / c.height}; })()"
     )
@@ -45,7 +57,7 @@ def test_the_pane_streams_the_page_and_a_click_on_it_reaches_the_page(
     page = browser.new_page()
     page.goto(f"{server.url}#b={card['id']}")
     frame_drawn(page)
-    assert page.locator("#br-holder").inner_text() == "you"
+    assert page.locator("#v-browser .br-holder").inner_text() == "you"
     tap(page, 150, 120)
     page.wait_for_function(
         "document.querySelector('#tablist .tab.on')?.title.includes('clicked')",

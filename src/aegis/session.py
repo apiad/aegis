@@ -42,7 +42,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 import pwd
-from typing import Any
+from typing import Any, Literal
 
 from .as_user import Runners
 from . import attachments, cache, harness_versions, restarts
@@ -228,6 +228,11 @@ class SpawnSpec:
     overridden: tuple[str, ...] = ()
     # The log id of the agent session that spawned this one.
     spawned_by: str | None = None
+    # The group this session belongs to (#586): the log id of the session that
+    # started the chain it was spawned or enqueued in, fixed at spawn, so it
+    # outlives that session. ``key@server`` when the chain began on a linked
+    # server. None for a session nobody started: its own log id is its group.
+    group: str | None = None
     # The principal whose session this is (tokens.py); None from before owners,
     # which reads as the admin's.
     owner: str | None = None
@@ -264,6 +269,8 @@ class SpawnSpec:
             d["overridden"] = list(self.overridden)
         if self.spawned_by:
             d["spawned_by"] = self.spawned_by
+        if self.group:
+            d["group"] = self.group
         if self.owner:
             d["owner"] = self.owner
         if self.spawned_from:
@@ -292,6 +299,7 @@ class SpawnSpec:
             priming=d.get("priming") or None,
             overridden=tuple(d.get("overridden") or ()),
             spawned_by=d.get("spawned_by"),
+            group=d.get("group"),
             owner=d.get("owner"),
             spawned_from=d.get("spawned_from"),
             continues=d.get("continues"),
@@ -335,6 +343,7 @@ class Session:
         codex_bin: str = "codex",
         cursor_bin: str = "cursor-agent",
         title_set: bool = False,
+        handle_set: bool = True,
         standing: dict | None = None,
         unread: list[str] | None = None,
         last_read_at: float | None = None,
@@ -361,6 +370,9 @@ class Session:
         self.title = title
         # A person or an agent named it; the harness's own title then waits.
         self.title_set = title_set
+        # Whether session_rename gave this session its handle (#586); a meta
+        # from before the field reads as set, so old sessions are not nagged.
+        self.handle_set = handle_set
         self.store = store
         self.channel = f"transcript:{log_id}"
         self.resume_id = resume_id
@@ -491,6 +503,7 @@ class Session:
             "handle": self.handle,
             "title": self.title,
             "title_set": self.title_set,
+            "handle_set": self.handle_set,
             **s.record(),
             "model_id": self.model_id,
             "resume_id": self.resume_id,
@@ -544,6 +557,10 @@ class Session:
         if self.cascade_exhausted:
             out["exhausted"] = True
         return out
+
+    def group_key(self) -> str:
+        """The group a session this one starts belongs to (#586)."""
+        return self.spec.group or self.log_id
 
     def wire(self) -> dict:
         """What the ``sessions`` channel carries."""
@@ -853,26 +870,38 @@ class Session:
             raise OpError("in_workflow", why)
 
     async def deliver(
-        self, header: str, body: str, *, through_lock: bool = False
-    ) -> None:
+        self,
+        header: str,
+        body: str,
+        *,
+        through_lock: bool = False,
+        urgent: bool = False,
+    ) -> Literal["sent", "held", "steered"]:
         """An inbox message. Idle or stopped: sent now (a stopped session is
         resumed to receive it). Mid-turn: held, and sent with any others when
         the turn ends, because a prompt written mid-turn would be injected at
-        the next tool boundary instead of waiting. When the owner's quota gate
-        says no turn may start, held with ``held_for: "quota"`` until it opens
-        (app.on_quota)."""
+        the next tool boundary instead of waiting; ``urgent`` wants exactly
+        that, and gets it from a harness that reads mid-turn input. When the
+        owner's quota gate says no turn may start, held with ``held_for:
+        "quota"`` until it opens (app.on_quota). Returns what it did."""
         if self.archived:
             raise Archived(self.log_id)
         if not through_lock:
             self.check_lock()
         msg = {"header": header, "body": body, "ts": time.time()}
+        if urgent and self.status == "working" and self.harness.steers_mid_turn:
+            # Steered in as a person's mid-turn message is: a user message at
+            # the next tool boundary (Claude Code) or a turn/steer (Codex).
+            await self._send(_inbox_text([msg]), steered=True)
+            return "steered"
         if self.status == "working" or self._flushing:
             self._hold(msg)
-            return
+            return "held"
         if self._host.quota_hold(self) is not None:
             self._hold(msg | {"held_for": "quota"})
-            return
+            return "held"
         await self._send(_inbox_text([msg]))
+        return "sent"
 
     def _hold(self, msg: dict) -> None:
         self.held.append(msg)
@@ -885,6 +914,8 @@ class Session:
         try:
             batch, self.held = self.held, []
             if batch:
+                # Before the send gathers notices: the "held" warning ends here.
+                self._host.status_changed(self)
                 await self._send(_inbox_text(batch))
         finally:
             self._flushing = False
@@ -927,7 +958,12 @@ class Session:
         await self._send(text, typed, attached)
 
     async def _send(
-        self, text: str, typed: str | None = None, attached: list[dict] | None = None
+        self,
+        text: str,
+        typed: str | None = None,
+        attached: list[dict] | None = None,
+        *,
+        steered: bool = False,
     ) -> None:
         await self.ensure_running()
         assert self._proc is not None
@@ -945,6 +981,8 @@ class Session:
         record: dict = {"kind": "send", "text": text}
         if attached:
             record |= {"typed": typed or "", "files": attached}
+        if steered:
+            record["steered"] = True  # an inbox message sent into a running turn
         self._record(record)
         # Working before the send returns: a harness can answer during it (an
         # OpenCode command refused before it starts a turn).
@@ -1070,6 +1108,10 @@ class Session:
         """A secret's card or its next state (secret_ops): never plaintext."""
         self._record(record)
 
+    def record_config(self, record: dict) -> None:
+        """A config suggestion's card or its outcome (config_suggest.py)."""
+        self._record(record)
+
     def record_card(self, record: dict) -> None:
         """A card asking a person to approve what this session's agent made:
         a schedule now, a workflow next (schedule_ops, workflow_ops)."""
@@ -1087,6 +1129,11 @@ class Session:
             wfs = getattr(self._host, "workflows", None)
             st = wfs.runs.get(pane[3:]) if wfs is not None else None
             return st is None or st.status != "replaced"
+        if pane.startswith("b-"):
+            # A browser this session drives (browsers.py).
+            brs = getattr(self._host, "browsers", None)
+            b = brs.open.get(pane) if brs is not None else None
+            return b is not None and b.meta.get("session") == self.log_id
         if pane.startswith("art-"):
             try:
                 return self.artifacts.get(pane).status == "live"

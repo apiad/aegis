@@ -396,7 +396,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <table class="tbl">
 <thead><tr><th>Spec</th><th>Built</th><th>Why</th></tr></thead>
 <tbody>
-<tr><td>Docks on the session's canvas</td><td>Opens as a tab of its own (<code>#b=&lt;id&gt;</code>) with a card in the Fleet, like a terminal</td><td class="why">A canvas pane is an artifact or a file today (<code>layout.py</code>, <code>canvas.js</code>); a third kind is its own change.</td></tr>
+<tr><td>Docks on the session's canvas</td><td>Docks as pane <code>b-&lt;id&gt;</code> (<code>dock=</code> on <code>browser_open</code>, right by default), and also has a tab of its own (<code>#b=&lt;id&gt;</code>) with a card in the Fleet</td><td class="why">Built in a second PR. The tab came first, like a terminal's; a person-opened browser has no session to dock in.</td></tr>
 <tr><td>Started through <code>launch.py</code>, in a cgroup, as the owner</td><td>Playwright starts Chromium itself; multi-user mode answers <code>browser_unavailable</code></td><td class="why">Playwright's driver spawns the browser; running it as another Linux user needs a launcher hook Playwright does not offer.</td></tr>
 <tr><td>A <code>browsers:</code> block in <code>.aegis.yaml</code></td><td>Constants in <code>browsers.py</code>: three live, 30 idle minutes, Playwright's Chromium</td><td class="why">Nothing needed another value yet; the block can come with the first that does.</td></tr>
 <tr><td>Each pane acknowledges each frame</td><td>The server acks the screencast no sooner than 100 ms after the last frame; a pane decodes only the newest</td><td class="why">The channel fans one stream out to every subscriber, so the pace is set once; a slow pane skips frames on its side.</td></tr>

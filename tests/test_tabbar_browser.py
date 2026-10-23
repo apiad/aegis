@@ -1,0 +1,183 @@
+"""The tab bar (#586): bare icon buttons, the session panel's toggle in the
+transcript's navigation pill, two-line tabs that keep the whole handle, a
+strip that scrolls, and the menu at its end."""
+
+import json
+
+import pytest
+
+from .test_browser import (  # noqa: F401
+    browser,
+    linked,
+    server,
+    spawn,
+)
+
+pytestmark = [pytest.mark.browser, pytest.mark.slow]
+
+HEADER_ICONS = ["schedules-btn", "settings-btn", "files-btn", "journal-btn"]
+
+
+@pytest.fixture
+def page(browser):  # noqa: F811
+    pg = browser.new_page(viewport={"width": 1280, "height": 800})
+    pg.errors = []
+    pg.on("pageerror", lambda e: pg.errors.append(str(e)))
+    yield pg
+    pg.close()
+
+
+def bare(pg, sel: str) -> dict:
+    """What a header button draws around its icon."""
+    return pg.eval_on_selector(
+        sel,
+        """b => { const c = getComputedStyle(b);
+          const lbl = b.querySelector('.lbl');
+          return {bg: c.backgroundColor, border: c.borderTopColor,
+                  label: !!lbl && lbl.offsetWidth > 0,
+                  icon: !!b.querySelector('svg') && b.querySelector('svg').getBoundingClientRect().width > 0}; }""",
+    )
+
+
+def test_the_header_buttons_are_bare_icons(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    for id in HEADER_ICONS:
+        b = bare(page, f"#{id}")
+        assert b == {
+            "bg": "rgba(0, 0, 0, 0)",
+            "border": "rgba(0, 0, 0, 0)",
+            "label": False,
+            "icon": True,
+        }, id
+        assert page.get_attribute(f"#{id}", "aria-label")
+    assert page.errors == []
+
+
+def test_files_stays_in_the_header_on_a_phone(server, browser):  # noqa: F811
+    pg = browser.new_page(viewport={"width": 390, "height": 844})
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    assert pg.is_visible("#files-btn")
+    pg.close()
+
+
+def test_the_panel_toggle_lives_in_the_nav_pill(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    assert page.is_visible("#nav #nav-side")
+    assert not page.is_visible(".tabs #side-btn")
+    before = page.get_attribute("#a2", "data-side")
+    page.click("#nav-side")
+    side = "(document.querySelector('#a2').dataset.side ?? null)"
+    page.wait_for_function(f"{side} !== {json.dumps(before)}")
+    page.keyboard.press("Alt+b")
+    page.wait_for_function(f"{side} === {json.dumps(before)}")
+    assert page.errors == []
+
+
+def spawn_on(pg, url: str, n: int) -> None:
+    pg.goto(url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    for _ in range(n):
+        spawn(pg)
+
+
+TABS = """() => [...document.querySelectorAll('#tablist .tab')].map(t => {
+  const r = t.getBoundingClientRect(), hn = t.querySelector('.hn'), w = t.querySelector('.where');
+  const wr = w && w.getBoundingClientRect();
+  return {left: r.left, right: r.right,
+          whole: !!hn && hn.scrollWidth <= hn.clientWidth,
+          inside: !w || (wr.left >= r.left - 0.5 && wr.right <= r.right + 0.5)}; })"""
+
+
+def test_fourteen_tabs_do_not_overlap_keep_whole_handles_and_scroll(
+    linked,  # noqa: F811
+    browser,  # noqa: F811
+    page,
+):
+    other = browser.new_page()
+    spawn_on(other, linked.beta.url, 6)
+    other.close()
+    spawn_on(page, linked.alpha.url, 8)
+    page.wait_for_function("document.querySelectorAll('#tablist .tab').length === 14")
+    tabs = page.evaluate(TABS)
+    for a, b in zip(tabs, tabs[1:]):
+        assert a["right"] <= b["left"] + 0.5, (a, b)
+    assert all(t["whole"] for t in tabs), tabs
+    assert all(t["inside"] for t in tabs), tabs
+    width = "document.getElementById('tablist')"
+    assert page.evaluate(f"{width}.scrollWidth > {width}.clientWidth")
+    page.hover("#tablist")
+    page.mouse.wheel(0, 400)
+    page.wait_for_function(f"{width}.scrollLeft > 0")
+    assert page.errors == []
+
+
+def test_a_tab_reads_its_handle_over_its_title(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    key = spawn(page, "hello there")
+    tab = page.locator(f"#tablist .tab[data-id='{key}']")
+    page.wait_for_function(
+        f"document.querySelector(\"#tablist .tab[data-id='{key}'] .tt\").textContent !== ''"
+    )
+    handle = tab.locator(".hn").inner_text()
+    assert handle and " " not in handle
+    assert tab.locator(".tt").inner_text()
+    assert tab.get_attribute("title") is None
+    assert tab.get_attribute("aria-label").startswith(f"{handle}: ")
+
+
+def test_a_long_handle_on_a_phone_keeps_the_page_its_width(server, browser):  # noqa: F811
+    pg = browser.new_page(viewport={"width": 390, "height": 844}, has_touch=True)
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    key = spawn(pg)
+    pg.fill("#input", "/rename extraordinarily-lengthy-handle")
+    pg.tap("#send")  # on a touch screen Enter adds a line
+    tab = f"#tablist .tab[data-id='{key}']"
+    pg.wait_for_selector(f"{tab} .hn >> text=extraordinarily-lengthy-handle")
+    assert pg.evaluate("document.documentElement.scrollWidth") <= 390
+    pg.locator(tab).scroll_into_view_if_needed()
+    assert pg.locator(tab).is_visible()
+    pg.close()
+
+
+def test_the_more_button_shows_only_when_the_strip_overflows(server, browser):  # noqa: F811
+    pg = browser.new_page(viewport={"width": 900, "height": 700})
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    spawn(pg)
+    assert pg.is_hidden("#tab-more")
+    for _ in range(5):
+        spawn(pg)
+    pg.wait_for_selector("#tab-more:visible")
+    assert pg.inner_text("#tab-more") == "6 ▾"
+    pg.close()
+
+
+def test_choosing_a_row_opens_its_session_and_scrolls_its_tab_into_view(
+    server,  # noqa: F811
+    browser,  # noqa: F811
+):
+    pg = browser.new_page(viewport={"width": 900, "height": 700})
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    keys = [spawn(pg) for _ in range(6)]
+    pg.goto(server.url.split("#")[0] + "#fleet")
+    pg.click("#tab-more")
+    rows = pg.eval_on_selector_all(
+        ".cmenu [data-id]", "els => els.map(e => e.dataset.id)"
+    )
+    assert rows == keys
+    pg.click(f".cmenu [data-id='{keys[-1]}']")
+    pg.wait_for_function(f"location.hash === '#s={keys[-1]}'")
+    inside = pg.evaluate(
+        f"""() => {{ const t = document.querySelector("#tablist .tab[data-id='{keys[-1]}']").getBoundingClientRect();
+              const l = document.getElementById('tablist').getBoundingClientRect();
+              return t.left >= l.left - 1 && t.right <= l.right + 1; }}"""
+    )
+    assert inside
+    pg.close()

@@ -161,13 +161,32 @@ def build_mcp(registry: Registry, tokens: Tokens, sessions: Sessions | None = No
     return server, server.http_app(path=PATH, stateless_http=True, json_response=True)
 
 
-def primer(session: Session, server_name: str, root: Path) -> str:
+def primer(
+    session: Session, server_name: str, root: Path, browsers: bool = False
+) -> str:
     return PRIMER.format(
         handle=session.handle,
         server=server_name,
         tools=f"{session.harness.tool_prefix}*",
         root=root,
+        browsers=BROWSERS if browsers else "",
     )
+
+
+# Only where browsers run (browsers.py): elsewhere the tools answer
+# browser_unavailable, and the paragraph would send agents to them.
+BROWSERS = """\
+To test a web page with the person, or to see what they see in one, open it \
+with browser_open: a Chromium on the server, so its localhost is the server's. \
+It docks beside your transcript, but a person looking elsewhere does not see \
+it: tell them what to look at and ask them to open it. Read it with browser_snapshot, drive it with browser_click and \
+browser_type, and read what the person did with browser_events. For a captcha, \
+a sign-in or a step they should try, call browser_handover with what to do and \
+end your turn; you are woken with what they did when they give the page back. \
+help_read browsers says more, including how to turn a test the person clicks \
+through into a Playwright script.
+
+"""
 
 
 PRIMER = """\
@@ -292,14 +311,7 @@ an intermediate artifact they need to look at to discuss it (a mockup, a diagram
 a draft render). Do not send other files, such as source code you edited: they \
 see those as diffs.
 
-To test a web page with the person, or to see what they see in one, open it \
-with browser_open: a Chromium on the server that you read with browser_snapshot \
-and drive with browser_click and browser_type, and that the person watches and \
-clicks in a tab. For a captcha, a sign-in or a step they should try, call \
-browser_handover with what to do and end your turn; you are woken with what they \
-did when they give the page back.
-
-Never write a password, token, API key or private key where it is kept: a \
+{browsers}Never write a password, token, API key or private key where it is kept: a \
 message, a commit, a log, a command's output. Generate it straight into a file \
 with `umask 077` and no echo, such as `openssl rand -base64 18 > /tmp/pw`, and \
 hand it to the person with secret_send: the server reads the file, you never \
@@ -324,7 +336,9 @@ skeleton and returns its path; edit it with your Edit tool; artifact_send lands 
 it in the transcript after running it hidden in their browser (when they have \
 the transcript open; `started: null` when no browser was open, or none answered \
 within 3 s, and it landed untried), and refuses a \
-page that throws, so edit and send again until it lands. Only then write your \
+page that throws, so edit and send again until it lands. Lay every page out \
+for a desktop and a phone alike: the person sees it at both widths, on a phone \
+or through the Phone width button on its bar. Only then write your \
 message, which may refer to the card above it, and end the turn with \
 turn_end(needs_you) when the page asks something. The caption is the one line \
 they read before the card; a lesson whose text belongs beside its controls \
@@ -345,7 +359,9 @@ read, or `done` only when the whole task they gave you is over, with `line` as \
 one sentence saying what they must answer, what to read, or what got done. \
 `done` puts an archive button on the card, so a turn that finished a step \
 while work or waiting remains passes `review`, and a plan with unfinished \
-items cannot end in `done`: finish or trim the plan first. Example, after \
+items cannot end in `done`: finish or trim the plan first, and neither can a \
+turn with a live monitor, queue task, background task or workflow, which will \
+wake you again. Example, after \
 offering two options: turn_end(attention="needs_you", line="Ship the release \
 now or wait for the review?", replies=["ship it", "wait"]). The only turns \
 without turn_end are those you end to wait on a monitor or a queue task. For \

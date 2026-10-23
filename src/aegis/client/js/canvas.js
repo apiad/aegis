@@ -44,6 +44,7 @@
 // browser lets a click open a tab only for a few seconds (Chrome) or not at
 // all after an await (Safari).
 
+import { browserCard } from "./browserview.js";
 import { drawArtifact, drawFile } from "./viewer.js";
 import { DOCKED, fileUrl, fillWorkflow, hold, inWindow, popButton, workflowTitle } from "./entries.js";
 import { icon } from "./glyphs.js";
@@ -85,7 +86,7 @@ function fit(cols, width) {
 }
 
 export class Canvas {
-  constructor(root, { transcriptPane, entryOf, latestFile, call, onChange, refuse, openWindow }) {
+  constructor(root, { transcriptPane, entryOf, latestFile, call, onChange, refuse, openWindow, mountBrowser }) {
     this.root = root; // #canvas
     this.tr = transcriptPane; // #tr-pane
     this.entryOf = entryOf; // (id) -> the shown transcript's entry, or undefined
@@ -94,6 +95,7 @@ export class Canvas {
     this.onChange = onChange; // (before, after): the docked ids changed
     this.refuse = refuse; // (message): a refusal the person should read
     this.openWindow = openWindow; // (n, tab?) -> the tab of window n, focused or opened; or `tab` pointed at it
+    this.mountBrowser = mountBrowser; // (host, id) -> a browser view {draw, dispose}, or null (browserview.js)
     this.key = null; // the session shown
     this.n = 1; // the window this tab draws
     this.layout = null; // the card's layout; null is the default
@@ -360,6 +362,7 @@ export class Canvas {
     if (id === TRANSCRIPT) return "transcript";
     if (id.startsWith("art-")) return this.entryOf(id)?.title || "page";
     if (id.startsWith("wf-")) return workflowTitle(id.slice(3)) || "workflow";
+    if (id.startsWith("b-")) return browserCard(id)?.name || "browser";
     return this.latestFile(id)?.name || "file";
   }
 
@@ -467,6 +470,7 @@ export class Canvas {
   // A page that moved to another window keeps its card's line: releasing it
   // would mount the card's frame for a moment and start the page twice.
   drop(id, node) {
+    node._browser?.dispose();
     node.remove();
     this.panes.delete(id);
     if (id.startsWith("art-") && !this.away.has(id)) hold(id, null, this.entryOf(id));
@@ -481,6 +485,7 @@ export class Canvas {
     const node = this.panes.get(id);
     if (!node) return;
     const drawn = (node._drawn = (node._drawn || 0) + 1); // a late fetch for an older draw draws nothing
+    if (id.startsWith("b-") && node._browser) return; // a browser view redraws itself from its card
     const bar = el("div", "fbar pbar");
     const body = el("div", "pbody");
     body.tabIndex = -1;
@@ -496,6 +501,16 @@ export class Canvas {
       // lands it shows read-only, and its card keeps its own line.
       if (entry.status === "live") hold(id, (next) => this.onEntry(next), entry, DOCKED);
       else hold(id, null, entry);
+    } else if (id.startsWith("b-")) {
+      // A browser (browserview.js): its own bar and stream, under the pane's
+      // bar, which keeps its name and the move and undock buttons.
+      const host = el("div", "br-host");
+      body.append(host);
+      bar.append(el("span", "fname", `◫ ${this.label(id)}`), acts);
+      acts.append(this.moveButton(id), this.undockButton(id));
+      node._browser = this.mountBrowser?.(host, id) || null;
+      if (!node._browser) host.textContent = "This browser is closed.";
+      return;
     } else if (id.startsWith("wf-")) {
       // A workflow (entries.js fillWorkflow), which redraws itself from the
       // workflows channel: the pane only holds it.

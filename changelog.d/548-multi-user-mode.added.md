@@ -1,2 +1,0 @@
-- **Several people on one server, each as their own Linux user.** With `multi_user:` in `.aegis.yaml`, every token names a Linux user, and each person's harness, terminals, monitors, workflow steps and the git calls made for them run as that user with no capabilities, so git and GitHub record each person's own work. The server needs `CAP_SETUID`, `CAP_SETGID` and `CAP_SETPCAP` from its unit (`aegis service install --multi-user`), and `aegis doctor` checks the setup.
-help: tokens#linux-users

@@ -197,3 +197,16 @@ comments within a minute or two if something is missing. Wait for it with
 `gh issue view <number> -R <owner>/<repo> --comments`, then fix what it lists
 with `gh issue edit`. Show the person the change first if it adds content. A
 link the person submitted is theirs to follow up.
+
+## Offer the fix
+
+Once the issue is filed, a bug, feature or docs issue gets one more question:
+start on the fix now? End that turn with `turn_end`, attention needs_you, and
+the replies "fix it now" and "later". A question issue, or a comment on a
+duplicate, gets no offer.
+
+On "fix it now", work it as any change to aegis, from the filed issue: in a
+checkout of the aegis repository, read its AGENTS.md and land the change the
+way it says. When this session's folder is not such a checkout, say where you
+would clone it and wait for a yes before you clone. On "later", the issue is
+the record; nothing else is owed.

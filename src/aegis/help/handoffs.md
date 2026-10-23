@@ -38,10 +38,21 @@ turn headed:
 ```
 
 The receiver treats the body as an instruction. If it is busy, the message is
-held and arrives when its turn ends; `interrupt=true` cuts its current turn
-first. The reply says whether the message landed or was held. A handoff to an
-archived session is refused, and a member's agent can hand off only to
-sessions its owner owns.
+held and arrives when its turn ends; meanwhile its next aegis tool result tells
+it who waits and quotes your message's first line, so make that line say what
+changes. Two flags change the timing:
+
+- `urgent=true` reaches a busy receiver inside its turn, at its next tool step,
+  the way a person's typing does. Use it for a correction that changes its work
+  now: stop, a cut in scope, don't do X. Its row shows `steered in`. Claude Code
+  and Codex take it; on another harness it is held like any message.
+- `interrupt=true` cuts the receiver's current turn first. It cannot be combined
+  with `urgent`.
+
+The reply says what happened: `landed at <handle>` (it was idle), `held for
+<handle>` (with the reason when its harness cannot take an urgent message), or
+`steered into <handle>`. A handoff to an archived session is refused, and a
+member's agent can hand off only to sessions its owner owns.
 
 A handoff does not report back. If you need the answer, say in the context
 how to give it to you, for example by handing off back to your handle.
@@ -65,7 +76,7 @@ tokens (`context:` in `.aegis.yaml` moves the threshold), the agent's
 done, what is next, the files, the decisions, what not to retry.
 
 The reply row then starts with a chip, "continue fresh", and the context
-size. Clicking it shows the brief; "Continue in a fresh session" starts the
+size. Clicking it starts the
 same agent in the same folder with the brief and the last three turns, and
 opens its tab. The old session is archived when the new one finishes its first
 turn, unless you have written to it since; the new one can still `peer_read`
@@ -93,3 +104,19 @@ session, who started it), because a person may be reading that tab, and with
 a one-time token. Call `session_close` again with the same `handle` and that
 `token` to close it after all; the token works once, for you and that session,
 for five minutes.
+
+## Close yourself when you finish
+
+When the person tells you to close when you are done ("merge it and close"),
+or the plan or workflow they approved says so, end your last turn with
+`turn_end` with `attention` done and `close` true. Never pass it on your own
+judgment: a person may still want to read the tab.
+
+aegis archives your session once that turn ends, together with every session
+you started and every session they started, deepest first. It refuses the
+`turn_end` with what is still running when you have a live monitor, an open
+background task, a queue task you wait on or an approved workflow run, or
+when one of those sessions is still working, waiting, or did not end its last
+turn done. Wait for it, cancel or close it, then call `turn_end` again, or
+leave `close` out and the tab stays open. A message the person sends before
+the turn ends starts a new turn, and only that turn's `turn_end` decides.

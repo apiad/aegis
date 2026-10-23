@@ -661,6 +661,9 @@ def build_web(
                 "t": "welcome",
                 "proto": PROTO,
                 "server": app.server_name,
+                # A spawn through a link may say its group (#586): a link
+                # sends it only to a server that says this.
+                "groups": True,
                 "native": desktop,
                 "me": {
                     "name": principal.name,
@@ -748,7 +751,11 @@ def build_web(
 
                     try:
                         subs[key] = app.channels.subscribe(
-                            ch, send, since, merge=msg.get("merge") is True
+                            ch,
+                            send,
+                            since,
+                            merge=msg.get("merge") is True,
+                            view=app.view_of(caller),
                         )
                     except OpError as e:
                         send(

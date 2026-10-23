@@ -817,7 +817,8 @@ def test_the_first_message_grows_until_the_form_fills_the_view(server, page):
     view = "document.querySelector('.v-spawn')"
     assert page.evaluate(f"{view}.scrollHeight <= {view}.clientHeight")
     wide = page.viewport_size
-    assert page.evaluate(f"{box}.clientHeight") > wide["height"] * 0.6
+    # The text and, under it, its buttons (#575).
+    assert page.evaluate(f"{box}.closest('.box').clientHeight") > wide["height"] * 0.6
     # A phone, or a keyboard coming up: the box shrinks to the new room.
     page.set_viewport_size({"width": 390, "height": 600})
     page.wait_for_function(f"{view}.scrollHeight <= {view}.clientHeight")
@@ -825,6 +826,43 @@ def test_the_first_message_grows_until_the_form_fills_the_view(server, page):
     page.set_viewport_size(wide)
     page.fill("#sp-text", "")
     assert page.evaluate(f"{box}.clientHeight") == empty
+
+
+def test_text_past_one_line_takes_the_whole_width_and_the_buttons_drop_under_it(
+    server, page
+):
+    # #575: the buttons sat beside the text, so every line of it lost their width.
+    rect = lambda sel: page.locator(sel).bounding_box()  # noqa: E731
+    stacked = "(sel) => document.querySelector(sel).closest('.box').classList.contains('stacked')"
+    page.goto(server.url)
+    spawn(page)
+    for text, go in (("#input", "#send"), ("#sp-text", "#sp-go")):
+        if text == "#sp-text":
+            page.click("#tab-add")
+            page.wait_for_selector("#a2[data-view=spawn]")
+        page.fill(text, "one line")
+        assert not page.evaluate(stacked, text)
+        assert rect(go)["x"] > rect(text)["x"] + rect(text)["width"] - 1
+        # A text that fits the whole width but not the width beside the buttons
+        # stacks, and stays stacked when measured again: no flip back and forth.
+        page.fill(text, "")
+        words = ""
+        while not page.evaluate(stacked, text):
+            words += "word "
+            page.fill(text, words)
+            assert len(words) < 2000
+        assert page.evaluate(stacked, text)
+        page.evaluate("window.dispatchEvent(new Event('resize'))")
+        page.dispatch_event(text, "input")
+        assert page.evaluate(stacked, text)
+        t, b = rect(text), rect(go)
+        whole = page.evaluate(
+            "(sel) => document.querySelector(sel).closest('.box').clientWidth", text
+        )
+        assert t["width"] >= whole - 1, (t, whole)
+        assert b["y"] >= t["y"] + t["height"] - 1, "the buttons sit under the text"
+        page.fill(text, "")
+        assert not page.evaluate(stacked, text)
 
 
 def test_a_failed_spawn_keeps_the_text_and_says_why(server, page):
@@ -848,9 +886,15 @@ def tab_ids(pg) -> list[str]:
 def close_session(pg) -> None:
     """Close the shown session: through the aegis dialog, which a done session
     skips (#268). The client decides from its state at the click, which a slow
-    runner paints into #s-status later, so wait for whichever outcome comes."""
+    runner paints into #s-status later, so wait for whichever outcome comes:
+    the dialog, or the view leaving the tab, for the next one or the Fleet."""
+    was = pg.evaluate("location.hash")
     pg.click("#close")
-    pg.wait_for_selector("#dialog .ok:visible, #a2:not([data-view=session])")
+    pg.wait_for_function(
+        "h => !!document.querySelector('#dialog .ok')?.checkVisibility()"
+        " || location.hash !== h",
+        arg=was,
+    )
     if pg.is_visible("#dialog .ok"):
         pg.click("#dialog .ok")
 
@@ -1035,6 +1079,30 @@ def test_close_in_one_browser_removes_the_tab_in_another(server, browser, page):
     assert errors == [] and page.errors == []
 
 
+def test_archiving_the_open_tab_opens_the_next_one_as_quiet_does(server, browser, page):
+    """Archiving the tab in front, here or in another browser, leaves it for
+    the next tab, as a quiet does, not for the Fleet; the last one left goes
+    back to the one before it."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a, b, c = spawn(page, "one"), spawn(page, "two"), spawn(page, "three")
+    errors: list = []
+    other = new_page(browser, errors)
+    other.goto(server.url + f"#s={b}")
+    other.wait_for_selector("#a2[data-view=session]")
+    page.click(f"#tablist .tab[data-id='{b}']")
+    hash_is(page, f"#s={b}")
+    close_session(page)
+    hash_is(page, f"#s={c}")
+    other.wait_for_function("id => location.hash === '#s=' + id", arg=c)
+    assert tab_ids(page) == [a, c] and tab_ids(other) == [a, c]
+    close_session(page)
+    hash_is(page, f"#s={a}")
+    close_session(page)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert errors == [] and page.errors == []
+
+
 HOLD = (
     '/mcp monitor_start {"description": "hold", "done": "false", '
     '"progress": null, "interval_s": 60}'
@@ -1073,6 +1141,38 @@ def test_quiet_is_disabled_on_an_idle_session(server, page):
     assert page.is_disabled("#quiet-session")
 
 
+def test_alt_q_quiets_a_working_session_and_leaves_an_idle_one(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a = spawn(page, "stays")
+    page.wait_for_selector("#s-status.at-done")
+    page.keyboard.press("Alt+q")
+    assert tab_ids(page) == [a]
+    b = spawn(page, HOLD)
+    page.wait_for_function("!document.querySelector('#quiet-session').disabled")
+    page.focus("#input")
+    page.keyboard.press("Alt+q")
+    page.wait_for_function("id => location.hash === '#s=' + id", arg=a)
+    assert tab_ids(page) == [a]
+    page.click("#tab-fleet")
+    page.wait_for_selector(f".card.quiet[data-id='{b}']")
+    assert page.errors == []
+
+
+def test_alt_a_archives_the_session_in_front(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    a = spawn(page, "stays")
+    b = spawn(page, "goes")
+    page.wait_for_selector("#s-status.at-done")
+    page.focus("#input")
+    page.keyboard.press("Alt+a")
+    page.wait_for_function("id => location.hash === '#s=' + id", arg=a)
+    assert tab_ids(page) == [a]
+    assert b not in tab_ids(page)
+    assert page.errors == []
+
+
 def test_a_closed_session_is_in_the_archive_without_a_reload(server, page):
     """#160: the Fleet's archive was read before the Close and nothing read it
     again, so the closed session appeared only after a reload."""
@@ -1082,6 +1182,7 @@ def test_a_closed_session_is_in_the_archive_without_a_reload(server, page):
     spawn(page, "stays")
     b = spawn(page, "goes")
     close_session(page)
+    page.click("#tab-fleet")
     page.wait_for_selector("#a2[data-view=fleet]")
     page.wait_for_selector(f"#arch-list tr[data-id='{b}']", timeout=5000)
     assert page.errors == []
@@ -1160,11 +1261,11 @@ def test_reopen_from_the_archive_and_rename(server, page, frames):
     page.click("#s-title")
     page.fill("#s-title input", "Old talk")
     page.press("#s-title input", "Enter")
-    page.wait_for_selector("#tablist .tab .tname >> text=Old talk")
+    page.wait_for_selector("#tablist .tab .tt >> text=Old talk")
     page.click("#s-handle")
     page.fill("#s-handle input", "old-talk")
     page.press("#s-handle input", "Enter")
-    page.wait_for_selector("#tablist .tab .srv >> text=old-talk")
+    page.wait_for_selector("#tablist .tab .hn >> text=old-talk")
     close_session(page)
     page.wait_for_selector(f"#arch-list tr[data-id='{a}']")
     page.fill("#arch-q", "nothing like it")
@@ -1738,7 +1839,7 @@ def test_the_panel_collapses_and_resizes_and_the_browser_keeps_both(server, page
     page.reload()
     page.wait_for_selector("#a2[data-view=session]")
     assert page.is_hidden("#side")
-    page.click("#side-btn")
+    page.click("#nav-side")
     page.wait_for_selector("#side", state="visible")
     assert side_width(page) == 260
     assert page.errors == []
@@ -1846,7 +1947,11 @@ def test_a_set_of_files_is_one_card_that_pages_between_them(server, page):
     bar = card.locator(".fbar")
     assert bar.locator(".count").inner_text() == "1 / 3"
     assert bar.locator(".fn").inner_text() == "dot.png"
-    assert bar.locator(".prev").is_disabled() and not bar.locator(".next").is_disabled()
+    # The pager goes round: neither end disables a button.
+    assert (
+        not bar.locator(".prev").is_disabled()
+        and not bar.locator(".next").is_disabled()
+    )
     first = bar.locator("a.open").get_attribute("href")
     assert card.locator(".stage").count() == 1 and card.locator("img").count() == 1
 
@@ -1863,11 +1968,12 @@ def test_a_set_of_files_is_one_card_that_pages_between_them(server, page):
     bar.locator(".next").click()
     assert bar.locator(".fn").inner_text() == "log.txt"
     assert card.locator(".stage pre").inner_text() == "line one"
-    assert bar.locator(".next").is_disabled()
-    bar.locator(".prev").click()
-    bar.locator(".prev").click()
+    bar.locator(".next").click()
     assert bar.locator(".count").inner_text() == "1 / 3"
     assert bar.locator("a.open").get_attribute("href") == first
+    bar.locator(".prev").click()
+    assert bar.locator(".fn").inner_text() == "log.txt"
+    bar.locator(".next").click()
     assert page.request.get(server.url.split("/?")[0] + first).body() == PNG
 
     # A single file keeps the card it always had: no pager.
@@ -2600,6 +2706,7 @@ def test_fleet_cards_and_archive_rows_walk_with_j_and_open_with_enter(server, pa
     page.wait_for_selector("#a2[data-view=fleet]")
     a, b = spawn(page, "alpha"), spawn(page, "beta")
     close_session(page)  # b goes to the archive
+    page.click("#tab-fleet")
     page.wait_for_selector("#a2[data-view=fleet]")
     page.wait_for_selector(f"#arch-list tr[data-id='{b}']")
     sel = "document.querySelector('#cards .sel, #arch-list .sel')?.dataset.id ?? null"
@@ -6075,7 +6182,7 @@ def test_the_navigator_fits_a_phone_and_keeps_its_touch_targets(server, browser)
     assert box["x"] >= 60 and box["x"] + box["width"] <= 390, box
     # A tap 4 px above the pill still lands on each button.
     hits = page.evaluate(
-        """() => [...document.querySelectorAll('#nav button')].map(b => {
+        """() => [...document.querySelectorAll('#nav button')].filter(b => b.offsetWidth).map(b => {
           const r = b.getBoundingClientRect();
           const at = document.elementFromPoint(r.x + r.width / 2, r.top - 4);
           return [b.id, at?.closest('button') === b];
@@ -6355,7 +6462,9 @@ def test_a_phone_in_landscape_gets_the_desktop_layout_with_touch_targets(
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page)
-    assert page.is_visible(".side") and page.is_visible("#side-btn")
+    # The pill, which holds the panel button, shows with the first row.
+    page.wait_for_selector("#nav-side", state="visible")
+    assert page.is_visible(".side")
     assert page.locator("#send").bounding_box()["height"] >= 44
     assert errors == []
 
@@ -6843,6 +6952,14 @@ def test_enter_while_dictating_sends_what_was_said(dict_server, mic_page):
     assert pg.get_attribute("#mic", "data-state") == "idle"
     assert pg.input_value("#input") == ""
     assert pg.locator(".row", has_text="kw=").count() >= 1, "the dictated text was sent"
+    # The agent read the note (#579); the person's row shows a mark instead.
+    row = pg.locator(".row.user", has_text="kw=")
+    assert row.locator(".dictated").count() == 1
+    assert "dictated by voice" not in row.inner_text()
+    pg.fill("#input", "typed")
+    pg.press("#input", "Enter")
+    turns_done(pg, 2)
+    assert pg.locator(".row.user", has_text="typed").locator(".dictated").count() == 0
 
 
 def test_alt_m_dictates_and_a_tab_switch_sends_late_text_to_its_own_draft(
@@ -6878,6 +6995,10 @@ def test_the_new_tab_box_dictates_too(dict_server, mic_page):
     pg.wait_for_selector("#sp-mic[data-state=idle]", timeout=10000)
     assert "kw=" in pg.input_value("#sp-text")
     assert pg.get_attribute("#mic", "data-state") == "idle"
+    pg.click("#sp-go")
+    turns_done(pg, 1)
+    assert pg.locator(".row.user", has_text="kw=").locator(".dictated").count() == 1
+    assert pg.errors == []
 
 
 def test_the_mic_is_disabled_without_a_microphone_api(dict_server, page):
@@ -8363,6 +8484,21 @@ def test_a_new_tab_with_files_and_no_text_starts_and_sends_them(server, page, tm
     assert page.errors == []
 
 
+def test_a_new_tabs_slash_line_runs_as_a_command_in_the_new_session(server, page):
+    # As spawn's prompt it reached the harness as plain text (#570).
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    open_new_tab(page)
+    page.fill("#sp-text", "/effort low")
+    page.press("#sp-text", "Enter")
+    page.wait_for_selector("#a2[data-view=session]")
+    page.wait_for_function(
+        "document.querySelector('#chip-effort').textContent === 'low effort'"
+    )
+    assert page.locator(".row.user").count() == 0
+    assert page.errors == []
+
+
 # -- tokens and owners (#311) -------------------------------------------------------
 def member_page(browser, server, name="ben", policy=None):
     """A second browser, signed in with a member token minted by the CLI, and
@@ -8622,7 +8758,7 @@ def test_the_recap_button_mid_turn_says_busy_in_a_toast(recap_server, page):
     page.fill("#input", "/busy 2")
     page.press("#input", "Enter")
     page.wait_for_function(
-        "() => (document.querySelector('.tab.on')?.title || '').includes('working')",
+        "() => (document.querySelector('.tab.on')?.getAttribute('aria-label') || '').includes('working')",
         timeout=4000,
     )
     page.click("#nav-recap")
@@ -8645,7 +8781,7 @@ def test_an_agent_toast_reaches_every_browser_and_its_click_opens_the_tab(
     page.press("#input", "Enter")
     for pg in (page, other):
         pg.wait_for_selector(".toast.from .msg >> text=Spec is ready")
-    handle = page.get_attribute(".tab.on", "title").split(":")[0]
+    handle = page.inner_text(".tab.on .hn")
     assert other.text_content(".toast.from .hd .nm") == handle
     other.click(".toast.from")
     other.wait_for_selector("#a2[data-view=session]")
@@ -8679,7 +8815,7 @@ def test_an_agent_toast_goes_to_the_desktop_only_while_the_page_is_hidden(
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     sid = spawn(page, "hello")
-    handle = page.get_attribute(".tab.on", "title").split(":")[0]
+    handle = page.inner_text(".tab.on .hn")
     page.fill("#input", '/mcp toast {"text": "Seen while visible"}')
     page.press("#input", "Enter")
     other.wait_for_selector(".toast.from .msg >> text=Seen while visible")
@@ -8737,15 +8873,13 @@ def test_the_cold_notice_appears_for_a_large_idle_context_only(cold_server, page
     page.wait_for_selector("#coldnote:not([hidden]) >> text=150k tokens", timeout=4000)
 
 
-def test_the_handoff_chip_opens_the_brief_and_continues_fresh(server, page):
+def test_the_handoff_chip_continues_fresh_at_once(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     old = spawn(page, "/ctx 342000")
     report(page, attention="done", line="Shipped.", handoff="Done: A. Next: B.")
     turns_done(page, 2)
     page.click("#replies .rp.hand >> text=continue fresh")
-    page.wait_for_selector("#handoff:not([hidden]) >> text=Done: A. Next: B.")
-    page.click("#handoff-go")
     page.wait_for_function("k => location.hash.slice(3) !== k", arg=old)
     page.wait_for_selector(".row >> text=Its brief for you")
     turns_done(page, 1)
@@ -8866,3 +9000,18 @@ def test_card_shows_the_cascade_position(cascade_server, page):
     page.wait_for_selector("#a2[data-view=fleet]")
     assert "opencode/b · 2 of 3" in page.inner_text(".card .ln")
     assert page.errors == []
+
+
+def test_an_urgent_handoff_shows_steered_in_on_the_row_it_makes(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    b = spawn(page, '/mcp session_rename {"handle": "steer-target"}')
+    page.fill("#input", "/busy 8")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row.tool.running")
+    args = {"target": "steer-target", "context": "stop now", "urgent": True}
+    spawn(page, f"/mcp peer_handoff {json.dumps(args)}")
+    page.wait_for_selector(".row >> text=steered into steer-target")
+    page.click(f"#tablist .tab[data-id='{b}']")
+    pill = page.wait_for_selector(".row.inbox .from .steered", timeout=10000)
+    assert pill.inner_text() == "steered in"

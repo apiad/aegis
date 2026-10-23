@@ -4,6 +4,7 @@
 // decided in Python. These functions only turn it into the markup the themes
 // style; they compute nothing about tools.
 
+import { who } from "./me.js";
 import markdownit from "../vendor/markdown-it.mjs";
 import { copyButton } from "./copy.js";
 import { money } from "./fleet.js";
@@ -95,8 +96,41 @@ export function setFileBase(base) {
   fileBase = base;
 }
 
+// A horizontal swipe across `node` on a touch screen calls step(+1) for the
+// next item (finger moving left) or step(-1). A swipe that began inside
+// something that scrolls sideways (a wide table or code line) is that
+// thing's scroll, not a page turn; a frame's touches never reach here.
+export function swipe(node, step) {
+  let x0 = null;
+  let y0 = 0;
+  node.addEventListener(
+    "touchstart",
+    (ev) => {
+      x0 = null;
+      if (ev.touches.length !== 1) return;
+      for (let n = ev.target; n && n !== node; n = n.parentElement) if (n.scrollWidth > n.clientWidth + 1) return;
+      x0 = ev.touches[0].clientX;
+      y0 = ev.touches[0].clientY;
+    },
+    { passive: true },
+  );
+  node.addEventListener(
+    "touchend",
+    (ev) => {
+      if (x0 === null) return;
+      const t = ev.changedTouches[0];
+      const dx = t.clientX - x0;
+      const dy = t.clientY - y0;
+      x0 = null;
+      if (Math.abs(dx) >= 50 && Math.abs(dx) > 2 * Math.abs(dy)) step(dx < 0 ? 1 : -1);
+    },
+    { passive: true },
+  );
+}
+
 // A set of sent files as one card: a bar with the name and the actions, the
-// preview below. A set pages in place (‹ ›), and a preview is built only when
+// preview below. A set pages in place (‹ ›, or a swipe on a touch screen),
+// round from the last file to the first, and a preview is built only when
 // its file is shown. The preview kind was decided at send (files.py); Open
 // hands the set to the viewer, at the file shown.
 function fileCard(files, glyph) {
@@ -146,8 +180,6 @@ function fileCard(files, glyph) {
     dock.dataset.dock = f.replaced ? "" : f.key || "";
     dock.hidden = !docker.can(dock.dataset.dock);
     count.textContent = `${i + 1} / ${sent.length}`;
-    prev.disabled = i === 0;
-    next.disabled = i === sent.length - 1;
     stage?.remove();
     // A replaced file, or one docked as a pane, holds a line instead of its
     // preview; syncDock() redraws it when the docking changes.
@@ -169,8 +201,10 @@ function fileCard(files, glyph) {
   card._sync = () => {
     if (holds(sent[at]) !== card.dataset.held) show(at);
   };
-  prev.addEventListener("click", () => show(at - 1));
-  next.addEventListener("click", () => show(at + 1));
+  const step = (d) => show((at + d + sent.length) % sent.length);
+  prev.addEventListener("click", () => step(-1));
+  next.addEventListener("click", () => step(1));
+  if (sent.length > 1) swipe(card, step);
   show(0);
   return card;
 }
@@ -376,6 +410,53 @@ function fillRequest(card, e) {
   form.append(input, go);
   body.append(el("div", "prompt", d.prompt || ""), form, hint);
   card.replaceChildren(bar, body);
+}
+
+// A config change an agent suggested (config_suggest.py): the diff, and for
+// an admin Apply and Not now. The outcome comes back as the folded entry.
+const CONFIG_DONE = {
+  applied: "Applied. .aegis.yaml now holds this text; the agent was told.",
+  declined: "Declined. Nothing was written; the agent was told.",
+  stale: ".aegis.yaml changed since this was suggested. Nothing was written; the agent was told.",
+};
+
+function fillConfig(card, e) {
+  const d = e.detail || {};
+  card.classList.toggle("gone", e.status !== "pending");
+  const bar = el("div", "fbar");
+  const acts = el("span", "acts");
+  bar.append(entryIcon(e.glyph), el("span", "fn", ".aegis.yaml"), el("span", "fs", e.status === "pending" ? "suggested" : e.status), acts);
+  const diff = el("pre", "cdiff");
+  for (const line of String(d.diff || "").split("\n")) {
+    const cls = line.startsWith("+++") || line.startsWith("---") ? "h" : line.startsWith("@@") ? "at" : line[0] === "+" ? "add" : line[0] === "-" ? "del" : null;
+    diff.append(el("span", cls, line + "\n"));
+  }
+  const kids = [bar, el("div", "sbody why", d.why || ""), diff];
+  if (e.status !== "pending") {
+    kids.push(el("div", "sbody dim", CONFIG_DONE[e.status] || e.status));
+  } else if (who.role === "member") {
+    kids.push(el("div", "sbody dim", "An admin applies this."));
+  } else {
+    const hint = el("span", "hint");
+    const press = (op, label) => {
+      const b = el("button", op === "config.suggestion.apply" ? "btn primary" : "btn", label);
+      b.type = "button";
+      b.onclick = async () => {
+        for (const x of acts.querySelectorAll("button")) x.disabled = true;
+        try {
+          await secretCall(op, { id: e.id });
+        } catch (err) {
+          for (const x of acts.querySelectorAll("button")) x.disabled = false;
+          hint.textContent = String(err?.message || err);
+          hint.classList.add("err");
+        }
+      };
+      return b;
+    };
+    acts.append(press("config.suggestion.apply", "Apply"), press("config.suggestion.decline", "Not now"));
+    kids.push(hint);
+  }
+  card.replaceChildren(...kids);
 }
 
 // The workflow a schedule fires, as it is now: its steps, who saved it, and
@@ -1330,6 +1411,8 @@ const RENDERERS = {
       d.append(el("summary", null, "template"), e.detail.tail ? el("pre", "out", e.detail.tail) : el("div", "loading", "loading…"));
       body.append(d);
     }
+    // Sent from the mic: the agent read a note asking it to allow for misheard words (#579).
+    if (e.detail?.dictated) body.append(el("div", "dictated", "🎙 dictated"));
     body.append(copyButton("message"));
     return row(e, `user ${e.status}`, body);
   },
@@ -1426,7 +1509,10 @@ const RENDERERS = {
   inbox(e) {
     // A monitor wake, a queue result, a handoff: the header is the title.
     const body = el("div", "body");
-    body.append(el("div", "from", e.title));
+    const from = el("div", "from", e.title);
+    // An urgent handoff sent into the running turn, not after it.
+    if (e.detail?.steered) from.append(el("span", "steered", "steered in"));
+    body.append(from);
     const text = (e.md || "").split("\n").filter((l) => !l.startsWith("> from ")).join("\n");
     body.append(markdown(text));
     return row(e, "inbox", body);
@@ -1467,6 +1553,15 @@ const RENDERERS = {
     fillSecret(card, e);
     body.append(card);
     return row(e, "secret", body);
+  },
+
+  config(e) {
+    // A config change waiting for a person (fillConfig). Never folded.
+    const body = el("div", "body");
+    const card = el("div", "fcard scard ccard");
+    fillConfig(card, e);
+    body.append(card);
+    return row(e, "config", body);
   },
 
   secret_request(e) {
@@ -1529,6 +1624,7 @@ const RENDERERS = {
       open.rel = "noopener noreferrer";
       acts.append(view, open);
     }
+    acts.prepend(phoneButton(e.id));
     if (e.status !== "live") acts.prepend(el("button", "btn show", "Show"));
     card.dataset.md = e.md || ""; // the caption's source, for update() to compare exactly
     bar.append(entryIcon(e.glyph), el("span", "fn", e.title), el("span", "fs", e.summary), acts);
@@ -1649,9 +1745,30 @@ export function hold(id, onEntry, entry, label = "open in the viewer") {
   if (line && entry?.status === "live" && docker.frames()) line.replaceWith(artifactStage(entry));
 }
 
+// Phone width, on every artifact's bar: the frame narrows to a phone's
+// viewport so the page's own media queries answer as on a phone. Per
+// artifact and per tab, so a redrawn card, the viewer and a pane agree.
+const phoneIds = new Set();
+export function phoneButton(id) {
+  const b = iconButton(el("button", "btn phone"), "phone", "Phone width");
+  b.type = "button";
+  b.dataset.phone = id;
+  b.setAttribute("aria-pressed", String(phoneIds.has(id)));
+  b.addEventListener("click", () => {
+    const on = !phoneIds.has(id);
+    if (on) phoneIds.add(id);
+    else phoneIds.delete(id);
+    const sel = CSS.escape(id);
+    for (const f of document.querySelectorAll(`#a2 iframe[data-artifact="${sel}"]`)) f.parentElement.classList.toggle("phone", on);
+    for (const x of document.querySelectorAll(`#a2 .btn.phone[data-phone="${sel}"]`)) x.setAttribute("aria-pressed", String(on));
+  });
+  return b;
+}
+
 // The frame of an artifact's card, live or shown again read-only.
 export function artifactStage(e) {
   const stage = el("div", "stage html");
+  stage.classList.toggle("phone", phoneIds.has(e.id));
   const f = el("iframe");
   f.setAttribute("sandbox", "allow-scripts");
   f.loading = "lazy";

@@ -31,6 +31,13 @@ runs in their browser, and their answer comes back to your inbox.
    the turn with `turn_end` and attention needs_you when the page asks
    something.
 
+Lay every page out for a desktop and a phone alike. The person may open it on
+a phone, and on a desktop every artifact's bar has a Phone width button that
+narrows the frame to 390 pixels, so they will see both. Let the layout reflow
+with the width (flex-wrap, a grid with `auto-fit`, a media query that stacks
+side-by-side columns), keep controls large enough to tap, and never rely on a
+fixed width or on hover alone.
+
 A send is refused when the page lost the script tag, or never calls
 `aegis.submit`, `aegis.emit` or `aegis.state`, since then no answer could ever
 reach you.
@@ -97,7 +104,8 @@ opens the browser's own menu inside the page.
 
 When the person only needs to look at something, such as a screenshot, a
 rendered PDF or a draft, `file_send` is enough. Pass `paths` (1 to 20
-absolute paths, shown as one card that pages through them) and an optional
+absolute paths, shown as one card that pages through them with ‹ › or a
+sideways swipe on a touch screen, going round from the last to the first) and an optional
 `caption`. The files are copied, so later edits are not seen until you send
 the file again, and each is at most 100 MB. If one cannot be sent, none is. Send a file when it is an output
 the person asked for or something they must see to discuss it; they see the

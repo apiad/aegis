@@ -710,3 +710,63 @@ def test_an_until_is_today_or_tomorrow_and_never_past():
     for bad in ("2026-10-17T09:00", "noon", "24:00"):
         with pytest.raises(OpError):
             until_ts(bad, now)
+
+
+# -- held messages ------------------------------------------------------------------
+HELD_WARN = NOTICE_HEADER + "held:"
+
+
+def test_held_items_quote_each_first_line_and_skip_the_quota_held():
+    from aegis.notices import TEXT_MAX
+    from aegis.registry import held_items
+
+    assert held_items([]) == []
+    quota = {"header": "> from agent:b · t", "body": "x", "ts": 1, "held_for": "quota"}
+    assert held_items([quota]) == []
+    mon = {
+        "header": "> from monitor:m-1 · fail · 2026-10-22T12:00:00Z",
+        "body": "\nCI on #48 failed.\nthe log follows",
+        "ts": 1.5,
+    }
+    long = {
+        "header": "> from agent:b · 2026-10-22T12:00:01Z",
+        "body": "x" * 400,
+        "ts": 2,
+    }
+    first, second = held_items([mon, long])
+    assert first.key == "m1500" and first.level == "warn"
+    assert first.text.startswith(
+        'monitor:m-1 · fail waits for your turn to end: "CI on #48 failed."'
+    )
+    assert second.text.startswith('agent:b waits for your turn to end: "xxx')
+    assert len(second.text) <= TEXT_MAX and '…"' in second.text
+
+
+async def test_a_message_held_mid_turn_is_announced_on_the_next_tool_result(world):  # noqa: F811
+    a = await world.spawn()
+    script = json.dumps([["sleep", 0.6], ["session_list", {}]])
+    busy = asyncio.create_task(turn(a, f"/script {script}"))
+    await until(lambda: a.status == "working", timeout=5, what="a's turn")
+    await a.deliver("> from agent:peer · 2026-10-22T12:00:00Z", "the spec changed")
+    assert [m["body"] for m in a.held] == ["the spec changed"]
+    await busy
+    await until(lambda: not a.held and a.status == "idle", timeout=5, what="the flush")
+    records, _ = read_store(world.app.sessions.store_path(a.log_id))
+    store = json.dumps(records)
+    assert "aegis:notice" in store and "held:m" in store
+    assert "agent:peer waits for your turn to end:" in store
+    flushed = sent(world.app, a.log_id)[-1]
+    assert flushed.startswith("> from agent:peer") and HELD_WARN not in flushed
+    assert not [k for k in a.items_sent if k.startswith("held:")]
+
+
+async def test_an_urgent_message_is_steered_into_the_running_turn(world):  # noqa: F811
+    a = await world.spawn()
+    busy = asyncio.create_task(turn(a, "/busy 0.6"))
+    await until(lambda: a.status == "working", timeout=5, what="a's turn")
+    await a.deliver("> from agent:peer · 2026-10-22T12:00:00Z", "stop now", urgent=True)
+    assert a.held == []
+    said = await busy
+    assert said.startswith("done: > from agent:peer") and "stop now" in said
+    (row,) = [e for e in a.entries() if e["kind"] == "inbox"]
+    assert row["detail"] == {"steered": True}

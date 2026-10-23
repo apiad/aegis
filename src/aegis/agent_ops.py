@@ -40,6 +40,15 @@ TOASTS_PER_WINDOW = 6
 TOAST_WINDOW_S = 60.0
 
 
+# What turn_end answers a session that still has the handle or the title aegis
+# gave it (#586): agents often set the handle and keep the drawn title.
+RENAME_NUDGE = (
+    "noted. This session still has the handle or title aegis gave it. Once the "
+    "task is clear, call session_rename with both a handle and a title that say "
+    "what this session works on."
+)
+
+
 class _Strict(BaseModel):
     model_config = {"extra": "forbid"}
 
@@ -100,10 +109,32 @@ class TaskId(_Strict):
     task_id: str
 
 
+URGENT_AND_INTERRUPT = (
+    "urgent and interrupt together: interrupt ends the turn, so there is no "
+    "turn to steer into. Pick one."
+)
+
+
+def handoff_reply(did: str, to: str, cannot_steer: bool) -> str:
+    """What peer_handoff tells its sender (Session.deliver's outcome)."""
+    if did == "steered":
+        return f"steered into {to}"
+    if did == "held":
+        why = " (its harness cannot take a message mid-turn)" if cannot_steer else ""
+        return f"held for {to}{why}"
+    return f"landed at {to}"
+
+
 class Handoff(_Strict):
     target: str = Field(description="The receiving session's handle.")
     context: str = Field(min_length=1)
     interrupt: bool = Field(False, description="Cut the target's current turn first.")
+    urgent: bool = Field(
+        False,
+        description="Reach a working target inside its current turn, at its next "
+        "tool step, instead of when the turn ends. For a correction that changes "
+        "its work now: stop, a cut in scope, don't do X.",
+    )
 
 
 class Sender(_Strict):
@@ -116,6 +147,7 @@ class Deliver(_Strict):
     target: str
     context: str = Field(min_length=1)
     interrupt: bool = False
+    urgent: bool = False
     sender: Sender
 
 
@@ -198,7 +230,8 @@ class TurnEnd(_Strict):
         description="needs_you: your message asks the person something. review: it "
         "presents something for them to read, or reports a step while work or waiting "
         "remains. done: the whole task they gave you is over; it puts an archive "
-        "button on the card, and is refused while your plan has unfinished items."
+        "button on the card, and is refused while your plan has unfinished items "
+        "or a monitor, task or workflow will still wake you."
     )
     line: str = Field(
         min_length=1,
@@ -220,6 +253,14 @@ class TurnEnd(_Strict):
         description="Only when turn_end answered with your context size and the task "
         "is at a natural break: a brief for a fresh session that continues this work. "
         "What is done, what is next, the files, the decisions, what not to retry.",
+    )
+    close: bool = Field(
+        False,
+        description="With done only: archive your session, and every session you "
+        "or they started, once this turn ends and all of them are finished. Only "
+        "when the person told you in this conversation to close when you finish, "
+        "or the plan or workflow they approved says so; never on your own "
+        "judgment. Refused while you or they still wait on anything.",
     )
 
 
@@ -531,7 +572,8 @@ def close_refusal(
     if yourself:
         paras.append(
             "If your work is finished, end your turn with turn_end(done) instead: "
-            "the person closes the tab once they have read it."
+            "the person closes the tab once they have read it. If they told you "
+            "to close when you finish, pass close=true to that turn_end."
         )
     else:
         peer = f" (or {starter}, which started it)" if starter else ""
@@ -745,9 +787,13 @@ def register_agent_ops(app: App) -> None:
     @r.op("peer.handoff", Handoff, agent=True)
     async def peer_handoff(p: Handoff, caller):
         """Give another session context or an instruction; it arrives as a user turn
-        headed `> from agent:<you>`. A busy target gets it when its turn ends, unless
-        interrupt cuts that turn first. `handle@server` reaches a session on a
-        server this one links; nothing there can reach you back."""
+        headed `> from agent:<you>`. A busy target gets it when its turn ends, and
+        is told meanwhile who waits; urgent reaches it inside the turn instead, at
+        its next tool step, and interrupt cuts that turn first. `handle@server`
+        reaches a session on a server this one links; nothing there can reach you
+        back."""
+        if p.urgent and p.interrupt:
+            raise OpError("bad_params", URGENT_AND_INTERRUPT)
         handle, server = split_address(p.target, app.server_name)
         who = app.who(caller)
         if server is not None:
@@ -776,14 +822,15 @@ def register_agent_ops(app: App) -> None:
         )
         if p.interrupt and to.status == "working":
             await to.interrupt()
-        before = len(to.held)
         try:
-            await to.deliver(f"> from {sender} · {iso_now()}", p.context)
+            did = await to.deliver(
+                f"> from {sender} · {iso_now()}", p.context, urgent=p.urgent
+            )
         except Archived as e:
             raise OpError("archived", f"{p.target} is archived") from e
-        # Held mid-turn, or by its owner's quota gate.
-        held = len(to.held) > before
-        return f"{'held for' if held else 'landed at'} {to.handle}"
+        return handoff_reply(
+            did, to.handle, p.urgent and not to.harness.steers_mid_turn
+        )
 
     async def far_handoff(handle: str, server: str, p: Handoff, caller: Caller):
         link = app.links.get(server)
@@ -804,6 +851,9 @@ def register_agent_ops(app: App) -> None:
                     "target": handle,
                     "context": p.context,
                     "interrupt": p.interrupt,
+                    # Only when set: a linked server from before urgent refuses
+                    # a field it does not know.
+                    **({"urgent": True} if p.urgent else {}),
                     "sender": sender,
                 },
             )
@@ -813,8 +863,9 @@ def register_agent_ops(app: App) -> None:
                     e.code, FAR_ERRORS[e.code].format(handle=handle, server=server)
                 ) from None
             raise OpError("far_error", f"{server} refused the handoff") from None
-        held = isinstance(r, dict) and r.get("held") is True
-        return f"{'held for' if held else 'landed at'} {handle}@{server}"
+        r = r if isinstance(r, dict) else {}
+        did = "steered" if r.get("steered") else "held" if r.get("held") else "sent"
+        return handoff_reply(did, f"{handle}@{server}", r.get("cannot_steer") is True)
 
     @r.op("peer.deliver", Deliver)
     async def peer_deliver(p: Deliver, caller):
@@ -840,15 +891,22 @@ def register_agent_ops(app: App) -> None:
                 "not_owner",
                 f"{to.handle} belongs to {owner}; a handoff cannot reach it",
             )
+        if p.urgent and p.interrupt:
+            raise OpError("bad_params", URGENT_AND_INTERRUPT)
         if p.interrupt and to.status == "working":
             await to.interrupt()
-        before = len(to.held)
         who = f"agent:{p.sender.handle}@{p.sender.server} ({p.sender.user})"
         try:
-            await to.deliver(f"> from {who} · {iso_now()}", p.context)
+            did = await to.deliver(
+                f"> from {who} · {iso_now()}", p.context, urgent=p.urgent
+            )
         except Archived as e:
             raise OpError("archived", f"{p.target} is archived") from e
-        return {"held": len(to.held) > before}
+        return {
+            "held": did == "held",
+            "steered": did == "steered",
+            "cannot_steer": p.urgent and not to.harness.steers_mid_turn,
+        }
 
     def readable(handle: str, caller) -> list[dict]:
         """A transcript peer_read may read: an open session's, or the archived
@@ -878,7 +936,11 @@ def register_agent_ops(app: App) -> None:
         handle and state alone, as `handle@server`: reach one with
         peer_handoff."""
         out = []
+        who = app.who(caller)
+        member = app.multi_user is not None and not who.is_admin
         for s in reg.open_sessions():
+            if not app.sees(who, app.owner_of(s.log_id)):
+                continue
             w = s.wire()
             out.append(
                 {
@@ -892,7 +954,8 @@ def register_agent_ops(app: App) -> None:
                     **{k: w.get(k) for k in LISTED},
                 }
             )
-        if caller.link is None:  # a link asking is not relayed further
+        # A link asking is not relayed further; links are the admin's.
+        if caller.link is None and not member:
             out += await far_sessions()
         return out
 
@@ -1124,7 +1187,30 @@ def register_agent_ops(app: App) -> None:
                 "plan_update, then call turn_end again; if not, call turn_end with "
                 "review, or needs_you when you ask something.",
             )
-        rec = {
+        if p.attention == "done" and not p.close and (live := reg.wakers(s)):
+            raise OpError(
+                "still_waiting",
+                "done means the task is over, and this will still wake you: "
+                + ", ".join(live)
+                + ". If it is over, cancel or stop it (monitor_cancel, task_cancel) and "
+                "call turn_end again; if you are waiting on it, end the turn "
+                "without turn_end, or call turn_end with review.",
+            )
+        if p.close and p.attention != "done":
+            raise OpError(
+                "bad_params",
+                "close goes with done only: a session that asks the person "
+                "something or has something for them to read stays open.",
+            )
+        if p.close and (blockers := reg.close_blockers(s)):
+            raise OpError(
+                "close_refused",
+                "Not closed, because this is still running: "
+                + ", ".join(blockers)
+                + ". Wait for it, or cancel or close it, then call turn_end again; "
+                "or call turn_end without close and leave the tab open.",
+            )
+        rec: dict[str, object] = {
             "kind": "turn_end",
             "attention": p.attention,
             "line": p.line,
@@ -1132,13 +1218,26 @@ def register_agent_ops(app: App) -> None:
         }
         if p.handoff and not s.worker:
             rec["handoff"] = p.handoff
+        if p.close:
+            rec["close"] = True
         s.report(rec)
+        if p.close:
+            n = len(reg.descendants(s.log_id))
+            tree = (
+                f" and the {n} session{'s' if n != 1 else ''} it started" if n else ""
+            )
+            return (
+                f"noted. aegis archives this session{tree} when this turn ends; "
+                "your final message is the last thing in its tab."
+            )
         at = app.config.current().context["handoff_at"]
         n = s.context_tokens or 0
+        unnamed = not s.worker and not (s.handle_set and s.title_set)
         if s.worker or p.handoff or not at or n < at:
-            return "noted"
+            return RENAME_NUDGE if unnamed else "noted"
         then = BRIEF_IF if p.attention == "needs_you" else BRIEF_NOW
-        return CONTEXT_LINE.format(k=f"{round(n / 1000)}k") + then
+        line = CONTEXT_LINE.format(k=f"{round(n / 1000)}k") + then
+        return f"{line}\n{RENAME_NUDGE}" if unnamed else line
 
     toasted: dict[str, list[float]] = {}
 
@@ -1165,8 +1264,14 @@ def register_agent_ops(app: App) -> None:
     async def meta(_, caller):
         """How aegis works for you, and its tools."""
         s = reg.sessions.get(caller.log_id or "")
+        from .browsers import available
         from .mcp import primer
 
         tools = ", ".join(op.tool_name for op in r.agent_ops())
-        head = primer(s, reg.server_name, reg.roots.config_root) if s else "aegis"
+        browsers = not reg.multi_user and available()
+        head = (
+            primer(s, reg.server_name, reg.roots.config_root, browsers=browsers)
+            if s
+            else "aegis"
+        )
         return f"{head}\n\nTools: {tools}. help_search finds how to use any of these."

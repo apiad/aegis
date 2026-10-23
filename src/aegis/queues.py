@@ -340,7 +340,12 @@ class Queues:
     async def _start(self, t: Task, q: dict) -> None:
         try:
             agents = list(self._config.current().agents)
-            spec = resolve(agents, None, q["agent"], {}, Path(t.cwd), owner=t.owner)
+            # A worker joins its enqueuer's group (#586).
+            enqueuer = self._registry.sessions.get(t.enqueuer or "")
+            group = enqueuer.group_key() if enqueuer else None
+            spec = resolve(
+                agents, None, q["agent"], {}, Path(t.cwd), owner=t.owner, group=group
+            )
         except OpError as e:
             self._fail(t, f"the queue's agent {q['agent']!r} cannot start: {e.message}")
             return

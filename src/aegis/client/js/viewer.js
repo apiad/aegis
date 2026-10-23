@@ -17,7 +17,7 @@
 // agent's state reaches the viewer's frame instead.
 
 import { Tray } from "./comments.js";
-import { artifactStage, dockButton, fileActions, fileUrl, fillWorkflow, hold, markdown, popButton, preview } from "./entries.js";
+import { artifactStage, dockButton, fileActions, fileUrl, fillWorkflow, hold, markdown, phoneButton, popButton, preview, swipe } from "./entries.js";
 import { entryIcon, icon } from "./glyphs.js";
 import { colour, langOfPath, paint } from "./highlight.js";
 import { filesHash } from "./files.js";
@@ -151,10 +151,11 @@ async function drawText(f, body, line, isCurrent, drawn) {
 }
 
 // An artifact's page at full size, drawn into a bar and a body: its glyph,
-// title and status in the bar, Open in a new tab in acts (or the `popout`
+// title and status in the bar, Phone width and Open in a new tab in acts (or the `popout`
 // button a live page's pane or the viewer passes instead), the frame in the body. Who holds the page
 // (entries.hold) is the caller's business.
 export function drawArtifact(e, { bar, body, acts, popout = null }) {
+  acts.append(phoneButton(e.id));
   if (popout) acts.append(popout);
   else {
     const open = el("a", "btn icon open");
@@ -362,21 +363,23 @@ export class Viewer {
       drawn: (content) => tray?.layer(content),
     });
     if (item.files.length > 1) {
+      // Round from the last file to the first, as on the card.
+      const go = (d) => {
+        item.at = (item.at + d + item.files.length) % item.files.length;
+        this.render();
+      };
       const pager = el("span", "pager");
       const step = (d, name, title) => {
         const b = el("button", "btn icon");
         b.append(icon(name));
         b.title = title;
         b.setAttribute("aria-label", title);
-        b.disabled = item.at + d < 0 || item.at + d >= item.files.length;
-        b.addEventListener("click", () => {
-          item.at += d;
-          this.render();
-        });
+        b.addEventListener("click", () => go(d));
         return b;
       };
       pager.append(step(-1, "left", "Previous file"), el("span", "count", `${item.at + 1} / ${item.files.length}`), step(1, "right", "Next file"));
       bar.append(pager);
+      swipe(body, go);
     }
     acts.append(this.closeButton());
     bar.append(acts);

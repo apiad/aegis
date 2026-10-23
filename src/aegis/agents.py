@@ -219,6 +219,7 @@ def resolve(
     overrides: dict[str, str | None],
     cwd: Path,
     spawned_by: str | None = None,
+    group: str | None = None,
     owner: str | None = None,
 ) -> SpawnSpec:
     """The spec a spawn runs: the agent's fields, each replaced by its override
@@ -259,5 +260,6 @@ def resolve(
         cascade=cascade,
         overridden=overridden,
         spawned_by=spawned_by,
+        group=group,
         owner=owner,
     )

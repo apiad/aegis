@@ -17,7 +17,7 @@ import { Find } from "./find.js";
 import * as artifacts from "./artifacts.js";
 import { TabOrder, patchTab, renderTabs } from "./tabs.js";
 import { linesOf, mine, ownerOf, setWho } from "./me.js";
-import { ago, byNeed, modelLine, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards, tickPlan } from "./fleet.js";
+import { ago, byNeed, modelLine, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards, tickPlan, card as fleetCard } from "./fleet.js";
 import { age, countdown, diskRows, elapsed, hostRow, hostSeverity, mbps, netRows, providerFor, quotaSideRow, quotaTile, tile } from "./gauges.js";
 import { closeCard, initSide, restState, toggleCollapsed } from "./side.js";
 import { installKeys, renderKeys } from "./keys.js";
@@ -25,6 +25,8 @@ import { Palette } from "./palette.js";
 import { entryIcon, glyph, gorgoneion, icon, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
 import * as cmenu from "./menu.js";
+import { attachTabCard } from "./tabcard.js";
+import { blocksOf } from "./groups.js";
 import { clampToRow, insertIntoComposer, quoted, rangeText } from "./quote.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
@@ -41,7 +43,7 @@ import { Attachments } from "./attach.js";
 import { dur, planTimes } from "./plantime.js";
 import { setToastOpener, toast } from "./toast.js";
 import { closeTerm, drawCard, openTerm } from "./termview.js";
-import { closeBrowser, drawBrowser, openBrowser } from "./browserview.js";
+import { browserSources, closeBrowser, drawBrowser, mountBrowser, openBrowser } from "./browserview.js";
 import { applyUpdate, checkForUpdate, setAutoApply, startWorker } from "./appworker.js";
 import { closeInstallDialog, startInstall } from "./install.js";
 import { checkRotation, closePushPanel, openPushPanel, pushSupported, setupPush } from "./pushpanel.js";
@@ -192,6 +194,8 @@ const canvas = new Canvas($("canvas"), {
   onChange: () => syncDock(),
   refuse: (message) => toast(message, { kind: "error" }),
   openWindow: (n, tab) => openWindow(shown, n, tab),
+  // A browser the session drives, docked: its own view of the stream.
+  mountBrowser: (host, id) => (sessions.has(id) ? mountBrowser(host, id, termCard(id), { conn }) : null),
 });
 // Dock on a card or the viewer's bar. The viewer lets go of what it docks.
 // The viewer lets go of what it docks or pops out.
@@ -342,6 +346,20 @@ foldLevel(Number(localStorage.getItem("aegis.foldLevel")) % 3 || 0);
 $("nav-fold").addEventListener("click", () => foldLevel((transcript.foldLevel + 1) % 3));
 // How the Fleet orders its cards: this browser's choice, like the tab order.
 let fleetOrder = localStorage.getItem("aegis.fleetOrder") || "attention";
+// Unfolded groups in the Fleet (#586), this browser's own and apart from the
+// bar's folds: the overview and the switcher fold for different reasons.
+const unfoldedGroups = new Set(JSON.parse(localStorage.getItem("aegis.fleet-open") || "[]"));
+const fleetStacks = {
+  get here() {
+    return conn.server || localStorage.getItem("aegis.server") || "";
+  },
+  open: unfoldedGroups,
+  onToggle: (key) => {
+    if (!unfoldedGroups.delete(key)) unfoldedGroups.add(key);
+    localStorage.setItem("aegis.fleet-open", JSON.stringify([...unfoldedGroups]));
+    render();
+  },
+};
 function markOrder() {
   for (const b of document.querySelectorAll("#fleet-order button")) b.classList.toggle("on", b.dataset.order === fleetOrder);
 }
@@ -600,6 +618,7 @@ filesView = new Files(conn, $("files"), {
   here: {
     insert: (path) => toComposer(lastShown, `\`${path}\``, { caret: true }),
     session: async (dir) => {
+      spawnFrom = null;
       go("#new");
       spawnGrow();
       await setSpServer(null);
@@ -964,19 +983,22 @@ function flushSessions() {
     return;
   }
   const r = route();
-  for (const id of ids) if (sessions.has(id)) patchTab($("tablist"), sessions.get(id), tabFocus(r), tabActions);
+  let whole = false; // a grouped tab redraws the bar (tabs.js patchTab)
+  for (const id of ids) if (sessions.has(id) && !patchTab($("tablist"), sessions.get(id), tabFocus(r), tabActions)) whole = true;
+  if (whole) renderTabs($("tablist"), tabbed(), tabFocus(r), tabActions);
   if (r.view === "fleet") {
     const home = [...ids].filter((id) => !sessions.get(id)?.server);
     const regroup = home.some((id) => !patchCard($("cards"), sessions.get(id), openCard, fleetOrder, closeById));
-    if (regroup) renderCards($("cards"), local().filter(kindShown), openCard, fleetOrder, closeById);
+    if (regroup) renderCards($("cards"), local().filter(kindShown), openCard, fleetOrder, closeById, fleetStacks);
     if (home.length < ids.size) renderRemotes();
     fleetMark(false);
     drawBand();
     markNeedsNet(); // the cards' Archive buttons
   } else if (r.view === "session" && ids.has(r.id)) renderMeta(sessions.get(r.id));
   else if (r.view === "term" && ids.has(r.id)) drawCard(termCard(r.id));
-  else if (r.view === "browser" && ids.has(r.id)) drawBrowser(termCard(r.id));
   else if (r.view === "window" && ids.has(r.id)) drawWindow(r);
+  // A browser shows in its tab and in canvas panes: every view redraws.
+  for (const id of ids) if (sessions.get(id)?.kind === "browser") drawBrowser(termCard(id));
   drawNav(); // the needs count
 }
 
@@ -1006,6 +1028,11 @@ const openSession = (id) => route().view === "window" || go(hashOf(id));
 // A tab's hash: a terminal's view, or a session's.
 const hashOf = (key) => ({ term: `#t=${key}`, browser: `#b=${key}` })[sessions.get(key)?.kind] || `#s=${key}`;
 const tabFocus = (r) => (r.view === "session" || r.view === "term" || r.view === "browser" ? r.id : null);
+// Where a browser's views find its card and the sessions it can be given to.
+browserSources({
+  card: (id) => (sessions.has(id) ? termCard(id) : null),
+  sessions: () => local().filter((m) => !isTool(m) && m.state !== "asleep" && mine(m)),
+});
 // The open terminal's card, with the log id and server it is reached by.
 function termCard(key) {
   const m = sessions.get(key);
@@ -1041,12 +1068,24 @@ const closeById = (id) => {
   const s = sessions.get(id);
   if (s) closeSession(s);
 };
+// Folded groups in the bar (#586), this browser's own like the tab order.
+const tabFolds = new Set(JSON.parse(localStorage.getItem("aegis.tab-folds") || "[]"));
 const tabActions = {
   onFocus: openSession,
   onClose: closeById,
-  onMove: (id, before) => {
-    order.move(id, before);
+  onMove: (keys, before) => {
+    order.move(keys, before);
     onSessions();
+  },
+  get here() {
+    return conn.server || localStorage.getItem("aegis.server") || "";
+  },
+  folds: tabFolds,
+  saveFolds: () => localStorage.setItem("aegis.tab-folds", JSON.stringify([...tabFolds])),
+  onFold: (key) => {
+    if (!tabFolds.delete(key)) tabFolds.add(key);
+    tabActions.saveFolds();
+    renderTabs($("tablist"), tabbed(), tabFocus(route()), tabActions);
   },
 };
 
@@ -1060,15 +1099,26 @@ const tabbed = () => ordered.filter((m) => !m.quiet);
 const quietSeen = new Map(); // key -> whether it was quiet when last drawn
 const quietChanged = () => ordered.some((m) => !!m.quiet !== (quietSeen.get(m.key) ?? !!m.quiet));
 
-function leaveIfQuieted(r) {
-  const fresh = r.view === "session" && sessions.get(r.id)?.quiet && quietSeen.get(r.id) === false;
+// Archiving the open tab, here or elsewhere, leaves it the same way: to the next
+// tab, not to the Fleet. The order is the one last drawn, which still holds it.
+// Whether the list that would hold this key has arrived: a far session's
+// server's, or this server's live one rather than the device's saved list.
+function settled(key) {
+  const far = forKey(key).server;
+  return far ? linksLoaded && !(linkOf(far) && !remote.get(far)?.loaded) : homeLive;
+}
+
+function leaveIfGone(r) {
+  const id = tabFocus(r);
+  const was = [...quietSeen.keys()];
+  const drawn = id && quietSeen.get(id) === false;
+  const fresh = drawn && (sessions.get(id) ? r.view === "session" && sessions.get(id).quiet : settled(id));
   quietSeen.clear();
   for (const m of ordered) quietSeen.set(m.key, !!m.quiet);
   if (!fresh) return false;
-  const all = ordered.map((m) => m.key);
-  const at = all.indexOf(r.id);
-  const next = all.slice(at + 1).concat(all.slice(0, at).reverse()).find((k) => !quietSeen.get(k));
-  go(next ? `#s=${next}` : "#fleet");
+  const at = was.indexOf(id);
+  const next = was.slice(at + 1).concat(was.slice(0, at).reverse()).find((k) => quietSeen.get(k) === false);
+  go(next ? hashOf(next) : "#fleet");
   return true;
 }
 
@@ -1122,7 +1172,7 @@ function render() {
   }
   if (r.view !== "term") closeTerm();
   if (r.view !== "browser") closeBrowser();
-  if (leaveIfQuieted(r)) return;
+  if (leaveIfGone(r)) return;
   // A session's link to a terminal, or the reverse, opens the right view.
   if ((r.view === "session" || r.view === "term" || r.view === "browser") && sessions.has(r.id) && `#${r.view[0]}=${r.id}` !== hashOf(r.id)) {
     history.replaceState(null, "", hashOf(r.id));
@@ -1145,13 +1195,11 @@ function render() {
     return;
   }
   if ((r.view === "session" || r.view === "term") && !sessions.has(r.id)) {
-    const far = forKey(r.id).server;
-    // A far session whose server's list has not arrived yet: wait for it.
-    if (far && (!linksLoaded || (linkOf(far) && !remote.get(far)?.loaded))) return;
-    // Likewise a home session while only the device's saved list is drawn: a
-    // notification's tap or a link opens a session the saved list may predate.
-    if (!far && !homeLive) return;
-    go("#fleet"); // closed here or elsewhere
+    // A far session whose server's list has not arrived yet waits for it; a
+    // home one waits for the live list, since a notification's tap or a link
+    // opens a session the device's saved list may predate.
+    if (!settled(r.id)) return;
+    go("#fleet"); // a link to a session no tab held: gone before this page drew it
     return;
   }
   renderTabs($("tablist"), tabbed(), tabFocus(r), tabActions);
@@ -1173,7 +1221,7 @@ function render() {
   if (r.view === "fleet") {
     follow(null);
     show("fleet");
-    renderCards($("cards"), local().filter(kindShown), openCard, fleetOrder, closeById);
+    renderCards($("cards"), local().filter(kindShown), openCard, fleetOrder, closeById, fleetStacks);
     renderRemotes();
     fleetMark(false);
     watchHost("all");
@@ -1246,8 +1294,7 @@ function render() {
     if (!sessions.has(r.id)) return homeLive && go("#");
     show("browser");
     const card = termCard(r.id);
-    const mineOpen = () => local().filter((m) => !isTool(m) && m.state !== "asleep" && mine(m));
-    openBrowser(card.id, card, { conn, server: card.server ?? null, sessions: mineOpen });
+    openBrowser(card.id, card, { conn, server: card.server ?? null });
     setTitle(`${card.name} · aegis`);
   } else if (r.view === "term") {
     watchHost(null);
@@ -1387,7 +1434,7 @@ function renderRemotes() {
     }
     host.append(box); // keep the links' order
     const metas = on(l.name).filter(kindShown);
-    if (metas.length) renderCards(box.querySelector(".cards"), metas, openCard, fleetOrder, closeById);
+    if (metas.length) renderCards(box.querySelector(".cards"), metas, openCard, fleetOrder, closeById, fleetStacks);
     else box.querySelector(".cards").replaceChildren();
   }
   drawBand();
@@ -1877,22 +1924,51 @@ function prLink(pr) {
   return a;
 }
 
-function repoLine(r) {
+// The lines of one repo, its main checkout and worktrees, form one group: the
+// main checkout first, then the worktrees in the server's order (newest
+// first). The server puts the same peers on every line of a repo, one entry
+// per checkout they wrote in; a group names each peer once.
+function repoGroups(repos) {
+  const by = new Map();
+  for (const r of repos) {
+    if (!by.has(r.main)) by.set(r.main, []);
+    by.get(r.main).push(r);
+  }
+  return [...by.values()].map((lines) => {
+    lines.sort((a, b) => a.worktree - b.worktree);
+    const peers = new Map();
+    for (const r of lines) for (const p of r.peers) {
+      if (!peers.has(p.handle)) peers.set(p.handle, []);
+      if (!peers.get(p.handle).includes(p.where)) peers.get(p.handle).push(p.where);
+    }
+    return { name: lines[0].name, main: lines[0].main, lines, peers };
+  });
+}
+
+function repoLine(g) {
   const line = document.createElement("div");
   line.className = "rp-line";
-  if (r.peers.length) {
+  if (g.peers.size) {
     const dot = span("rp-dot", "");
-    dot.title = r.peers.map((p) => `${p.handle} is also here`).join("\n");
+    dot.title = [...g.peers.keys()].map((h) => `${h} is also here`).join("\n");
     line.append(dot);
   }
-  line.append(span("n", r.name), span("rp-br", r.worktree ? `⑂ ${rpBase(r.top)}` : r.branch || "detached"));
+  const [r] = g.lines;
+  const where = g.lines.length > 1 ? `${g.lines.length} checkouts` : r.worktree ? `⑂ ${rpBase(r.top)}` : r.branch || "detached";
+  line.append(span("n", g.name), span("rp-br", where));
   const right = span("rp-r", "");
-  if (r.removed) right.append(span("rp-gone", "removed"));
-  if (r.op) right.append(span("rp-op", r.op));
-  if (r.dirty_n) right.append(span("rp-dirty", `~${r.dirty_n}`));
-  if (r.unpushed_n) right.append(span("rp-ahead", `↑${r.unpushed_n}`));
-  for (const pr of r.prs) if (pr.state === "open") right.append(prLink(pr));
-  if (r.clean) right.prepend(span("rp-clean", "✓"));
+  const sum = (k) => g.lines.reduce((a, l) => a + l[k], 0);
+  if (g.lines.every((l) => l.removed)) right.append(span("rp-gone", "removed"));
+  for (const op of new Set(g.lines.map((l) => l.op).filter(Boolean))) right.append(span("rp-op", op));
+  if (sum("dirty_n")) right.append(span("rp-dirty", `~${sum("dirty_n")}`));
+  if (sum("unpushed_n")) right.append(span("rp-ahead", `↑${sum("unpushed_n")}`));
+  const seen = new Set();
+  for (const l of g.lines) for (const pr of l.prs) {
+    if (pr.state !== "open" || seen.has(pr.n)) continue;
+    seen.add(pr.n);
+    right.append(prLink(pr));
+  }
+  if (g.lines.every((l) => l.clean)) right.prepend(span("rp-clean", "✓"));
   line.append(right);
   return line;
 }
@@ -1924,14 +2000,13 @@ function rpList(items, shown, total) {
   return ul;
 }
 
-function repoSection(r, ghOk) {
+// One checkout inside its repo's section: what this session left there.
+function checkoutBlock(r, ghOk) {
   const sec = document.createElement("div");
-  sec.className = "csec";
-  const h = document.createElement("h5");
-  h.className = "rp-h";
-  h.append(span("", r.name));
-  if (r.worktree) h.append(span("rp-wt", "worktree"));
-  h.append(span("p", r.path));
+  sec.className = "rp-co";
+  const h = document.createElement("h6");
+  h.append(span("", r.worktree ? `worktree ${rpBase(r.top)}` : "main checkout"));
+  if (r.worktree) h.append(span("p", r.path));
   sec.append(h);
   if (r.removed) sec.append(rpKv("state", "removed: the directory is gone"));
   else if (r.branch || r.upstream) sec.append(rpKv("branch", r.upstream ? `${r.branch} → ${r.upstream}` : `${r.branch || "detached"}, no upstream`));
@@ -1957,11 +2032,23 @@ function repoSection(r, ghOk) {
   }
   if (r.prs.length && !ghOk) sec.append(rpKv("", "PR state unknown: gh unavailable"));
   if (r.others_n) sec.append(rpKv("others' dirt", `${rpPlural(r.others_n, "file")} this session never wrote`));
-  for (const p of r.peers) {
+  return sec;
+}
+
+function repoSection(g, ghOk) {
+  const sec = document.createElement("div");
+  sec.className = "csec";
+  const h = document.createElement("h5");
+  h.className = "rp-h";
+  h.append(span("", g.name));
+  const main = g.lines.find((l) => !l.worktree);
+  h.append(span("p", main ? main.path : g.main));
+  sec.append(h, ...g.lines.map((r) => checkoutBlock(r, ghOk)));
+  for (const [handle, wheres] of g.peers) {
     const d = document.createElement("div");
     d.className = "rp-peer";
-    d.textContent = `● ${p.handle} is also here: ${p.where}`;
-    sec.append(d);
+    d.textContent = `● ${handle} is also here`;
+    sec.append(d, rpList(wheres.map((w) => [w]), wheres.length, wheres.length));
   }
   return sec;
 }
@@ -1970,19 +2057,20 @@ function drawRepos(d) {
   const repos = d.repos || [];
   $("s-repos-sec").hidden = !repos.length;
   if (!repos.length) return;
-  $("s-repos-n").textContent = String(repos.length);
-  const lines = repos.slice(0, 5).map(repoLine);
-  if (repos.length > 5) lines.push(span("rp-more", `+${repos.length - 5} more`));
+  const groups = repoGroups(repos);
+  $("s-repos-n").textContent = String(groups.length);
+  const lines = groups.slice(0, 5).map(repoLine);
+  if (groups.length > 5) lines.push(span("rp-more", `+${groups.length - 5} more`));
   $("s-repos").replaceChildren(...lines);
   const sum = (k) => repos.reduce((a, r) => a + r[k], 0);
-  const open = repos.reduce((a, r) => a + r.prs.filter((p) => p.state === "open").length, 0);
+  const open = new Set(repos.flatMap((r) => r.prs.filter((p) => p.state === "open").map((p) => `${r.main}#${p.n}`))).size;
   $("s-repos-sum").textContent = [
-    rpPlural(repos.length, "repo"),
+    rpPlural(groups.length, "repo"),
     `${rpPlural(sum("dirty_n"), "file")} uncommitted`,
     `${rpPlural(sum("unpushed_n"), "commit")} unpushed`,
     `${rpPlural(open, "PR")} open`,
   ].join(" · ");
-  $("s-repos-all").replaceChildren(...repos.map((r) => repoSection(r, d.gh)));
+  $("s-repos-all").replaceChildren(...groups.map((g) => repoSection(g, d.gh)));
 }
 
 // A window tab: its panes, and the session's name in its title so the
@@ -2821,23 +2909,37 @@ async function spawnFromComposer() {
   await dictation.finish($("sp-text"));
   const text = $("sp-text").value.trim();
   const params = { agent: a.name, cwd: $("sp-cwd").value.trim() || null, ...overrides() };
-  // With files, the session starts empty: they upload into its inbox and go
-  // out with the text as its first message (sendFirst).
-  const held = spAtts.list("spawn").length > 0;
-  if (text && !held) params.prompt = text;
+  // With files or dictated text, the session starts empty: the files upload
+  // into its inbox and go out with the text as its first message (sendFirst),
+  // which carries the dictated mark a spawn's prompt has no field for.
+  const dictated = spoken.has("spawn") && !spServer; // a linked server may predate the field
+  const held = spAtts.list("spawn").length > 0 || dictated;
+  // A / line runs as a command in the new session, as typed there (#570):
+  // as spawn's prompt the harness would get it as plain text.
+  const command = text.startsWith("/") && !text.startsWith("//");
+  if (text && !held && !command) params.prompt = text;
+  if (spawnFrom && !spServer) params.from_session = spawnFrom;
   try {
     const r = await untestedRetry(
       () => conn.call("session.spawn", params, spServer),
       (untested) => conn.call("session.spawn", { ...params, untested }, spServer),
     );
     if (r === CANCELLED) return; // the typed text stays
+    spawnFrom = null;
     localStorage.setItem(LAST_AGENT, a.name);
     $("sp-text").value = "";
     spawnGrow();
     pickAgent(a.name);
     const key = keyOf(spServer, r.log_id);
     go(`#s=${key}`);
-    if (held) sendFirst(key, text, spAtts.take("spawn"));
+    spoken.delete("spawn");
+    if (held) sendFirst(key, text, spAtts.take("spawn"), dictated);
+    else if (command) {
+      // The session's patch lands before spawn's reply; a far one may not have.
+      const s = sessions.get(key);
+      if (s) sendLine(text, false, [], s);
+      else sendFirst(key, text, []);
+    }
   } catch (e) {
     toast(e.message, { kind: "error" });
   } finally {
@@ -2886,6 +2988,7 @@ function spawnGrow() {
   const t = $("sp-text");
   const view = t.closest(".view");
   if (!view.clientHeight) return;
+  stackActs(t);
   t.style.height = "";
   const css = getComputedStyle(view);
   const pad = parseFloat(css.paddingTop) + parseFloat(css.paddingBottom);
@@ -3087,7 +3190,10 @@ for (const [kind, id] of [
 
 // -- tab bar and keys -----------------------------------------------------------
 $("tab-fleet").addEventListener("click", () => go("#fleet"));
-$("tab-add").addEventListener("click", () => !offline() && go("#new"));
+$("tab-add").addEventListener("click", () => {
+  spawnFrom = null;
+  if (!offline()) go("#new");
+});
 // The ? list: drawn once from the key table.
 const keymap = $("keymap");
 renderKeys(keymap);
@@ -3176,7 +3282,10 @@ installKeys(
       if (v === "session" || v === "read") cmenu.openFor(transcript.selected && transcript.nodes.get(transcript.selected));
       else if (v === "fleet") cmenu.openFor(fleetItems().find((x) => x.dataset.id === fleetSel));
     },
-    spawn: () => offline() || go("#new"), // a new session needs the server
+    spawn: () => {
+      spawnFrom = null;
+      if (!offline()) go("#new"); // a new session needs the server
+    },
     settings: () => go("#settings"),
     journal: () => go("#journal"),
     files: () => filePicker.open(),
@@ -3211,6 +3320,14 @@ installKeys(
     },
     help: () => help(),
     side: () => toggleSide(),
+    archive() {
+      const b = $("close");
+      if (route().view === "session" && !b.disabled) b.click();
+    },
+    quiet() {
+      const b = $("quiet-session");
+      if (route().view === "session" && !b.disabled) b.click();
+    },
     palette: () => palette.toggle(),
   },
   () => (booted ? route().view : "boot"),
@@ -3344,8 +3461,14 @@ const dictation = new Dictation({
 });
 // A session's box holds that session's draft, so text that lands after the
 // box moved to another session goes to the draft it started in.
-const sessionTarget = () => ({ el: input, key: `aegis.draft.${shown}`, current: () => `aegis.draft.${shown}` });
-const spawnTarget = () => ({ el: $("sp-text"), key: null, current: () => null });
+// The drafts that got dictated text since their last send, by draft key and
+// "spawn": their send tells the server, which adds a note for the agent (#579).
+const spoken = new Set();
+const sessionTarget = () => {
+  const key = `aegis.draft.${shown}`;
+  return { el: input, key, current: () => `aegis.draft.${shown}`, heard: () => spoken.add(key) };
+};
+const spawnTarget = () => ({ el: $("sp-text"), key: null, current: () => null, heard: () => spoken.add("spawn") });
 if (!navigator.mediaDevices) {
   for (const [b] of mics()) {
     b.disabled = true;
@@ -3359,7 +3482,29 @@ $("sp-mic").addEventListener("click", () => !offline() && dictation.toggle(spawn
 const touch = matchMedia("(pointer: coarse)");
 if (touch.matches) $("sp-text").placeholder = "What should the agent do?";
 
+// The buttons sit beside one line of text and drop under a longer one, so its
+// lines get the box's whole width (#575). It measures at the narrow width every
+// time: measured wide, a text that fits there would flip back and forth. A
+// placeholder never stacks: an empty box keeps its height. The measure is a
+// hidden copy: resizing the box itself to measure lays out the whole transcript
+// again, seconds for a long message.
+const ruler = document.createElement("textarea");
+ruler.ariaHidden = "true";
+ruler.tabIndex = -1;
+ruler.style.cssText = "position:absolute;left:-9999px;top:0;visibility:hidden;height:0;padding-top:0;padding-bottom:0;border:0;overflow:hidden;box-sizing:border-box";
+document.body.append(ruler);
+function stackActs(t) {
+  const box = t.closest(".box");
+  if (!t.value || !box.clientWidth) return box.classList.remove("stacked");
+  const css = getComputedStyle(t);
+  for (const k of ["fontFamily", "fontSize", "fontWeight", "lineHeight", "letterSpacing", "paddingLeft", "paddingRight"]) ruler.style[k] = css[k];
+  ruler.style.width = `${box.clientWidth - box.querySelector(".acts").offsetWidth}px`;
+  ruler.value = t.value;
+  box.classList.toggle("stacked", ruler.scrollHeight > parseFloat(css.lineHeight) * 1.5);
+}
+
 function autosize() {
+  stackActs(input);
   input.style.height = "auto";
   input.style.height = `${Math.min(input.scrollHeight, window.innerHeight * 0.4)}px`;
 }
@@ -3432,18 +3577,10 @@ function drawReplies(s) {
     const h = document.createElement("button");
     h.className = "rp hand";
     h.textContent = `continue fresh · ${fmtTokens(s.context_tokens)}`;
-    h.addEventListener("click", () => {
-      $("handoff").hidden = !$("handoff").hidden;
-    });
+    h.addEventListener("click", () => handOff(s));
     chips.unshift(h);
   }
   $("replies-pills").replaceChildren(...chips);
-  $("handoff").hidden = true;
-  $("handoff-brief").textContent = brief || "";
-  $("handoff-go").onclick = () => handOff(s);
-  $("handoff-keep").onclick = () => {
-    $("handoff").hidden = true;
-  };
   const next = s.continued_by && sessions.get(keyOf(s.server, s.continued_by));
   $("handoff-done").hidden = !s.continued_by;
   const who = next ? next.handle : "a fresh session";
@@ -3536,6 +3673,11 @@ const askClose = (s) =>
 // through it.
 const confirmClose = async (s) => s.attention === "done" || (await askClose(s));
 
+async function archiveGroup(members) {
+  if (offline() || !(await ask(`Archive these ${members.length} sessions: ${members.map((m) => m.handle).join(", ")}?`, { ok: "Archive" }))) return;
+  for (const m of members) callFor(m.key, "session.close").catch((e) => toast(`${m.handle}: ${e.message}`, { kind: "error" }));
+}
+
 async function closeSession(s) {
   if (locked(s)) return toast(`${s.handle} is a step of a running workflow; it archives when the run ends`, { kind: "error" });
   if (offline() || !(await confirmClose(s))) return;
@@ -3588,7 +3730,10 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
   const rev = shown === s.key ? transcript.rev : -1;
   const waitAsDraft = async (nonce) => {
     await queue(s.key, text, rev, nonce);
-    if (fromComposer) localStorage.removeItem(`aegis.draft.${s.key}`);
+    if (fromComposer) {
+      localStorage.removeItem(`aegis.draft.${s.key}`);
+      spoken.delete(`aegis.draft.${s.key}`); // the outbox keeps no mark
+    }
     if (fromComposer && shown === s.key) {
       input.value = "";
       autosize();
@@ -3608,12 +3753,15 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
   const params = attachments.length ? { text, attachments } : { text };
   // A linked server older than nonces would refuse the field.
   if (fromComposer && !forKey(s.key).server) params.nonce = nonceFor(s.key, JSON.stringify([text, attachments]));
+  // Only to this server, like the nonce: a linked one older than the field would refuse it.
+  if (fromComposer && !forKey(s.key).server && spoken.has(`aegis.draft.${s.key}`)) params.dictated = true;
   const call = callFor(s.key, "session.send", params);
   const sent = (r) => {
     unconfirmed.delete(s.key);
     if (/^\/model\s/.test(text)) catalogs.delete(s.key); // its efforts may differ
     if (fromComposer) {
       localStorage.removeItem(`aegis.draft.${s.key}`);
+      spoken.delete(`aegis.draft.${s.key}`);
       atts.clear(s.key);
     }
     if (fromComposer && shown === s.key) {
@@ -3690,7 +3838,7 @@ const waiting = new Set();
 
 // A new tab's first message when it carried files: they upload into the
 // session just started, then go out with the text, as a composer send would.
-async function sendFirst(key, text, files) {
+async function sendFirst(key, text, files, dictated) {
   atts.add(files, key);
   waiting.add(key);
   try {
@@ -3704,7 +3852,7 @@ async function sendFirst(key, text, files) {
     return;
   }
   try {
-    await callFor(key, "session.send", { text, attachments: ready.ids });
+    await callFor(key, "session.send", { text, attachments: ready.ids, ...(dictated && text && { dictated }) });
     atts.clear(key);
   } catch (e) {
     toast(e.message, { kind: "error" });
@@ -3893,6 +4041,7 @@ input.addEventListener("input", async () => {
   warmIfParked();
   autosize();
   if (shown) localStorage.setItem(`aegis.draft.${shown}`, input.value);
+  if (!input.value.trim()) spoken.delete(`aegis.draft.${shown}`); // a box emptied by hand starts over
   const v = input.value;
   if (v.startsWith("/") && !v.startsWith("//")) {
     if (menu.isOpen) menu.refresh();
@@ -3940,6 +4089,31 @@ new ResizeObserver(() => root.style.setProperty("--hdr", `${header.getBoundingCl
 // The navigator floats just above the composer, which grows with its lines.
 new ResizeObserver(() => root.style.setProperty("--composer-h", `${$("composer").offsetHeight}px`)).observe($("composer"));
 $("side-btn").addEventListener("click", toggleSide);
+
+// The strip's menu (#586): while the tabs overflow, a button after them lists
+// every open session in bar order; a choice opens it, and the route's render
+// scrolls its tab into view.
+const MARK_ICON = { needs_you: "need", working: "work", waiting: "wait", error: "err", review: "rev", done: "done" };
+function sizeTabMore() {
+  const list = $("tablist");
+  $("tab-more").hidden = list.scrollWidth <= list.clientWidth + 1;
+  $("tab-more").textContent = `${tabbed().length} ▾`;
+}
+new ResizeObserver(sizeTabMore).observe($("tablist"));
+new MutationObserver(sizeTabMore).observe($("tablist"), { childList: true });
+$("tab-more").addEventListener("click", () => {
+  // In the bar's order, a group's members under its head (#586).
+  const items = blocksOf(tabbed(), tabActions.here).flatMap((b) =>
+    b.members.map((m, i) => ({
+      id: m.key,
+      label: `${i ? "↳ " : ""}${m.handle}${m.server ? ` · ${m.server}` : ""}`,
+      icon: MARK_ICON[m.mark] || "dot",
+      run: () => go(`#s=${m.key}`),
+    })),
+  );
+  cmenu.open({ groups: [items] }, $("tab-more"), $("tab-more"));
+});
+$("nav-side").addEventListener("click", toggleSide);
 // The dimmed transcript is the session view's own ::after, so a tap on it
 // lands on the view itself and goes no further.
 document.querySelector(".v-session").addEventListener("click", (ev) => {
@@ -4018,6 +4192,9 @@ function sessionMenu(key) {
       ? "No connection to its server"
       : undefined;
   const close = [{ id: "archive", label: "Archive", icon: "archive", danger: true, disabled: why, run: () => closeSession(s) }];
+  // A group's head archives the whole group, after one question (#586).
+  const group = blocksOf(tabbed(), tabActions.here).find((b) => b.head.key === key && b.members.length > 1);
+  if (group) close.push({ id: "archivegroup", label: "Archive group…", icon: "archive", danger: true, disabled: why, run: () => archiveGroup(group.members) });
   if (isTool(s)) return { title, groups: [opening, close] };
   if (s.quiet) opening.push({ id: "unquiet", label: "Unquiet", icon: "unquiet", disabled: why, run: () => quietKey(key, false) });
   else if (["working", "waiting"].includes(s.attention))
@@ -4037,18 +4214,30 @@ function sessionMenu(key) {
 function cardMenu(t) {
   return t.dataset?.id && t.matches(".card, .tab") ? sessionMenu(t.dataset.id) : null;
 }
-function attachCardMenu(box) {
-  cmenu.attach(box, cardMenu, { selector: ".card[data-id], .tab[data-id]" });
+function attachCardMenu(box, opts = {}) {
+  cmenu.attach(box, cardMenu, { selector: ".card[data-id], .tab[data-id]", ...opts });
 }
 attachCardMenu($("cards"));
-attachCardMenu($("tablist"));
+// The tab card (#586): a session tab's Fleet card on hover, with the tab menu's
+// items as buttons; on a touch screen a long press opens it as a sheet instead
+// of the menu.
+const tabCard = attachTabCard($("tablist"), {
+  meta: (key) => sessions.get(key),
+  card: (m) => fleetCard(m, openCard, (k) => sessions.get(k) && closeSession(sessions.get(k))),
+  items: sessionMenu,
+});
+attachCardMenu($("tablist"), { touch: (t) => t.matches(".tab[data-id]") && tabCard.sheet(t) });
 
 // The New session form filled from a source session: its server, agent,
 // model and folder, and a prompt the person goes on writing. The picks come
 // from the source's server's roster once it has loaded, the same way on every
 // server: pickAgent resets the chips to that agent, so nothing a person set in
 // the form before carries over. What the form's text held stays after the prompt.
-async function openSpawnWith({ server = null, agent, model, cwd, prompt }) {
+// The local session the New session form was opened from: the new session
+// joins its group (#586). The + tab and a spawn clear it.
+let spawnFrom = null;
+async function openSpawnWith({ server = null, agent, model, cwd, prompt, from = null }) {
+  spawnFrom = from;
   $("sp-text").value = prompt + $("sp-text").value;
   go("#new");
   spawnGrow();
@@ -4079,7 +4268,7 @@ function selectionItems(range) {
       id: "new",
       label: "New session",
       icon: "start",
-      run: () => openSpawnWith({ server: s.server, agent: s.agent, model: s.model, cwd: s.cwd, prompt: `From ${s.handle}:\n${quoted(text)}\n\n` }),
+      run: () => openSpawnWith({ server: s.server, agent: s.agent, model: s.model, cwd: s.cwd, from: s.server ? null : s.key, prompt: `From ${s.handle}:\n${quoted(text)}\n\n` }),
     },
     {
       id: "copy",
@@ -4191,8 +4380,9 @@ async function toComposer(key, text, opts) {
 // The New session form with `text` for its prompt: from session `s`'s agent,
 // model and folder, or the form's own picks. The text is in the form at once.
 function newSessionWith(s, text) {
-  if (s) openSpawnWith({ server: s.server, agent: s.agent, model: s.model, cwd: s.cwd, prompt: `From ${s.handle}:\n${text}\n\n` });
+  if (s) openSpawnWith({ server: s.server, agent: s.agent, model: s.model, cwd: s.cwd, from: s.server ? null : s.key, prompt: `From ${s.handle}:\n${text}\n\n` });
   else {
+    spawnFrom = null;
     $("sp-text").value = `${text}\n\n${$("sp-text").value}`;
     go("#new");
     spawnGrow();
@@ -4232,7 +4422,7 @@ function rowMenu(t, ev) {
     id: "new",
     label: "New session",
     icon: "start",
-    run: () => quote((q) => openSpawnWith({ server: s.server, agent: s.agent, model: s.model, cwd: s.cwd, prompt: `From ${s.handle}:\n${q}\n\n` })),
+    run: () => quote((q) => openSpawnWith({ server: s.server, agent: s.agent, model: s.model, cwd: s.cwd, from: s.server ? null : s.key, prompt: `From ${s.handle}:\n${q}\n\n` })),
   };
   const copy = { id: "copy", label: "Copy", icon: "copy", key: "c", run: () => copyRow(id, transcript.nodes.get(id), copyDeps) };
   // A part still streaming has an id the whole block will replace: no link.

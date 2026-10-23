@@ -244,6 +244,7 @@ async def test_close_during_fallback_cancels_the_fall(world, monkeypatch):
     assert world.ended[s.log_id] == 1
 
 
+@pytest.mark.slow
 async def test_shutdown_during_fallback_continues_the_worker_at_boot(
     world, monkeypatch
 ):

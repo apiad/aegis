@@ -397,3 +397,20 @@ async def test_review_and_needs_you_pass_with_an_unfinished_plan(world, attentio
     said = await turn(a, mcp("turn_end", attention=attention, line="Step one."))
     assert not said.startswith("mcp error"), said
     assert a.wire()["attention"] == attention
+
+
+async def test_done_with_a_live_monitor_is_refused_and_records_nothing(world):
+    """#608: a live monitor will wake the session again, so its task is not over."""
+    a = await world.spawn()
+    await turn(a, mcp("monitor_start", description="w", done="false", progress=None))
+    said = await turn(a, mcp("turn_end", attention="done", line="Merged."))
+    assert said.startswith("mcp error: still_waiting:") and "1 monitor" in said, said
+    assert "review" in said and "monitor_cancel" in said, said
+    assert a.standing.get("report") is None
+
+
+async def test_review_passes_with_a_live_monitor(world):
+    a = await world.spawn()
+    await turn(a, mcp("monitor_start", description="w", done="false", progress=None))
+    said = await turn(a, mcp("turn_end", attention="review", line="CI runs."))
+    assert not said.startswith("mcp error"), said

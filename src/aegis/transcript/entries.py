@@ -26,6 +26,7 @@ from typing import Any
 from .. import files
 from .. import layout as canvas
 from ..artifacts import EVENTS_KEPT
+from ..dictation import without_note
 from ..claude.stream import (
     CommandEcho,
     CommandOutput,
@@ -88,6 +89,11 @@ def _entry(
     md: str | None = None,
     detail: dict | None = None,
 ) -> dict:
+    if kind == "user" and md:
+        # A dictated message's note is for the agent; the row shows a mark.
+        md, dictated = without_note(md)
+        if dictated:
+            detail = {**(detail or {}), "dictated": True}
     return {
         "id": id,
         "kind": kind,
@@ -514,7 +520,7 @@ class Fold:
             text = str(rec.get("text", ""))
             head, notices = split_notices(text)
             attached = [_sent_file(f) for f in rec.get("files") or []]
-            if attached or notices:
+            if attached or notices or without_note(head)[1]:
                 self._said[pid] = text
             return folded + self._upsert(
                 _entry(
@@ -524,7 +530,11 @@ class Fold:
                     ts,
                     d.USER_GLYPH,
                     md=str(rec.get("typed") or "") if attached else head,
-                    detail={"files": attached} if attached else None,
+                    detail={"files": attached}
+                    if attached
+                    else {"steered": True}
+                    if rec.get("steered")
+                    else None,
                 )
             )
         if kind == "spawn":
@@ -574,6 +584,9 @@ class Fold:
                     # Only when the agent wrote one (#354), so a report without
                     # it keeps its old shape.
                     **({"handoff": h} if (h := rec.get("handoff")) else {}),
+                    # Only when asked: archive this session and the ones it
+                    # started once the turn ends (registry._close_when_finished).
+                    **({"close": True} if rec.get("close") else {}),
                 }
             )
             return []
@@ -963,6 +976,38 @@ class Fold:
             return self._upsert(
                 {**e, "status": status, "summary": status, "detail": det}
             )
+        if kind == "config_suggest":
+            # A whole new .aegis.yaml an agent proposes (config_suggest.py):
+            # the text and the stamp live here, so the card applies after a
+            # restart.
+            det = {
+                "why": rec.get("why"),
+                "diff": rec.get("diff"),
+                "yaml": rec.get("yaml"),
+                "stamp": rec.get("stamp"),
+                "by": None,
+            }
+            return self._upsert(
+                _entry(
+                    str(rec.get("suggest_id")),
+                    "config",
+                    "pending",
+                    ts,
+                    d.SYSTEM_GLYPH,
+                    title="config · .aegis.yaml",
+                    summary="pending",
+                    detail=det,
+                )
+            )
+        if kind == "config_suggest_done":
+            e = self._entries.get(str(rec.get("suggest_id")))
+            if e is None:
+                return []
+            status = str(rec.get("outcome"))
+            det = {**e["detail"], "by": rec.get("by")}
+            return self._upsert(
+                {**e, "status": status, "summary": status, "detail": det}
+            )
         if kind == "peek":
             # A file tool's file, copied because the person asked to see it:
             # it opens inside that tool's row, the latest copy replacing any.
@@ -1097,8 +1142,19 @@ class Fold:
             if head.startswith("> from "):
                 # An inbox message: a monitor wake, a queue result, a handoff.
                 header = head.splitlines()[0].removeprefix("> from ").strip()
+                # Sent into a running turn by an urgent handoff (Session.deliver).
+                steered = ((carried or {}).get("detail") or {}).get("steered")
                 ops += self._upsert(
-                    _entry(id, "inbox", "ok", ts, d.COMMS_GLYPH, title=header, md=head)
+                    _entry(
+                        id,
+                        "inbox",
+                        "ok",
+                        ts,
+                        d.COMMS_GLYPH,
+                        title=header,
+                        md=head,
+                        detail={"steered": True} if steered else None,
+                    )
                 )
                 return ops + self._notice_rows(id, ts, notices)
             attached = ((carried or {}).get("detail") or {}).get("files")
@@ -1113,7 +1169,7 @@ class Fold:
                         ts,
                         d.USER_GLYPH,
                         md=carried["md"],
-                        detail={"files": attached},
+                        detail=carried["detail"],
                     )
                 )
             elif typed is not None:

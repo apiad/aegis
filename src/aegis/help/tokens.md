@@ -67,5 +67,5 @@ shows each token's user and asks for it when you add one.
 The server needs three capabilities from its systemd unit for this, which
 `aegis service install --multi-user` writes, and refuses to start without
 them. `aegis doctor` checks the unit, the tokens, the state directory and the
-pool file. A guided setup comes in a later release; until then the mode is
-for trying out.
+pool file. The page multi-user lists every step of the setup, and
+`/multiuser` has your agent walk you through it.

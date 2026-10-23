@@ -274,3 +274,61 @@ def test_a_refused_submit_in_the_viewer_says_why_in_view(
     box, body = note.bounding_box(), page.locator("#viewer .vbody").bounding_box()
     assert box["y"] + box["height"] <= body["y"] + body["height"] + 1, (box, body)
     assert page.errors == []
+
+
+def test_a_swipe_pages_the_card_and_the_viewer_round_the_set(
+    server,  # noqa: F811
+    browser,  # noqa: F811
+    page,  # noqa: F811
+):
+    for name in ("a.md", "b.md", "c.md"):
+        (server.root / name).write_text(f"# {name}\n")
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    key = spawn(page)
+    send(page, 1, ["a.md", "b.md", "c.md"])
+    page.close()
+    ctx = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True)
+    phone = ctx.new_page()
+    phone.errors = []
+    phone.on("pageerror", lambda e: phone.errors.append(str(e)))
+    phone.goto(f"{server.url}#s={key}")
+    cdp = ctx.new_cdp_session(phone)
+
+    def drag(sel, dx, dy=0):
+        box = phone.locator(sel).bounding_box()
+        x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+        for kind, px, py in (
+            ("touchStart", x, y),
+            ("touchMove", x + dx / 2, y + dy / 2),
+            ("touchMove", x + dx, y + dy),
+        ):
+            cdp.send(
+                "Input.dispatchTouchEvent",
+                {"type": kind, "touchPoints": [{"x": px, "y": py}]},
+            )
+        cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+
+    card = ".row.file .stage"
+    fn = phone.locator(".row.file .fbar .fn")
+    phone.locator(card).wait_for()
+    drag(card, -150)  # finger to the left: the next file
+    assert fn.inner_text() == "b.md"
+    drag(card, 150)
+    drag(card, 150)  # back past the first file: the last one
+    assert fn.inner_text() == "c.md"
+    drag(card, -150)
+    assert fn.inner_text() == "a.md"
+    drag(card, -20)  # too short to be a swipe
+    drag(card, -80, 120)  # mostly down: a scroll
+    assert fn.inner_text() == "a.md"
+
+    phone.click(".row.file .fbar .view")
+    vfn = phone.locator("#viewer .vbar .fn")
+    phone.locator("#viewer .vbody .doc").wait_for()
+    drag("#viewer .vbody", 150)
+    assert vfn.inner_text() == "c.md"
+    drag("#viewer .vbody", -150)
+    assert vfn.inner_text() == "a.md"
+    assert phone.errors == []
+    ctx.close()

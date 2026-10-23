@@ -1939,3 +1939,126 @@ async def test_real_claude_is_woken_by_a_stalled_monitor_and_acts(tmp_path: Path
     finally:
         server.should_exit = True
         await asyncio.wait_for(task, 30)
+
+
+async def test_real_claude_runs_setup_asks_first_and_proposes_from_a_project(
+    tmp_path: Path, monkeypatch
+):
+    """/setup, followed by a real model (#612): it reads the help page setup,
+    asks before reading transcripts, and once told to skip them proposes, on
+    one artifact, a workflow for the project's release skill and a schedule
+    for the crontab line. crontab on PATH is a stub, so nothing on the host
+    is read or changed."""
+    import asyncio
+    import os
+
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    stub = tmp_path / "bin"
+    stub.mkdir()
+    (stub / "crontab").write_text(
+        "#!/bin/sh\necho '0 3 * * * claude -p \"audit the dependencies\"'\n"
+    )
+    (stub / "crontab").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{stub}{os.pathsep}{os.environ['PATH']}")
+    skill = tmp_path / ".claude" / "skills" / "release"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text(
+        "---\nname: release\ndescription: Cut a release\n---\n\n"
+        "1. Bump the version.\n2. Push and wait for CI to pass.\n3. Tag it.\n"
+        "4. Wait for the publish job.\n5. Install the published package.\n"
+    )
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  sonnet: {{harness: claude-code, model: {SONNET}, effort: low, permission: full}}\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        claude_bin=claude,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+    try:
+        r = await app.registry.call("session.spawn", {"agent": "sonnet"})
+        s = app.sessions.sessions[r["log_id"]]
+        await app.registry.call("session.send", {"log_id": s.log_id, "text": "/setup"})
+        await until(
+            lambda: s.status == "idle" and s.cost_usd, timeout=300, what="the ask"
+        )
+        tools = [e for e in s.entries() if e["kind"] == "tool"]
+        assert any(
+            e["title"] == "help_read" and "setup" in json.dumps(e) for e in tools
+        ), [e["title"] for e in tools]
+        assert s.wire()["attention"] == "needs_you", s.wire()
+        assert not [e for e in s.entries() if e["kind"] == "artifact"]
+        await s.send("Skip the transcripts. Look at the rest and propose.")
+        await until(
+            lambda: (
+                s.status == "idle" and any(e["kind"] == "artifact" for e in s.entries())
+            ),
+            timeout=420,
+            what="the proposal page",
+        )
+        (page,) = [e for e in s.entries() if e["kind"] == "artifact"][-1:]
+        html = json.dumps(page) + "".join(
+            p.read_text(errors="replace") for p in (tmp_path / ".aegis").rglob("*.html")
+        )
+        assert "release" in html and ("audit" in html or "03:00" in html), html[:2000]
+        assert (tmp_path / ".aegis.yaml").read_text().count("agents:") == 1
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)
+
+
+async def test_real_claude_reads_an_urgent_handoff_inside_its_turn(tmp_path: Path):
+    """An urgent handoff sent while a real Claude Code runs a tool is read at
+    the next tool boundary: the turn goes on calling tools after its row."""
+    from .test_agents import World
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  haiku: {{harness: claude-code, model: {HAIKU}, effort: low, permission: full}}\n"
+    )
+    world = await World(tmp_path, claude).start()
+    try:
+        r = await world.app.registry.call("session.spawn", {"agent": "haiku"})
+        s = world.app.sessions.sessions[r["log_id"]]
+        await s.send(
+            "Run these three shell commands as three separate Bash calls, one "
+            "after the other: `sleep 5`, `sleep 5`, `sleep 5`. Then reply in one line."
+        )
+        await until(
+            lambda: any(e["kind"] == "tool" for e in s.entries()),
+            timeout=90,
+            what="the first tool call",
+        )
+        did = await s.deliver(
+            "> from agent:peer · 2026-10-22T12:00:00Z",
+            "Include the word PELICAN in your final reply.",
+            urgent=True,
+        )
+        assert did == "steered"
+        await until(lambda: s.status == "idle", timeout=180, what="the turn's end")
+        kinds = [(e["kind"], e.get("detail") or {}) for e in s.entries()]
+        at = next(i for i, (k, d) in enumerate(kinds) if k == "inbox")
+        assert kinds[at][1].get("steered") is True
+        assert any(k == "tool" for k, _ in kinds[at + 1 :]), kinds
+        prose = [e.get("md") or "" for e in s.entries() if e["kind"] == "prose"]
+        assert "PELICAN" in prose[-1]
+    finally:
+        await world.stop()

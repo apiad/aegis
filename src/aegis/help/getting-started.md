@@ -16,6 +16,10 @@ under the new tab's chips, or press the button at the top of this page in
 the Help tab. The guide opens in its own tab, asks before any step that starts
 agents or spends quota, and answers questions on the way.
 
+Coming from another harness? Run `/setup` first: the agent reads how you
+already work there and proposes what each habit becomes in aegis (see the
+page setup).
+
 ## Level 1. Talk to one agent
 
 This level starts one agent and spends quota.

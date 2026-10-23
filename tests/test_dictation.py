@@ -11,6 +11,9 @@ import pytest
 from aegis import dictation
 from aegis.dictation import Pin, Store, Unavailable, keywords, pin_id
 
+from .conftest import until
+from .test_attachment_ops import CONFIG, make_app, prompts, spawn
+
 FILES = {"needle.js": b"js", "needle.wasm": b"\0asm", "whistle.cact": b"model" * 1000}
 
 
@@ -130,3 +133,25 @@ def test_keywords_merge_dedupe_and_cap():
     assert (
         len(keywords([f"h{i}" for i in range(500)], [], [])) == dictation.MAX_KEYWORDS
     )
+
+
+@pytest.fixture
+async def app(tmp_path, fake_claude):
+    (tmp_path / ".aegis.yaml").write_text(CONFIG)
+    a = make_app(tmp_path, fake_claude)
+    await a.boot()
+    yield a
+    await a.shutdown()
+
+
+async def test_a_dictated_message_reaches_the_agent_with_the_note(app, tmp_path):
+    lid = await spawn(app)
+    s = app.sessions.sessions[lid]
+    call = app.registry.call
+    await call("session.send", {"log_id": lid, "text": "lock at it", "dictated": True})
+    await until(lambda: s.status == "idle", timeout=8, what="the turn")
+    await call("session.send", {"log_id": lid, "text": "typed"})
+    await until(lambda: s.status == "idle", timeout=8, what="the turn")
+    assert prompts(tmp_path) == [f"lock at it\n\n{dictation.NOTE}", "typed"]
+    users = [(e["md"], e["detail"]) for e in s.entries() if e["kind"] == "user"]
+    assert users == [("lock at it", {"dictated": True}), ("typed", {})]

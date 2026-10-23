@@ -515,7 +515,7 @@ class Schedules:
             closed = False
             if ses is not None and run.target == "new" and s is not None:
                 rule = s.d.fire.close
-                for kid in self._descendants(run.log_id):
+                for kid in self._reg.descendants(run.log_id):
                     if closes(rule, last_mark(kid.standing)):
                         await self._close(kid)
                 if closes(rule, mark):
@@ -541,18 +541,6 @@ class Schedules:
         except Exception:
             log.exception("aegis: could not archive %s after its run", ses.handle)
             return False
-
-    def _descendants(self, log_id: str) -> list[Session]:
-        """The open sessions a run started, transitively, deepest first."""
-        out: list[Session] = []
-        frontier = {log_id}
-        while frontier:
-            kids = [
-                s for s in self._reg.sessions.values() if s.spec.spawned_by in frontier
-            ]
-            out += kids
-            frontier = {s.log_id for s in kids}
-        return out[::-1]
 
     def _cost(self, log_id: str) -> float:
         """The run session's cost plus its children's, open or archived."""
@@ -615,7 +603,11 @@ class Schedules:
         self._save()
         self._event(name, "paused", by=by, **({"why": why} if why else {}))
         if by == "errors" or (by == APPROVAL and why):
-            self._app.toast(f"Schedule {name} is paused: {why}", "error")
+            self._app.toast(
+                f"Schedule {name} is paused: {why}",
+                "error",
+                owner=s.owner.get("principal"),
+            )
 
     def _get(self, name: str) -> Schedule:
         s = self.items.get(name)
