@@ -15,11 +15,11 @@ import asyncio
 import time
 from pathlib import Path
 
-from aegis.knowledge import hint
-from aegis.knowledge.items import Item
-from aegis.knowledge.search import Index
-from aegis.knowledge.store import Store
-from aegis.knowledge.usage import Usage
+from . import hint
+from .items import Item
+from .search import Index
+from .store import Store
+from .usage import Usage
 
 HINT_ITEMS = 3
 PRUNE_EVERY_S = 86400
@@ -34,25 +34,60 @@ class Knowledge:
         self._indexes: dict[str, tuple[int, float, list[Item], Index]] = {}
         self._ranks: dict[str, dict[str, int]] = {}
         self._pruned = 0.0
+        self._refreshing: dict[str, asyncio.Task] = {}
         self._clock = time.monotonic
 
-    async def _held(self, principal: str) -> tuple[list[Item], Index]:
-        version = self.store.version(principal)
-        now = self._clock()
+    def _rebuild(self, principal: str, old) -> tuple[list[Item], Index]:
+        items, changed = self.store.scan(principal)
+        if old is not None and not changed:
+            return old[2], old[3]
+        return items, Index(items)
+
+    def _fresh(self, principal: str, held) -> bool:
+        return (
+            held is not None
+            and held[0] == self.store.version(principal)
+            and self._clock() - held[1] < SCAN_EVERY_S
+        )
+
+    async def refresh(self, principal: str) -> tuple[list[Item], Index]:
+        """Rebuild ``principal``'s index in a thread if it is stale."""
         held = self._indexes.get(principal)
-        if held is not None and held[0] == version and now - held[1] < SCAN_EVERY_S:
+        if held is not None and self._fresh(principal, held):
             return held[2], held[3]
-        old = held
-
-        def rebuild() -> tuple[list[Item], Index]:
-            items, changed = self.store.scan(principal)
-            if old is not None and not changed:
-                return old[2], old[3]
-            return items, Index(items)
-
-        items, ix = await asyncio.to_thread(rebuild)
+        version, now = self.store.version(principal), self._clock()
+        items, ix = await asyncio.to_thread(self._rebuild, principal, held)
         self._indexes[principal] = (version, now, items, ix)
         return items, ix
+
+    def _now_index(self, principal: str) -> Index:
+        """The index a send ranks against, without yielding: a send must not
+        give the loop a turn before it is recorded, or two sends could be
+        recorded out of order. A stale index is used as it is while a
+        refresh runs in a thread; only a principal with no index yet is
+        built here, once per server start."""
+        held = self._indexes.get(principal)
+        if held is None:
+            version, now = self.store.version(principal), self._clock()
+            items, ix = self._rebuild(principal, None)
+            self._indexes[principal] = (version, now, items, ix)
+            return ix
+        if not self._fresh(principal, held) and principal not in self._refreshing:
+            try:
+                task = asyncio.get_running_loop().create_task(self.refresh(principal))
+            except RuntimeError:  # no loop: a plain call, as in a unit test
+                self._indexes[principal] = (
+                    self.store.version(principal),
+                    self._clock(),
+                    *self._rebuild(principal, held),
+                )
+                return self._indexes[principal][3]
+            self._refreshing[principal] = task
+            task.add_done_callback(lambda _t: self._refreshing.pop(principal, None))
+        return held[3]
+
+    async def _held(self, principal: str) -> tuple[list[Item], Index]:
+        return await self.refresh(principal)
 
     async def index(self, principal: str) -> Index:
         return (await self._held(principal))[1]
@@ -61,7 +96,7 @@ class Knowledge:
         """Every item of ``principal``, from the cache the index uses."""
         return (await self._held(principal))[0]
 
-    async def hint_for(
+    def hint_for(
         self, principal: str, session_id: str, text: str, cwd: str | None
     ) -> str:
         """The hint block for a send of ``text``, or "" when nothing matches.
@@ -70,7 +105,7 @@ class Knowledge:
         if now - self._pruned > PRUNE_EVERY_S:
             self._pruned = now
             self.usage.prune(now)
-        ix = await self.index(principal)
+        ix = self._now_index(principal)
         skills = ix.rank(text, "skill", HINT_ITEMS, hintable_only=True, cwd=cwd)
         memories = ix.rank(text, "memory", HINT_ITEMS, hintable_only=True, cwd=cwd)
         ranks: dict[str, int] = {}

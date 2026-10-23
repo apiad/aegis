@@ -192,7 +192,7 @@ class Host:
         ``at`` is "send" for a prompt, "tool" for a tool result."""
         return ""
 
-    async def knowledge_hint(self, session: "Session", text: str) -> str:
+    def knowledge_hint(self, session: "Session", text: str) -> str:
         """The skills and memories that may matter to a send of ``text``
         (knowledge/hint.py), or ""."""
         return ""
@@ -994,7 +994,7 @@ class Session:
             # the same text, so the fold pairs them; the fold splits the
             # blocks off into their own rows.
             blocks = [
-                await self._host.knowledge_hint(self, text),
+                self._host.knowledge_hint(self, text),
                 self._host.notice_blocks(self, "send"),
             ]
             if extra := "\n\n".join(b for b in blocks if b):

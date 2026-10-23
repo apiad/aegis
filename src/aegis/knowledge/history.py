@@ -15,6 +15,8 @@ import os
 import subprocess
 from pathlib import Path
 
+from .. import launch
+
 _ENV = {
     "GIT_CONFIG_GLOBAL": "/dev/null",
     "GIT_CONFIG_NOSYSTEM": "1",
@@ -34,13 +36,12 @@ def _env() -> dict[str, str]:
 def _git(
     root: Path, *args: str, check: bool = True
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", "-C", str(root), *_ID, *args],
-        env=_env(),
-        capture_output=True,
-        text=True,
-        check=check,
-    )
+    # The server's own user: the store lives in the state directory.
+    argv = ["git", "-C", str(root), *_ID, *args]
+    r = launch.run(argv, user=None, env=_env(), text=True)
+    if check and r.returncode != 0:
+        raise subprocess.CalledProcessError(r.returncode, argv, r.stdout, r.stderr)
+    return r
 
 
 def ensure_repo(root: Path) -> None:

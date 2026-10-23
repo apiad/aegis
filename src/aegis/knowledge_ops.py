@@ -197,6 +197,7 @@ def register_knowledge_ops(app: App) -> None:
         meta = {k: v for k, v in meta.items() if v is not None}
         it = Item("memory", p.name, p.description.strip(), p.body.rstrip() + "\n", meta)
         await kn.store.save(owner, it, author(caller))
+        await kn.refresh(owner)  # the next send's hint sees it
         kn.usage.add(owner, caller.log_id or "", "memory", p.name, "saved")
         return {"saved": p.name, "status": "approved"}
 
@@ -208,6 +209,7 @@ def register_knowledge_ops(app: App) -> None:
         owner = principal(caller)
         memory(owner, p.name)
         sha = await kn.store.delete(owner, p.name, author(caller))
+        await kn.refresh(owner)
         kn.usage.add(owner, caller.log_id or "", "memory", p.name, "deleted")
         return {"deleted": p.name, "sha": sha}
 

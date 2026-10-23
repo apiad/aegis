@@ -20,9 +20,9 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from aegis.knowledge import history
-from aegis.knowledge.items import Item, check_name, dump, parse_memory, parse_skill
-from aegis.ops import OpError
+from . import history
+from .items import Item, check_name, dump, parse_memory, parse_skill
+from ..ops import OpError
 
 log = logging.getLogger("aegis.knowledge")
 

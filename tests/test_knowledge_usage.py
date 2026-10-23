@@ -67,7 +67,7 @@ async def test_a_locked_usage_log_never_holds_a_hint(tmp_path):
     other.execute("BEGIN IMMEDIATE")  # holds the write lock
     try:
         t0 = time.monotonic()
-        block = await kn.hint_for("ana", "s1", "deploy the bot", None)
+        block = kn.hint_for("ana", "s1", "deploy the bot", None)
         took = time.monotonic() - t0
     finally:
         other.execute("ROLLBACK")

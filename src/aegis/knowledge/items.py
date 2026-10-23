@@ -21,7 +21,7 @@ from typing import Any, Literal
 
 from ruamel.yaml import YAML, YAMLError
 
-from aegis.ops import OpError
+from ..ops import OpError
 
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 # Each ``---`` is a whole line, so a value holding "a---b" never closes it.

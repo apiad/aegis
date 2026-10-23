@@ -9,8 +9,8 @@ The last line names the tools that read and search the kinds shown.
 
 from __future__ import annotations
 
-from aegis.knowledge.search import Hit
-from aegis.transcript.entries import NOTICE_HEADER
+from .search import Hit
+from ..transcript.entries import NOTICE_HEADER
 
 HEADER = f"{NOTICE_HEADER}knowledge · may be relevant"
 DESCRIPTION_CHARS = 120

@@ -25,7 +25,7 @@ from datetime import date
 from fnmatch import fnmatch
 from pathlib import PurePosixPath
 
-from aegis.knowledge.items import Item
+from .items import Item
 
 K1, B = 1.2, 0.75
 NAME_WEIGHT, DESCRIPTION_WEIGHT, BODY_WEIGHT = 3, 2, 1
