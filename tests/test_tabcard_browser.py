@@ -1,11 +1,15 @@
 """The tab card (#586): hovering a session tab opens its Fleet card under it,
 with the tab menu's items as icon buttons, and a long press on a phone opens
-the same card as a sheet."""
+the same card as a sheet. A Waiting on row in the session panel opens the same
+card for the session it names (#667)."""
+
+import json
 
 import pytest
 
 from .test_browser import (  # noqa: F401
     browser,
+    queue_server,
     server,
     spawn,
 )
@@ -171,3 +175,54 @@ def test_a_clicked_tab_shows_no_card_until_the_pointer_leaves(server, page):  # 
     assert page.is_hidden(".tabcard")
     open_card(page, key)  # off the bar and back: the card again
     assert page.errors == []
+
+
+def test_a_waiting_row_opens_the_card_of_the_session_it_names(
+    queue_server,  # noqa: F811
+    page,
+):
+    page.goto(queue_server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    args = {"queue": "q", "payload": "/busy 20"}
+    page.fill("#input", f"/mcp queue_enqueue {json.dumps(args)}")
+    page.press("#input", "Enter")
+    row = "#s-wait-sec:not([hidden]) .kv.wait.go"
+    worker = page.wait_for_selector(row).get_attribute("data-id")
+    page.mouse.move(640, 760)
+    page.hover(row)
+    page.wait_for_selector(f".tabcard .card[data-id='{worker}']", state="visible")
+    card = page.locator(".tabcard:not([hidden])").bounding_box()
+    side = page.locator("#side").bounding_box()
+    assert card["x"] + card["width"] <= side["x"]  # beside the panel, not over it
+    assert page.locator(".tabcard:not([hidden]) .acts button").count() > 0
+    page.mouse.move(640, 760)
+    page.wait_for_selector(".tabcard:not([hidden])", state="detached")
+    assert page.errors == []
+
+
+def test_a_long_press_on_a_waiting_row_opens_the_sheet(
+    queue_server,  # noqa: F811
+    browser,  # noqa: F811
+):
+    ctx = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True)
+    pg = ctx.new_page()
+    errors = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(queue_server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    spawn(pg)
+    args = {"queue": "q", "payload": "/busy 20"}
+    pg.fill("#input", f"/mcp queue_enqueue {json.dumps(args)}")
+    pg.tap("#send")  # Enter adds a line on a touch screen
+    row = "#s-wait-sec:not([hidden]) .kv.wait.go"
+    worker = pg.wait_for_selector(row, state="attached").get_attribute("data-id")
+    pg.tap("#nav-side")
+    pg.wait_for_function("document.getElementById('a2').dataset.side === 'open'")
+    pg.wait_for_timeout(250)  # the slide
+    hold(ctx, pg, row, ".tabsheet:not([hidden])")
+    assert pg.is_visible(f".tabsheet .card[data-id='{worker}']")
+    assert pg.locator(".cmenu").count() == 0
+    assert worker not in pg.evaluate("location.hash")  # the press opened nothing
+    ctx.close()
+    assert errors == []

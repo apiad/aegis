@@ -2198,8 +2198,9 @@ function renderMeta(s) {
 }
 
 // The sessions this one waits on (registry._waiting_for): a queue task's
-// worker or a spawned child, a row each; a click opens it. A task still
-// pending has no worker yet, so its row names the queue and opens nothing.
+// worker or a spawned child, a row each; a click opens it, and a hover or a
+// long press shows its tab card (#667). A task still pending has no worker
+// yet, so its row names the queue and opens nothing.
 function drawWaiting(s) {
   const list = s.waiting_for || [];
   $("s-wait-sec").hidden = !list.length;
@@ -2211,8 +2212,8 @@ function drawWaiting(s) {
       const where = w.kind === "task" ? `queue ${w.queue} · ${w.status}` : w.status;
       row.append(span("", w.handle || "no worker yet"), span("r", where));
       if (key) {
+        row.dataset.id = key;
         row.tabIndex = 0;
-        row.title = `Open ${w.handle}`;
         row.addEventListener("click", () => openSession(key));
         row.addEventListener("keydown", (ev) => ev.key === "Enter" && openSession(key));
       }
@@ -4305,10 +4306,10 @@ function sessionMenu(key) {
 }
 // The menu of a card or tab pressed; none on the space around them.
 function cardMenu(t) {
-  return t.dataset?.id && t.matches(".card, .tab") ? sessionMenu(t.dataset.id) : null;
+  return t.dataset?.id && t.matches(".card, .tab, .wait") ? sessionMenu(t.dataset.id) : null;
 }
 function attachCardMenu(box, opts = {}) {
-  cmenu.attach(box, cardMenu, { selector: ".card[data-id], .tab[data-id]", ...opts });
+  cmenu.attach(box, cardMenu, { selector: ".card[data-id], .tab[data-id], .wait[data-id]", ...opts });
 }
 attachCardMenu($("cards"));
 // The tab card (#586): a session tab's Fleet card on hover, with the tab menu's
@@ -4320,6 +4321,19 @@ const tabCard = attachTabCard($("tablist"), {
   items: sessionMenu,
 });
 attachCardMenu($("tablist"), { touch: (t) => t.matches(".tab[data-id]") && tabCard.sheet(t) });
+// The same card for a session the shown one waits on (#667), to the left of
+// the panel and level with its row, where the panel's own cards open.
+const waitCard = attachTabCard($("s-waiting"), {
+  meta: (key) => sessions.get(key),
+  card: (m) => fleetCard(m, openCard, (k) => sessions.get(k) && closeSession(sessions.get(k))),
+  items: sessionMenu,
+  item: ".wait",
+  place: (box, r) => {
+    box.style.left = `${Math.max(8, $("side").getBoundingClientRect().left - box.offsetWidth - 12)}px`;
+    box.style.top = `${Math.max(12, Math.min(r.top - 8, innerHeight - box.offsetHeight - 12))}px`;
+  },
+});
+attachCardMenu($("s-waiting"), { touch: (t) => t.matches(".wait[data-id]") && waitCard.sheet(t) });
 
 // The New session form filled from a source session: its server, agent,
 // model and folder, and a prompt the person goes on writing. The picks come
