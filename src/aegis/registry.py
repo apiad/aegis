@@ -33,6 +33,7 @@ from .harness import harness_for
 from .meta import MetaStore, rebuild
 from .names import TITLE_MAX, free_handle, mint_handle, valid_handle
 from . import notice_sources
+from .knowledge import hint
 from .notice_sources import Item
 from .notices import TEXT_MAX
 from .ops import OpError
@@ -402,7 +403,7 @@ class Registry(Host):
         return "" if self.notices is None else self.notices.pending(session, at)
 
     async def knowledge_hint(self, session: Session, text: str) -> str:
-        if self.knowledge is None:
+        if self.knowledge is None or not hint.wanted(text):
             return ""
         # A hint is an extra: whatever breaks in it, the send still goes out.
         try:

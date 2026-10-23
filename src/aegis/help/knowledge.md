@@ -45,7 +45,8 @@ read with memory_read · search with memory_search
 
 It names the three best memories, with no threshold, and the tools that
 read and search them: the agent decides whether any matters. A message
-that matches nothing, or a slash command, gets no block. An expired memory is never
+that matches nothing, a slash command, or one of aegis's own wakes (a
+notice, a monitor that ended, a page's answer) gets no block. An expired memory is never
 named, but a search still finds it.
 
 The search is BM25 over the name, the description and the start of the

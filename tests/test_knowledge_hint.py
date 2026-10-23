@@ -158,3 +158,25 @@ def test_the_docs_promise_only_what_this_release_has():
     )
     assert "can be restored" not in delete and "Knowledge view" in delete
     assert not hasattr(hint, "FOOTER")
+
+
+async def test_aegis_wakes_carry_no_hint_and_messages_from_people_do(app):  # noqa: F811
+    await app.knowledge.store.save(
+        app.user, mem("bot-host", "the bot runs on host b"), "t"
+    )
+    lid = await spawn(app)
+    s = app.sessions.sessions[lid]
+    texts = [
+        ("> from monitor:m1 · ok · deploy the bot finished", False),
+        ("> from aegis:notice · disk · warn\ndeploy the bot", False),
+        ("> from artifact:a1 · submit\ndeploy the bot", False),
+        ("> from agent:ana · handoff\ndeploy the bot", True),
+        ("> from schedule:nightly · run#3\ndeploy the bot", True),
+        ("> from workflow:w1 · step\ndeploy the bot", True),
+        ("deploy the bot", True),
+    ]
+    for i, (text, hinted) in enumerate(texts, 1):
+        await until(lambda: s.status != "working", what="the last turn")
+        await send(app, lid, text)
+        await until(lambda: len(sends(app, lid)) == i, what="the send")
+        assert ("may be relevant" in sends(app, lid)[-1]) == hinted, text
