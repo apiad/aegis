@@ -38,6 +38,68 @@ function ranked(query, rows, key) {
     .map((x) => ({ ...x.r, positions: x.m.positions }));
 }
 
+// The values an argument kind takes. `model` picks the efforts it offers.
+function values(kind, catalog, model) {
+  if (kind === "models")
+    return catalog.models.map((m) => ({ v: m.value, doc: `${m.label} · ${modelMeta(m)}. ${m.doc}`, source: m.efforts.length ? "effort" : "" }));
+  if (kind === "permissions") return catalog.permissions.map((p) => ({ v: p, doc: "", source: "" }));
+  if (kind === "tutorials") return (catalog.tutorials || []).map((t) => ({ v: t.id, doc: t.title, source: "" }));
+  if (kind === "workflows")
+    return (catalog.workflows || []).map((w) => ({ v: w.id, doc: w.title, source: w.source === "builtin" ? "built in" : "" }));
+  if (kind === "efforts") {
+    const m = catalog.models.find((x) => model && (x.value === model || x.resolved === model)) || null;
+    return (m ? m.efforts : ["low", "medium", "high", "xhigh", "max"]).map((e) => ({ v: e, doc: "", source: "" }));
+  }
+  return [];
+}
+
+// /spawn's flags as commands.parse_spawn reads them: each before the prompt,
+// each but --quiet followed by its value. null: a value with no fixed list.
+const SPAWN_FLAGS = {
+  quiet: [null, "no tab until its turn ends; needs a prompt"],
+  model: ["models", "the new session's model"],
+  effort: ["efforts", "its reasoning effort"],
+  permission: ["permissions", "what it may do, at most yours"],
+  cwd: [null, "the directory it works in"],
+};
+
+// `before`: the whole words after `/spawn`; `partial`: the one being typed.
+// The first word is the agent, `agent@server` for a linked server's; flags
+// follow; the first other word starts the prompt, which completes nothing.
+function spawnChoices(before, partial, catalog) {
+  const agents = catalog.agents || [];
+  if (!before.length) return agents;
+  let pending = null;
+  let model = agents.find((a) => a.v === before[0])?.model;
+  for (const w of before.slice(1)) {
+    if (pending) {
+      if (pending === "model") model = w;
+      pending = null;
+      continue;
+    }
+    const flag = w.startsWith("--") ? SPAWN_FLAGS[w.slice(2)] : undefined;
+    if (!flag) return [];
+    if (w !== "--quiet") pending = w.slice(2);
+  }
+  if (pending) return values(SPAWN_FLAGS[pending][0], catalog, model);
+  if (!partial.startsWith("-")) return [];
+  return Object.entries(SPAWN_FLAGS)
+    .filter(([f]) => !before.includes(`--${f}`))
+    .map(([f, [, doc]]) => ({ v: `--${f}`, doc, source: "" }));
+}
+
+// /announce's flags stand anywhere (commands.parse_announce); a word that
+// does not start with "-" is the text, which completes nothing.
+function announceChoices(before, partial) {
+  if (!partial.startsWith("-") || before.at(-1) === "--until") return [];
+  return [
+    ["--until", "HH:MM: end it then"],
+    ["--critical", "mark it critical"],
+  ]
+    .filter(([f]) => !before.includes(f))
+    .map(([v, doc]) => ({ v, doc, source: "" }));
+}
+
 // What a line can become. `meta` is the session's card: its model, for /effort.
 export function complete(line, catalog, meta) {
   if (!line.startsWith("/") || line.startsWith("//")) return { items: [] };
@@ -54,22 +116,23 @@ export function complete(line, catalog, meta) {
     return { items };
   }
   const name = line.slice(1, sp);
-  const arg = line.slice(sp + 1).trim();
   const cmd = catalog.commands.find((c) => c.name === name);
-  if (!cmd || !cmd.args || arg.includes(" ")) return { items: [] };
-  let choices = [];
-  if (cmd.args === "models")
-    choices = catalog.models.map((m) => ({ v: m.value, doc: `${m.label} · ${modelMeta(m)}. ${m.doc}`, source: m.efforts.length ? "effort" : "" }));
-  if (cmd.args === "permissions") choices = catalog.permissions.map((p) => ({ v: p, doc: "", source: "" }));
-  if (cmd.args === "tutorials") choices = (catalog.tutorials || []).map((t) => ({ v: t.id, doc: t.title, source: "" }));
-  if (cmd.args === "workflows")
-    choices = (catalog.workflows || []).map((w) => ({ v: w.id, doc: w.title, source: w.source === "builtin" ? "built in" : "" }));
-  if (cmd.args === "efforts") {
-    const m = catalog.models.find((x) => meta && (x.value === meta.model || x.resolved === meta.model)) || null;
-    choices = (m ? m.efforts : ["low", "medium", "high", "xhigh", "max"]).map((e) => ({ v: e, doc: "", source: "" }));
+  if (!cmd || !cmd.args) return { items: [] };
+  let partial, head, choices;
+  if (cmd.args === "spawn" || cmd.args === "announce") {
+    const words = line.slice(sp + 1).split(" ");
+    partial = words.pop();
+    head = line.slice(0, line.length - partial.length);
+    const before = words.filter(Boolean);
+    choices = cmd.args === "spawn" ? spawnChoices(before, partial, catalog) : announceChoices(before, partial);
+  } else {
+    partial = line.slice(sp + 1).trim();
+    if (partial.includes(" ")) return { items: [] };
+    head = `/${name} `;
+    choices = values(cmd.args, catalog, meta && meta.model);
   }
-  const items = ranked(arg, choices, (c) => c.v).map((c) => ({
-    insert: `/${name} ${c.v} `,
+  const items = ranked(partial, choices, (c) => c.v).map((c) => ({
+    insert: `${head}${c.v} `,
     label: c.v,
     positions: c.positions,
     hint: "",

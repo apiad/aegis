@@ -2982,6 +2982,49 @@ def test_the_menu_completes_a_model_and_esc_closes_it_without_interrupting(
     assert page.errors == []
 
 
+def test_spawn_completes_agents_here_and_on_a_link_then_flags_and_their_values(
+    linked, browser, page
+):
+    """/spawn offers this server's agents, the default first, then each
+    linked server's as agent@server, then its flags and their values; the
+    prompt completes nothing. /announce offers its flags (#352)."""
+    beta_session(linked, browser)
+    page.goto(linked.alpha.url)
+    page.wait_for_selector(
+        "#remotes .remote[data-server=beta] .band-link:has-text('linked')"
+    )
+    spawn(page)
+    page.click("#input")
+    page.keyboard.type("/spawn ")
+    page.wait_for_function(
+        "[...document.querySelectorAll('#cmd-menu .cmd-row .nm')]"
+        ".some(n => n.textContent === 'opus@beta')"
+    )
+    assert menu_rows(page) == ["opus", "deepseek", "opus@beta", "deepseek@beta"]
+    page.keyboard.type("op@b")
+    page.keyboard.press("Tab")
+    assert page.input_value("#input") == "/spawn opus@beta "
+    page.keyboard.type("--mo")
+    page.keyboard.press("Enter")  # accepts the flag, sends nothing
+    assert page.input_value("#input") == "/spawn opus@beta --model "
+    page.keyboard.type("son")
+    page.keyboard.press("Enter")
+    assert page.input_value("#input") == "/spawn opus@beta --model sonnet "
+    page.keyboard.type("-")
+    flags = menu_rows(page)
+    assert "--effort" in flags and "--quiet" in flags and "--model" not in flags
+    page.keyboard.type("-effort ")
+    assert "high" in menu_rows(page)
+    page.keyboard.type("high fix the ")
+    assert menu_rows(page) == []
+    page.fill("#input", "")
+    page.keyboard.type("/announce deploy at five --cr")
+    assert menu_rows(page) == ["--critical"]
+    page.keyboard.type(" --until ")
+    assert menu_rows(page) == []
+    assert page.errors == []
+
+
 def test_the_chip_keeps_the_configured_model_and_the_panel_adds_the_resolved_id(
     server, page
 ):
