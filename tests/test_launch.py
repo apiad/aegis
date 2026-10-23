@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -54,6 +55,46 @@ async def test_child_with_new_session_leads_its_own_session():
     finally:
         p.kill()
         await p.wait()
+
+
+async def test_child_with_die_with_parent_ends_when_its_parent_does(tmp_path):
+    """The parent starts a child that would sleep a minute, prints its pid and
+    exits at once without a word to it (#620)."""
+    parent = tmp_path / "parent.py"
+    parent.write_text(
+        "import asyncio, os\n"
+        "from aegis import launch\n"
+        "async def main():\n"
+        "    p = await launch.child(\n"
+        "        ['sleep', '60'], user=None, stdout=launch.DEVNULL, die_with_parent=True\n"
+        "    )\n"
+        "    print(p.pid, flush=True)\n"
+        "    os._exit(0)\n"
+        "asyncio.run(main())\n"
+    )
+    p = await launch.child([sys.executable, str(parent)], stdout=launch.PIPE, user=None)
+    out, _ = await p.communicate()
+    pid = int(out)
+    deadline = time.monotonic() + 5
+    while _alive(pid) and time.monotonic() < deadline:
+        await asyncio.sleep(0.05)
+    alive = _alive(pid)
+    if alive:
+        os.kill(pid, 9)
+    assert not alive
+
+
+async def test_child_with_die_with_parent_keeps_a_missing_binary_an_error():
+    with pytest.raises(FileNotFoundError):
+        await launch.child(["no-such-binary-aegis"], user=None, die_with_parent=True)
+
+
+def _alive(pid: int) -> bool:
+    """Running: an orphan's zombie, reaped by whoever adopted it, is not."""
+    try:
+        return "State:\tZ" not in Path(f"/proc/{pid}/status").read_text()
+    except OSError:
+        return False
 
 
 async def test_pty_gives_the_child_the_terminal(tmp_path):
