@@ -468,6 +468,10 @@ class _path:
         """What each path a reply named is now: file, dir, missing, repo or code, one per entry of its detail.paths, at most refs.MAX. The client draws each reference by it (#393). Records nothing."""
 
 class _peer:
+    async def close(
+        self, *, target: str, token: str | None = ..., sender: dict[str, Any]
+    ) -> Any:
+        """session_close from an agent on a server linked with trust, under the same rule as here: a session it started closes at once when done, any other on a second call with the token it was given."""
     async def deliver(
         self,
         *,
@@ -520,8 +524,18 @@ class _push:
         """Change a subscription's sources or device name."""
 
 class _queue:
+    async def deliver(
+        self,
+        *,
+        target: str,
+        queue: str,
+        task_id: str,
+        outcome: Literal["ok", "error"],
+        body: str,
+    ) -> Any:
+        """A task's result from a server linked with trust, for the agent here that enqueued it. Only that link may call it; the header is composed here from values checked here."""
     async def enqueue(self, *, queue: str, payload: str, callback: bool = ...) -> Any:
-        """Hand a self-contained task to a fresh worker on a queue. Returns at once with the task id; the worker's final message reaches your inbox when it finishes (with callback). Keep working meanwhile."""
+        """Hand a self-contained task to a fresh worker on a queue. Returns at once with the task id; the worker's final message reaches your inbox when it finishes (with callback). Keep working meanwhile. `queue@server` enqueues on a server linked with trust; the result still reaches your inbox, and the task id comes back as `task-id@server`."""
 
 class _quota:
     async def read(self) -> Any:
@@ -700,7 +714,7 @@ class _task:
     async def resume(self, *, task_id: str) -> Any:
         """Put a failed or cancelled task's worker back to work, with its conversation intact."""
     async def status(self, *, task_id: str) -> Any:
-        """A task's status, its worker, and its result once finished."""
+        """A task's status, its worker, and its result once finished. `task-id@server` reads one on a server linked with trust."""
 
 class _term:
     async def close(self, *, id: str) -> Any:
