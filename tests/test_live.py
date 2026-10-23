@@ -1285,6 +1285,53 @@ async def test_a_real_agent_hands_off_across_a_link(tmp_path: Path, fake_claude)
         await beta.stop()
 
 
+async def test_a_real_agent_reaches_back_over_a_trusted_link(
+    tmp_path: Path, fake_claude
+):
+    """A real Haiku on beta, which alpha links with trust, finds alpha's session
+    in session_list, hands off to it as handle@alpha over the link alpha opened,
+    and reads it back with peer_read (#684)."""
+    from .test_links import Node, inbox
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    alpha = await Node(tmp_path / "alpha", "alpha", fake_claude).start()
+    beta = Node(tmp_path / "beta", "beta", claude)
+    (beta.root / ".aegis.yaml").write_text(
+        f"agents:\n  haiku: {{harness: claude-code, model: {HAIKU}, effort: low, permission: full}}\n"
+    )
+    await beta.start()
+    try:
+        alpha.app.links.add("beta", beta.base, beta.token, trusted=True)
+        await until(
+            lambda: beta.app.links.get("alpha") is not None,
+            timeout=10,
+            what="the way back",
+        )
+        near = await alpha.spawn()
+        r = await beta.app.registry.call("session.spawn", {"agent": "haiku"})
+        s = beta.app.sessions.sessions[r["log_id"]]
+        await s.send(
+            f"Hand the message 'ping from beta' to the session {near.handle}@alpha "
+            "with the aegis peer_handoff tool, then read that session with "
+            "peer_read and reply with the single word DONE."
+        )
+        await until(lambda: inbox(near), timeout=120, what="the handoff on alpha")
+        (msg,) = inbox(near)
+        assert "@beta (" in msg["md"] and "ping from beta" in msg["md"]
+        await until(
+            lambda: any(
+                e["kind"] == "tool" and "peer_read" in json.dumps(e)
+                for e in s.entries()
+            ),
+            timeout=120,
+            what="the read back",
+        )
+    finally:
+        await beta.stop()
+        await alpha.stop()
+
+
 CODEX_FREE = "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
 
 
