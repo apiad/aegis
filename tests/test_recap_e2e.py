@@ -244,3 +244,20 @@ async def test_a_call_that_raises_on_cancel_does_not_stop_shutdown():
     await asyncio.sleep(0)
     await rs.shutdown()
     assert rs._running["x"].done()
+
+
+async def test_a_recap_keeps_its_ask_only_while_the_session_needs_its_person(
+    world, monkeypatch
+):
+    # Waiting on a monitor or CI, the model turned the agent's own next step
+    # into an order from the person ("Merge #636 when CI passes").
+    a = await two_unread(world)
+    r = await world.app.registry.call("recap.request", {"log_id": a.log_id})
+    assert (r["status"], r["ask"]) == ("made", "")
+    (e,) = [x for x in a.entries() if x["kind"] == "recap"]
+    assert e["detail"]["ask"] == ""
+    monkeypatch.setattr(world.app.sessions, "attention_of", lambda s: "needs_you")
+    r = await world.app.registry.call(
+        "recap.request", {"log_id": a.log_id, "force": True}
+    )
+    assert (r["status"], r["ask"]) == ("made", "answer it")

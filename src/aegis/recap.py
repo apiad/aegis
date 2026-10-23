@@ -46,7 +46,12 @@ SYSTEM = (
     "sentence of at most 25 words. `ask` restates only a question or request the "
     "agent actually put to the person, in the transcript or the AGENT REPORT; never "
     "invent one. When the AGENT REPORT is done or review and the last agent message "
-    "asks nothing, `ask` is empty. No preamble, no praise."
+    "asks nothing, `ask` is empty. VOICE: both fields speak to the person, as `you`, "
+    "never by name. `ask` is what the person must answer or do, as a question to "
+    "them; it is never an instruction to the agent, nor what the agent says it will "
+    "do next (`I'll merge when CI passes` is no ask). Lines marked `message to the "
+    "agent` come from aegis, monitors or other agents, not from the person. No "
+    "preamble, no praise."
 )
 
 

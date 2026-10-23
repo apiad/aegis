@@ -79,16 +79,20 @@ class Recaps:
             # session has left. The call was paid all the same.
             s.add_recap_cost(cost)
             return {"status": "stale"}
+        # An ask only while the session waits on its person: waiting on a
+        # monitor or CI, the model turned the agent's own next step into an
+        # order from the person ("Merge #636 when CI passes").
+        ask = value.ask if self.app.sessions.attention_of(s) == "needs_you" else ""
         s.report(
             {
                 "kind": "recap",
                 "upto": upto,
                 "context": value.context,
-                "ask": value.ask,
+                "ask": ask,
                 "model": cfg["model"],
                 "cost_usd": cost,
                 "duration_ms": ms,
             }
         )
         s.add_recap_cost(cost)
-        return {"status": "made", "context": value.context, "ask": value.ask}
+        return {"status": "made", "context": value.context, "ask": ask}
