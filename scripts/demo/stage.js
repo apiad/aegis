@@ -29,17 +29,21 @@ const boot = () => {
     .d-title .h { font: 600 56px/1.1 DemoSerif, Georgia, serif; }
     .d-title .s { margin-top: 12px; font-size: 22px; color: #b9b4aa; }
     .d-logo { position: absolute; inset: 0; display: grid; place-items: center;
-          background: #11100e; opacity: 0; transition: opacity .8s ease; }
+          background: #11100e; --bg: #11100e; opacity: 0; transition: opacity .8s ease; }
     .d-logo .in { display: grid; justify-items: center; transform: translateY(-70px); }
-    .d-logo img { width: 230px; height: 230px; transform: scale(.82) rotate(-40deg);
+    .d-logo .g { width: 200px; height: 200px; color: #e0a458; transform: scale(.82) rotate(-40deg);
           transition: transform 1.6s cubic-bezier(.2,.8,.2,1); }
-    .d-logo .w { font: 500 76px/1 DemoMono, ui-monospace, monospace; color: #f4f1ea;
-          letter-spacing: .02em; margin-top: 4px; opacity: 0; transform: translateY(10px);
+    .d-logo .g svg { width: 100%; height: 100%; overflow: visible; }
+    .d-logo .g :is(.eye,.pupil,.lid) { transform-box: view-box; transform-origin: 32px 32px; }
+    .d-logo .g .pupil { animation: gorgon-look 5s ease-in-out infinite; }
+    .d-logo .g :is(.eye,.lid) { animation: gorgon-blink 5s ease-in-out infinite; }
+    .d-logo .w { font: 600 84px/1 DemoSerif, Georgia, serif; color: #f4f1ea;
+          margin-top: 18px; opacity: 0; transform: translateY(10px);
           transition: opacity .8s ease .5s, transform .8s ease .5s; }
     .d-logo .s { margin-top: 22px; font-size: 22px; color: #b9b4aa; min-height: 30px;
           opacity: 0; transition: opacity .8s ease .9s; }
     .d-logo .s code { font: 500 21px DemoMono, ui-monospace, monospace; color: #e0a458; }
-    .d-logo.on img { transform: none; }
+    .d-logo.on .g { transform: none; }
     .d-logo.on .w { opacity: 1; transform: none; }
     .d-logo.on .s { opacity: 1; }
     .d-cap { position: absolute; left: 50%; bottom: 118px; transform: translateX(-50%);
@@ -188,9 +192,9 @@ const boot = () => {
   const cap = el("d-cap d-fade");
   const lower = el("d-lower d-fade", `<div class="l1"></div><div class="l2"></div>`);
   const title = el("d-title d-fade", `<div class="in"><div class="k"></div><div class="h"></div><div class="s"></div></div>`);
-  // The logo and the wordmark, as the site's header draws them: the mark in
-  // its own colours, the name in the mono face.
-  const logo = el("d-logo", `<div class="in"><img src="/static/icons/aegis-512.png" alt=""><div class="w">aegis</div><div class="s"></div></div>`);
+  // The brand as the client's new tab draws it: the Gorgoneion, its serpents
+  // and its eye moving, and ægis in the serif.
+  const logo = el("d-logo", `<div class="in"><div class="g"></div><div class="w">ægis</div><div class="s"></div></div>`);
   const cursor = el("d-cursor",
     `<svg viewBox="0 0 24 24" width="26" height="26"><path d="M3 2l7 19 2.6-7.4L20 11z" fill="#f4f1ea" stroke="#14110c" stroke-width="1.5"/></svg>`);
   cursor.style.left = "960px"; cursor.style.top = "800px";
@@ -263,6 +267,9 @@ const boot = () => {
     },
     logo(sub) {
       const on = sub !== null && sub !== undefined;
+      const g = logo.querySelector(".g");
+      const mark = document.querySelector("#boot-mark .gorgon, #sp-mark .gorgon, #band-mark .gorgon");
+      if (!g.firstChild && mark) g.appendChild(mark.cloneNode(true));
       if (on) logo.querySelector(".s").innerHTML = sub;
       show(logo, on);
       logo.classList.toggle("on", on);

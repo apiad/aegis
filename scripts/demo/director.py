@@ -469,8 +469,8 @@ class Stage:
         self.js("demo.title", kicker, head, sub)
 
     def logo(self, sub: str | None = "") -> None:
-        """The aegis logo and wordmark over a plain field, with ``sub`` (HTML)
-        under them; None fades the card out."""
+        """The brand over a plain field, as the client's new tab draws it (the
+        Gorgoneion and ægis), with ``sub`` (HTML) under it; None fades it out."""
         self.js("demo.logo", sub)
 
     def lower(self, l1: str | None = None, l2: str = "") -> None:
