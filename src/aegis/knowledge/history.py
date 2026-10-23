@@ -1,0 +1,76 @@
+"""git history for one principal's knowledge directory.
+
+Every change through aegis is one commit, so a merge or a delete in
+/consolidate can be undone. git runs with the host's own configuration shut
+out (``GIT_CONFIG_GLOBAL=/dev/null``, no system config) and a fixed committer,
+so a signing hook or a template in someone's ``~/.gitconfig`` never decides
+whether a save lands. Who made the change goes in a ``Session:`` trailer.
+Nothing is ever pushed.
+"""
+
+from __future__ import annotations
+
+import os
+import subprocess
+from pathlib import Path
+
+_ENV = {
+    "GIT_CONFIG_GLOBAL": "/dev/null",
+    "GIT_CONFIG_NOSYSTEM": "1",
+    "GIT_TERMINAL_PROMPT": "0",
+}
+_ID = ["-c", "user.name=aegis", "-c", "user.email=aegis@localhost"]
+
+
+def _git(
+    root: Path, *args: str, check: bool = True
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(root), *_ID, *args],
+        env={**os.environ, **_ENV},
+        capture_output=True,
+        text=True,
+        check=check,
+    )
+
+
+def ensure_repo(root: Path) -> None:
+    """Make ``root`` a git repository, once."""
+    root.mkdir(parents=True, exist_ok=True)
+    if not (root / ".git").exists():
+        _git(root, "init", "-q", "-b", "main")
+
+
+def commit(root: Path, paths: list[str], message: str, author: str) -> str:
+    """Commit ``paths`` (written, changed or deleted); the new sha, or "" when
+    none of them changed."""
+    _git(root, "add", "-A", "--", *paths)
+    if _git(root, "diff", "--cached", "--quiet", check=False).returncode == 0:
+        return ""
+    _git(root, "commit", "-q", "--no-verify", "-m", f"{message}\n\nSession: {author}")
+    return _git(root, "rev-parse", "HEAD").stdout.strip()
+
+
+def log(root: Path, relpath: str, limit: int = 50) -> list[dict]:
+    """The commits that touched ``relpath``, newest first: sha, at (epoch
+    seconds) and the subject."""
+    out = _git(
+        root, "log", f"-{limit}", "--format=%H%x00%ct%x00%s", "--", relpath, check=False
+    )
+    rows = []
+    for line in out.stdout.splitlines():
+        sha, at, message = line.split("\0", 2)
+        rows.append({"sha": sha, "at": int(at), "message": message})
+    return rows
+
+
+def show(root: Path, relpath: str, sha: str) -> str | None:
+    """``relpath`` as it was at ``sha``; None when it did not exist then."""
+    r = _git(root, "show", f"{sha}:{relpath}", check=False)
+    return r.stdout if r.returncode == 0 else None
+
+
+def revert(root: Path, sha: str, author: str) -> str:
+    """Undo the commit ``sha`` with a new commit; the new sha."""
+    _git(root, "revert", "--no-edit", "--no-commit", sha)
+    return commit(root, ["."], f"revert {sha[:12]}", author)
