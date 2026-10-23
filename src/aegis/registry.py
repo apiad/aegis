@@ -137,6 +137,7 @@ class Registry(Host):
         # knowledge.Knowledge, and whose knowledge a session's sends are
         # hinted from (its owner, else the admin); both set by App.
         self.knowledge = None
+        self._hint_failures: set[str] = set()  # causes already logged
         self.principal_of: Callable[[Session], str] = lambda s: s.spec.owner or ""
         self.nudges = None  # nudges.Nudges, set by App
         # The live config's context block (config.py); the app points it at
@@ -403,9 +404,17 @@ class Registry(Host):
     def knowledge_hint(self, session: Session, text: str) -> str:
         if self.knowledge is None:
             return ""
-        return self.knowledge.hint_for(
-            self.principal_of(session), session.log_id, text, str(session.spec.cwd)
-        )
+        # A hint is an extra: whatever breaks in it, the send still goes out.
+        try:
+            return self.knowledge.hint_for(
+                self.principal_of(session), session.log_id, text, str(session.spec.cwd)
+            )
+        except Exception as e:
+            cause = f"{type(e).__name__}: {e}"
+            if cause not in self._hint_failures:
+                self._hint_failures.add(cause)
+                log.exception("knowledge hint failed, sending without it: %s", cause)
+            return ""
 
     def compacted(self, session: Session) -> None:
         if self.notices is not None:

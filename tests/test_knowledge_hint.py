@@ -89,3 +89,31 @@ async def test_a_member_is_never_hinted_another_principals_memory(world):
     await until(lambda: sends(w, lid), what="ben's send")
     assert "ben-fact" in sends(w, lid)[-1]
     assert "secret-fact" not in sends(w, lid)[-1]
+
+
+async def test_a_datetime_expiry_does_not_break_the_send(app):  # noqa: F811
+    d = app.knowledge.store.dir(app.user) / "memories"
+    d.mkdir(parents=True)
+    (d / "bot-host.md").write_text(
+        "---\nname: bot-host\ndescription: the bot runs on host b\n"
+        "lifetime: temporary\nexpires: 2026-12-01T00:00:00Z\n---\nHost b.\n"
+    )
+    lid = await spawn(app)
+    await send(app, lid, "deploy the bot")
+    await until(lambda: sends(app, lid), what="the send")
+    assert sends(app, lid)[-1].startswith("deploy the bot")
+
+
+async def test_a_failing_hint_never_breaks_a_send(app, monkeypatch, caplog):  # noqa: F811
+    def boom(*a, **k):
+        raise RuntimeError("index broke")
+
+    monkeypatch.setattr(app.knowledge, "hint_for", boom)
+    lid = await spawn(app)
+    s = app.sessions.sessions[lid]
+    await send(app, lid, "first")
+    await until(lambda: s.status == "idle" and sends(app, lid), what="turn one")
+    await send(app, lid, "second")
+    await until(lambda: len(sends(app, lid)) == 2, what="turn two")
+    assert sends(app, lid) == ["first", "second"]
+    assert sum("index broke" in r.getMessage() for r in caplog.records) == 1

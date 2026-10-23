@@ -15,7 +15,7 @@ from __future__ import annotations
 import io
 import re
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -61,11 +61,13 @@ class Item:
     @property
     def expires(self) -> date | None:
         v = self.meta.get("expires")
+        if isinstance(v, datetime):  # YAML reads 2026-12-01T00:00:00Z as one
+            return v.date()
         if isinstance(v, date):
             return v
         if isinstance(v, str) and v:
             try:
-                return date.fromisoformat(v)
+                return datetime.fromisoformat(v).date()
             except ValueError:
                 return None
         return None
