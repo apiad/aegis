@@ -15,11 +15,24 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .api.models import Turn
+    from .api.queues import Task
+    from .api.schedules import Schedule
     from .api.sessions import Session, SessionNotFound
+    from .api.workflows import WorkflowRun
     from .ops import OpError
     from .server import Server, StartError
 
-__all__ = ["OpError", "Server", "Session", "SessionNotFound", "StartError", "Turn"]
+__all__ = [
+    "OpError",
+    "Schedule",
+    "Server",
+    "Session",
+    "SessionNotFound",
+    "StartError",
+    "Task",
+    "Turn",
+    "WorkflowRun",
+]
 
 _WHERE = {
     "OpError": ".ops",
@@ -28,6 +41,9 @@ _WHERE = {
     "Session": ".api.sessions",
     "SessionNotFound": ".api.sessions",
     "Turn": ".api.models",
+    "Task": ".api.queues",
+    "WorkflowRun": ".api.workflows",
+    "Schedule": ".api.schedules",
 }
 
 

@@ -30,6 +30,9 @@ a handle by log id whose methods are operations called as the admin person,
 its models are parsed from the wire's dicts with unknown fields ignored, and
 `srv.ops` is every operation as a method, its signatures generated into
 `api/ops.pyi` from the params models.
+`Task`, `WorkflowRun` and `Schedule` are handles of the same kind. A run is
+armed and answered as its owner session, an agent caller, because a run
+always has a main agent that aegis wakes; the rest acts as the admin person.
 
 **A server may link others, as their client.** A link (`links.py`) is one
 websocket this server opens to another, saying `hello` with that server's token,

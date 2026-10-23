@@ -128,3 +128,83 @@ class TurnEnded(_Model):
 
 
 Event = AnyEntry | TurnEnded
+
+
+class TaskInfo(_Model):
+    """A queue task, at the moment ``Task.info()`` ran."""
+
+    id: str
+    queue: str
+    payload: str
+    status: Literal["pending", "running", "completed", "failed", "cancelled"]
+    # The worker session's log id and handle, once it started.
+    worker: str | None = None
+    worker_handle: str | None = None
+    result: str | None = None
+    error: str | None = None
+    position: int | None = None
+    created_at: float
+    finished_at: float | None = None
+
+
+class OpenItem(_Model):
+    """Something a workflow run waits on: a gate, a question, a failed step."""
+
+    to: str
+    kind: str
+    node: str | None = None
+    text: str = ""
+
+
+class NodeInfo(_Model):
+    """One row of a run's tree."""
+
+    id: str
+    node: str
+    kind: str
+    say: str = ""
+    state: str
+    depth: int = 0
+    log_id: str | None = None
+    handle: str | None = None
+    started: float | None = None
+    ended: float | None = None
+    summary: str = ""
+    error: str = ""
+
+
+class RunInfo(_Model):
+    """A workflow run, at the moment ``WorkflowRun.info()`` ran."""
+
+    run: str
+    id: str
+    title: str = ""
+    say: str = ""
+    status: Literal["armed", "running", "done", "failed", "stopped", "rejected"]
+    created: float | None = None
+    started: float | None = None
+    ended: float | None = None
+    args: dict = Field(default_factory=dict)
+    open: list[OpenItem] = Field(default_factory=list)
+    nodes: list[NodeInfo] = Field(default_factory=list, validation_alias="tree")
+
+
+class ScheduleInfo(_Model):
+    """A schedule, at the moment ``Schedule.info()`` ran."""
+
+    name: str
+    clock: dict[str, str]
+    prompt: str
+    overlap: Literal["wait", "skip", "parallel"]
+    fire: dict
+    check: dict | None = None
+    # Why it is paused: {"by": "user" | "errors" | "approval", "at": ...}.
+    paused: dict | None = None
+    next: str | None = None
+    # Why the last tick did not fire: overlap, quota or workflow.
+    held: str | None = None
+    errors: int = 0  # check or fire errors in a row
+    runs: int = 0  # the highest run number so far
+    created_at: int
+    edited_at: int
+    finished_at: int | None = None

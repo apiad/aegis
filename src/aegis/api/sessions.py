@@ -5,18 +5,17 @@ reads or acts on the real session, and ``info()`` is the only snapshot. The
 actions go through the operation registry as the server's admin person, so they
 get the checks the browser gets. A turn has ended when the session is no
 longer busy (Session.busy: not working, not flushing, nothing held); the
-``sessions`` channel says when to look again, and a one-second fallback covers
-a publish the throttle merged away.
+``sessions`` channel says when to look again (_wait.py).
 """
 
 from __future__ import annotations
 
 import asyncio
 import builtins
-import contextlib
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Literal
 
+from ._wait import until
 from .models import (
     UNSETTLED,
     AnyEntry,
@@ -219,17 +218,7 @@ class Session:
 
     # -- helpers --------------------------------------------------------------
     async def _until_idle(self, timeout: float | None) -> None:
-        app = self._srv.app
-        changed = asyncio.Event()
-        sub = app.channels.subscribe("sessions", lambda _m: changed.set())
-        try:
-            async with asyncio.timeout(timeout):
-                while self._live().busy:
-                    changed.clear()
-                    with contextlib.suppress(TimeoutError):
-                        await asyncio.wait_for(changed.wait(), 1.0)
-        finally:
-            app.channels.unsubscribe(sub)
+        await until(self._srv, lambda: not self._live().busy, ("sessions",), timeout)
 
     def _turn(self, pick, cost_before: float | None) -> Turn:
         rows = [r for r in pick(self._rows()) if r.get("status") not in UNSETTLED]

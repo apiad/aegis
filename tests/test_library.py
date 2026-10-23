@@ -11,13 +11,26 @@ import httpx
 import pytest
 
 from aegis import OpError, Server, Session, SessionNotFound, StartError, Turn
-from aegis.api import Prose, SessionInfo, ToolCall, TurnEnded, UserMessage
+from aegis.api import (
+    Prose,
+    RunInfo,
+    ScheduleInfo,
+    ScheduleNotFound,
+    SessionInfo,
+    TaskInfo,
+    TaskNotFound,
+    ToolCall,
+    TurnEnded,
+    UserMessage,
+)
 from aegis.api.stubs import render
 
 CONFIG = """\
 default_agent: opus
 agents:
   opus: {harness: claude-code, model: opus, effort: low, permission: full}
+queues:
+  work: {agent: opus, max_parallel: 1}
 """
 
 STUB = Path(__file__).parents[1] / "src" / "aegis" / "api" / "ops.pyi"
@@ -161,3 +174,103 @@ async def test_the_host_keeps_its_signal_handlers(tmp_path: Path, fake_claude: s
 def test_session_handles_compare_by_log_id():
     a, b = Session(None, "x"), Session(None, "x")  # type: ignore[arg-type]
     assert a == b and hash(a) == hash(b) and a != Session(None, "y")  # type: ignore[arg-type]
+
+
+# -- queues, workflows and schedules (slice 2) ------------------------------
+
+
+async def test_a_task_runs_on_a_worker_and_returns_its_result(srv: Server):
+    task = await srv.queues.enqueue("work", "/md task done")
+    info = await task.wait(timeout=20)
+    assert isinstance(info, TaskInfo)
+    assert (info.status, info.result, info.queue) == ("completed", "task done", "work")
+    assert info.worker is not None
+    assert await srv.queues.get(task.id) == task
+    with pytest.raises(TaskNotFound):
+        await srv.queues.get("task-nope")
+
+
+async def test_a_pending_task_cancels(srv: Server):
+    busy = await srv.queues.enqueue("work", "/busy 30")
+    queued = await srv.queues.enqueue("work", "/md never")
+    assert (await queued.info()).status == "pending"  # max_parallel: 1
+    assert (await queued.cancel()).status == "cancelled"
+    assert (await busy.cancel()).status == "cancelled"
+
+
+HELLO = """id: hello
+title: Say hello
+say: Print hello.
+root:
+  sh: "echo hello"
+  id: greet
+  say: Print hello.
+"""
+
+GATED = """id: gated
+title: Ask, then print
+say: Ask the main agent, then print.
+root:
+  seq:
+    - gate: {by: main, ask: "Go on?"}
+      id: ok
+      say: Ask the main agent to go on.
+    - sh: "echo after"
+      id: after
+      say: Print after.
+  say: Ask, then print.
+"""
+
+
+async def test_a_workflow_runs_once_approved(srv: Server):
+    owner = await srv.sessions.spawn("/md ready")
+    await owner.wait(timeout=20)
+    run = await srv.workflows.arm(HELLO, owner=owner, approve=True)
+    info = await run.wait(timeout=20)
+    assert isinstance(info, RunInfo)
+    assert info.status == "done"
+    assert [(n.id, n.state, n.summary) for n in info.nodes] == [
+        ("greet", "done", "exit 0: hello")
+    ]
+    assert await run.owner() == owner
+    assert run in await srv.workflows.list()
+
+
+async def test_a_rejected_workflow_never_runs(srv: Server):
+    owner = await srv.sessions.spawn("/md ready")
+    await owner.wait(timeout=20)
+    run = await srv.workflows.arm(HELLO, owner=owner)
+    assert (await run.info()).status == "armed"
+    assert (await run.reject()).status == "rejected"
+
+
+async def test_wait_stops_at_a_gate_and_answer_passes_it(srv: Server):
+    owner = await srv.sessions.spawn("/md ready")
+    await owner.wait(timeout=20)
+    run = await srv.workflows.arm(GATED, owner=owner, approve=True)
+    info = await run.wait(timeout=20)
+    assert info.status == "running"
+    assert [o.kind for o in info.open] == ["gate"]
+    await run.answer(info.open[0].to, choice="continue")
+    info = await run.wait(timeout=20)
+    assert info.status == "done"
+
+
+async def test_a_schedule_is_created_fired_paused_and_deleted(srv: Server):
+    sch = await srv.schedules.create("hourly-tick", every="1h", prompt="/md tick")
+    info = await sch.info()
+    assert isinstance(info, ScheduleInfo)
+    assert (info.clock, info.paused) == ({"every": "1h"}, None)
+    assert info.next is not None
+    before = len(await srv.sessions.list())
+    assert await sch.fire()
+    assert len(await srv.sessions.list()) == before + 1
+    assert (await sch.pause()).paused is not None
+    assert (await sch.resume()).paused is None
+    with pytest.raises(ValueError):
+        await srv.schedules.create(
+            "bad-clock", every="1h", cron="0 6 * * *", prompt="x"
+        )
+    await sch.delete()
+    with pytest.raises(ScheduleNotFound):
+        await srv.schedules.get("hourly-tick")
