@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>aegis · spec · aegis as a library</title>
+<title>aegis · spec · aegis as a typed library</title>
 <style>
 /* aegis's fonts, inlined by inline_fonts.py: a sent file runs in a sandbox with
    an opaque origin and cannot load /static/fonts. */
@@ -68,7 +68,7 @@ figcaption{font-family:var(--font-mono);font-size:11px;color:var(--faint);margin
 .tbl{width:100%;border-collapse:collapse;margin:14px 0;font-size:13px}
 .tbl th{text-align:left;font-family:var(--font-mono);font-weight:500;font-size:11px;color:var(--faint);padding:7px 10px;border-bottom:1px solid var(--rule)}
 .tbl td{padding:9px 10px;border-bottom:1px solid var(--rule);vertical-align:top;color:var(--ink)}
-.tbl td:first-child{color:var(--strong);font-family:var(--font-mono);font-size:12px;white-space:nowrap}
+.tbl td:first-child{color:var(--strong);font-family:var(--font-mono);font-size:12px;max-width:300px;overflow-wrap:anywhere}
 .tbl .why{color:var(--muted)}
 .who{font-family:var(--font-mono);font-size:10.5px;color:var(--accent)}
 .who.q{color:var(--comms)}
@@ -93,8 +93,8 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 
 <div class="chrome">
   <span>aegis</span>
-  <span class="tab">spec · aegis as a library</span>
-  <span class="st"><span class="pill acc">proposed</span><span class="pill">2026-10-23</span><span class="pill">#646</span></span>
+  <span class="tab">spec · aegis as a typed library</span>
+  <span class="st"><span class="pill acc">proposed · slice 1 of 2</span><span class="pill">2026-10-23</span><span class="pill">#646</span></span>
 </div>
 
 <div class="wrap">
@@ -102,7 +102,10 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <a href="#delivers">What this delivers</a>
   <a href="#decisions">Decisions</a>
   <a href="#fits">How it fits</a>
-  <a href="#api">The API</a>
+  <a href="#server">The Server</a>
+  <a href="#sessions">Sessions, turns and events</a>
+  <a href="#ops">Every operation, typed</a>
+  <a href="#models">Where the types come from</a>
   <a href="#startup">Startup checks</a>
   <a href="#one">One server per process</a>
   <a href="#delivery">Delivery</a>
@@ -111,151 +114,227 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 </nav>
 
 <main>
-<h1>aegis as a library: an in-process Server</h1>
+<h1>aegis as a typed library: Server, Session, and every operation without strings</h1>
 <div class="meta"><span>docs/superpowers/specs/2026-10-23-library-server-design.html</span><span>·</span><span>proposed</span><span>·</span><span>issue #646</span></div>
-<p class="lede">Another Python program can start an aegis server inside its own event loop, drive it through the same operations the browser and agents use, and listen to the same channels. The CLI's <code>aegis serve</code> becomes one caller of that API. Nothing about how aegis runs sessions changes.</p>
+<p class="lede">A Python program starts an aegis server inside its own event loop and drives it through typed objects: <code>srv.sessions.spawn(...)</code> returns a <code>Session</code>, <code>await session.ask(...)</code> returns a <code>Turn</code>, and <code>session.events()</code> yields typed events. Anything the domain objects do not cover yet is reachable as <code>srv.ops.&lt;namespace&gt;.&lt;name&gt;(...)</code>, with keyword arguments checked by the operation's own model. No call takes an operation's name as a string.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
 <div class="trio">
   <div class="card">
-    <h4>A Server you can import</h4>
-    <p><code>from aegis import Server</code>, used as <code>async with Server(root) as srv</code>. Entering it runs the startup checks, boots the app and listens on loopback. Leaving it shuts the app down as a stopped <code>aegis serve</code> does.</p>
+    <h4>An importable Server</h4>
+    <p><code>async with Server(root) as srv</code> runs the startup checks, boots the app and listens on loopback. Leaving the block shuts the app down, the same way a stopped <code>aegis serve</code> does.</p>
   </div>
   <div class="card">
-    <h4>Operations and channels</h4>
-    <p><code>srv.call(name, params)</code> runs any registered operation as the server's admin. <code>srv.subscribe(channel)</code> yields the snapshot and the ops the websocket would send. Errors are <code>OpError</code> with the same codes.</p>
+    <h4>Sessions as objects</h4>
+    <p><code>Session</code> is a live handle on one session. <code>info()</code> returns a typed snapshot. <code>send</code>, <code>ask</code>, <code>wait</code>, <code>events</code>, <code>interrupt</code>, <code>stop</code>, <code>close</code> and <code>rename</code> act on the real session.</p>
   </div>
   <div class="card">
-    <h4>A stated public surface</h4>
-    <p><code>aegis.__all__</code> names <code>Server</code>, <code>StartError</code> and <code>OpError</code>, and the package ships <code>py.typed</code>. Every other module stays internal and may change in any release.</p>
+    <h4>Every operation, typed</h4>
+    <p><code>srv.ops</code> is generated from the operation registry: one method for each of the 175 operations, with the parameters of its pydantic model. A stub file gives editors and type checkers the signatures, and a test keeps that file in step with the registry.</p>
   </div>
 </div>
 <div class="stats">
+  <div class="stat"><div class="v">175</div><div class="k">operations in 39 namespaces, all with a pydantic params model</div></div>
+  <div class="stat"><div class="v">0</div><div class="k">operations that declare a result type; every result is a dict</div></div>
   <div class="stat"><div class="v">0</div><div class="k">names exported by aegis/__init__.py in 2.14.0</div></div>
-  <div class="stat"><div class="v">~140</div><div class="k">lines of startup that live only inside the serve command (cli.py:221)</div></div>
   <div class="stat"><div class="v">17</div><div class="k">test files that already build App in-process</div></div>
-  <div class="stat"><div class="v">1</div><div class="k">process-wide state that blocks two servers: launch._mode</div></div>
 </div>
+<p>A spike on this branch booted <code>App</code> and uvicorn in one event loop, without signal handlers, on a socket it bound itself. It started a session with the fake claude, ran its turn over <code>/mcp</code>, and received the transcript's snapshot and patches through <code>channels.subscribe</code>. The design below wraps that path.</p>
 
 <h2 id="decisions"><span class="n">02</span>Decisions</h2>
 <p><span class="who">maintainer</span> marks a decision the maintainer made. <span class="who q">proposed</span> marks one this spec proposes and nobody has ruled on yet.</p>
 <table class="tbl">
 <thead><tr><th>Question</th><th>Decision</th><th>Why</th></tr></thead>
 <tbody>
-<tr><td>Whether to build it</td><td>Yes: a supported way to run aegis inside another program</td><td class="why"><span class="who">maintainer</span> People want to build their own agentic system on aegis's sessions, queues and workflows without running a second process and speaking its websocket.</td></tr>
-<tr><td>Entry point</td><td><code>aegis.Server</code>, an async context manager</td><td class="why"><span class="who q">proposed</span> <code>App.boot()</code> and <code>App.shutdown()</code> are async, and the embedding program owns the event loop. A context manager makes the shutdown hard to forget.</td></tr>
-<tr><td>Headless means</td><td>No browser needed. The server still listens on loopback, on a free port by default</td><td class="why"><span class="who q">proposed</span> Harness children reach aegis's tools over HTTP at <code>&lt;base_url&gt;/mcp</code> (app.py:538). A server with no listener would spawn agents that have no aegis tools, which is most of what aegis is.</td></tr>
-<tr><td>The browser client</td><td>Served by the same listener; <code>srv.url</code> opens it with the token</td><td class="why"><span class="who q">proposed</span> It costs nothing extra, and it is the fastest way for the embedder to see what their program did.</td></tr>
-<tr><td>Signals</td><td>An embedded server installs no signal handlers</td><td class="why"><span class="who q">proposed</span> uvicorn's <code>Server.capture_signals</code> takes SIGINT and SIGTERM on the main thread. The host program decides when aegis stops, by leaving the context.</td></tr>
-<tr><td>Who calls</td><td><code>srv.call</code> runs as the admin person: <code>Caller("user")</code> with the admin principal</td><td class="why"><span class="who q">proposed</span> This is what the browser of the server's owner is. Acting as an agent or as a member token is left out of this slice.</td></tr>
-<tr><td>Python methods per operation</td><td>None. One <code>call(name, params)</code> over the registry, and <code>srv.ops()</code> to list the names</td><td class="why"><span class="who q">proposed</span> The registry is already the single API (ops.py, DESIGN.md "One registry, every caller"). A method per op would duplicate every op's model and drift from it.</td></tr>
-<tr><td>Servers per process</td><td>One at a time. A second <code>Server</code> while one runs raises <code>RuntimeError</code></td><td class="why"><span class="who q">proposed</span> <code>launch.configure</code> sets a module-level mode that every child process reads. Two servers would share it. Section 06 explains why removing it is not worth it now.</td></tr>
-<tr><td>Startup checks</td><td>Moved from <code>cli.serve</code> into <code>aegis.server.prepare()</code>, which raises <code>StartError</code></td><td class="why"><span class="who q">proposed</span> One code path for the CLI and the library. The CLI prints the error's lines and exits 1, as it does today.</td></tr>
-<tr><td>Importing aegis</td><td><code>aegis/__init__.py</code> loads <code>Server</code> lazily, through a module <code>__getattr__</code></td><td class="why"><span class="who q">proposed</span> The CLI imports the package on every <code>aegis call</code>. That import must stay cheap.</td></tr>
+<tr><td>Whether to build it</td><td>Yes: a supported way to run aegis inside another program</td><td class="why"><span class="who">maintainer</span> People want to build their own agentic systems on aegis's sessions, queues and workflows without running a second process and speaking its websocket.</td></tr>
+<tr><td>Strings or types</td><td>Typed objects. No public call takes an operation name as a string</td><td class="why"><span class="who">maintainer</span> A library is used through an editor and a type checker. <code>call("session.spawn", {...})</code> gives neither.</td></tr>
+<tr><td>Layers</td><td>Two: hand-written domain objects, and <code>srv.ops</code> generated for every operation</td><td class="why"><span class="who">maintainer</span> The domain layer is where the ergonomics are. The generated layer means nothing is out of reach while the domain layer grows.</td></tr>
+<tr><td>First slice</td><td>Server, the generated layer, and sessions with turns and events. Queues, workflows and schedules come in slice 2</td><td class="why"><span class="who">maintainer</span> Sessions are the core of every agentic program. Slice 2 reuses the patterns slice 1 settles.</td></tr>
+<tr><td>What a Session is</td><td>A live handle: methods act on the real session, <code>info()</code> returns a fresh snapshot</td><td class="why"><span class="who">maintainer</span> A Session kept in a variable never goes stale. The snapshot is a separate frozen type, so it is clear when data is a copy.</td></tr>
+<tr><td>Headless means</td><td>No browser needed. The server still listens on loopback, on a free port by default</td><td class="why"><span class="who q">proposed</span> Harness children reach aegis's tools over HTTP at <code>&lt;base_url&gt;/mcp</code> (app.py:538). A server with no listener would spawn agents that have no aegis tools.</td></tr>
+<tr><td>Signals</td><td>An embedded server installs no signal handlers</td><td class="why"><span class="who q">proposed</span> uvicorn's <code>capture_signals</code> takes SIGINT and SIGTERM on the main thread. The host program decides when aegis stops, by leaving the block.</td></tr>
+<tr><td>Who calls</td><td>The server's admin person: <code>Caller("user")</code> with the admin principal</td><td class="why"><span class="who q">proposed</span> That is the caller a browser with the server's owner token is. Calling as an agent or a member is left for later.</td></tr>
+<tr><td>Result types</td><td>Pydantic models in <code>aegis.api</code>, parsed from each operation's dict at the library's edge</td><td class="why"><span class="who q">proposed</span> The operations keep returning what the websocket and MCP already send. A test per model against real output makes a renamed or removed field fail CI. Section 07 describes a later migration to shared models.</td></tr>
+<tr><td>Async or sync</td><td>Async only</td><td class="why"><span class="who q">proposed</span> aegis is an asyncio program. A sync wrapper would need its own thread and loop, and nobody has asked for one.</td></tr>
+<tr><td>Servers per process</td><td>One at a time. A second <code>Server</code> raises <code>RuntimeError</code></td><td class="why"><span class="who q">proposed</span> <code>launch._mode</code> is module-level and every child process reads it (section 09).</td></tr>
 </tbody>
 </table>
 
 <h2 id="fits"><span class="n">03</span>How it fits</h2>
 <figure>
-<svg viewBox="0 0 720 300" role="img" aria-label="The host program holds a Server, which holds the App and a uvicorn task on loopback. Harness children call /mcp, a browser may use /ws.">
-  <rect x="10" y="10" width="700" height="280" rx="10" fill="none" stroke="#2a2721"/>
-  <text x="26" y="34" fill="#8a867b" font-family="JBM,monospace" font-size="12">host process (the embedding program, its event loop)</text>
-  <rect x="30" y="56" width="180" height="70" rx="8" fill="#191814" stroke="#2a2721"/>
-  <text x="46" y="84" fill="#f1ede2" font-family="JBM,monospace" font-size="13">your code</text>
-  <text x="46" y="106" fill="#8a867b" font-family="JBM,monospace" font-size="11">srv.call / subscribe</text>
-  <rect x="260" y="56" width="200" height="110" rx="8" fill="#191814" stroke="#e0a872"/>
-  <text x="276" y="84" fill="#e0a872" font-family="JBM,monospace" font-size="13">aegis.Server</text>
-  <text x="276" y="106" fill="#dcd9cf" font-family="JBM,monospace" font-size="11">App: registry, channels,</text>
-  <text x="276" y="122" fill="#dcd9cf" font-family="JBM,monospace" font-size="11">sessions, queues, ...</text>
-  <text x="276" y="148" fill="#8a867b" font-family="JBM,monospace" font-size="11">boot() on enter</text>
-  <rect x="260" y="190" width="200" height="70" rx="8" fill="#191814" stroke="#2a2721"/>
-  <text x="276" y="218" fill="#f1ede2" font-family="JBM,monospace" font-size="12">uvicorn task</text>
-  <text x="276" y="240" fill="#8a867b" font-family="JBM,monospace" font-size="11">127.0.0.1:&lt;port&gt;</text>
-  <rect x="520" y="56" width="170" height="70" rx="8" fill="#191814" stroke="#2a2721"/>
-  <text x="536" y="84" fill="#f1ede2" font-family="JBM,monospace" font-size="12">harness children</text>
-  <text x="536" y="106" fill="#8a867b" font-family="JBM,monospace" font-size="11">claude, codex, ...</text>
-  <rect x="520" y="190" width="170" height="70" rx="8" fill="#191814" stroke="#2a2721" stroke-dasharray="4 4"/>
-  <text x="536" y="218" fill="#f1ede2" font-family="JBM,monospace" font-size="12">a browser</text>
-  <text x="536" y="240" fill="#8a867b" font-family="JBM,monospace" font-size="11">optional, /ws</text>
-  <line x1="210" y1="91" x2="258" y2="91" stroke="#e0a872" stroke-width="1.5"/>
-  <line x1="360" y1="166" x2="360" y2="188" stroke="#8a867b"/>
-  <line x1="460" y1="91" x2="518" y2="91" stroke="#8a867b"/>
-  <text x="470" y="84" fill="#6f6b62" font-family="JBM,monospace" font-size="10">spawns</text>
-  <path d="M605 126 L605 160 L440 160 L440 188" fill="none" stroke="#9fb4d0"/>
-  <text x="482" y="154" fill="#9fb4d0" font-family="JBM,monospace" font-size="10">/mcp</text>
-  <line x1="518" y1="225" x2="462" y2="225" stroke="#8a867b" stroke-dasharray="4 4"/>
+<svg viewBox="0 0 720 330" role="img" aria-label="The host program calls the domain objects and srv.ops, both of which call the operation registry. The registry belongs to App, which a uvicorn task serves on loopback for the harness children's MCP calls and an optional browser.">
+  <rect x="10" y="10" width="700" height="310" rx="10" fill="none" stroke="#2a2721"/>
+  <text x="26" y="34" fill="#8a867b" font-family="JBM,monospace" font-size="12">host process: the embedding program and its event loop</text>
+  <rect x="30" y="52" width="150" height="56" rx="8" fill="#191814" stroke="#2a2721"/>
+  <text x="46" y="85" fill="#f1ede2" font-family="JBM,monospace" font-size="13">your code</text>
+  <rect x="210" y="52" width="230" height="56" rx="8" fill="#191814" stroke="#e0a872"/>
+  <text x="224" y="76" fill="#e0a872" font-family="JBM,monospace" font-size="12">srv.sessions · Session</text>
+  <text x="224" y="96" fill="#8a867b" font-family="JBM,monospace" font-size="11">typed models (aegis.api)</text>
+  <rect x="210" y="122" width="230" height="44" rx="8" fill="#191814" stroke="#e0a872"/>
+  <text x="224" y="149" fill="#e0a872" font-family="JBM,monospace" font-size="12">srv.ops.&lt;ns&gt;.&lt;name&gt;()</text>
+  <rect x="210" y="186" width="230" height="56" rx="8" fill="#191814" stroke="#2a2721"/>
+  <text x="224" y="210" fill="#f1ede2" font-family="JBM,monospace" font-size="12">App: registry, channels</text>
+  <text x="224" y="230" fill="#8a867b" font-family="JBM,monospace" font-size="11">sessions, queues, ...</text>
+  <rect x="210" y="258" width="230" height="44" rx="8" fill="#191814" stroke="#2a2721"/>
+  <text x="224" y="285" fill="#f1ede2" font-family="JBM,monospace" font-size="12">uvicorn task · 127.0.0.1</text>
+  <rect x="510" y="186" width="180" height="56" rx="8" fill="#191814" stroke="#2a2721"/>
+  <text x="526" y="210" fill="#f1ede2" font-family="JBM,monospace" font-size="12">harness children</text>
+  <text x="526" y="230" fill="#9fb4d0" font-family="JBM,monospace" font-size="11">call /mcp</text>
+  <rect x="510" y="258" width="180" height="44" rx="8" fill="#191814" stroke="#2a2721" stroke-dasharray="4 4"/>
+  <text x="526" y="285" fill="#f1ede2" font-family="JBM,monospace" font-size="12">a browser, optional</text>
+  <line x1="180" y1="80" x2="208" y2="80" stroke="#e0a872" stroke-width="1.5"/>
+  <path d="M195 80 L195 144 L208 144" fill="none" stroke="#e0a872" stroke-width="1.5"/>
+  <line x1="325" y1="108" x2="325" y2="120" stroke="#8a867b"/>
+  <line x1="325" y1="166" x2="325" y2="184" stroke="#8a867b"/>
+  <line x1="325" y1="242" x2="325" y2="256" stroke="#8a867b"/>
+  <line x1="440" y1="214" x2="508" y2="214" stroke="#8a867b"/>
+  <text x="452" y="206" fill="#6f6b62" font-family="JBM,monospace" font-size="10">spawns</text>
+  <path d="M600 242 L600 250 L470 250 L470 274 L442 274" fill="none" stroke="#9fb4d0"/>
+  <line x1="508" y1="286" x2="442" y2="286" stroke="#8a867b" stroke-dasharray="4 4"/>
 </svg>
-<figcaption>The listener exists for the harness children's MCP calls. The browser is optional.</figcaption>
+<figcaption>Both layers go through the registry, so they get the same validation and permission checks the browser and the agents get.</figcaption>
 </figure>
-<p>The Server builds the same objects <code>aegis serve</code> builds: the <code>App</code>, then <code>build_web</code>. Instead of the blocking <code>uvicorn.run</code>, it runs <code>uvicorn.Server.serve(sockets=[sock])</code> as a task, on a socket it bound itself. Binding first gives it the port before the <code>App</code> is built, and the <code>App</code> needs that port in <code>base_url</code>. Starlette's lifespan still calls <code>boot()</code> and <code>shutdown()</code>, so the order of startup and shutdown is the one the CLI has today.</p>
+<p>The Server builds the same objects <code>aegis serve</code> builds: <code>App</code>, then <code>build_web</code>. In place of the blocking <code>uvicorn.run</code>, it runs <code>uvicorn.Server.serve(sockets=[sock])</code> as a task, on a socket it bound first. Binding first gives the Server its port before it builds <code>App</code>, which needs the port in <code>base_url</code>. Starlette's lifespan still calls <code>boot()</code> and <code>shutdown()</code>, so startup and shutdown happen in the order the CLI uses today.</p>
 
-<h2 id="api"><span class="n">04</span>The API</h2>
-<pre><span class="k">from</span> aegis <span class="k">import</span> Server, OpError
+<h2 id="server"><span class="n">04</span>The Server</h2>
+<pre><span class="k">from</span> aegis <span class="k">import</span> Server
 
 <span class="k">async with</span> Server(<span class="s">"./myproj"</span>, name=<span class="s">"lab"</span>) <span class="k">as</span> srv:
-    print(srv.url)                                   <span class="c"># http://127.0.0.1:41873/?token=...</span>
-    s = <span class="k">await</span> srv.call(<span class="s">"session.spawn"</span>, {<span class="s">"agent"</span>: <span class="s">"opus"</span>, <span class="s">"prompt"</span>: <span class="s">"..."</span>})
-    <span class="k">async for</span> msg <span class="k">in</span> srv.subscribe(<span class="s">"sessions"</span>):    <span class="c"># {"t": "snapshot"|"ops", ...}</span>
-        ...</pre>
+    print(srv.url)          <span class="c"># http://127.0.0.1:41873/?token=..., opens the web client</span>
+    ...</pre>
 <table class="tbl">
 <thead><tr><th>Member</th><th>What it is</th></tr></thead>
 <tbody>
-<tr><td>Server(root=None, *, port=0, host="127.0.0.1", name=None, claude="claude", opencode="opencode", codex="codex", cursor="cursor-agent", origins=())</td><td>The same options as <code>aegis serve</code>. <code>root</code> defaults to the nearest ancestor holding <code>.aegis.yaml</code>, as for the CLI. <code>port=0</code> takes a free port.</td></tr>
-<tr><td>async with / __aenter__</td><td>Runs <code>prepare()</code>, binds the socket, builds the app, starts the listener and returns once <code>boot()</code> has finished. Raises <code>StartError</code> on a failed check, <code>RuntimeError</code> when another Server is running in this process.</td></tr>
-<tr><td>__aexit__</td><td>Stops the listener, which runs <code>shutdown()</code>, and waits for it.</td></tr>
+<tr><td>Server(root=None, *, port=0, host="127.0.0.1", name=None, claude="claude", opencode="opencode", codex="codex", cursor="cursor-agent", origins=())</td><td>The options of <code>aegis serve</code>. <code>root</code> defaults to the nearest ancestor holding <code>.aegis.yaml</code>, as in the CLI. <code>port=0</code> takes a free port.</td></tr>
+<tr><td>async with</td><td>Runs <code>prepare()</code>, binds the socket, builds the app, starts the listener, and returns once <code>boot()</code> has finished. It raises <code>StartError</code> when a check fails, and <code>RuntimeError</code> when another Server is running in the process.</td></tr>
+<tr><td>srv.sessions</td><td>The sessions on this server (section 05).</td></tr>
+<tr><td>srv.ops</td><td>Every operation as a typed method (section 06).</td></tr>
 <tr><td>srv.url, srv.base_url, srv.token</td><td>The sign-in URL, the base URL without the token, and the admin token.</td></tr>
-<tr><td>await srv.call(name, params=None)</td><td>The operation's result, or <code>OpError</code> with its code and message.</td></tr>
-<tr><td>srv.subscribe(channel, since=None)</td><td>An async iterator of the messages the websocket sends for that channel, starting with the snapshot. Leaving the loop unsubscribes. An unknown channel raises <code>OpError("unknown_channel")</code>.</td></tr>
-<tr><td>srv.ops()</td><td>The registered operation names, sorted.</td></tr>
-<tr><td>srv.app</td><td>The internal <code>App</code>, for what the API does not cover yet. Not part of the stable surface.</td></tr>
+<tr><td>srv.app</td><td>The internal <code>App</code>. Not part of the stable surface.</td></tr>
 </tbody>
 </table>
 
-<h2 id="startup"><span class="n">05</span>Startup checks</h2>
-<p>These move out of the <code>serve</code> command into <code>prepare(root, host, port)</code>, in this order, each raising <code>StartError</code> with the lines the CLI prints today:</p>
+<h2 id="sessions"><span class="n">05</span>Sessions, turns and events</h2>
+<pre><span class="k">from</span> aegis <span class="k">import</span> Server, Session, Turn
+<span class="k">from</span> aegis.api <span class="k">import</span> Prose, ToolCall, TurnEnded
+
+<span class="k">async with</span> Server(<span class="s">"./myproj"</span>) <span class="k">as</span> srv:
+    s: Session = <span class="k">await</span> srv.sessions.spawn(agent=<span class="s">"opus"</span>, cwd=<span class="s">"repo"</span>)
+    turn: Turn = <span class="k">await</span> s.ask(<span class="s">"summarize the README"</span>)
+    print(turn.text, turn.attention, turn.line)
+
+    <span class="k">await</span> s.send(<span class="s">"now write tests for it"</span>)
+    <span class="k">async for</span> ev <span class="k">in</span> s.events():
+        <span class="k">match</span> ev:
+            <span class="k">case</span> Prose(md=md): print(md)
+            <span class="k">case</span> ToolCall(title=t): print(<span class="s">"tool:"</span>, t)
+            <span class="k">case</span> TurnEnded(): <span class="k">break</span>
+    <span class="k">await</span> s.close()</pre>
+
+<h3>srv.sessions</h3>
+<table class="tbl">
+<thead><tr><th>Method</th><th>Operation</th><th>Returns</th></tr></thead>
+<tbody>
+<tr><td>spawn(prompt=None, *, agent=None, harness=None, model=None, effort=None, permission=None, cwd=None, quiet=False)</td><td><code>session.spawn</code></td><td><code>Session</code>. With a prompt, the first turn is already running; use <code>wait()</code> for its end.</td></tr>
+<tr><td>list(*, archived=False)</td><td><code>session.list</code></td><td><code>list[Session]</code></td></tr>
+<tr><td>get(ref)</td><td>the registry, by log id or by handle</td><td><code>Session</code>, or <code>SessionNotFound</code></td></tr>
+</tbody>
+</table>
+
+<h3>Session</h3>
+<table class="tbl">
+<thead><tr><th>Member</th><th>Operation</th><th>What it does</th></tr></thead>
+<tbody>
+<tr><td>log_id</td><td></td><td>The session's id. Fixed for its life, so a Session can be stored and compared.</td></tr>
+<tr><td>info()</td><td>the session's card</td><td><code>SessionInfo</code>, a frozen snapshot taken now.</td></tr>
+<tr><td>send(text)</td><td><code>session.send</code></td><td>Delivers a message, waking a sleeping session. Returns once the message is accepted, not when the turn ends.</td></tr>
+<tr><td>ask(text, *, timeout=None)</td><td><code>session.send</code> and the channels</td><td>Sends, then waits for the turn to end. Returns <code>Turn</code>.</td></tr>
+<tr><td>wait(*, timeout=None)</td><td>the <code>sessions</code> channel</td><td>Waits until the session is no longer working. Returns the <code>Turn</code> that ended, or the last one if none is running.</td></tr>
+<tr><td>events(*, history=False)</td><td>the <code>transcript:&lt;log_id&gt;</code> channel</td><td>An async iterator of <code>Event</code>. It starts with new entries, or with every entry when <code>history</code> is true. Leaving the loop unsubscribes.</td></tr>
+<tr><td>entries()</td><td>the transcript snapshot</td><td><code>list[Entry]</code>, the whole transcript as it is now.</td></tr>
+<tr><td>interrupt()</td><td><code>session.interrupt</code></td><td>Stops the current turn. The session stays.</td></tr>
+<tr><td>stop()</td><td><code>session.stop</code></td><td>Stops the harness process. The next <code>send</code> starts it again.</td></tr>
+<tr><td>close(*, archive=True)</td><td><code>session.close</code></td><td>Ends the session.</td></tr>
+<tr><td>rename(handle=None, title=None)</td><td><code>session.rename</code></td><td>Sets the handle and the title.</td></tr>
+</tbody>
+</table>
+
+<h3>The models</h3>
+<table class="tbl">
+<thead><tr><th>Type</th><th>Fields</th></tr></thead>
+<tbody>
+<tr><td>SessionInfo</td><td><code>log_id, handle, title, agent, harness, model, effort, permission, cwd, status</code> (<code>working | idle | asleep | error</code>), <code>attention</code>, <code>attention_line</code>, <code>replies</code>, <code>plan: list[PlanItem]</code>, <code>cost_usd</code>, <code>context_tokens</code>, <code>created_at</code>, <code>last_activity</code>, <code>archived</code></td></tr>
+<tr><td>Turn</td><td><code>attention</code> (<code>needs_you | review | done | None</code>), <code>line</code>, <code>replies</code>, <code>text</code> (the turn's prose, joined), <code>entries: list[Entry]</code>, <code>cost_usd</code></td></tr>
+<tr><td>Entry</td><td>The transcript's row, as the browser gets it: <code>id, kind, status, ts, title, summary, md, detail</code>.</td></tr>
+<tr><td>Event</td><td>A union, one class per entry kind a program acts on: <code>UserMessage</code>, <code>Prose</code>, <code>Thinking</code>, <code>ToolCall</code> (with its status and output once it ends), <code>SystemNote</code>, <code>ErrorNote</code>, and <code>TurnEnded(turn)</code>. A kind the library does not know yet arrives as <code>OtherEntry(entry)</code>, so a new kind in aegis never breaks a program.</td></tr>
+</tbody>
+</table>
+<p>A turn ends when the session's card leaves <code>working</code> after the message was accepted. <code>ask</code> notes the transcript's revision before it sends and collects the entries upserted after it. Those entries become <code>Turn.entries</code>, and the <code>prose</code> ones joined become <code>Turn.text</code>. The spike's turn produced the prompt (<code>user</code>), a <code>prose</code> entry with the reply, and a <code>system</code> entry "done in 0.1s · $0.01", and the card's attention became <code>done</code>.</p>
+
+<h2 id="ops"><span class="n">06</span>Every operation, typed</h2>
+<pre><span class="k">await</span> srv.ops.browser.goto(browser=<span class="s">"b1"</span>, url=<span class="s">"https://example.org"</span>)
+<span class="k">await</span> srv.ops.queue.enqueue(queue=<span class="s">"review"</span>, prompt=<span class="s">"..."</span>)
+<span class="k">await</span> srv.ops.workflow.edit_apply(run=<span class="s">"..."</span>)        <span class="c"># workflow.edit.apply</span></pre>
+<ul>
+  <li><code>srv.ops</code> is built at runtime from the registry: one attribute per namespace and one method per operation. The rest of a dotted name joins with underscores, so <code>workflow.edit.apply</code> becomes <code>workflow.edit_apply</code>.</li>
+  <li>Each method takes keyword arguments only and validates them with the operation's own model, so a mistake raises the same <code>OpError("bad_params")</code> the websocket gets. It returns what the operation returns: a <code>dict</code>, a list or a value.</li>
+  <li><code>src/aegis/api/_ops.pyi</code> is generated from the models' fields and types, with each operation's doc line as the docstring. <code>make ops-stubs</code> writes it. A test regenerates it and fails when it differs from the committed file, the way <code>.test_durations</code> and the help pages are kept honest.</li>
+  <li>The domain layer calls the same registry, so <code>s.interrupt()</code> and <code>srv.ops.session.interrupt(log_id=s.log_id)</code> do the same thing.</li>
+</ul>
+
+<h2 id="models"><span class="n">07</span>Where the types come from</h2>
+<p>In this slice, the operations do not change. The models in <code>aegis.api</code> are pydantic models with <code>extra="ignore"</code>, parsed from the dicts the operations and channels already produce. A field aegis adds does not break a program. A field aegis renames or removes fails a test, because each model is parsed from the real output of a server running the fake claude.</p>
+<p>A later slice can declare result models on the operations themselves (<code>@r.op(..., result=SessionInfo)</code>). The MCP tools would then publish output schemas, and the stub file would type results too. That change touches every operation and the client's expectations, so it is kept out of this one.</p>
+
+<h2 id="startup"><span class="n">08</span>Startup checks</h2>
+<p>These move out of the <code>serve</code> command into <code>prepare(root, host, port)</code>, in this order. Each raises <code>StartError</code> with the lines the CLI prints today:</p>
 <ol>
   <li>Resolve the roots with <code>make_roots</code>.</li>
-  <li>Refuse a state directory from before 2.0 (<code>legacy_state</code>), with the <code>mv</code> command to move it aside.</li>
+  <li>Refuse a state directory from before 2.0 (<code>legacy_state</code>), with the <code>mv</code> command that moves it aside.</li>
   <li>Refuse a broken <code>multi_user</code> config, and run <code>boot_problems</code> when the mode is on.</li>
-  <li>Refuse a port that is taken, when a fixed port was asked for.</li>
+  <li>Refuse a taken port, when a fixed port was asked for.</li>
   <li>Load or create the admin token.</li>
 </ol>
-<p>What stays in the CLI: <code>--window</code> and its "already running, open a window" path, <code>--detach</code>, printing the URLs, and logging setup. An embedding program configures logging itself.</p>
+<p>These stay in the CLI: <code>--window</code> and its "already running" path, <code>--detach</code>, printing the URLs, and the logging setup. An embedding program configures logging itself.</p>
 
-<h2 id="one"><span class="n">06</span>One server per process</h2>
-<p><code>launch._mode</code> holds the multi-user pool and <code>setpriv</code>'s path, and every child process aegis starts reads it. A second server with a different mode would switch it for the first one's children. Moving the mode onto the <code>App</code> means threading it through every function in <code>launch.py</code> that starts a process, for a use nobody has asked for. The guard is a module-level flag set on enter and cleared on exit. It makes the limit explicit, and it can be lifted later without changing the API.</p>
-<p>The caches in <code>harness_versions.py</code> are also module-level. They hold harness versions by binary path, which is the same for any server in the process, so they need no change.</p>
+<h2 id="one"><span class="n">09</span>One server per process</h2>
+<p><code>launch._mode</code> holds the multi-user pool and <code>setpriv</code>'s path, and every child process aegis starts reads it. A second server with a different mode would switch the mode for the first server's children. Moving the mode onto <code>App</code> means threading it through every function in <code>launch.py</code> that starts a process, for a use nobody has asked for. So a module-level flag, set on enter and cleared on exit, enforces one server at a time. The flag can be lifted later without changing the API.</p>
+<p>The caches in <code>harness_versions.py</code> are module-level too. They key harness versions by binary path, which is the same for every server in the process, so they need no change.</p>
 
-<h2 id="delivery"><span class="n">07</span>Delivery</h2>
-<p>One PR, closing #646:</p>
+<h2 id="delivery"><span class="n">10</span>Delivery</h2>
+<h3>Slice 1, this PR, part of #646</h3>
 <ul>
-  <li><code>src/aegis/server.py</code>: <code>Server</code>, <code>StartError</code>, <code>prepare()</code>.</li>
-  <li><code>src/aegis/cli.py</code>: <code>serve</code> calls <code>prepare()</code> and catches <code>StartError</code>. Its options and output do not change.</li>
-  <li><code>src/aegis/__init__.py</code>: <code>__all__</code> and the lazy <code>__getattr__</code>. <code>src/aegis/py.typed</code>.</li>
-  <li><code>src/aegis/help/library.md</code>: a help page with the example above, the members, and the one-per-process rule.</li>
-  <li><code>DESIGN.md</code>: a paragraph on the embedded server, next to the process model.</li>
-  <li><code>changelog.d/646-library-server.added.md</code>, naming <code>help: library</code>.</li>
+  <li><code>src/aegis/server.py</code>: <code>Server</code>, <code>StartError</code>, <code>prepare()</code>. <code>cli.serve</code> calls <code>prepare()</code> and keeps its options and output.</li>
+  <li><code>src/aegis/api/</code>: <code>sessions.py</code> (<code>Sessions</code>, <code>Session</code>), <code>models.py</code> (<code>SessionInfo</code>, <code>Turn</code>, <code>Entry</code>, the events), <code>ops.py</code> (the generated namespace) and <code>_ops.pyi</code>.</li>
+  <li><code>src/aegis/__init__.py</code>: <code>__all__</code> with <code>Server</code>, <code>Session</code>, <code>Turn</code>, <code>StartError</code>, <code>OpError</code> and <code>SessionNotFound</code>, loaded lazily through a module <code>__getattr__</code> so <code>aegis call</code> stays fast. <code>src/aegis/py.typed</code>.</li>
+  <li><code>make ops-stubs</code>, the help page <code>src/aegis/help/library.md</code>, a paragraph in <code>DESIGN.md</code>, and <code>changelog.d/646-library-server.added.md</code> naming <code>help: library</code>.</li>
+</ul>
+<h3>Slice 2, its own PR</h3>
+<ul>
+  <li><code>srv.queues</code> with <code>Task</code> (<code>status</code>, <code>wait</code>, <code>cancel</code>, <code>resume</code>), <code>srv.workflows</code> with <code>WorkflowRun</code> (<code>status</code>, <code>wait</code>, <code>answer</code>, <code>stop</code>, <code>result</code>), and <code>srv.schedules</code> with <code>Schedule</code>. Each follows the live-handle pattern from slice 1.</li>
 </ul>
 
-<h2 id="testing"><span class="n">08</span>Testing</h2>
-<p>A new <code>tests/test_server.py</code>, with the fake claude and a temporary root, as the other in-process tests do:</p>
+<h2 id="testing"><span class="n">11</span>Testing</h2>
+<p>A new <code>tests/test_library.py</code>, with the fake claude and a temporary root:</p>
 <ul>
   <li>Entering the Server listens on a free port, and <code>GET /</code> with the token answers 200.</li>
-  <li><code>srv.call</code> of a read operation returns its result. An unknown op raises <code>OpError("unknown_op")</code>.</li>
-  <li><code>srv.subscribe("sessions")</code> yields the snapshot. A <code>session.spawn</code> with the fake claude then appears in its ops, and the fake's MCP call reaches the server, which proves the listener serves <code>/mcp</code>.</li>
-  <li>A second Server inside the first raises <code>RuntimeError</code>. After the first exits, a new one starts.</li>
-  <li>A legacy state directory raises <code>StartError</code>, not <code>SystemExit</code>.</li>
-  <li>The SIGINT handler is the same after entering the Server as before.</li>
+  <li><code>spawn</code> with the prompt <code>/md hello</code>, then <code>wait()</code>, returns a <code>Turn</code> with <code>text == "hello"</code> and <code>attention == "done"</code>. This also proves the fake reached <code>/mcp</code>.</li>
+  <li><code>ask</code> on the same session returns the second turn's text only.</li>
+  <li><code>events()</code> during a <code>/bash</code> turn yields <code>UserMessage</code>, <code>ToolCall</code>, <code>Prose</code> and <code>TurnEnded</code>, in that order.</li>
+  <li><code>interrupt()</code> during <code>/busy 5</code> ends the turn. <code>close()</code> leaves it out of <code>list()</code>. <code>get(handle)</code> and <code>get(log_id)</code> return equal Sessions, and an unknown ref raises <code>SessionNotFound</code>.</li>
+  <li><code>srv.ops.server.version()</code> returns the version. <code>srv.ops.session.spawn(bogus=1)</code> raises <code>OpError("bad_params")</code>.</li>
+  <li>The committed <code>_ops.pyi</code> equals a fresh generation, and every registered operation has a method.</li>
+  <li>A second Server inside the first raises <code>RuntimeError</code>, and a new one starts after the first exits. A legacy state directory raises <code>StartError</code>, not <code>SystemExit</code>. The SIGINT handler is the same inside the block as before it.</li>
 </ul>
-<p>The existing CLI tests for <code>aegis serve</code> cover the thin wrapper. <code>make lint-docs</code> checks the new help page.</p>
+<p>The existing <code>aegis serve</code> tests cover the CLI wrapper, and <code>make lint-docs</code> checks the new help page.</p>
 
-<h2 id="nongoals"><span class="n">09</span>Non-goals and open questions</h2>
+<h2 id="nongoals"><span class="n">12</span>Non-goals and open questions</h2>
 <ul>
-  <li><span class="who q">open</span> Mounting aegis inside the embedder's own ASGI app, with its own port and auth. The harness children would then need the embedder's URL as <code>base_url</code>, and the embedder would have to run the lifespan. This can be added as <code>Server(listen=False, base_url=...)</code> plus <code>srv.asgi()</code> if someone asks.</li>
-  <li><span class="who q">open</span> Calling as an agent session or as a member token, so that permissions can be tested from a program.</li>
-  <li>A synchronous wrapper. A program without asyncio can run <code>asyncio.run</code> around its own coroutine.</li>
-  <li>Python methods per operation, or generated stubs. The operation names and their parameters are in the help pages and in <code>aegis tools</code>.</li>
-  <li>Several servers in one process (section 06).</li>
+  <li><span class="who q">open</span> Mounting aegis inside the embedder's own ASGI app, with its own port and auth: <code>Server(listen=False, base_url=...)</code> plus <code>srv.asgi()</code>, if someone asks.</li>
+  <li><span class="who q">open</span> Calling as an agent session or a member token, so a program can test permissions.</li>
+  <li>Result models declared on the operations themselves (section 07).</li>
+  <li>A synchronous wrapper.</li>
+  <li>Several servers in one process (section 09).</li>
 </ul>
 </main>
 </div>
