@@ -1,2 +1,0 @@
-- **Secrets that never enter the transcript.** `secret_send` hands the person a password, token or key from a file: the server keeps a random pad in memory and only the XOR on the card, and the person reveals it once before it expires. `secret_request` asks the person for a secret in a password field on a card and writes it 0600 to a new file the agent uses by reference, removed when the session closes. Both work through linked servers, and the agent's priming steers it to them for credentials.
-help: secrets

@@ -1,1 +1,0 @@
-- **A slash command typed in the new tab runs as a command.** `/effort low` or `/help` there started a session and sent the line to the agent as plain text; it now runs in the new session as it would typed in its own box.

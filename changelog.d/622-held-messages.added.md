@@ -1,2 +1,0 @@
-- **A busy agent learns who is waiting, and an urgent handoff reaches it mid-turn.** A message held for a working session's turn to end is now announced on its next aegis tool result, with its sender and first line, so the agent can finish early when it changes the work. `peer_handoff(urgent=true)` skips the wait on Claude Code and Codex and reaches the running turn at its next tool step, marked `steered in` in the transcript; the reply says `steered into`.
-help: handoffs#hand-work-over
