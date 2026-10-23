@@ -499,7 +499,9 @@ is such a session too. Commands (`sh`) and polling probes are asyncio tasks
 the engine owns, never awaited by a pass, each in its own process group; a
 command running in the log with no task after a boot was cut by the restart
 and is never run again (a crash's leftover is ended by pid and start time
-first). An if's branch, a loop's rounds and each until are logged once, so a
+first). A step's `progress` command runs beside it, after each failing probe
+of a check or on a timer while an sh runs; its number lives in memory for the
+card, never in the log. An if's branch, a loop's rounds and each until are logged once, so a
 restart never asks a probe again. Ids are scoped per map item, loop round and
 top level, and a block (`ref`) is expanded at parse. A node's result is a `workflow_result` call
 checked against its schema, never its last message. What a run waits on (a
