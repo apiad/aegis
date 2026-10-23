@@ -151,7 +151,7 @@ svg text{font-family:var(--font-mono)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · read replies aloud</span>
-  <span class="st"><span class="pill acc">draft</span><span class="pill">2026-10-23</span><span class="pill">#637</span></span>
+  <span class="st"><span class="pill acc">built on branch read-aloud-spec</span><span class="pill">2026-10-23</span><span class="pill">#637</span></span>
 </div>
 
 <div class="wrap">
@@ -167,12 +167,13 @@ svg text{font-family:var(--font-mono)}
   <a href="#serving">Serving Phonon</a>
   <a href="#delivery">Delivery</a>
   <a href="#testing">Testing</a>
+  <a href="#departs">Where the build departs</a>
   <a href="#nongoals">Non-goals and open questions</a>
 </nav>
 
 <main>
 <h1>Read replies aloud: a chip on every reply, and a mode that follows the session</h1>
-<div class="meta"><span>spec</span><span>·</span><span>status: draft, not built</span><span>·</span><span>issue <a href="https://github.com/apiad/aegis/issues/637">#637</a></span></div>
+<div class="meta"><span>spec</span><span>·</span><span>status: approved; built on branch read-aloud-spec</span><span>·</span><span>issue <a href="https://github.com/apiad/aegis/issues/637">#637</a></span></div>
 <p class="lede">The person can listen to an agent instead of reading it. Each agent reply gets a small speaker chip that reads it, and a toggle in the transcript reads each new reply as it arrives. Speech is made in the browser, so no reply text leaves the device. The browser's own voice is the default, because it costs nothing to load and speaks every language the device has. Phonon, an on-device neural voice that sounds far better, is an opt-in per browser, after a download and a speed check on that device.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
@@ -270,9 +271,9 @@ svg text{font-family:var(--font-mono)}
 <p>The language is guessed per reply by counting common function words for each language the device has a voice for, the way the spike did, and falls back to <code>navigator.language</code> when the reply is too short to tell. Phonon also gets the language as <code>lang</code>, which decides how numbers, dates and symbols are read; only <code>en</code> is used while the English model is the only one.</p>
 
 <h2 id="follow"><span class="n">07</span>Read-transcript mode</h2>
-<p>A toggle in the transcript's header, "Read aloud", makes the open session read each new prose row as it arrives, in order, until it is turned off. Rows already on screen when it is turned on are not read; a chip can read them. It belongs to the tab: switching to another session's tab stops the voice and leaves the toggle on, so coming back resumes with replies that arrive from then on. A reply that arrives while another is being read waits in a queue; a queue longer than three replies reads only the newest three and says how many it skipped.</p>
+<p>A toggle in the message box, beside the microphone, makes the open session read each new prose row as it arrives, in order, until it is turned off. Rows already on screen when it is turned on are not read; a chip can read them. It belongs to the tab: switching to another session's tab stops the voice and leaves the toggle on, so coming back resumes with replies that arrive from then on. A reply that arrives while another is being read waits in a queue; a queue longer than three replies reads only the newest three and says how many it skipped.</p>
 <figure>
-<div><span class="try">try it</span><span class="note">Turn on Read aloud, then press "new reply" to simulate the agent answering.</span></div>
+<div><span class="try">try it</span><span class="note">Turn on Read aloud, then press "new reply" to simulate the agent answering. Built, the toggle is a speaker button beside the microphone (section 12).</span></div>
 <div class="tmock" id="tm2">
   <div class="bar"><span class="h">monitor-fix</span><span>· working</span><span class="sp"></span><button class="follow" id="follow">🔊 Read aloud</button><button class="btn" id="newreply">new reply</button></div>
   <div id="tm2rows"><div class="row prose"><span class="t">10:42</span><span class="g">●</span><div class="body"><p>I am running the tests now.</p></div></div></div>
@@ -332,7 +333,19 @@ svg text{font-family:var(--font-mono)}
 <li>A manual check before release on a phone and a laptop: listen to a reply with each engine, and run the speed check.</li>
 </ul>
 
-<h2 id="nongoals"><span class="n">12</span>Non-goals and open questions</h2>
+<h2 id="departs"><span class="n">12</span>Where the build departs</h2>
+<table class="tbl">
+<thead><tr><th>Spec said</th><th>Built</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>Toggle in the transcript's header</td><td>A speaker button in the message box, beside the microphone.</td><td class="why">The transcript has no header bar, and its navigation pill is held to 340 px on a phone (<code>tests/test_browser.py</code>, the navigator phone test); a tenth button made it 371 px. Beside the microphone, speaking to the agent and listening to it sit together.</td></tr>
+<tr><td>Chip at the end of the reply</td><td>In the reply's right gutter, under the read mark.</td><td class="why">The gutter column already exists on every reply (<code>.row.prose .rm</code>), so the chip adds no height to any reply.</td></tr>
+<tr><td>Three PRs</td><td>One PR with the spec and all three slices.</td><td class="why">The slices share <code>speak.js</code>; three PRs would each wait on the one before it to merge.</td></tr>
+<tr><td>Fetch obeys the disk notice, 507</td><td><code>speech.prepare</code> refuses with <code>speech_unavailable</code> when the disk has under 1 GB free.</td><td class="why">The notice's threshold is a percentage of the disk, which says nothing about room for 74 MB; free space does.</td></tr>
+<tr><td>Speed check on a 5 s sentence</td><td>A one-word warm-up, then one 19-word sentence per device.</td><td class="why">The first call pays for compiling; timing it would understate every device.</td></tr>
+</tbody>
+</table>
+
+<h2 id="nongoals"><span class="n">13</span>Non-goals and open questions</h2>
 <h3>Non-goals</h3>
 <ul>
 <li>Reading thinking, tool rows or the person's own messages.</li>
@@ -340,12 +353,12 @@ svg text{font-family:var(--font-mono)}
 <li>Voice cloning or choosing among Phonon's catalog of voices. The default voice ships; more can come later from <code>gradium/phonon-voices</code>.</li>
 <li>Speech made on the server.</li>
 </ul>
-<h3>Open questions</h3>
+<h3>Open questions, settled when the spec was approved</h3>
 <ul>
-<li><span class="who q">question</span> Multilingual Phonon. The 40M models are gated and non-commercial. A config key could take a Hugging Face token, accept the licence on the operator's behalf and pin those files; is that worth building, given the licence?</li>
-<li><span class="who q">question</span> Would the phone reach 1.1× on its CPU build with threads? That needs cross-origin isolation for the whole client, which would block any cross-origin resource that does not opt in. Worth one more spike before deciding.</li>
-<li><span class="who q">question</span> Background playback on phones: does Chrome on Android keep <code>speechSynthesis</code> and a Web Audio stream going with the screen off? If not, read-transcript mode needs a Media Session or an audio element to stay alive.</li>
-<li><span class="who q">question</span> Is the 5-minute idle disposal right, or should the worker live as long as read-transcript mode is on?</li>
+<li><span class="who">maintainer</span> Multilingual Phonon: not now. The 40M models stay out until their licence allows shipping them.</li>
+<li><span class="who">maintainer</span> Threads on phones: no cross-origin isolation for now; Phonon runs on one thread, and a phone below 1.1× keeps the browser's voice.</li>
+<li><span class="who">maintainer</span> Background playback with the screen off: checked by hand on a phone before release, not designed for yet.</li>
+<li><span class="who">maintainer</span> Idle disposal: the worker stays while the toggle is on for the session on screen, and goes after 5 minutes without speech otherwise.</li>
 </ul>
 </main>
 </div>

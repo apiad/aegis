@@ -1190,6 +1190,14 @@ nothing per word. A send from a box that got dictated text says so
 agent; the fold strips that exact line off the person's row and marks it
 `detail.dictated`, so the transcript and the harness keep the same text.
 
+Reading replies aloud follows the same rule the other way: the reply is already
+in the page, and it is spoken there (`js/speak.js`). The browser's own
+`speechSynthesis` is the default. Phonon, the opt-in, runs `phonon-tts` in a
+worker from files the server pins, checks and serves at `/speech/<pin>/` as it
+does dictation's (`speech.py`, `speech.prepare`), and only after a speed check
+in that browser finds it faster than real time. A reply is read when its entry
+arrives whole or stops streaming (`Transcript.onReply`), never on a resume.
+
 **The help pages are the shipped contract for how aegis is used, checked
 against the code both ways.** They are Markdown in `src/aegis/help/`, inside the
 package, so a release carries the help for exactly the code it runs; the server

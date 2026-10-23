@@ -50,6 +50,29 @@ Each code block and each table has a copy button, shown when you hover it or
 select its row. A table pastes as Markdown into a chat and as cells into a
 spreadsheet. The c key copies the selected reply's Markdown.
 
+## Read replies aloud
+
+Every agent reply has a speaker button in its right gutter, under the read
+mark, shown when you hover the reply and always on a touch screen. Press it to
+hear that reply and the replies after it in the same turn, up to your next
+message; press it again to stop. Tool calls, thinking and your own messages are
+not read. A code block is read as "code block" and a table as "table", a file
+path as its file name, and a link as its text. Each reply is read in the
+language it is written in, when this device has a voice for it.
+
+The speaker button in the message box, beside the microphone, reads each new
+reply of the open session aloud as it arrives, until you press it again. Replies
+already on screen are not read, and switching to another session stops the
+voice. Which sessions it is on for is kept in this browser tab.
+
+Speech is made in your browser, so no reply text leaves the device. It uses the
+browser's own voice unless you choose Phonon in Settings, under This browser.
+Phonon is a neural voice that sounds much better, for English replies only:
+choosing it downloads 65 MB once and measures how fast this device speaks with
+it. Below 1.1 times real time it would stutter, so the browser's voice stays,
+and the row offers to use Phonon anyway. Other languages always use the
+browser's voice.
+
 ## Quoting and row menus
 
 Select text inside one row, a reply, your own message or a tool's output,
