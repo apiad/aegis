@@ -176,9 +176,13 @@ class Store:
                     ) from None
 
     async def _download(self, client: httpx.AsyncClient, p: Pin) -> None:
-        part = self.dir / f".{p.name}.part"
+        # A name may hold a directory (speech.py's "wasm/..."): the part file
+        # sits beside its target, so the rename stays on one directory.
+        target = self.dir / p.name
+        part = target.parent / f".{target.name}.part"
         digest = hashlib.sha256()
         try:
+            target.parent.mkdir(parents=True, exist_ok=True)
             async with client.stream("GET", p.url) as r:
                 if r.status_code != 200:
                     raise Unavailable(f"{p.name}: HTTP {r.status_code}")
@@ -188,7 +192,7 @@ class Store:
                         f.write(chunk)
             if digest.hexdigest() != p.sha256:
                 raise Unavailable(f"{p.name}: sha256 does not match the pin")
-            part.replace(self.dir / p.name)
+            part.replace(target)
         except httpx.HTTPError as e:
             raise Unavailable(f"{p.name}: {e}") from e
         except OSError as e:

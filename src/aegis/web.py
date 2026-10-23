@@ -481,6 +481,16 @@ def build_web(
             path, headers={"Cache-Control": "public, max-age=31536000, immutable"}
         )
 
+    async def speech_file(request):
+        """Phonon's pinned files (speech.py), kept forever like dictation's."""
+        p = request.path_params
+        path = app.speech.file(p["pin"], p["name"])
+        if path is None:
+            return PlainTextResponse("Not Found", status_code=404)
+        return FileResponse(
+            path, headers={"Cache-Control": "public, max-age=31536000, immutable"}
+        )
+
     async def via_file(request):
         """A sent file on a linked server, streamed from it. The id stays the
         secret; the headers are this server's own, from the file's name
@@ -820,6 +830,7 @@ def build_web(
             Route("/fs/{ticket}/{name}", fs_file),
             Route("/via/{server}/files/{file_id}/{name}", via_file),
             Route("/dictation/{pin}/{name}", dictation_file),
+            Route("/speech/{pin}/{name:path}", speech_file),
             WebSocketRoute("/ws", ws),
             *app.mcp_app.routes,
         ],
