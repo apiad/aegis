@@ -233,6 +233,9 @@ class SpawnSpec:
     # outlives that session. ``key@server`` when the chain began on a linked
     # server. None for a session nobody started: its own log id is its group.
     group: str | None = None
+    # A handoff of the session that headed its group heads it in its place
+    # (#641): the tab bar and the Fleet draw it first, though it is newer.
+    leads: bool = False
     # The principal whose session this is (tokens.py); None from before owners,
     # which reads as the admin's.
     owner: str | None = None
@@ -271,6 +274,8 @@ class SpawnSpec:
             d["spawned_by"] = self.spawned_by
         if self.group:
             d["group"] = self.group
+        if self.leads:
+            d["leads"] = True
         if self.owner:
             d["owner"] = self.owner
         if self.spawned_from:
@@ -300,6 +305,7 @@ class SpawnSpec:
             overridden=tuple(d.get("overridden") or ()),
             spawned_by=d.get("spawned_by"),
             group=d.get("group"),
+            leads=bool(d.get("leads")),
             owner=d.get("owner"),
             spawned_from=d.get("spawned_from"),
             continues=d.get("continues"),

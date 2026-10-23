@@ -1,6 +1,7 @@
 """Context size, cache counters and the handoff, end to end on the fake claude."""
 
 import asyncio
+import json
 
 import pytest
 
@@ -251,3 +252,39 @@ async def test_a_queue_worker_cannot_be_handed_off(world):
     with pytest.raises(OpError) as e:
         await handoff(world, a)
     assert e.value.code == "worker"
+
+
+async def child(world, parent):
+    r = await world.app.registry.call(
+        "session.spawn", {"agent": "opus"}, Caller("agent", parent.log_id)
+    )
+    return world.session(r["log_id"])
+
+
+async def test_a_handoff_takes_the_old_sessions_place_in_its_group(world):
+    a = await world.spawn()
+    k = await child(world, a)
+    await turn(a, "/ctx 342000")
+    await end(world, a, handoff="Brief.")
+    b = world.session((await handoff(world, a))["log_id"])
+    assert b.spec.group == a.log_id and b.spec.leads
+    await until(lambda: any(e["kind"] == "user" for e in b.entries()), 8, "b's prompt")
+    said = first_message(b)
+    assert k.handle in said and "peer_handoff" in said and "you head it now" in said
+    reg = world.app.sessions
+    await until(lambda: a.log_id in reg.archived, 8, "the old session archived")
+    assert k.spec.spawned_by == b.log_id
+    meta = json.loads(reg.metas.path(k.log_id).read_text())
+    assert meta["spawned_by"] == b.log_id  # survives a restart
+
+
+async def test_a_handoff_of_a_member_stays_in_its_group_without_heading_it(world):
+    a = await world.spawn()
+    k = await child(world, a)
+    await turn(k, "/ctx 342000")
+    await end(world, k, handoff="Brief.")
+    b = world.session((await handoff(world, k))["log_id"])
+    assert b.spec.group == a.log_id and not b.spec.leads
+    assert b.spec.spawned_by == a.log_id
+    await until(lambda: any(e["kind"] == "user" for e in b.entries()), 8, "b's prompt")
+    assert "peer_handoff" not in first_message(b)  # k started nobody
