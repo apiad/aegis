@@ -222,7 +222,15 @@ export function card(m, onOpen, onClose) {
   const owner = shownOwner(m);
   if (owner) hd.append(el("span", "who", owner));
   if (m.worker) hd.append(el("span", "badge", `worker · ${m.worker.queue}`));
-  if (m.workflow) hd.append(el("span", "badge", `workflow · ${workflowTitle(m.workflow.run) || m.workflow.run} · ${m.workflow.node}`));
+  if (m.workflow) {
+    // A run's title can be a sentence: it gives way, the node that tells
+    // steps apart stays, and the tooltip has it whole (#670).
+    const title = workflowTitle(m.workflow.run) || m.workflow.run;
+    const b = el("span", "badge wf");
+    b.title = `workflow · ${title} · ${m.workflow.node}`;
+    b.append("workflow · ", el("span", "t", title), ` · ${m.workflow.node}`);
+    hd.append(b);
+  }
   // Two axes, two marks: quiet hides the tab, asleep has no process (#479).
   if (m.quiet) {
     const q = el("span", "quiet");

@@ -749,6 +749,25 @@ def test_a_working_step_opens_read_only_from_the_card_with_no_tab(server, page):
     assert not page.errors
 
 
+def test_a_long_workflow_title_stays_inside_its_steps_card(server, page):  # noqa: F811
+    # #670: the badge ran past the card and over its neighbour.
+    long = "A workflow title far too long to fit on one fleet card at any width"
+    definition = flow(report(7, 8), RESULT).replace("title: Two steps", f"title: {long}")
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "/mcp workflow_arm " + json.dumps({"definition": definition, "args": {}}))
+    page.click("#entries .wfcard button >> text=Approve and run")
+    page.locator("#entries .wfcard .wfrow[data-node=one] a.who").wait_for()
+    page.goto(server.url + "#fleet")
+    card = page.locator(".card", has=page.locator(".badge", has_text="workflow ·"))
+    badge = card.locator(".badge", has_text="workflow ·")
+    badge.wait_for()
+    b, c = badge.bounding_box(), card.bounding_box()
+    assert b["x"] + b["width"] <= c["x"] + c["width"], (b, c)
+    assert badge.get_attribute("title") == f"workflow · {long} · one"
+    assert not page.errors
+
+
 def test_a_steps_see_chip_opens_its_part_of_the_plan(server, page, tmp_path):  # noqa: F811
     from .test_workflows_canvas import SEEN
 

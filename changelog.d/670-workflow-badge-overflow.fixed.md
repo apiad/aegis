@@ -1,0 +1,1 @@
+- **A workflow step's badge stays inside its Fleet card.** A run title longer than the card pushed the `workflow · <title> · <step>` badge past the card's edge and over its neighbour's. The title now gives way with an ellipsis, the step name stays, and hovering shows the whole line.
