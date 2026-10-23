@@ -510,7 +510,7 @@ def close(stage):
     )  # fmt: skip
     stage.overlay(
         "<style>.d-ladder{position:absolute;inset:0;display:grid;place-items:center;"
-        "background:rgba(11,13,16,.78)}.d-ladder .in{width:640px}"
+        "background:rgba(11,13,16,.78)}.d-ladder .in{width:640px;margin-top:-110px}"
         ".d-rung{display:grid;grid-template-columns:44px 150px 1fr;align-items:baseline;"
         "padding:10px 0;border-bottom:1px solid #2a2622;font-size:24px}"
         ".d-rung b{font:600 30px DemoSerif,serif;color:#e0a458}"
