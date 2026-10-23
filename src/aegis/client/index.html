@@ -103,6 +103,7 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
           <button class="send needs-net" type="submit" id="sp-go" title="Start the session" aria-label="Start the session"></button>
         </div>
       </div>
+      <div class="cmd-menu" id="sp-cmd-menu" hidden><input id="sp-cmd-filter" hidden spellcheck="false" placeholder="/command"><div id="sp-cmd-rows"></div></div>
       <div class="chips">
         <pick-chip class="pick agent" id="sp-agent" name="agent" aria-label="Agent"></pick-chip>
         <pick-chip class="pick" id="sp-harness" name="harness" aria-label="Harness"></pick-chip>

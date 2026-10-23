@@ -2928,6 +2928,7 @@ async function spawnFromComposer() {
     spawnFrom = null;
     localStorage.setItem(LAST_AGENT, a.name);
     $("sp-text").value = "";
+    spMenu.close();
     spawnGrow();
     pickAgent(a.name);
     const key = keyOf(spServer, r.log_id);
@@ -2971,7 +2972,52 @@ for (const id of ["sp-model", "sp-cwd"]) {
   });
 }
 // Enter spawns and sends; on a touch screen it adds a line, as in a session.
+// The new tab's menu (#632): aegis's commands before the session exists, and
+// the harness's when a session in that directory has already listed them. A
+// whole command typed here runs in the new session (#570).
+const previews = new Map();
+async function loadPreview() {
+  const params = { harness: $("sp-harness").value, cwd: $("sp-cwd").value.trim() || null };
+  const k = JSON.stringify([spServer, params]);
+  if (!previews.has(k)) {
+    previews.set(
+      k,
+      Promise.all([
+        conn.call("commands.preview", params, spServer),
+        conn.call("help.pages", {}, spServer).catch(() => []),
+      ]).then(([cat, pages]) => ({ ...cat, tutorials: pages.filter((pg) => pg.kind === "tutorial") })),
+    );
+  }
+  try {
+    return await previews.get(k);
+  } catch {
+    previews.delete(k); // a server without the op: no menu, as before
+    return null;
+  }
+}
+const spMenu = new CommandMenu({
+  box: $("sp-cmd-menu"),
+  rows: $("sp-cmd-rows"),
+  filter: $("sp-cmd-filter"),
+  load: loadPreview,
+  run: () => spawnFromComposer(),
+  getLine: () => $("sp-text").value,
+  setLine: (v) => {
+    $("sp-text").value = v;
+    spawnGrow();
+    $("sp-text").focus();
+  },
+  meta: () => ({ model: $("sp-model").value }),
+});
+$("sp-text").addEventListener("input", async () => {
+  const v = $("sp-text").value;
+  if (v.startsWith("/") && !v.startsWith("//")) {
+    if (spMenu.isOpen) spMenu.refresh();
+    else await spMenu.openInline();
+  } else if (spMenu.isOpen) spMenu.close();
+});
 $("sp-text").addEventListener("keydown", (ev) => {
+  if (spMenu.onKey(ev)) return;
   if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing && !touch.matches) {
     ev.preventDefault();
     spawnFromComposer();

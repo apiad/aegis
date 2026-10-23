@@ -246,6 +246,11 @@ class Catalogs:
         self._by_key[key] = ranked(catalog)
         self._failed.discard(key)
 
+    def cached(self, harness: str, cwd: Path) -> Catalog | None:
+        """The catalog a session there already gave, without a probe: the new
+        tab's menu (#632) asks before any session exists."""
+        return self._by_key.get(self._key(harness, cwd))
+
     async def get(self, s: Session) -> Catalog | None:
         key = self._key(s.spec.harness, s.spec.cwd)
         t = s.catalog_task

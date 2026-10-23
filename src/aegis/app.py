@@ -291,6 +291,11 @@ class LogParams(_Strict):
     log_id: str
 
 
+class PreviewParams(_Strict):
+    harness: str
+    cwd: str | None = None
+
+
 def _held(owner: str, why: str) -> str:
     return f"{owner}'s quota gate holds this session: {why}. It continues when the gate opens."
 
@@ -2017,7 +2022,20 @@ class App:
         @r.op("commands.list", LogParams)
         async def commands_list(p: LogParams, caller):
             """What the composer's menu offers this session."""
-            cat = await self.catalogs.get(reg.open(p.log_id))
+            return listing(await self.catalogs.get(reg.open(p.log_id)))
+
+        @r.op("commands.preview", PreviewParams)
+        async def commands_preview(p: PreviewParams, caller):
+            """What the new tab's menu offers before its session exists (#632):
+            aegis's commands, and the harness's when a session in that
+            directory has already listed them."""
+            try:
+                cwd = self._resolve_cwd(p.cwd)
+            except OpError:
+                return listing(None)
+            return listing(self.catalogs.cached(p.harness, cwd))
+
+        def listing(cat) -> dict:
             try:
                 saved = self.saved.listing(self.workflows._agents())
             except Exception:
