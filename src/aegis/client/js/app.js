@@ -4205,7 +4205,7 @@ $("tab-more").addEventListener("click", () => {
       run: () => go(`#s=${m.key}`),
     })),
   );
-  cmenu.open({ groups: [items] }, $("tab-more"), $("tab-more"));
+  cmenu.open({ groups: [items] }, { anchor: $("tab-more") }, $("tab-more"));
 });
 $("nav-side").addEventListener("click", toggleSide);
 // The dimmed transcript is the session view's own ::after, so a tap on it

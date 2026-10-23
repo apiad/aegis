@@ -216,3 +216,20 @@ def test_choosing_a_row_opens_its_session_and_scrolls_its_tab_into_view(
     )
     assert inside
     pg.close()
+
+
+def test_the_more_menu_opens_under_its_button(server, browser):  # noqa: F811
+    # #680: the button itself was passed where open() takes {anchor}, so the
+    # menu's left and top came out NaN and it opened in the corner.
+    pg = browser.new_page(viewport={"width": 900, "height": 700})
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    for _ in range(6):
+        spawn(pg)
+    pg.click("#tab-more")
+    pg.wait_for_selector(".cmenu")
+    b = pg.locator("#tab-more").bounding_box()
+    m = pg.locator(".cmenu").bounding_box()
+    assert b["y"] + b["height"] <= m["y"] <= b["y"] + b["height"] + 8
+    assert m["x"] <= b["x"] + b["width"] and m["x"] + m["width"] >= b["x"]
+    pg.close()
