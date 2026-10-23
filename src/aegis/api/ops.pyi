@@ -404,12 +404,18 @@ class _layout:
         """layout.undock"""
 
 class _link:
-    async def add(self, *, url: str, token: str, name: str | None = ...) -> Any:
+    async def add(
+        self, *, url: str, token: str, name: str | None = ..., trusted: bool = ...
+    ) -> Any:
         """Link another aegis server: connect once with its token, take the name it gives itself, and keep the link in links.json."""
+    async def incoming(self) -> Any:
+        """The servers that linked this one with trust, so their agents reach this one over their link."""
     async def list(self) -> Any:
         """The servers this one links, with their state; never their tokens."""
     async def remove(self, *, name: str) -> Any:
         """link.remove"""
+    async def trust(self, *, name: str, trusted: bool) -> Any:
+        """Ask a link for trust (both ways, agents unrestricted), or stop asking. The link reconnects; the far server decides."""
 
 class _models:
     async def list(self) -> Any:
@@ -475,7 +481,7 @@ class _peer:
     async def handoff(
         self, *, target: str, context: str, interrupt: bool = ..., urgent: bool = ...
     ) -> Any:
-        """Give another session context or an instruction; it arrives as a user turn headed `> from agent:<you>`. A busy target gets it when its turn ends, and is told meanwhile who waits; urgent reaches it inside the turn instead, at its next tool step, and interrupt cuts that turn first. `handle@server` reaches a session on a server this one links; nothing there can reach you back."""
+        """Give another session context or an instruction; it arrives as a user turn headed `> from agent:<you>`. A busy target gets it when its turn ends, and is told meanwhile who waits; urgent reaches it inside the turn instead, at its next tool step, and interrupt cuts that turn first. `handle@server` reaches a session on a server this one links; nothing there can reach you back, unless the link is trusted."""
     async def read(self, *, target: str, last: int = ..., tools: bool = ...) -> Any:
         """The last entries of another session's transcript, one line each."""
 

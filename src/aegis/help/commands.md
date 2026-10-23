@@ -67,8 +67,9 @@ and no aegis command is refused before it costs a turn.
 | `aegis init` | write a first `.aegis.yaml` from the harnesses installed here; `--yes` takes every proposal |
 | `aegis doctor` | check `.aegis.yaml`, the harnesses it names and the state directory, and warn where an installed aegis systemd unit differs from what `aegis service install` writes; exits 1 on an error |
 | `aegis service install` | write a systemd unit for `aegis serve` with the recommended settings and print the `sudo` commands that install it; `--yes` takes every default, `--dry-run` prints the unit, `--output` names the file. See the systemd page |
-| `aegis link add <name> <url>` | link another aegis server, reading its token from standard input; `--as` names this server there |
-| `aegis link list` | the linked servers, by name and URL |
+| `aegis link add <name> <url>` | link another aegis server, reading its token from standard input; `--as` names this server there, `--trusted` asks for a [trusted link](links#trusted-links) |
+| `aegis link list` | the linked servers, by name and URL, and which ask for trust |
+| `aegis link trust <name>` | ask an existing link for trust, or stop asking with `--off` |
 | `aegis link remove <name>` | end a link |
 | `aegis token add <name>` | make a token for a person, a linked server or a job; `--role member` (the default) or `--role admin`. The token is printed once |
 | `aegis token list` | the tokens, their roles and quota policies |

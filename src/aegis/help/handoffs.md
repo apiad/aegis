@@ -97,8 +97,9 @@ can reach it in two ways: `peer_handoff` to `handle@server`, and
 `session_spawn` with `agent@server`, which that server's quota policy for the
 link decides. Reading, sending to and enqueueing on another server are for
 people, in the browser. Nothing on a linked server can reach a session here:
-a link only goes one way. A handoff from a server that links this one arrives
-headed `> from agent:<handle>@<server> (<user>)`.
+a link only goes one way, unless it is trusted ([links](links#trusted-links)):
+then agents on both servers spawn and hand off to each other. A handoff from
+another server arrives headed `> from agent:<handle>@<server> (<user>)`.
 
 ## Close a session
 

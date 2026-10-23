@@ -232,7 +232,8 @@ Sessions on another aegis server this one links are addressed `handle@server` \
 (session_list shows them). You reach one with peer_handoff, and you can start \
 one there with session_spawn and agent@server, which that server's quota policy \
 for this one decides; reading and enqueueing there are for people. Nothing on a \
-linked server can reach you.
+linked server can reach you, unless the link is trusted: then its agents reach \
+you the same way.
 
 To wait on a long process (tests, a build, a download), never sleep or poll: call \
 monitor_start with a bash `done` condition and a `progress` command echoing 0 to \
