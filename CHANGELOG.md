@@ -5,6 +5,51 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [2.16.0] - 2026-10-23
+
+### Added
+
+- **Every icon comes from one set, drawn in the theme, and the Help tab shows them all.** The dictation mark was an emoji, a dozen marks were font characters (✓, ◫, ▸_, ☰, ⏱) and the session panel's buttons were SVG copied into the page; each now draws from the sprite, so it takes the theme's colours and looks the same on every device. A session's harness, effort and permission now show as icons beside their words in the session card, the composer's chips and the Fleet card. The new Icons help page lists every symbol, what it means and where it shows, drawn in the current theme, and a test fails a change that adds an emoji, an inline SVG, a name with no symbol, a symbol nothing uses or one the page does not list.
+  help: icons
+
+- **aegis runs inside your own Python program.** `async with Server(root) as srv` starts an aegis server in your event loop, with no browser needed. `srv.sessions.spawn()` returns a `Session`, `await session.ask(text)` returns the typed `Turn` it started, and `session.events()` yields typed transcript entries and the end of each turn. Every other operation is a typed method on `srv.ops`, with signatures an editor completes. The package now ships `py.typed`.
+  help: library
+
+- **Queues, workflows and schedules from Python.** `srv.queues.enqueue()` returns a `Task` you can `wait()` on for its result. `srv.workflows.arm(definition, owner=session)` returns a `WorkflowRun`: `wait()` returns when the run ends or something needs an answer, and `answer()` passes a gate as its main agent. `srv.schedules.create(name, cron=..., prompt=...)` returns a `Schedule` to pause, resume, fire or delete. Each `info()` returns a typed snapshot.
+  help: library#queues-workflows-and-schedules
+
+- **Alt+Shift+[ and Alt+Shift+] move the tab in front one place left or right**, from the message box too, by the rules a drag follows: a group's head moves the whole group, any other member moves only inside its group. Before, a tab moved only by a drag with the mouse.
+  help: sessions#order-the-tabs
+
+- **`/quiet` quiets the session it is typed in**, as Alt+Q and the Quiet button do. Before, Alt+Q had no slash command, though `/sleep` and `/archive` each have one, and `/quiet` was refused.
+  help: sessions#quiet-sessions
+
+### Changed
+
+- **The monitors page says how to wait on CI after a re-run or a push.** For a few seconds after either, `gh pr checks` still reports the last attempt, so a monitor armed then woke on the old failure or the old green run. The new section checks the pushed commit, or only the checks started after the re-run, and warns that a re-run is a new job id.
+  help: monitors#wait-on-ci-again-after-a-re-run-or-a-push
+
+- **This release is tested with Claude Code 2.1.296 to 2.1.309, Codex 0.163.0 to 0.164.0 and OpenCode 2.0.31 to 2.1.2.** Claude Code 2.1.309 and Codex 0.164.0 passed every canary scenario; OpenCode 2.1.4 did not (see Known issues), so its range stays where it was.
+  help: sessions#an-untested-harness-version
+
+### Fixed
+
+- **The tab card wears the theme again.** Hovering a tab drew its card huge and see-through, in serif, with the clock icon at full width: the card sat outside the app root, where no theme variable and no Fleet card rule reached it. It now mounts inside it.
+
+- **A streaming reply no longer jumps the transcript.** While an agent's reply streamed in, the view jumped up by up to a screen and back at each piece of text, and once more when the reply finished: every new copy of the row skipped layout at a 40 px placeholder for one frame. A replaced row now keeps the old row's height until it is drawn (#668).
+
+- **A workflow step's badge stays inside its Fleet card.** A run title longer than the card pushed the `workflow · <title> · <step>` badge past the card's edge and over its neighbour's. The title now gives way with an ellipsis, the step name stays, and hovering shows the whole line.
+
+### Known issues
+
+- A queue worker on OpenCode can finish without its result waking the session
+  that enqueued it. The canary scenario fails on OpenCode 2.0.31 and 2.1.4,
+  and failed once on 2.1.2 before passing alone, so it is not new in this
+  release (#651).
+- OpenCode 2.1.4 is outside the tested range: on it the canary also fails a
+  read session calling aegis, turn_end and plan_update reaching the card, and
+  /tutorial starting its guide (#652, #665, #666).
+
 ## [2.15.0] - 2026-10-23
 
 ### Added

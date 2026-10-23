@@ -1,1 +1,0 @@
-- **A streaming reply no longer jumps the transcript.** While an agent's reply streamed in, the view jumped up by up to a screen and back at each piece of text, and once more when the reply finished: every new copy of the row skipped layout at a 40 px placeholder for one frame. A replaced row now keeps the old row's height until it is drawn (#668).

@@ -1,2 +1,0 @@
-- **Queues, workflows and schedules from Python.** `srv.queues.enqueue()` returns a `Task` you can `wait()` on for its result. `srv.workflows.arm(definition, owner=session)` returns a `WorkflowRun`: `wait()` returns when the run ends or something needs an answer, and `answer()` passes a gate as its main agent. `srv.schedules.create(name, cron=..., prompt=...)` returns a `Schedule` to pause, resume, fire or delete. Each `info()` returns a typed snapshot.
-help: library#queues-workflows-and-schedules
