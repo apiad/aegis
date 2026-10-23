@@ -19,6 +19,10 @@ import sys
 from aegis.harness_versions import judge, ranges
 
 MODES = ("latest", "min", "max")
+# The harnesses the canary installs from npm. Cursor has a range too, but its
+# cursor-agent comes from Cursor's installer, and the npm package of that name
+# is unrelated: asking npm for the range's version is a 404.
+CANARY = ("claude-code", "codex", "opencode")
 
 
 def specs(mode: str) -> list[str]:
@@ -27,6 +31,7 @@ def specs(mode: str) -> list[str]:
     return [
         f"{r.package}@{'latest' if mode == 'latest' else getattr(r, mode + '_s')}"
         for r in ranges().values()
+        if r.harness in CANARY
     ]
 
 
