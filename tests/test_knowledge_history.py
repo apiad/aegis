@@ -1,3 +1,6 @@
+import os
+import subprocess
+
 from aegis.knowledge import history
 
 
@@ -57,3 +60,20 @@ def test_host_git_config_is_ignored(tmp_path, monkeypatch):
     history.ensure_repo(root)
     _write(root, "memories/a.md", "one\n")
     assert history.commit(root, ["memories/a.md"], "save a", "s1")
+
+
+def test_git_variables_in_the_server_env_have_no_effect(tmp_path, monkeypatch):
+    monkeypatch.setenv("GIT_AUTHOR_NAME", "someone else")
+    monkeypatch.setenv("GIT_INDEX_FILE", str(tmp_path / "stray-index"))
+    root = tmp_path / "k"
+    history.ensure_repo(root)
+    (root / "a.md").write_text("a\n")
+    sha = history.commit(root, ["a.md"], "save a", "s1")
+    assert sha and not (tmp_path / "stray-index").exists()
+    author = subprocess.run(
+        ["git", "-C", str(root), "log", "-1", "--format=%an"],
+        capture_output=True,
+        text=True,
+        env={k: v for k, v in os.environ.items() if not k.startswith("GIT_")},
+    ).stdout.strip()
+    assert author == "aegis"

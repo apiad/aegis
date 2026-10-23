@@ -4,7 +4,8 @@ Every change through aegis is one commit, so a merge or a delete in
 /consolidate can be undone. git runs with the host's own configuration shut
 out (``GIT_CONFIG_GLOBAL=/dev/null``, no system config) and a fixed committer,
 so a signing hook or a template in someone's ``~/.gitconfig`` never decides
-whether a save lands. Who made the change goes in a ``Session:`` trailer.
+whether a save lands; every ``GIT_*`` variable the server inherited is dropped
+for the same reason. Who made the change goes in a ``Session:`` trailer.
 Nothing is ever pushed.
 """
 
@@ -22,12 +23,20 @@ _ENV = {
 _ID = ["-c", "user.name=aegis", "-c", "user.email=aegis@localhost"]
 
 
+def _env() -> dict[str, str]:
+    """The server's environment with every inherited ``GIT_*`` variable
+    dropped (an author, an index file, a work tree set for something else)
+    and ours put in."""
+    keep = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    return {**keep, **_ENV}
+
+
 def _git(
     root: Path, *args: str, check: bool = True
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["git", "-C", str(root), *_ID, *args],
-        env={**os.environ, **_ENV},
+        env=_env(),
         capture_output=True,
         text=True,
         check=check,
