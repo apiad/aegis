@@ -822,7 +822,8 @@ def test_the_first_message_grows_until_the_form_fills_the_view(server, page):
     # A phone, or a keyboard coming up: the box shrinks to the new room.
     page.set_viewport_size({"width": 390, "height": 600})
     page.wait_for_function(f"{view}.scrollHeight <= {view}.clientHeight")
-    assert page.evaluate(f"{box}.clientHeight") > 300
+    # 271 px of 600: the header's two rows (#631) take the rest.
+    assert page.evaluate(f"{box}.clientHeight") > 260
     page.set_viewport_size(wide)
     page.fill("#sp-text", "")
     assert page.evaluate(f"{box}.clientHeight") == empty
