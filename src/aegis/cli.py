@@ -277,34 +277,16 @@ def serve(
     )
 
     from .app import App
-    from .roots import make_roots
+    from .server import StartError, allowed_hosts, prepare
     from .web import build_web, load_or_create_token, ws_protocol
 
-    from .roots import legacy_state
-
-    roots = make_roots(start=Path.cwd(), root=root)
-    if found := legacy_state(roots.state_root):
-        typer.echo(
-            f"{roots.state_root} holds the state of aegis before 2.0 ({', '.join(found)}).\n"
-            f"Move it aside, then start again:\n"
-            f"  mv {roots.state_root} {roots.state_root.parent / 'legacy-state'}",
-            err=True,
-        )
+    try:
+        prepared = prepare(Path.cwd(), root)
+    except StartError as e:
+        for line in e.lines:
+            typer.echo(line, err=True)
         raise typer.Exit(1)
-    from .config import Config
-
-    snap = Config(roots.config_root).current()
-    if snap.multi_user_error:
-        typer.echo(snap.multi_user_error, err=True)
-        raise typer.Exit(1)
-    if snap.multi_user is not None:
-        from .users import boot_problems
-
-        if problems := boot_problems(roots.state_root, snap.multi_user):
-            for line in problems:
-                typer.echo(line, err=True)
-            raise typer.Exit(1)
-        roots.state_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    roots = prepared.roots
     local = "127.0.0.1" if host in ("127.0.0.1", "0.0.0.0", "localhost") else host
     if not _port_free(host, port):
         if window and _open_running(roots.state_root, local, port, browser):
@@ -336,12 +318,7 @@ def serve(
 
             open_window(url, browser)
         return
-    allowed = {
-        f"127.0.0.1:{port}",
-        f"localhost:{port}",
-        f"[::1]:{port}",
-        f"{host}:{port}",
-    }
+    allowed = allowed_hosts(host, port)
     import socket as _socket
 
     app = App(
@@ -352,7 +329,7 @@ def serve(
         cursor_bin=cursor,
         base_url=f"http://{local}:{port}",
         server_name=name or _socket.gethostname(),
-        multi_user=snap.multi_user,
+        multi_user=prepared.multi_user,
     )
     web = build_web(app, token, allowed, origin)
     typer.echo(f"aegis serving {roots.config_root}")

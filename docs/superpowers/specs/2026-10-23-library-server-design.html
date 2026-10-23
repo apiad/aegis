@@ -94,7 +94,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · aegis as a typed library</span>
-  <span class="st"><span class="pill acc">proposed · slice 1 of 2</span><span class="pill">2026-10-23</span><span class="pill">#646</span></span>
+  <span class="st"><span class="pill acc">slice 1 built on feat/646-library-server</span><span class="pill">2026-10-23</span><span class="pill">#646</span></span>
 </div>
 
 <div class="wrap">
@@ -115,7 +115,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 
 <main>
 <h1>aegis as a typed library: Server, Session, and every operation without strings</h1>
-<div class="meta"><span>docs/superpowers/specs/2026-10-23-library-server-design.html</span><span>·</span><span>proposed</span><span>·</span><span>issue #646</span></div>
+<div class="meta"><span>docs/superpowers/specs/2026-10-23-library-server-design.html</span><span>·</span><span>approved; slice 1 built</span><span>·</span><span>issue #646</span></div>
 <p class="lede">A Python program starts an aegis server inside its own event loop and drives it through typed objects: <code>srv.sessions.spawn(...)</code> returns a <code>Session</code>, <code>await session.ask(...)</code> returns a <code>Turn</code>, and <code>session.events()</code> yields typed events. Anything the domain objects do not cover yet is reachable as <code>srv.ops.&lt;namespace&gt;.&lt;name&gt;(...)</code>, with keyword arguments checked by the operation's own model. No call takes an operation's name as a string.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
@@ -236,7 +236,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <thead><tr><th>Method</th><th>Operation</th><th>Returns</th></tr></thead>
 <tbody>
 <tr><td>spawn(prompt=None, *, agent=None, harness=None, model=None, effort=None, permission=None, cwd=None, quiet=False)</td><td><code>session.spawn</code></td><td><code>Session</code>. With a prompt, the first turn is already running; use <code>wait()</code> for its end.</td></tr>
-<tr><td>list(*, archived=False)</td><td><code>session.list</code></td><td><code>list[Session]</code></td></tr>
+<tr><td>list()</td><td>the registry's open sessions</td><td><code>list[Session]</code>, oldest first</td></tr>
 <tr><td>get(ref)</td><td>the registry, by log id or by handle</td><td><code>Session</code>, or <code>SessionNotFound</code></td></tr>
 </tbody>
 </table>
@@ -254,7 +254,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <tr><td>entries()</td><td>the transcript snapshot</td><td><code>list[Entry]</code>, the whole transcript as it is now.</td></tr>
 <tr><td>interrupt()</td><td><code>session.interrupt</code></td><td>Stops the current turn. The session stays.</td></tr>
 <tr><td>stop()</td><td><code>session.stop</code></td><td>Stops the harness process. The next <code>send</code> starts it again.</td></tr>
-<tr><td>close(*, archive=True)</td><td><code>session.close</code></td><td>Ends the session.</td></tr>
+<tr><td>close()</td><td><code>session.close</code></td><td>Ends the session. It stays in the archive.</td></tr>
 <tr><td>rename(handle=None, title=None)</td><td><code>session.rename</code></td><td>Sets the handle and the title.</td></tr>
 </tbody>
 </table>
@@ -263,7 +263,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <table class="tbl">
 <thead><tr><th>Type</th><th>Fields</th></tr></thead>
 <tbody>
-<tr><td>SessionInfo</td><td><code>log_id, handle, title, agent, harness, model, effort, permission, cwd, status</code> (<code>working | idle | asleep | error</code>), <code>attention</code>, <code>attention_line</code>, <code>replies</code>, <code>plan: list[PlanItem]</code>, <code>cost_usd</code>, <code>context_tokens</code>, <code>created_at</code>, <code>last_activity</code>, <code>archived</code></td></tr>
+<tr><td>SessionInfo</td><td><code>log_id, handle, title, agent, harness, model, effort, permission, cwd, state</code> (<code>working | idle | asleep | error</code>), <code>attention</code>, <code>attention_line</code>, <code>replies</code>, <code>plan: list[PlanItem]</code>, <code>cost_usd</code>, <code>context_tokens</code>, <code>created_at</code>, <code>last_activity</code>, <code>archived</code></td></tr>
 <tr><td>Turn</td><td><code>attention</code> (<code>needs_you | review | done | None</code>), <code>line</code>, <code>replies</code>, <code>text</code> (the turn's prose, joined), <code>entries: list[Entry]</code>, <code>cost_usd</code></td></tr>
 <tr><td>Entry</td><td>The transcript's row, as the browser gets it: <code>id, kind, status, ts, title, summary, md, detail</code>.</td></tr>
 <tr><td>Event</td><td>A union, one class per entry kind a program acts on: <code>UserMessage</code>, <code>Prose</code>, <code>Thinking</code>, <code>ToolCall</code> (with its status and output once it ends), <code>SystemNote</code>, <code>ErrorNote</code>, and <code>TurnEnded(turn)</code>. A kind the library does not know yet arrives as <code>OtherEntry(entry)</code>, so a new kind in aegis never breaks a program.</td></tr>
@@ -327,6 +327,14 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <li>A second Server inside the first raises <code>RuntimeError</code>, and a new one starts after the first exits. A legacy state directory raises <code>StartError</code>, not <code>SystemExit</code>. The SIGINT handler is the same inside the block as before it.</li>
 </ul>
 <p>The existing <code>aegis serve</code> tests cover the CLI wrapper, and <code>make lint-docs</code> checks the new help page.</p>
+
+<h3>Where the code departs from this spec</h3>
+<ul>
+  <li><code>SessionInfo.state</code>, not <code>status</code>: the card calls the field <code>state</code> (<code>Session.wire</code>, session.py), and the library keeps the wire's name.</li>
+  <li><code>list()</code> takes no <code>archived</code> flag. The archive is paged across linked servers (<code>archive.list</code>), a different shape from a list of open sessions.</li>
+  <li><code>close()</code> takes no <code>archive</code> flag. <code>session.close</code> always keeps the session in the archive.</li>
+  <li>Two operations have no dot, <code>meta</code> and <code>toast</code>. They are methods of <code>srv.ops</code> itself.</li>
+</ul>
 
 <h2 id="nongoals"><span class="n">12</span>Non-goals and open questions</h2>
 <ul>
