@@ -168,6 +168,17 @@ class Result:
     # A failed turn's own words, which a cascade classifies (cascade.py):
     # Claude Code's result text, OpenCode's "<type>: <message>".
     error_text: str | None = None
+    # The turn failed because the harness could not sign in (claude/login.py).
+    auth_failed: bool = False
+
+
+@dataclass(frozen=True)
+class RateLimit:
+    """The account's usage windows, which Claude Code reports on each turn:
+    ``unifiedWindows`` as sent, ``{"five_hour": {"utilization": 0.12,
+    "resetsAt": 1792768800}, ...}``. The quota gauges read it (quota/claude.py)."""
+
+    windows: dict
 
 
 @dataclass(frozen=True)
@@ -212,6 +223,7 @@ Event = (
     | CommandOutput
     | Reset
     | Result
+    | RateLimit
     | Notice
     | Compact
     | Ignored
@@ -277,6 +289,19 @@ def _unwrap(text: str) -> str:
     return m.group(2).strip() if m else text.strip()
 
 
+# What Claude Code's result says when it has no working credential: a 401 from
+# the API, or no credential at all. A 403 is left out: a new sign-in cannot
+# grant a permission the account lacks.
+_SIGNED_OUT = ("Not logged in", "Login expired", "OAuth token revoked")
+
+
+def _sign_in_failed(obj: dict) -> bool:
+    if obj.get("api_error_status") == 401:
+        return True
+    text = obj.get("result")
+    return isinstance(text, str) and text.startswith(_SIGNED_OUT)
+
+
 def parse(line: str) -> list[Event]:
     try:
         obj: Any = json.loads(line)
@@ -322,6 +347,13 @@ def _parse(obj: dict) -> list[Event]:
             )
         ]
 
+    if etype == "rate_limit_event":
+        info = obj.get("rate_limit_info")
+        windows = info.get("unifiedWindows") if isinstance(info, dict) else None
+        if isinstance(windows, dict) and windows:
+            return [RateLimit(windows=windows)]
+        return [Ignored(type=etype)]
+
     if etype == "result":
         window = None
         mu = obj.get("modelUsage")
@@ -344,6 +376,7 @@ def _parse(obj: dict) -> list[Event]:
                 if isinstance(obj.get("num_turns"), int)
                 else None,
                 error_text=_str(obj.get("result")) if is_error else None,
+                auth_failed=is_error and _sign_in_failed(obj),
             )
         ]
 

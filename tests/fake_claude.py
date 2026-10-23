@@ -69,6 +69,14 @@ from the prompt; ``FAKE_CLAUDE_ONESHOT=fail|garbage|empty|slow`` makes it exit
 (``FAKE_CLAUDE_ONESHOT_SLEEP`` seconds, when set) before answering. Each one-shot appends a line to
 ``$FAKE_CLAUDE_HOME/oneshot.log`` and writes its pid to
 ``$FAKE_CLAUDE_HOME/oneshot.pid``, so a test can count calls and find the child.
+Without ``--json-schema`` it is the sign-in check (claude/login.py): it logs
+its ``CLAUDE_CONFIG_DIR`` to ``$FAKE_CLAUDE_HOME/probe.log`` and answers ok.
+
+A ``CLAUDE_CODE_OAUTH_TOKEN`` starting ``sk-ant-oat01-bad`` is refused: a turn
+ends with Claude Code's two 401 lines, the check with an error result.
+``FAKE_CLAUDE_RATE_LIMIT=<fraction>`` adds a ``rate_limit_event`` to each turn,
+the five-hour window at that utilization.
+
 A ``--json-schema`` with an ``answer`` property is a side note: it gets
 ``{"answer": "btw of: <question>"}``, and ``needs_more`` when the question
 carries ``[[more]]``.
@@ -469,6 +477,30 @@ def wait(seconds: float) -> bool:
     return False
 
 
+def bad_token() -> bool:
+    """A token the fake refuses, as the real CLI refuses a revoked one."""
+    return os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").startswith("sk-ant-oat01-bad")
+
+
+def probe() -> None:
+    """The sign-in check (claude/login.py): one request, a JSON result."""
+    sys.stdin.read()
+    with open(os.path.join(HOME, "probe.log"), "a") as f:
+        f.write(f"{os.environ.get('CLAUDE_CONFIG_DIR', '')}\n")
+    if bad_token():
+        print(
+            json.dumps(
+                {
+                    "type": "result",
+                    "is_error": True,
+                    "result": "Failed to authenticate. API Error: 401 Invalid bearer token",
+                }
+            )
+        )
+        sys.exit(1)
+    print(json.dumps({"type": "result", "is_error": False, "result": "ok"}))
+
+
 def run(text: str) -> None:
     global SESSION_ID
     if not state["inited"]:
@@ -481,6 +513,53 @@ def run(text: str) -> None:
                 "session_id": SESSION_ID,
                 "model": state["model"] or "fake-model",
                 "claude_code_version": "0.0-fake",
+            }
+        )
+    if bad_token():
+        # As Claude Code 2.1.309 does when its token is refused.
+        text = "Failed to authenticate. API Error: 401 OAuth access token is invalid."
+        emit(
+            {
+                "type": "assistant",
+                "error": "authentication_failed",
+                "message": {
+                    "model": "<synthetic>",
+                    "content": [{"type": "text", "text": text}],
+                },
+            }
+        )
+        emit(
+            {
+                "type": "result",
+                "subtype": "success",
+                "is_error": True,
+                "api_error_status": 401,
+                "terminal_reason": "api_error",
+                "result": text,
+                "duration_ms": 50,
+                "total_cost_usd": round(state["cost"], 4),
+                "num_turns": 1,
+            }
+        )
+        return
+    if os.environ.get("FAKE_CLAUDE_RATE_LIMIT"):
+        emit(
+            {
+                "type": "rate_limit_event",
+                "rate_limit_info": {
+                    "status": "allowed",
+                    "rateLimitType": "five_hour",
+                    "unifiedWindows": {
+                        "five_hour": {
+                            "utilization": float(os.environ["FAKE_CLAUDE_RATE_LIMIT"]),
+                            "resetsAt": int(time.time()) + 3600,
+                        },
+                        "seven_day": {
+                            "utilization": 0.04,
+                            "resetsAt": int(time.time()) + 86400,
+                        },
+                    },
+                },
             }
         )
     # A scheduled prompt's or a workflow node's command is the line under its
@@ -914,6 +993,9 @@ def oneshot() -> None:
 
 def main() -> None:
     if "-p" in sys.argv and _arg("--output-format") == "json":
+        if "--json-schema" not in sys.argv:
+            probe()
+            return
         oneshot()
         return
     t = threading.Thread(target=worker, daemon=True)

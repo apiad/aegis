@@ -19,6 +19,7 @@ from typing import TypeVar
 from pydantic import BaseModel, ValidationError
 
 from . import launch
+from .claude import login
 from .agents import ConfigError, load_agents, read_config
 
 T = TypeVar("T", bound=BaseModel)
@@ -213,7 +214,12 @@ def parse(stdout: str, out: type[T]) -> tuple[T | None, float, int]:
 
 
 async def run(
-    argv: list[str], cwd: Path, timeout: float, user: str | None, prompt: str
+    argv: list[str],
+    cwd: Path,
+    timeout: float,
+    user: str | None,
+    prompt: str,
+    harness: str = "claude-code",
 ) -> str:
     """stdout of one call, as ``user`` (launch.py). A cancelled caller kills
     its claude: one left running would keep billing. A call as a user runs in
@@ -224,11 +230,14 @@ async def run(
         except KeyError:
             raise OneshotError(f"Linux user {user} does not exist") from None
     cwd.mkdir(parents=True, exist_ok=True)
+    env = {**os.environ, "MAX_THINKING_TOKENS": "0"}
+    if harness == "claude-code":
+        env = login.with_token(env, user) or env
     try:
         proc = await launch.child(
             argv,
             cwd=cwd,
-            env={**os.environ, "MAX_THINKING_TOKENS": "0"},
+            env=env,
             stdin=launch.PIPE,
             stdout=launch.PIPE,
             stderr=launch.DEVNULL,

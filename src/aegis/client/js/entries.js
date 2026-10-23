@@ -420,6 +420,59 @@ function fillRequest(card, e) {
   card.replaceChildren(bar, body);
 }
 
+// The Claude sign-in card (claude/login.py): how to get a setup-token, and a
+// field the server checks it in. The token never enters the transcript.
+function fillLogin(card, e) {
+  const d = e.detail || {};
+  const who = (d.handles || []).join(", ");
+  card.classList.toggle("gone", e.status !== "waiting");
+  if (e.status !== "waiting") {
+    const { bar } = secretBar(e, "Claude sign-in renewed", "renewed");
+    const done = (d.restarted || []).length ? `Restarted ${d.restarted.join(", ")}.` : "No session was waiting.";
+    card.replaceChildren(bar, el("div", "sbody dim", `The new token is in ${d.path}. ${done}`));
+    return;
+  }
+  const n = (d.handles || []).length;
+  const { bar } = secretBar(e, "Claude sign-in failed", `${n} ${n === 1 ? "session" : "sessions"} waiting`);
+  const body = el("div", "sbody");
+  const steps = el("ol", "steps");
+  for (const [before, code, after] of [
+    ["On any machine with a browser, run ", "claude setup-token", "."],
+    ["Approve access in the browser. If the browser shows a code, paste it back into that terminal.", "", ""],
+    ["The terminal prints a line starting with ", "sk-ant-oat01-", ". Paste that line here."],
+  ]) {
+    const li = el("li", null, before);
+    if (code) li.append(el("code", null, code), after);
+    steps.append(li);
+  }
+  const form = el("form", "sform");
+  const input = el("input");
+  Object.assign(input, { type: "password", autocomplete: "off", placeholder: "sk-ant-oat01-…", required: true });
+  input.setAttribute("aria-label", "Claude token");
+  input.dataset.lpignore = "true";
+  const go = el("button", "btn primary", "Save and check");
+  go.type = "submit";
+  const hint = el("span", "hint", `Waiting: ${who}. The token lasts a year and is kept in ${d.path}, mode 0600.`);
+  form.onsubmit = async (ev) => {
+    ev.preventDefault();
+    if (!input.value) return;
+    go.disabled = true;
+    hint.classList.remove("err");
+    hint.textContent = "Checking with one request on haiku…";
+    try {
+      await secretCall("claude.token", { id: e.id, secret: input.value });
+      input.value = "";
+    } catch (err) {
+      go.disabled = false;
+      hint.textContent = String(err?.message || err);
+      hint.classList.add("err");
+    }
+  };
+  form.append(input, go);
+  body.append(steps, form, hint);
+  card.replaceChildren(bar, body);
+}
+
 // A config change an agent suggested (config_suggest.py): the diff, and for
 // an admin Apply and Not now. The outcome comes back as the folded entry.
 const CONFIG_DONE = {
@@ -1583,6 +1636,15 @@ const RENDERERS = {
     fillConfig(card, e);
     body.append(card);
     return row(e, "config", body);
+  },
+
+  claude_login(e) {
+    // A failed Claude sign-in: steps and a token field (fillLogin).
+    const body = el("div", "body");
+    const card = el("div", "fcard scard lcard");
+    fillLogin(card, e);
+    body.append(card);
+    return row(e, "claude_login", body);
   },
 
   secret_request(e) {
