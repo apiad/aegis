@@ -77,6 +77,26 @@ def test_the_panel_toggle_lives_in_the_nav_pill(server, page):  # noqa: F811
     assert page.errors == []
 
 
+def test_a_phone_header_is_one_row_above_fleet_and_the_tabs(server, browser):  # noqa: F811
+    # #631: the header wrapped, leaving ? alone on a second row, and Fleet and
+    # the panel toggle took width the tabs needed.
+    pg = browser.new_page(viewport={"width": 390, "height": 844}, has_touch=True)
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    for p in ("one", "two", "three"):
+        spawn(pg, p)
+    box = lambda sel: pg.locator(sel).bounding_box()  # noqa: E731
+    tops = {s: box(f"#{s}")["y"] for s in [*HEADER_ICONS, "bell", "help-btn"]}
+    assert max(tops.values()) - min(tops.values()) < 4, tops
+    fleet, tabs = box("#tab-fleet"), box("#tablist")
+    assert abs(fleet["y"] - tabs["y"]) < 8 and fleet["x"] < tabs["x"]
+    assert fleet["y"] > max(tops.values())
+    assert not pg.is_visible("#side-btn")
+    pg.tap("#nav-side")
+    pg.wait_for_function("document.getElementById('a2').dataset.side === 'open'")
+    pg.close()
+
+
 def spawn_on(pg, url: str, n: int) -> None:
     pg.goto(url)
     pg.wait_for_selector("#a2[data-view=fleet]")

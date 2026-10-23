@@ -6178,8 +6178,10 @@ def test_the_navigator_fits_a_phone_and_keeps_its_touch_targets(server, browser)
         "/^\\d+\\/\\d+$/.test(document.getElementById('nav-pos').textContent)"
     )
     box = page.locator("#nav").bounding_box()
-    assert box["width"] <= 310 and box["height"] <= 40, box
-    assert box["x"] >= 60 and box["x"] + box["width"] <= 390, box
+    # 335 px since it holds the panel's toggle too (#631), clear of the turn
+    # markers' column on the left.
+    assert box["width"] <= 340 and box["height"] <= 40, box
+    assert box["x"] >= 36 and box["x"] + box["width"] <= 390, box
     # A tap 4 px above the pill still lands on each button.
     hits = page.evaluate(
         """() => [...document.querySelectorAll('#nav button')].filter(b => b.offsetWidth).map(b => {
@@ -6215,7 +6217,7 @@ def test_a_phone_reaches_tabs_the_drawer_and_the_chips(server, browser):
     page.tap(f"#tablist .tab[data-id='{a}']")
     page.wait_for_function("id => location.hash === '#s=' + id", arg=a)
     assert page.locator(".side").bounding_box()["x"] >= 389, "the drawer starts closed"
-    page.tap("#side-btn")
+    page.tap("#nav-side")
     page.wait_for_function("document.getElementById('a2').dataset.side === 'open'")
     page.wait_for_timeout(250)  # the slide
     assert page.locator(".side").bounding_box()["x"] < 390 - 300
@@ -6230,13 +6232,9 @@ def test_a_phone_reaches_tabs_the_drawer_and_the_chips(server, browser):
     card.wait_for(state="hidden")
     page.mouse.click(20, 400)  # the dimmed transcript
     page.wait_for_function("document.getElementById('a2').dataset.side !== 'open'")
-    # The header stays above the dimmed page: ☰ closes the drawer, and a tab
-    # switches session with it open.
-    page.tap("#side-btn")
-    page.wait_for_function("document.getElementById('a2').dataset.side === 'open'")
-    page.tap("#side-btn")
-    page.wait_for_function("document.getElementById('a2').dataset.side !== 'open'")
-    page.tap("#side-btn")
+    # The header stays above the dimmed page: a tab switches session with the
+    # drawer open, and closes it.
+    page.tap("#nav-side")
     page.wait_for_function("document.getElementById('a2').dataset.side === 'open'")
     page.tap(f"#tablist .tab[data-id='{b}']")
     page.wait_for_function("id => location.hash === '#s=' + id", arg=b)
@@ -6422,7 +6420,7 @@ def test_a_phone_sees_the_monitor_card_every_reply_and_a_one_line_composer(
     page.fill("#input", f"/mcp monitor_start {json.dumps(args)}")
     page.tap("#send")
     page.wait_for_selector("#s-monitors .mon >> text=a phone monitor")
-    page.tap("#side-btn")
+    page.tap("#nav-side")
     page.wait_for_function("document.getElementById('a2').dataset.side === 'open'")
     page.tap("#s-monitors .mon")
     page.wait_for_selector("#mcard.show")
