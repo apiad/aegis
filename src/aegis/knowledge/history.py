@@ -44,11 +44,24 @@ def ensure_repo(root: Path) -> None:
 def commit(root: Path, paths: list[str], message: str, author: str) -> str:
     """Commit ``paths`` (written, changed or deleted); the new sha, or "" when
     none of them changed."""
-    _git(root, "add", "-A", "--", *paths)
+    for p in paths:
+        if (root / p).exists():
+            _git(root, "add", "-A", "--", p)
+        else:  # gone, and maybe never tracked: a plain add would refuse it
+            _git(root, "rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", p)
     if _git(root, "diff", "--cached", "--quiet", check=False).returncode == 0:
         return ""
     _git(root, "commit", "-q", "--no-verify", "-m", f"{message}\n\nSession: {author}")
     return _git(root, "rev-parse", "HEAD").stdout.strip()
+
+
+def unstage(root: Path, paths: list[str]) -> None:
+    """Take ``paths`` out of the index again, after a commit that failed;
+    best effort, since git itself may be what failed."""
+    try:
+        _git(root, "reset", "-q", "--", *paths, check=False)
+    except OSError:
+        pass
 
 
 def log(root: Path, relpath: str, limit: int = 50) -> list[dict]:

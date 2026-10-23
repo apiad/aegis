@@ -63,3 +63,34 @@ async def test_a_skill_saves_its_extra_files_and_deletes_whole(tmp_path):
 async def test_extra_files_cannot_escape_the_skill(tmp_path):
     with pytest.raises(OpError):
         await Store(tmp_path).save("ana", skill("x"), "s1", extra={"../../a": b""})
+
+
+async def test_deleting_a_memory_git_never_tracked_succeeds(tmp_path):
+    st = Store(tmp_path)
+    await st.save("ana", mem("a"), "s1")
+    hand = tmp_path / "ana" / "memories" / "hand.md"
+    hand.write_text("---\ndescription: by hand\n---\nx\n")
+    await st.delete("ana", "hand", "s1")
+    assert not hand.exists() and st.get("ana", "a") is not None
+
+
+async def test_a_save_with_git_missing_leaves_no_file_behind(tmp_path, monkeypatch):
+    st = Store(tmp_path)
+    await st.save("ana", mem("a", "first"), "s1")
+    monkeypatch.setenv("PATH", str(tmp_path / "nobin"))
+    with pytest.raises(OpError) as e:
+        await st.save("ana", mem("b"), "s1")
+    assert e.value.code == "history_failed"
+    assert not (tmp_path / "ana" / "memories" / "b.md").exists()
+    # A replace puts the old text back.
+    with pytest.raises(OpError):
+        await st.save("ana", mem("a", "second"), "s1")
+    assert st.get("ana", "a").description == "first"
+    # A delete puts the file back.
+    with pytest.raises(OpError):
+        await st.delete("ana", "a", "s1")
+    assert st.get("ana", "a").description == "first"
+    # And with no repository yet, nothing is written at all.
+    with pytest.raises(OpError):
+        await st.save("ben", mem("c"), "s1")
+    assert not (tmp_path / "ben" / "memories" / "c.md").exists()

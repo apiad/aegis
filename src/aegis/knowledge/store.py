@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import shutil
+import subprocess
 from pathlib import Path
 
 from aegis.knowledge import history
@@ -162,22 +163,31 @@ class Store:
     def _write(
         self, base: Path, item: Item, files: dict, verb: str, author: str
     ) -> str:
-        history.ensure_repo(base)
+        try:
+            history.ensure_repo(base)
+        except (OSError, subprocess.CalledProcessError) as e:
+            raise _history_failed(e) from None
         if item.kind == "memory":
             path = base / "memories" / f"{item.name}.md"
         else:
             path = base / "skills" / item.name / "SKILL.md"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(dump(item), encoding="utf-8")
-        for rel, data in files.items():
-            (path.parent / rel).parent.mkdir(parents=True, exist_ok=True)
-            (path.parent / rel).write_bytes(data)
-        return history.commit(
-            base, [self._rel(item)], f"{verb} {item.kind} {item.name}", author
-        )
+        before = _snapshot([path, *(path.parent / rel for rel in files)])
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(dump(item), encoding="utf-8")
+            for rel, data in files.items():
+                (path.parent / rel).parent.mkdir(parents=True, exist_ok=True)
+                (path.parent / rel).write_bytes(data)
+            return history.commit(
+                base, [self._rel(item)], f"{verb} {item.kind} {item.name}", author
+            )
+        except (OSError, subprocess.CalledProcessError) as e:
+            _restore(base, before, [self._rel(item)])
+            raise _history_failed(e) from None
 
     async def delete(self, principal: str, name: str, author: str) -> str:
-        """Delete an item and commit; the commit's sha."""
+        """Delete an item and commit; the commit's sha, "" when git never
+        tracked it."""
         base = self.dir(principal)
         check_name(name)
         async with self._lock(principal):
@@ -189,10 +199,49 @@ class Store:
         return sha
 
     def _remove(self, base: Path, item: Item, author: str) -> str:
-        if item.kind == "memory":
-            (base / "memories" / f"{item.name}.md").unlink()
+        target = self._path(base, item.kind, item.name)
+        held = [target] if item.kind == "memory" else sorted(target.rglob("*"))
+        before = _snapshot([p for p in held if p.is_file()])
+        try:
+            if item.kind == "memory":
+                target.unlink()
+            else:
+                shutil.rmtree(target)
+            return history.commit(
+                base, [self._rel(item)], f"delete {item.kind} {item.name}", author
+            )
+        except (OSError, subprocess.CalledProcessError) as e:
+            _restore(base, before, [self._rel(item)])
+            raise _history_failed(e) from None
+
+
+def _snapshot(paths: list[Path]) -> dict[Path, bytes | None]:
+    """Each path's bytes, None for one that does not exist yet."""
+    return {p: p.read_bytes() if p.is_file() else None for p in paths}
+
+
+def _restore(base: Path, before: dict[Path, bytes | None], rels: list[str]) -> None:
+    """Put the files back as ``_snapshot`` found them, after a change git did
+    not record, so the store and its history never drift apart."""
+    for p, data in before.items():
+        if data is None:
+            p.unlink(missing_ok=True)
         else:
-            shutil.rmtree(base / "skills" / item.name)
-        return history.commit(
-            base, [self._rel(item)], f"delete {item.kind} {item.name}", author
-        )
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(data)
+    for p in sorted({q.parent for q in before}, key=lambda q: -len(q.parts)):
+        while p != base and p.is_dir() and not any(p.iterdir()):
+            p.rmdir()
+            p = p.parent
+    history.unstage(base, rels)
+
+
+def _history_failed(e: Exception) -> OpError:
+    why = (
+        (e.stderr or "").strip() if isinstance(e, subprocess.CalledProcessError) else ""
+    )
+    return OpError(
+        "history_failed",
+        f"the change was not kept, since git could not record it ({why or e});"
+        " the store is as it was",
+    )
