@@ -34,7 +34,8 @@ class Command:
     doc: str
     args: str = (
         ""  # what the menu completes: "models", "efforts", "permissions",
-        # "tutorials" or "workflows"
+        # "tutorials" or "workflows"; "spawn" and "announce" walk their own
+        # words and flags (client/js/commands.js)
     )
 
 
@@ -93,11 +94,13 @@ AEGIS: dict[str, Command] = {
             "<agent>[@server] [prompt]",
             "Start a session, here or on a linked server; flags: --quiet, "
             "--model, --effort, --permission, --cwd",
+            "spawn",
         ),
         Command(
             "announce",
             "<text> [--until HH:MM] [--critical]",
             "Tell every agent on this server something, once",
+            "announce",
         ),
         Command("archive", "", "Archive the session; Reopen brings it back"),
         Command("close", "", "Alias of /archive"),

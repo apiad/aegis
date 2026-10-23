@@ -19,6 +19,15 @@ survives a restart, where the harness's would end with its process.
 Type / in a session's box to open the menu of every command, aegis's first;
 Tab or Enter picks one. Alt+/ opens the same menu over a draft.
 
+After the command, the menu completes every argument that comes from a list:
+the model, effort and permission, the tutorial page, the saved workflow, and
+for `/spawn` the agent, the flags and their values. `/spawn ` lists this
+server's agents, its default first, then each linked server's that answers
+as `agent@server`; a word that starts with `-` lists the flags it has not
+used, and after `--model`, `--effort` or `--permission` the menu lists their
+values. `/announce` completes `--until` and `--critical` the same way. Text
+that is free, such as a prompt, completes nothing.
+
 | command | what it does |
 |---|---|
 | `/model <name>` | switch this session's model |

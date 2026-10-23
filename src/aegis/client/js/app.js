@@ -3024,7 +3024,8 @@ async function loadPreview() {
       Promise.all([
         conn.call("commands.preview", params, spServer),
         conn.call("help.pages", {}, spServer).catch(() => []),
-      ]).then(([cat, pages]) => ({ ...cat, tutorials: pages.filter((pg) => pg.kind === "tutorial") })),
+        spawnAgents(spServer),
+      ]).then(([cat, pages, agents]) => ({ ...cat, agents, tutorials: pages.filter((pg) => pg.kind === "tutorial") })),
     );
   }
   try {
@@ -3985,11 +3986,28 @@ const catalogs = new Map();
 // A session's menu: its commands, and the tutorial pages /tutorial completes.
 // A linked server without help.pages offers none.
 async function loadCommands(key) {
-  const [cat, pages] = await Promise.all([
+  const [cat, pages, agents] = await Promise.all([
     callFor(key, "commands.list"),
     conn.call("help.pages", {}, forKey(key).server).catch(() => []),
+    spawnAgents(forKey(key).server),
   ]);
-  return { ...cat, tutorials: pages.filter((p) => p.kind === "tutorial") };
+  return { ...cat, agents, tutorials: pages.filter((p) => p.kind === "tutorial") };
+}
+// What /spawn completes (#352): the agents of `server`, its default first,
+// and on the home server each linked server's as `agent@server`. A link that
+// is down, or refuses the call (a member's), offers none.
+async function spawnAgents(server) {
+  const roster = async (srv, far) => {
+    const r = await conn.call("agents.list", {}, srv).catch(() => null);
+    if (!r) return [];
+    const on = far ? ` · on ${srv}` : "";
+    return r.agents
+      .filter((a) => a.enabled)
+      .sort((a, b) => (b.name === r.default) - (a.name === r.default))
+      .map((a) => ({ v: far ? `${a.name}@${srv}` : a.name, model: a.model, doc: `${a.harness} · ${a.model}${on}`, source: "" }));
+  };
+  const far = server ? [] : links.filter((l) => l.state === "linked").map((l) => roster(l.name, true));
+  return (await Promise.all([roster(server, false), ...far])).flat();
 }
 async function loadCatalog() {
   const s = focused();
