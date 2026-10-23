@@ -271,6 +271,15 @@ written by ops-agent, not measured by aegis.", naming the agent's handle or
 your name as the author; the agent that wrote it is not told its own. Announcing is for an admin and an admin's agents; a member gets
 not_for_members.
 
+## Order the tabs
+
+The tab bar's order is this browser's own, and a reload keeps it. A session
+started from another one sits in that one's group, a block headed by the
+session that started it. Drag a tab to move it: a group's head moves the whole
+group, and any other member moves only inside its group. Alt+Shift+[ and
+Alt+Shift+] move the tab in front one place left or right by the same rules,
+from the message box too.
+
 ## Quiet sessions
 
 A quiet session has no tab. Its card stays in the Fleet, dimmed and marked
@@ -281,6 +290,7 @@ until it is quieted again; a queue worker comes back only on an error.
 - The Quiet button in the session panel, beside Sleep, quiets a session that
   is working or waiting. Alt+Q does the same for the session in front, from
   the message box too.
+- `/quiet` in a session's box quiets that session, as Alt+Q does.
 - An agent calls `session_quiet` with a handle, its own included.
 - Clicking a quiet card in the Fleet brings the session back at once.
 

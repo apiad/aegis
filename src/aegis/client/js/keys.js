@@ -19,6 +19,7 @@
 const MAC = /Mac|iPhone|iPad/.test(navigator.platform);
 const bare = (ev) => !ev.altKey && !ev.ctrlKey && !ev.metaKey;
 const alt = (code) => (ev) => ev.altKey && !ev.ctrlKey && !ev.metaKey && !ev.shiftKey && ev.code === code;
+const altShift = (code) => (ev) => ev.altKey && ev.shiftKey && !ev.ctrlKey && !ev.metaKey && ev.code === code;
 const mod = (k) => (ev) =>
   (MAC ? ev.metaKey && !ev.ctrlKey : ev.ctrlKey && !ev.metaKey) && !ev.altKey && !ev.shiftKey && ev.key.toLowerCase() === k;
 const key =
@@ -55,6 +56,9 @@ export const ACTIONS = [
   // The Fleet is the first tab.
   { id: "tabPrev", title: "Previous tab", nav: true, keys: [on("global", "Alt+[", alt("BracketLeft"))] },
   { id: "tabNext", title: "Next tab", nav: true, keys: [on("global", "Alt+]", alt("BracketRight"))] },
+  // As a drag: a group's member within its group, any other tab with its group.
+  { id: "tabLeft", title: "Move this tab left", when: ["session", "term", "browser"], keys: [on("global", "Alt+Shift+[", altShift("BracketLeft"))] },
+  { id: "tabRight", title: "Move this tab right", when: ["session", "term", "browser"], keys: [on("global", "Alt+Shift+]", altShift("BracketRight"))] },
   { id: "needs", title: "Next session that needs you, longest waiting first", nav: true, keys: [on("global", "Alt+J", alt("KeyJ"))] },
   { id: "spawn", title: "New session", nav: true, keys: [on("global", "Alt+N", alt("KeyN")), on("browse", "n", key("n"))] },
   { id: "settings", title: "Settings: .aegis.yaml", nav: true, keys: [on("global", "Alt+S", alt("KeyS"))] },

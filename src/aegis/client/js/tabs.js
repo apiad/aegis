@@ -119,6 +119,25 @@ function dropBefore(t, x) {
 }
 const firstKey = (box) => (box ? JSON.parse(box.dataset.keys)[0] : null);
 
+// Where Alt+Shift+[ or ] moves tab `key` one place (`d` is -1 or 1), by the
+// rules of a drag: a member within its group, a head or a lone tab with its
+// whole block. The keys to move and the key they go before (null: the end),
+// as TabOrder.move takes them, or null at an edge.
+export function stepMove(list, key, d) {
+  const t = list.querySelector(`.tab[data-id="${CSS.escape(key)}"]`);
+  if (!t) return null;
+  const box = t.closest(".tblock");
+  if (t.classList.contains("member")) {
+    const side = d < 0 ? t.previousElementSibling : t.nextElementSibling;
+    if (!side?.classList.contains("member")) return null;
+    if (d < 0) return [[key], side.dataset.id];
+    return [[key], side.nextElementSibling?.dataset.id ?? firstKey(box.nextElementSibling)];
+  }
+  const keys = JSON.parse(box.dataset.keys);
+  if (d < 0) return box.previousElementSibling ? [keys, firstKey(box.previousElementSibling)] : null;
+  return box.nextElementSibling ? [keys, firstKey(box.nextElementSibling.nextElementSibling)] : null;
+}
+
 function tab(m, focusId, { onFocus, onMove, onClose }, role) {
   const t = document.createElement("div");
   t.className = `tab ${role}${m.key === focusId ? " on" : ""}${m.state === "asleep" ? " asleep" : ""}${m.off ? " off" : ""}`;
