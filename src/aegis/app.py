@@ -301,6 +301,10 @@ def _held(owner: str, why: str) -> str:
     return f"{owner}'s quota gate holds this session: {why}. It continues when the gate opens."
 
 
+class AutocloseParams(LogParams):
+    on: bool
+
+
 class RestartParams(LogParams):
     untested: Literal["once", "always"] | None = None
 
@@ -1429,6 +1433,12 @@ class App:
             return s.wire()
         if name == "quiet":
             return reg.set_quiet(s.log_id, True)
+        if name == "autoclose":
+            if arg not in ("", "on", "off"):
+                raise OpError("bad_params", "usage: /autoclose [on|off]")
+            return reg.set_autoclose(
+                s.log_id, not s.autoclose if not arg else arg == "on"
+            )
         if name == "restart":
             return await self._launch(s, caller, untested, s.restart)
         if name == "spawn":
@@ -2225,6 +2235,11 @@ class App:
             if (why := reg.workflow_lock(reg.open(p.log_id))) is not None:
                 raise OpError("in_workflow", f"{why}; it gets a tab when the run ends")
             return reg.set_quiet(p.log_id, False)
+
+        # The person's, never an agent's: autoclose is their word to close (#691).
+        @r.op("session.autoclose", AutocloseParams, owned="log_id")
+        async def autoclose(p: AutocloseParams, caller):
+            return reg.set_autoclose(p.log_id, p.on)
 
         @r.op("session.reopen", LogParams, owned="log_id")
         async def reopen(p: LogParams, caller):

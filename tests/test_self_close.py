@@ -4,6 +4,8 @@ refused while anything in that tree still runs."""
 
 import pytest
 
+from aegis.ops import OpError
+
 from .conftest import until
 from .test_agents import CONFIG, World, mcp, turn
 from .test_session_close import closed, spawn_child
@@ -89,3 +91,69 @@ async def test_a_live_monitor_refuses_the_close(world):
     said = await turn(a, done())
     assert said.startswith("mcp error: close_refused:") and "1 monitor" in said, said
     assert not closed(world, a)
+
+
+# Autoclose (#691): the person's word to close, given ahead of time.
+
+
+async def autoclose(world, s, on: bool = True) -> dict:
+    return await world.app.registry.call(
+        "session.autoclose", {"log_id": s.log_id, "on": on}
+    )
+
+
+async def test_autoclose_refuses_done_without_close(world):
+    a = await world.spawn()
+    await autoclose(world, a)
+    said = await turn(a, done(close=False))
+    assert said.startswith("mcp error: autoclose: this session is in autoclose"), said
+    assert not closed(world, a)
+
+
+async def test_autoclose_leaves_review_and_needs_you_open(world):
+    a = await world.spawn()
+    await autoclose(world, a)
+    for attention in ("review", "needs_you"):
+        said = await turn(a, mcp("turn_end", attention=attention, line="read"))
+        assert not said.startswith("mcp error"), said
+    assert not closed(world, a)
+
+
+async def test_autoclose_lets_done_with_close_archive_it(world):
+    a = await world.spawn()
+    await autoclose(world, a)
+    said = await closing_turn(world, a, done())
+    assert said.startswith("mcp ok: noted. aegis archives this session"), said
+
+
+async def test_autoclose_off_allows_done_without_close_again(world):
+    a = await world.spawn()
+    await autoclose(world, a)
+    r = await autoclose(world, a, on=False)
+    assert r["autoclose"] is False
+    said = await turn(a, done(close=False))
+    assert not said.startswith("mcp error"), said
+
+
+async def test_slash_autoclose_toggles_and_takes_on_or_off(world):
+    a = await world.spawn()
+
+    async def typed(text: str) -> bool:
+        send = {"log_id": a.log_id, "text": text}
+        return (await world.app.registry.call("session.send", send))["autoclose"]
+
+    assert await typed("/autoclose") is True and a.autoclose
+    assert await typed("/autoclose") is False
+    assert await typed("/autoclose on") is True
+    assert await typed("/autoclose on") is True
+    assert await typed("/autoclose off") is False
+    with pytest.raises(OpError, match=r"usage: /autoclose \[on\|off\]"):
+        await typed("/autoclose maybe")
+
+
+@pytest.mark.slow  # a restart
+async def test_autoclose_survives_a_restart(world):
+    a = await world.spawn()
+    await autoclose(world, a)
+    await world.restart()
+    assert world.session(a.log_id).autoclose is True

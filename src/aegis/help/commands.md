@@ -38,6 +38,7 @@ that is free, such as a prompt, completes nothing.
 | `/sleep` | end the process and keep the session, asleep; your next message wakes it |
 | `/stop` | alias of `/sleep` |
 | `/quiet` | hide this session's tab until its turn ends, as Alt+Q does; only a working or waiting session can be quiet |
+| `/autoclose [on\|off]` | close this session once its agent ends done: `turn_end` done without `close` is refused while it is on; alone, it toggles. See sessions#autoclose |
 | `/restart` | end the process and start a fresh one on the same conversation; nothing is sent. Use it after a change to the agent's MCP config or when the harness hangs |
 | `/btw <question>` | ask a side question about this session, even while the agent works. aegis answers it from the transcript with the agent `btw:` names in `.aegis.yaml`, in one call with no tools, and shows the answer as a block you can fold. The agent never sees the question or the answer. One runs at a time per session; the block's cancel stops it |
 | `/feedback [text]` | report a bug, ask for a feature or point out a docs gap in aegis. The agent reads the help page feedback, asks what it still needs and shows you a draft issue; nothing is filed until you say yes. Claude Code's own /feedback, which reports to Anthropic, is hidden in aegis. The /feedback row under the new tab's chips starts a new session with the chips you picked there, and the agent asks you what to report |

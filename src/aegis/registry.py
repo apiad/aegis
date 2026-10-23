@@ -654,6 +654,7 @@ class Registry(Host):
             if meta.get("continued_by") == "starting"
             else meta.get("continued_by"),
             quiet=bool(meta.get("quiet")),
+            autoclose=bool(meta.get("autoclose")),
             checked_version=meta.get("checked_version"),
             # The meta's {"models", "at", "exhausted"}; a spawn record's list
             # has no exhausted.
@@ -988,6 +989,14 @@ class Registry(Host):
                 "can be quiet, since only its turn's end brings it back",
             )
         s._set(quiet=quiet)
+        self.metas.write(s.meta())
+        return s.wire()
+
+    def set_autoclose(self, log_id: str, on: bool) -> dict:
+        """Turn a session's autoclose on or off (#691): while on, its agent
+        may end only done with close, review or needs_you."""
+        s = self.open(log_id)
+        s._set(autoclose=on)
         self.metas.write(s.meta())
         return s.wire()
 

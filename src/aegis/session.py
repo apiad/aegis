@@ -88,6 +88,7 @@ _NOW = (
     "standing",
     "continued_by",
     "quiet",
+    "autoclose",
     "workflow",
 )
 _SOON = (
@@ -367,6 +368,7 @@ class Session:
         compactions: int = 0,
         continued_by: str | None = None,
         quiet: bool = False,
+        autoclose: bool = False,
         checked_version: str | None = None,
         cascade_exhausted: bool = False,
     ) -> None:
@@ -425,6 +427,9 @@ class Session:
         self.worker = worker
         # No tab until its turn ends (#386); a card in the Fleet meanwhile.
         self.quiet = quiet
+        # The person's word, ahead of time, to close once the agent ends done
+        # (#691): turn_end refuses done without close while it is on.
+        self.autoclose = autoclose
         # A schedule's run: {"name", "run", "spawn"}, inherited by its children
         # (schedules.py); None for any other session.
         self.schedule = schedule
@@ -547,6 +552,7 @@ class Session:
             "compactions": self.compactions,
             "continued_by": self.continued_by,
             "quiet": self.quiet,
+            "autoclose": self.autoclose,
             "checked_version": self.checked_version,
             "cascade": self._cascade_meta(),
         }

@@ -2184,6 +2184,8 @@ function renderMeta(s) {
   $("working").hidden = !working;
   $("stop-session").disabled = s.state === "asleep" || theirs || held;
   $("quiet-session").disabled = !["working", "waiting"].includes(s.attention) || theirs || held;
+  $("autoclose-session").disabled = theirs || held;
+  $("autoclose-session").setAttribute("aria-pressed", String(!!s.autoclose));
   $("interrupt").disabled = theirs || held;
   $("close").disabled = theirs || held;
   if (working && workingSince == null) workingSince = Date.now();
@@ -4080,6 +4082,17 @@ async function quietKey(key, on) {
   }
 }
 
+// Autoclose (#691): the agent may then end only done with close, review or
+// needs_you, so a session it finishes closes itself.
+async function autocloseKey(key, on) {
+  if (offline() || !sessions.has(key)) return;
+  try {
+    await callFor(key, "session.autoclose", { on });
+  } catch (e) {
+    failed(key, e);
+  }
+}
+
 // Sleep ends the process and keeps the conversation. What would die with it
 // (session.kills: background tasks, timers, processes it left running)
 // is asked about first. A server older than #479 has no such op.
@@ -4174,6 +4187,7 @@ $("interrupt").addEventListener("click", interrupt);
 $("continue").addEventListener("click", () => focused() && continueKey(focused().key));
 $("restart").addEventListener("click", () => focused() && restartKey(focused().key));
 $("quiet-session").addEventListener("click", () => focused() && quietKey(focused().key, true));
+$("autoclose-session").addEventListener("click", () => focused() && autocloseKey(focused().key, !focused().autoclose));
 $("stop-session").addEventListener("click", () => focused() && sleepKey(focused().key));
 
 $("close").addEventListener("click", () => {
@@ -4320,6 +4334,7 @@ function sessionMenu(key) {
   if (!s.old) life.push({ id: "restart", label: "Restart", icon: "restart", disabled: why, run: () => restartKey(key) });
   if (!s.worker) life.push({ id: "handoff", label: "Hand off", icon: "handoff", disabled: why, run: () => handOff(s) });
   const rename = [{ id: "rename", label: "Rename…", icon: "pencil", disabled: why, run: () => renameKey(key) }];
+  rename.push({ id: "autoclose", label: s.autoclose ? "Autoclose off" : "Autoclose on", icon: "archive", disabled: why, run: () => autocloseKey(key, !s.autoclose) });
   return { title, groups: [opening, life, rename, close] };
 }
 // The menu of a card or tab pressed; none on the space around them.

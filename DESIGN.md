@@ -627,6 +627,9 @@ An agent the person told to close when it finishes asks with `turn_end`'s
 session and its whole spawn tree finished, the registry archives the tree,
 deepest first (`registry._close_when_finished`). Like a handoff's retirement it
 keeps no state: the fold drops a report made in an earlier turn.
+A person's autoclose (#691) gives that word ahead of time: a flag in the
+session's meta, set by `session.autoclose` or `/autoclose` and never by an
+agent's tool, under which `turn_end` refuses done without `close`.
 Reading includes waiting: `monitor_sessions` watches other sessions' attention
 cards and wakes its owner when all have finished or one is blocked on the
 person, and `session_list` shows each card and plan. Neither changes the
