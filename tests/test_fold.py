@@ -1673,7 +1673,13 @@ def test_a_background_task_notice_is_an_inbox_row_not_the_persons_words():
 
 def test_a_completed_task_reads_ok_and_a_description_is_its_label():
     r = Rec()
-    r.echo(_task("b2", "completed", 'Background command "Run "the" tests" completed (exit code 0)'))
+    r.echo(
+        _task(
+            "b2",
+            "completed",
+            'Background command "Run "the" tests" completed (exit code 0)',
+        )
+    )
     (e,) = run(r)[0].entries()
     assert (e["status"], e["title"], e["md"]) == (
         "ok",
