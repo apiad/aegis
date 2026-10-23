@@ -355,6 +355,16 @@ class LinkAdd(_Strict):
     name: str | None = Field(
         None, description="What it must call itself; omitted: whatever it does."
     )
+    trusted: bool = Field(
+        False,
+        description="Ask for a trusted link: both ways, agents unrestricted. "
+        "Refused unless the far server is used by its admin alone.",
+    )
+
+
+class LinkTrust(_Strict):
+    name: str
+    trusted: bool
 
 
 class LinkName(_Strict):
@@ -563,6 +573,7 @@ class App:
                 linux_user,
             )
         self.links = Links(roots.state_root, server_name, self.user, self.publish)
+        self.links.answer = self.answer_link
         # Sessions a pause or a continue is under way for, so a reading that
         # lands before it finishes does not start a second one.
         self._quota_busy: set[str] = set()
@@ -610,6 +621,46 @@ class App:
         self.mcp_server, self.mcp_app = build_mcp(
             self.registry, self.tokens, self.sessions
         )
+
+    def trust_refusal(self, principal: Principal, server: str) -> str | None:
+        """Why this server will not trust ``server``'s link, or None: trust is
+        for two servers one person alone uses, so the link must hold the
+        admin's own token and nobody else may hold one (links.py, #684)."""
+        me = self.server_name
+        if principal.name != self.principals.owner or not principal.is_admin:
+            return f"the link does not hold {me}'s admin token"
+        if self.principals.has_members():
+            return (
+                f"{me} has tokens besides its admin's; a trusted link needs "
+                "a server only its admin uses"
+            )
+        if self.links.outbound(server) is not None:
+            return (
+                f"{me} links a server named {server} itself; remove that "
+                "link to trust this one"
+            )
+        return None
+
+    async def answer_link(self, server: str, op: str, params) -> dict:
+        """Run a call a trusted linked server sent back down its link: as this
+        server's admin acting through that link, the same caller a link socket
+        is on the far server, so every op keeps one rule for linked calls."""
+        caller = Caller(
+            "user", link=server, principal=Principal(self.principals.owner, "admin")
+        )
+        log.info("call %s from linked server %s", op, server)
+        try:
+            return {"result": await self.registry.call(op, params, caller)}
+        except OpError as e:
+            error = {"code": e.code, "message": e.message}
+            if e.data is not None:
+                error["data"] = e.data
+            return {"error": error}
+        except Exception as e:  # an operation bug must not kill the link
+            log.exception("call %s from %s failed", op, server)
+            return {
+                "error": {"code": "internal", "message": f"{type(e).__name__}: {e}"}
+            }
 
     def who(self, caller: Caller) -> Principal:
         """The principal a caller acts as. An agent acts as its session's
@@ -1628,8 +1679,10 @@ class App:
             yield self.server_name, local
         if member:
             return
-        for link in self.links.up():
-            if only not in (None, link.name):
+        # Links this server opened: a way back is reached by calls, and its
+        # archive rows could not be read from here (links.Backlink).
+        for link in self.links.links():
+            if link.state != "linked" or only not in (None, link.name):
                 continue
 
             async def far(query, limit, after, workers, link=link):
@@ -2334,7 +2387,9 @@ class App:
             """Link another aegis server: connect once with its token, take the
             name it gives itself, and keep the link in links.json."""
             try:
-                welcome = await probe(p.url, p.token, self.server_name, self.user)
+                welcome = await probe(
+                    p.url, p.token, self.server_name, self.user, p.trusted
+                )
             except LinkError as e:
                 raise OpError("link_refused", e.message) from e
             name = str(welcome.get("server"))
@@ -2342,12 +2397,24 @@ class App:
                 raise OpError(
                     "bad_link", f"that server calls itself {name}, not {p.name}"
                 )
-            self.links.add(name, p.url, p.token)
+            self.links.add(name, p.url, p.token, p.trusted)
             return {"name": name}
 
         @r.op("link.remove", LinkName, admin=True)
         async def link_remove(p: LinkName, caller):
             self.links.remove(p.name)
+
+        @r.op("link.trust", LinkTrust, admin=True)
+        async def link_trust(p: LinkTrust, caller):
+            """Ask a link for trust (both ways, agents unrestricted), or stop
+            asking. The link reconnects; the far server decides."""
+            self.links.trust(p.name, p.trusted)
+
+        @r.op("link.incoming")
+        async def link_incoming(_, caller):
+            """The servers that linked this one with trust, so their agents
+            reach this one over their link."""
+            return self.links.incoming()
 
         @r.op("token.list", admin=True)
         async def token_list(_, caller):

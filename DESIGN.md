@@ -695,6 +695,20 @@ tokens. Before a second person gets a token on a linked server, that server must
 each person's sessions apart and let only a session's owner write to it, or one
 person could steer another's session into handing off (the links spec).
 
+**A trusted link is a client both ways, between servers one person alone
+uses** (#684). A link added with `--trusted` asks for it in its `hello`, and the
+far server grants it in `welcome` only to its admin's own token while no other
+token exists there and it links no server of that name (`App.trust_refusal`).
+Granted, the near server's link also answers `rcall` with `rreply`, running the
+call as its admin acting through a link (`App.answer_link`), the same caller a
+link socket is on the far side, so every op keeps one rule for linked calls;
+and the far server keeps a `links.Backlink` for the socket, which agents and the
+router find by name like any link. The far server checks the rule again before
+every call back and ends the trust with a `trust` frame when it fails. A way
+back carries calls only: subscriptions are refused (`not_both_ways`), nothing is
+relayed to a third server, and the archive merges outbound links alone. On a
+plain link an `rcall` is dropped like any unknown frame.
+
 **The client knows no subsystem by name.** Server state reaches the browser as
 named channels: a snapshot on subscribe, then numbered patches. A gap in the
 numbers, or a reconnect, means resubscribe, saying which revision it holds; a

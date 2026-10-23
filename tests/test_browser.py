@@ -142,7 +142,8 @@ def server(tmp_path: Path, fake_claude: str, fake_opencode: str):
 class Linked:
     """Two servers, alpha linked to beta through `aegis link add`."""
 
-    def __init__(self, root: Path, claude: str, opencode: str):
+    def __init__(self, root: Path, claude: str, opencode: str, trusted: bool = False):
+        self.trusted = trusted
         self.beta = Server(root / "beta", claude, opencode)
         self.alpha = Server(root / "alpha", claude, opencode)
         for s, name in ((self.beta, "beta"), (self.alpha, "alpha")):
@@ -156,7 +157,8 @@ class Linked:
         base = f"http://127.0.0.1:{self.beta.port}"
         link = subprocess.run(
             [sys.executable, "-m", "aegis", "link", "add", "beta", base,
-             "--root", str(self.alpha.root), "--as", "alpha"],
+             "--root", str(self.alpha.root), "--as", "alpha",
+             *(["--trusted"] if self.trusted else [])],
             input=token + "\n", capture_output=True, text=True, timeout=30,
         )  # fmt: skip
         assert link.returncode == 0, link.stdout + link.stderr
@@ -7287,6 +7289,35 @@ def test_spawn_on_a_linked_server_from_the_new_tab(linked, page):
     assert "born on beta" in store.read_text()
     page.wait_for_selector(f"#tablist .tab[data-id='{key}'] .where")
     assert not page.errors
+
+
+def test_settings_shows_a_trusted_link_on_both_servers(
+    tmp_path: Path, fake_claude: str, fake_opencode: str, page
+):
+    """A trusted link says so on the server that holds it, and the far server
+    lists it under the servers that link it, at desktop and phone width."""
+    pair = Linked(tmp_path, fake_claude, fake_opencode, trusted=True).start()
+    try:
+        open_settings(page, pair.alpha.url)
+        page.wait_for_function(
+            "document.querySelector('#set-servers .link-beta')"
+            "?.textContent.includes('trusted, both ways')",
+            timeout=10000,
+        )
+        assert page.locator("#set-link-trusted").count() == 1
+        open_settings(page, pair.beta.url)
+        page.wait_for_selector("#set-servers .set-incoming.link-alpha", timeout=10000)
+        row = page.inner_text("#set-servers .set-incoming.link-alpha")
+        assert "links here" in row and "trusted · both ways" in row
+        page.set_viewport_size({"width": 390, "height": 844})
+        wide = page.evaluate(
+            "[...document.querySelectorAll('#set-servers *')]"
+            ".filter(e => e.getBoundingClientRect().right > 391).length"
+        )
+        assert wide == 0
+        assert page.errors == []
+    finally:
+        pair.stop()
 
 
 def test_settings_lists_the_link_and_edits_the_far_config(linked, page):

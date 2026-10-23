@@ -1,0 +1,2 @@
+- **Trusted links join two servers you alone use, both ways.** `aegis link add <name> <url> --trusted`, `aegis link trust <name>` or the "Trusted (both ways)" box in Settings asks for it, and the far server grants it only to its admin token while no other token exists there. Its agents then spawn and hand off to this server's sessions over the same socket, so a laptop behind NAT is reached without a connection of its own, and `session_list` there lists this server's sessions. Settings shows the trust on both servers, or why it was refused.
+help: links#trusted-links

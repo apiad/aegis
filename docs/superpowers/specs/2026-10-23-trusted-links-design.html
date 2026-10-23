@@ -100,7 +100,7 @@ svg text{font-family:var(--font-mono)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · trusted links</span>
-  <span class="st"><span class="pill acc">draft, awaiting approval</span><span class="pill">2026-10-23</span><span class="pill">#684</span></span>
+  <span class="st"><span class="pill acc">approved; PR 1 built</span><span class="pill">2026-10-23</span><span class="pill">#684</span></span>
 </div>
 
 <div class="wrap">
@@ -119,7 +119,7 @@ svg text{font-family:var(--font-mono)}
 
 <main>
 <h1>Trusted links: two servers one person owns reach each other both ways</h1>
-<div class="meta"><span>spec</span><span>·</span><span>status: draft, awaiting approval</span><span>·</span><span>issue <a href="https://github.com/apiad/aegis/issues/684">#684</a></span><span>·</span><span>amends <code>2026-10-08-aegis-links-design.md</code></span></div>
+<div class="meta"><span>spec</span><span>·</span><span>status: approved 2026-10-23; PR 1 (trust and the way back) built</span><span>·</span><span>issue <a href="https://github.com/apiad/aegis/issues/684">#684</a></span><span>·</span><span>amends <code>2026-10-08-aegis-links-design.md</code></span></div>
 <p class="lede">A link today goes one way: a laptop that links a host can use the host, and nothing on the host can reach the laptop. That rule protects a laptop from other people's agents on a shared host. When one person is the only user of both servers, it only gets in the way. A trusted link is one socket that carries calls both ways and lifts the limits on what agents may do across it, and the far server grants it only when nobody else could use it.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
@@ -141,7 +141,7 @@ svg text{font-family:var(--font-mono)}
 <thead><tr><th>Question</th><th>Decision</th><th>Why</th></tr></thead>
 <tbody>
 <tr><td>How the far server reaches the near one</td><td>Over the link's own socket. On a trusted link the near server's link client also answers calls the far server sends. <span class="who">maintainer</span></td><td class="why">A laptop behind NAT, a VPN or a sleeping lid has no address the host can dial. A second reverse link would need that address and a second token.</td></tr>
-<tr><td>Who may hold a trusted link</td><td>The near admin asks with <code>--trusted</code>. The far server grants it only when the link presents its admin token and it has no member tokens. <span class="who">maintainer</span></td><td class="why">The original rule exists so that other people's agents on a shared host cannot reach a laptop. With no other user on the far server, there is nobody it protects against.</td></tr>
+<tr><td>Who may hold a trusted link</td><td>The near admin asks with <code>--trusted</code>. The far server grants it only when the link presents its admin token and no other token exists there. <span class="who">maintainer</span></td><td class="why">The original rule exists so that other people's agents on a shared host cannot reach a laptop. With no other user on the far server, there is nobody it protects against.</td></tr>
 <tr><td>What trust lifts</td><td>Every agent limit across the link, both ways: spawn, handoff, read, list with titles, enqueue, close, wait on sessions, and far error text. <span class="who">maintainer</span></td><td class="why">A trusted link joins two servers of one person. Half-lifting it leaves the agent unable to check the work it handed over.</td></tr>
 <tr><td>Who acts on the near server for a reverse call</td><td>The near server's admin, as <code>Caller("user", link=&lt;far name&gt;)</code>, the same shape a link socket has on the far server today</td><td class="why">The far server already treats a link socket as a person's socket with <code>link</code> set. Mirroring it means every op keeps one set of rules for "a call from a linked server".</td></tr>
 <tr><td>Relaying</td><td>None. A reverse call cannot reach a third server, as a link call cannot today (<code>not_relayed</code>)</td><td class="why">Trust is between two servers. A chain would extend it to servers the person never linked.</td></tr>
@@ -181,7 +181,7 @@ svg text{font-family:var(--font-mono)}
 <ul>
 <li>the hello asked for trust;</li>
 <li>the token is the far server's admin token (<code>principal.is_admin</code>);</li>
-<li>the far server has no member tokens (<code>app.multi_user is None</code>);</li>
+<li>no token but the admin&#39;s own exists on the far server, a member&#39;s or a second admin&#39;s (<code>TokenStore.has_members</code>);</li>
 <li>no outbound link of the far server already uses the near server's name. That would be two routes to one name; the far server keeps its own link and refuses trust with <code>name_taken</code>.</li>
 </ul>
 <p><code>aegis link add --trusted</code> probes before it writes, as it does today for the name, and fails on a refusal with the far server's reason, for example <code>host has member tokens; a trusted link needs a server only its admin uses</code>. At run time a refused link stays up as a plain link, and <code>aegis link list</code> and Settings show <code>trust refused: …</code>.</p>
@@ -251,8 +251,10 @@ svg text{font-family:var(--font-mono)}
 
 <h2 id="people"><span class="n">07</span>What a person sees</h2>
 <pre>$ aegis link list
-host     https://host.example     linked · trusted, both ways
-team     https://team.example     linked · trust refused: team has member tokens</pre>
+host             https://host.example  trusted
+team             https://team.example  trusted
+2 links</pre>
+<p>The CLI reads <code>links.json</code> and shows what was asked; whether the far server granted it is live state, shown in Settings: <code>linked · 38 ms · trusted, both ways</code> or <code>linked · trust refused: team has tokens besides its admin&#39;s</code>.</p>
 <ul>
 <li><strong>Settings, Servers.</strong> A link row shows <code>trusted · both ways</code> after its state, or <code>trust refused: …</code>. The add form gains a "Trusted (both ways)" checkbox, off by default, with one line under it: "Only for a server you alone use. Its agents will be able to start sessions and read here."</li>
 <li><strong>On the far server.</strong> Settings, Servers lists the near server under "Links here" with <code>trusted · both ways</code>, read-only, and nothing for plain links, which the far server has never listed.</li>

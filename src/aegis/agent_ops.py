@@ -442,6 +442,8 @@ FAR_ERRORS = {
     "not_for_members": "{server} lets this server's link do that only as an admin",
     "not_allowed": "{server} refused the permission asked for",
     "unknown_agent": "{server} has no such agent",
+    "trust_ended": "the trusted link with {server} no longer holds; a person "
+    "can see why under Settings, Servers",
 }
 
 
@@ -810,12 +812,14 @@ def register_agent_ops(app: App) -> None:
         is told meanwhile who waits; urgent reaches it inside the turn instead, at
         its next tool step, and interrupt cuts that turn first. `handle@server`
         reaches a session on a server this one links; nothing there can reach you
-        back."""
+        back, unless the link is trusted."""
         if p.urgent and p.interrupt:
             raise OpError("bad_params", URGENT_AND_INTERRUPT)
         handle, server = split_address(p.target, app.server_name)
         who = app.who(caller)
         if server is not None:
+            if caller.link is not None:
+                raise OpError("not_relayed", "a link is not relayed to another server")
             # The link delivers as its own token on the far server (web.py).
             if not who.is_admin:
                 raise OpError(

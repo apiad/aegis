@@ -10,7 +10,7 @@ A link makes this server a client of another aegis server. The people on this
 server then see and drive that server's sessions in the same browser, and the
 agents here can start sessions there and hand them work. A link goes one way:
 the far server can never reach this one, and nothing on it can reach a session
-here.
+here, unless the link is [trusted](#trusted-links).
 
 ## Add a link
 
@@ -64,6 +64,39 @@ It cannot read a session there, enqueue there, close one there or wait on one
 with `monitor_sessions`; those calls are refused and say so. Text a far server
 wrote, such as titles, messages or error text, never reaches an agent here.
 Only an admin's agents act through a link.
+
+## Trusted links
+
+When one person alone uses both servers, such as a laptop and a host they
+own, a trusted link joins them both ways over the one socket the laptop
+opens. The host then reaches the laptop without a connection of its own, so
+it works behind NAT or a VPN.
+
+```bash
+ssh host cat work/.aegis/state/token | aegis link add host http://host:8742 --trusted
+```
+
+`aegis link trust <name>` asks an existing link for trust, and
+`aegis link trust <name> --off` stops asking. In Settings, Servers, the
+"Trusted (both ways)" box does the same when adding a link. The far server
+grants trust only when:
+
+- the link holds its admin token, the one in `.aegis/state/token`;
+- no other token exists there, a member's or a second admin's;
+- it does not itself link a server of this server's name.
+
+A refused link stays a plain link, and Settings shows why after its state
+(`trust refused: host has tokens besides its admin's`). Minting a token on
+the far server later ends the trust at its next call back.
+
+Over a trusted link, an agent on the far server reaches this one as an agent
+here reaches it: `session_spawn` with `agent@<this server>`, `peer_handoff`
+to `handle@<this server>`, and `session_list` lists this server's sessions.
+A person in the far server's browser can call this server too, with
+`/spawn agent@<this server>`, but its Fleet and tabs do not show this
+server's sessions: live views still go one way. Nothing is relayed: a call
+that came over a link never goes on to a third server. The far server's
+Settings lists this server under Links here.
 
 ## When a link is down
 

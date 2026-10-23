@@ -93,6 +93,7 @@ export class Settings {
   onLinks(links, home) {
     this.links = links;
     this.home = home;
+    this.incoming = undefined; // a way back opened or went: read it again
     if (this.server && !links.some((l) => l.name === this.server)) this.pick(null);
     else if (this.box.isConnected && this.box.offsetParent !== null && !this.dirty) this.editing() ? this.later() : this.draw();
   }
@@ -438,12 +439,24 @@ export class Settings {
   // The servers: this one, each link with its state, and a form to add one.
   servers() {
     const since = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const trust = (l) => (!l.trusted || l.state !== "linked" ? "" : l.granted ? " · trusted, both ways" : l.trust_error ? ` · trust refused: ${l.trust_error}` : "");
     const state = (l) =>
       l.state === "linked"
-        ? `linked${l.rtt_ms != null ? ` · ${l.rtt_ms} ms` : ""}`
+        ? `linked${l.rtt_ms != null ? ` · ${l.rtt_ms} ms` : ""}${trust(l)}`
         : l.state === "offline"
           ? `offline since ${since(l.since)}`
           : `${l.state}${l.error ? `: ${l.error}` : ""}`;
+    // The servers that linked this one with trust (links.py, Backlink).
+    if (this.incoming === undefined) {
+      this.incoming = [];
+      this.conn
+        .call("link.incoming")
+        .then((rows) => {
+          this.incoming = rows;
+          if (rows.length && !this.dirty) this.editing() ? this.later() : this.draw();
+        })
+        .catch(() => {});
+    }
     const rows = [
       h("tr", {}, h("td", {}, h("b", { textContent: this.home })), h("td", { className: "m", textContent: "this server" }), h("td", {}, h("span", { className: "set-pill ok", textContent: "serving" })), h("td")),
       ...this.links.map((l) =>
@@ -456,10 +469,27 @@ export class Settings {
           h("td", {}, button("Remove", null, () => this.unlink(l.name))),
         ),
       ),
+      ...this.incoming.map((l) =>
+        h(
+          "tr",
+          { className: `set-link set-incoming link-${l.name}` },
+          h("td", {}, h("b", { textContent: l.name })),
+          h("td", { className: "m", textContent: "links here" }),
+          h("td", {}, h("span", { className: `set-pill ${l.state === "linked" ? "ok" : "bad"}`, textContent: l.state === "linked" ? "trusted · both ways" : l.state })),
+          h("td"),
+        ),
+      ),
     ];
     const url = h("input", { className: "set-in", id: "set-link-url", placeholder: "https://dev.example", spellcheck: false });
     const token = h("input", { className: "set-in", id: "set-link-token", placeholder: "its token; kept in links.json, never in .aegis.yaml", type: "password" });
-    const add = button("Link", "set-link-add", () => this.link(url.value.trim(), token.value.trim()), "btn primary");
+    const trusted = h("input", { type: "checkbox", id: "set-link-trusted" });
+    const trustBox = h(
+      "label",
+      { className: "set-link-trust", title: "Only for a server you alone use. Its agents will be able to start sessions and read here." },
+      trusted,
+      h("span", { textContent: "Trusted (both ways)" }),
+    );
+    const add = button("Link", "set-link-add", () => this.link(url.value.trim(), token.value.trim(), trusted.checked), "btn primary");
     const picker =
       this.links.length > 0 &&
       h(
@@ -476,9 +506,9 @@ export class Settings {
       "section",
       { className: "set-servers", id: "set-servers" },
       h("h3", { textContent: "Servers" }),
-      h("p", { className: "set-none", textContent: "A linked server's sessions show in the Fleet and the tab bar. Nothing on it can reach this machine." }),
+      h("p", { className: "set-none", textContent: "A linked server's sessions show in the Fleet and the tab bar. Nothing on it can reach this machine, unless the link is trusted: only for a server you alone use." }),
       h("table", { className: "tbl" }, ...rows),
-      h("div", { className: "set-linkrow" }, url, token, add),
+      h("div", { className: "set-linkrow" }, url, token, trustBox, add),
       this.linkError && h("p", { className: "err-text", id: "set-link-error", textContent: this.linkError }),
       picker,
     );
@@ -838,10 +868,10 @@ export class Settings {
     await this.loadTokens();
   }
 
-  async link(url, token) {
+  async link(url, token, trusted) {
     this.linkError = "";
     try {
-      await this.conn.call("link.add", { url, token });
+      await this.conn.call("link.add", { url, token, ...(trusted ? { trusted } : {}) });
     } catch (e) {
       this.linkError = e.message;
     }
