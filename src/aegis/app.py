@@ -106,6 +106,7 @@ from .queues import Queues
 from .journal.ops import register_journal_ops
 from .journal.service import Journal
 from .knowledge.service import Knowledge
+from .knowledge_ops import register_knowledge_ops, remember_turn
 from .repos.service import Repos
 from .layout_ops import register_layout_ops
 from .fs_ops import register_fs_ops
@@ -626,6 +627,7 @@ class App:
         self.push = register_push_ops(self)
         register_journal_ops(self)
         register_help_ops(self)
+        register_knowledge_ops(self)
         register_notice_ops(self)
         register_schedule_ops(self)
         register_workflow_ops(self)
@@ -1452,6 +1454,11 @@ class App:
             )
             rec = self.setup_records.get(self.who(caller).name)
             await s.deliver(*setup.turn(arg, line, rec, iso_now()))
+            return {"status": "delivered"}
+        if name == "remember":
+            # The agent saves the text as a memory the person asked for
+            # (knowledge_ops.py), in their own store.
+            await s.deliver(*remember_turn(arg, iso_now()))
             return {"status": "delivered"}
         if name in ("workflow", "loop"):
             # A person's line launches a saved workflow: the only path, beside

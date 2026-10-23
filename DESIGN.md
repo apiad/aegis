@@ -431,6 +431,20 @@ neither repeats a notice nor forgets its clear; the episodes and the one
 asker per kind and owner live in memory. A 30 s loop turns the episodes so a
 notice at critical toasts while nobody is talking to anyone.
 
+**Knowledge is per principal, on the server, found per message.** Each
+principal's skills and memories are Markdown files under
+`<state>/knowledge/<principal>/`, a git repository in which every change
+through aegis is one commit (`knowledge/`). The state directory is out of
+every member's reach, so ops read and write it for the caller's own principal
+(`App.who`), and a name another principal holds answers like one that does
+not exist. `Session._send` asks `Host.knowledge_hint` for a block before the
+notice blocks; the registry ranks the session owner's items (or the admin's,
+for a session from before owners) against the message with BM25, built in
+memory per principal and rebuilt when the store's version moves, and writes a
+`hinted` usage row per item to `<state>/knowledge-usage.sqlite`. The block
+uses the notice header, so the fold already gives it its own row, and like a
+notice it never goes into the system prompt or onto a `/` command.
+
 **A session's own status is a notice its subsystems push.** Beside the host
 kinds, `Notices.set(log_id, source, items)` takes per-session items from a
 source: the plan (`nudges.py`), monitors (`monitors.py`) and queue tasks out

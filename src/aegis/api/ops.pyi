@@ -36,9 +36,13 @@ class Ops:
     @property
     def journal(self) -> _journal: ...
     @property
+    def knowledge(self) -> _knowledge: ...
+    @property
     def layout(self) -> _layout: ...
     @property
     def link(self) -> _link: ...
+    @property
+    def memory(self) -> _memory: ...
     async def meta(self) -> Any:
         """How aegis works for you, and its tools."""
     @property
@@ -384,6 +388,15 @@ class _journal:
     ) -> Any:
         """Ask what was done on this server: commits, pull requests, finished plan items, turns that changed files, and the decisions, blockers and milestones agents noted. Filter by days, a pattern, a path the entries wrote under, a session, a repo or kinds. Newest first, grouped by day. Each entry names the session's handle when it was made; peer_read reads a session while it is open, under its current handle, which an entry made before a rename names as "(now ...)"."""
 
+class _knowledge:
+    async def stats(
+        self,
+        *,
+        unused_days: int | None = ...,
+        kind: Literal["skill", "memory"] | None = ...,
+    ) -> Any:
+        """How your skills and memories are used: per item, how often it was hinted, read, invoked or run, and when it was last used. unused_days keeps only the items not used in that many days."""
+
 class _layout:
     async def dock(self, *, log_id: str, pane: str, where: str) -> Any:
         """layout.dock"""
@@ -416,6 +429,27 @@ class _link:
         """link.remove"""
     async def trust(self, *, name: str, trusted: bool) -> Any:
         """Ask a link for trust (both ways, agents unrestricted), or stop asking. The link reconnects; the far server decides."""
+
+class _memory:
+    async def delete(self, *, name: str) -> Any:
+        """Delete a memory that is no longer true. The deletion is a commit in the store's history and can be restored."""
+    async def read(self, *, names: builtins.list[str]) -> Any:
+        """Read one or more memories in full, by name: the ones the hint on your message names, or memory_search's hits."""
+    async def save(
+        self,
+        *,
+        name: str,
+        description: str,
+        body: str,
+        type: Literal["user", "feedback", "project", "reference"] = ...,
+        lifetime: Literal["permanent", "temporary"] = ...,
+        expires: str | None = ...,
+        paths: builtins.list[str] = ...,
+        asked: bool = ...,
+    ) -> Any:
+        """Save a memory: one fact that later sessions should know, such as who the person is, how they want you to work, or where something runs. Saving an existing name replaces that memory. Set asked: true when the person asked you to remember it."""
+    async def search(self, *, query: str, limit: int = ...) -> Any:
+        """Search your memories (facts about the person, their projects and how they want you to work) with your own words. Returns the best names with their description, score, status and flags; read one with memory_read. Proposed and expired memories are included and marked."""
 
 class _models:
     async def list(self) -> Any:

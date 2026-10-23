@@ -84,6 +84,11 @@ AEGIS: dict[str, Command] = {
             "proposes, you tick, it applies",
         ),
         Command(
+            "remember",
+            "<text>",
+            "Save a memory every later session can find; the agent writes it",
+        ),
+        Command(
             "workflow",
             "[id] [text]",
             "Run a saved workflow now, its args made from your text; alone, list them",

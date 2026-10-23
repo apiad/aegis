@@ -24,6 +24,11 @@ def test_the_block_names_three_of_each_and_cuts_descriptions():
     b = hint.block([hit("s1", "x" * 300)] * 3, [hit("m1", "fact")])
     assert b.startswith(hint.HEADER) and "x" * 121 not in b and "x" * 120 in b
     assert b.splitlines()[2] == "memories: m1: fact"
+    assert b.splitlines()[3] == (
+        "read with skill_read / memory_read · search with skill_search / memory_search"
+    )
+    only = hint.block([], [hit("m1", "fact")])
+    assert only.splitlines()[-1] == "read with memory_read · search with memory_search"
     assert split_notices("hello\n\n" + b) == ("hello", [b])
 
 

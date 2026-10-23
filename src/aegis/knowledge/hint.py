@@ -4,6 +4,7 @@ It uses the notice header, so ``split_notices`` folds it into its own row
 under the person's message with no change to the fold. Each item is one
 ``name: description`` entry, the description cut at 120 characters; a kind
 with no items leaves its line out, and with none at all there is no block.
+The last line names the tools that read and search the kinds shown.
 """
 
 from __future__ import annotations
@@ -30,5 +31,11 @@ def block(skills: list[Hit], memories: list[Hit]) -> str:
         lines.append(_line("skills", skills))
     if memories:
         lines.append(_line("memories", memories))
-    lines.append(FOOTER)
+    kinds = [k for k, hits in (("skill", skills), ("memory", memories)) if hits]
+    lines.append(
+        "read with "
+        + " / ".join(f"{k}_read" for k in kinds)
+        + " · search with "
+        + " / ".join(f"{k}_search" for k in kinds)
+    )
     return "\n".join(lines)
