@@ -2309,7 +2309,6 @@ async function askRecap(force) {
   if (force && why && shown === id) toast(why, { kind });
 }
 $("entries").addEventListener("click", (ev) => {
-  if (ev.target.closest("[data-recap=force]")) askRecap(true);
   const cancel = ev.target.closest("[data-btw-cancel]");
   if (cancel && shown) {
     callFor(shown, "btw.cancel", { id: cancel.dataset.btwCancel }).catch((e) => toast(e.message, { kind: "error" }));

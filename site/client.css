@@ -1691,15 +1691,8 @@ body{background:#000}
 /* the recap: aegis's own two sentences, last in the transcript */
 .a2 .row.recap .g{color:var(--accent)}
 .a2 .row.recap .g .ic{width:14px;height:14px}
-.a2 .row.recap:not(.folded) .body{border:1px solid var(--accent);border-left-width:3px;border-radius:var(--r);background:var(--accent-soft);padding:10px 14px}
-.a2 .row.recap .hd{display:flex;gap:8px;align-items:center;font-family:var(--font-chrome);font-size:11.5px;color:var(--accent);margin-bottom:6px}
-.a2 .row.recap .hd .ic{width:13px;height:13px}
-.a2 .row.recap .ctx{font-size:14.5px;color:var(--strong);line-height:1.5}
-.a2 .row.recap .ask{font-size:14.5px;color:var(--strong);line-height:1.5;margin-top:6px;font-weight:500}
-.a2 .row.recap .ft{font-family:var(--font-mono);font-size:11px;color:var(--faint);margin-top:8px;display:flex;gap:10px;align-items:center}
-.a2 .row.recap .btn.link{background:none;border:none;padding:0;color:var(--muted);text-decoration:underline;font-size:11px}
-.a2 .row.recap.folded .body{font-size:12.5px;color:var(--muted)}
-.a2 .row.recap.folded .lbl{color:var(--accent);font-family:var(--font-chrome)}
+.a2 .row.recap .body{font-size:12.5px;color:var(--muted)}
+.a2 .row.recap .lbl{color:var(--accent);font-family:var(--font-chrome)}
 /* a side note: the recap's box in the comms colour, so the two never read as one */
 .a2 .row.btw .g{color:var(--comms)}
 .a2 .row.btw .g .ic{width:14px;height:14px}

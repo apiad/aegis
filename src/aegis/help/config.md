@@ -193,6 +193,11 @@ returns to a tab with a long unread stretch. The agent may use Claude Code,
 OpenCode or Codex; the call is one-shot and read-only, with no tools or project
 instructions. Without it, recaps are off. A cheap, fast agent is enough.
 
+A recap is one quiet line in the transcript, the latest like the older ones,
+with the model and its cost in its tooltip. It says what the session needs from
+you only while the session waits on you. The sparkle in the transcript's
+navigation pill asks for a fresh one.
+
 ## Side notes
 
 `btw:` with `agent:` names an agent that answers `/btw` side questions. It reads
