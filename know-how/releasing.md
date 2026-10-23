@@ -179,15 +179,20 @@ Either answer yes means a re-render, in the release or in an issue filed
 before the tag. To render:
 
 ```bash
-uv run python scripts/demo/director.py film --out /tmp/aegis-film \
+uv run python scripts/demo/director.py film --out ~/.cache/aegis-film/out \
     --audio ~/.cache/aegis-film/audio --tts '<a command that speaks {yaml} into {out}>'
-cp /tmp/aegis-film/film.mp4 site/video/aegis.mp4
-cp /tmp/aegis-film/film.vtt site/video/aegis.vtt
+ffmpeg -y -i ~/.cache/aegis-film/out/film.mp4 -c:v libx264 -preset slow -crf 30 \
+    -pix_fmt yuv420p -c:a aac -b:a 96k -movflags +faststart site/video/aegis.mp4
+cp ~/.cache/aegis-film/out/film.vtt site/video/aegis.vtt
 ffmpeg -y -ss 2.2 -i site/video/aegis.mp4 -frames:v 1 -q:v 3 site/video/aegis-poster.jpg
 ```
 
 A line whose clip is not in `--audio` is spoken with `--tts`; without it, the
-film is captioned but silent there. Watch the whole render before
+film is captioned but silent there. The render takes about ten minutes and
+holds ffmpeg for all of them: on a host short of memory an OOM killer picks
+it first, and the run ends in `BrokenPipeError`. Keep `--out` off a tmpfs
+`/tmp`, which spends the same memory. The site encode keeps the film near
+17 MB. Watch the whole render before
 committing it: a beat that waited on a selector the release renamed fails
 the run, but a shot of the wrong element does not.
 
