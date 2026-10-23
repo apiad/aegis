@@ -799,7 +799,11 @@ def run(text: str) -> None:
 
         threading.Thread(target=finish, daemon=True).start()
     elif word == "/stream":
-        stream_text(" ".join(f"chunk{k}" for k in range(1, int(arg or 3) + 1)))
+        n, _, tall = arg.partition(" ")
+        # `/stream N tall`: one paragraph per delta, a reply taller than the view.
+        sep = " \n\n" if tall == "tall" else " "
+        stem = "para" if tall == "tall" else "chunk"
+        stream_text(sep.join(f"{stem}{k}" for k in range(1, int(n or 3) + 1)))
         result()
     elif word == "/argv":
         assistant({"type": "text", "text": "argv: " + json.dumps(sys.argv[1:])})

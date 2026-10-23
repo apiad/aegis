@@ -50,6 +50,11 @@ function swap(old, n) {
   const r = sel.rangeCount && !sel.isCollapsed ? sel.getRangeAt(0) : null;
   const body = old.querySelector(":scope > .body");
   const kept = r && body?.contains(r.startContainer) && body.contains(r.endContainer) ? offsetsIn(body, r) : null;
+  // A new row skips layout at its 40 px placeholder (base.css) until it is
+  // drawn a frame later: a reply streaming in, replaced at every delta,
+  // shrank the list for that frame and the view jumped up and back (#668).
+  // The new row's placeholder is the old row's height.
+  n.style.containIntrinsicSize = `auto ${old.offsetHeight}px`;
   old.replaceWith(n);
   if (at >= 0) n.querySelectorAll(FOCUSABLE)[at]?.focus({ preventScroll: true });
   const again = kept && n.querySelector(":scope > .body") && rangeIn(n.querySelector(":scope > .body"), kept);
@@ -387,6 +392,7 @@ export class Transcript {
   // `live` false for a resume: what arrived while the tab was away is not news.
   apply(ops, { live = true } = {}) {
     let added = false;
+    let freed = 0; // the height of a row removed in this batch, not yet taken over
     const replies = [];
     for (const op of ops) {
       if (op.upsert) {
@@ -410,7 +416,13 @@ export class Transcript {
           }
         }
         else if (!known) {
-          this.list.append(this.mount(e));
+          const n = this.mount(e);
+          // A whole block replaces its live entry under a new id: removed,
+          // then appended. The new row's placeholder is the removed row's
+          // height, so the list does not shrink for a frame (#668).
+          if (freed) n.style.containIntrinsicSize = `auto ${freed}px`;
+          freed = 0;
+          this.list.append(n);
           added = true;
         }
         // A known entry above the mounted rows changes only its data.
@@ -419,6 +431,7 @@ export class Transcript {
         this.entries.delete(op.remove);
         const old = this.nodes.get(op.remove);
         if (old) {
+          freed = old.offsetHeight;
           this.watch.unobserve(old);
           this.drop(old);
           old.remove();
