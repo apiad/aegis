@@ -2,14 +2,18 @@
 // under it, with the tab menu's items as icon buttons, so the bar shows what a
 // tab is and acts on it without a right-click. The pointer may cross from the
 // tab onto the card. A key, a press elsewhere or a change of view closes it.
+// The session panel's Waiting on rows open the same card (#667).
 import { icon } from "./glyphs.js";
 
 export const OPEN_MS = 300;
 export const CLOSE_MS = 220;
 
 // `meta(key)` is the session's meta, `card(m)` its Fleet card, `items(key)` the
-// tab menu ({title, groups}) or null.
-export function attachTabCard(list, { meta, card, items }) {
+// tab menu ({title, groups}) or null. `item` is the selector of a row in `list`
+// that carries its session's key in data-id; `place(box, rect)` puts the card
+// by that row (under it, by default).
+export function attachTabCard(list, { meta, card, items, item = ".tab", place = below }) {
+  const sel = `${item}[data-id]`;
   const box = Object.assign(document.createElement("div"), { className: "tabcard" });
   box.hidden = true;
   // Inside #a2, where the theme's variables and the Fleet card's rules apply (#657).
@@ -62,9 +66,7 @@ export function attachTabCard(list, { meta, card, items }) {
       box.style.top = box.style.left = "";
       return;
     }
-    const r = tab.getBoundingClientRect();
-    box.style.top = `${r.bottom + 6}px`;
-    box.style.left = `${Math.max(8, Math.min(r.left, innerWidth - box.offsetWidth - 8))}px`;
+    place(box, tab.getBoundingClientRect());
   };
   const show = (t) => {
     clearTimeout(closeT);
@@ -75,23 +77,27 @@ export function attachTabCard(list, { meta, card, items }) {
       draw();
     }, OPEN_MS);
   };
+  // A sheet is not a hover: a touch release fires pointerleave, and the sheet
+  // stayed only while the browser still counted the row as hovered (#667).
+  // A press elsewhere, a key or a change of view closes it.
   const leave = () => {
     clearTimeout(openT);
     clearTimeout(closeT);
+    if (asSheet) return;
     closeT = setTimeout(() => {
       if (!box.matches(":hover") && !tab?.matches(":hover")) hide();
     }, CLOSE_MS);
   };
 
   list.addEventListener("pointerdown", (ev) => {
-    const t = ev.target.closest(".tab[data-id]");
+    const t = ev.target.closest(sel);
     if (t && ev.pointerType === "mouse") {
       pressed = t.dataset.id;
       hide();
     }
   });
   list.addEventListener("pointerover", (ev) => {
-    const t = ev.target.closest(".tab[data-id]");
+    const t = ev.target.closest(sel);
     if (t && t.dataset.id === pressed) return;
     if (t && ev.pointerType === "mouse" && t.dataset.id !== key) show(t);
     else if (t) clearTimeout(closeT);
@@ -101,7 +107,7 @@ export function attachTabCard(list, { meta, card, items }) {
     leave();
   });
   list.addEventListener("focusin", (ev) => {
-    const t = ev.target.closest(".tab[data-id]");
+    const t = ev.target.closest(sel);
     if (t) show(t);
   });
   list.addEventListener("focusout", leave);
@@ -118,7 +124,7 @@ export function attachTabCard(list, { meta, card, items }) {
   // The tab redrawn under an open card, or its session gone: redraw or close.
   new MutationObserver(() => {
     if (box.hidden || !key) return;
-    tab = list.querySelector(`.tab[data-id="${CSS.escape(key)}"]`);
+    tab = list.querySelector(`${item}[data-id="${CSS.escape(key)}"]`);
     draw();
   }).observe(list, { childList: true, subtree: true });
   // A phone has no hover: a long press opens the same card as a sheet.
@@ -131,4 +137,9 @@ export function attachTabCard(list, { meta, card, items }) {
     return true;
   };
   return { hide, sheet };
+}
+
+function below(box, r) {
+  box.style.top = `${r.bottom + 6}px`;
+  box.style.left = `${Math.max(8, Math.min(r.left, innerWidth - box.offsetWidth - 8))}px`;
 }

@@ -61,7 +61,9 @@ naming the first two workers and counting the rest (`+2`); a task still
 waiting for a slot has no worker yet and counts as `1 pending queue task`.
 The session panel has a Waiting on section with a row per task: the worker's
 handle, the queue and the task's status. A click on a row opens the worker,
-whose tab a quiet worker otherwise lacks. A session started with
+whose tab a quiet worker otherwise lacks. Hovering a row, or a long press on a
+phone, shows the same card a hover on that session's tab shows: its Fleet card
+with the tab menu's actions. A session started with
 `session_spawn` that is still working or waiting shows there the same way.
 `session_list` gives an agent the same names in each card's waiting line.
 
