@@ -2,6 +2,8 @@
 title: Writing help pages
 kind: howto
 when: adding or updating a help page after changing a tool, a command, the CLI or the config
+hints:
+  - Every help page lists hints like this one in its front matter. #the-format
 ---
 
 The help pages are Markdown files shipped inside aegis, one per topic, in
@@ -13,13 +15,15 @@ person or an agent will notice is not done until its page says how to use it.
 ## The format
 
 A page's file name is its id: `monitors.md` is the page monitors. It opens
-with three keys:
+with four keys:
 
 ```yaml
 ---
 title: Monitors
 kind: howto
 when: waiting on a build, a test run, CI or other sessions without polling
+hints:
+  - Agents wait on builds and CI with a monitor that wakes them. #wait-on-a-process
 ---
 ```
 
@@ -32,6 +36,11 @@ when: waiting on a build, a test run, CI or other sessions without polling
   twice and the title's three times, apart from the section's own text, so
   these two lines decide which page answers: phrase them the way someone
   would ask.
+- `hints:` one to three items, each one sentence of at most 90 characters
+  inviting the person to try something on the page. The new tab shows them
+  one at a time, and a click opens the page, or the section a trailing
+  `#slug` names. A page with no hints, more than three, a longer one or a
+  `#slug` that is not one of its sections does not load.
 
 Open with a paragraph that says what the page covers, then one `## ` heading
 per section. A section is addressed `page#slug`, the heading in lowercase

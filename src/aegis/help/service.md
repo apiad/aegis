@@ -2,6 +2,8 @@
 title: Running aegis under systemd
 kind: howto
 when: running aegis as a systemd service that survives reboots, sizing its memory caps, or checking an installed unit
+hints:
+  - Run aegis as a systemd service so it survives reboots. #write-the-unit
 ---
 
 On a host that must survive reboots, run `aegis serve` under systemd.
@@ -67,7 +69,7 @@ above that differs from what `aegis service install` would write on this
 host, with the value it found and the one recommended:
 
 ```text
-warn  service.aegis.service.KillMode control-group, recommended mixed
+warn  service.aegis.service.KillMode KillMode is control-group; aegis service install sets mixed
 ```
 
 A setting the unit leaves out shows as `unset`. Sizes compare by value, so

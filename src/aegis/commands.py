@@ -107,6 +107,8 @@ AEGIS: dict[str, Command] = {
             "tutorial", "[page]", "Start a guided tour of a help page", "tutorials"
         ),
         Command("whats-new", "", "Tour what changed since your last tour"),
+        # An admin's, listed only while the doctor finds a problem (app.py).
+        Command("doctor", "", "Fix what aegis doctor finds wrong here, with an agent"),
     )
 }
 
@@ -243,6 +245,11 @@ class Catalogs:
         key = self._key(harness, cwd)
         self._by_key[key] = ranked(catalog)
         self._failed.discard(key)
+
+    def cached(self, harness: str, cwd: Path) -> Catalog | None:
+        """The catalog a session there already gave, without a probe: the new
+        tab's menu (#632) asks before any session exists."""
+        return self._by_key.get(self._key(harness, cwd))
 
     async def get(self, s: Session) -> Catalog | None:
         key = self._key(s.spec.harness, s.spec.cwd)

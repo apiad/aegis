@@ -2,6 +2,10 @@
 title: Configuration
 kind: concept
 when: adding or changing agents, the default agent, queues, recaps, side notes, the per-session memory cap, notices about disk, memory, CPU and quota, an agent's status and stalled monitors, when aegis nudges a silent agent, parking idle sessions, untested harness versions, the disks the Host rows list or the network readings in .aegis.yaml, or picking a theme
+hints:
+  - Add an agent with its own harness, model and effort in .aegis.yaml. #add-an-agent
+  - A cascade starts on a cheap model and moves up when the task needs it. #cascades
+  - Idle sessions park to free memory and wake when a message arrives. #parking-idle-sessions
 ---
 
 aegis reads one file, `.aegis.yaml`, at the root it serves: `--root` when
@@ -188,6 +192,11 @@ tasks run.
 returns to a tab with a long unread stretch. The agent may use Claude Code,
 OpenCode or Codex; the call is one-shot and read-only, with no tools or project
 instructions. Without it, recaps are off. A cheap, fast agent is enough.
+
+A recap is one quiet line in the transcript, the latest like the older ones,
+with the model and its cost in its tooltip. It says what the session needs from
+you only while the session waits on you. The sparkle in the transcript's
+navigation pill asks for a fresh one.
 
 ## Side notes
 
@@ -496,3 +505,10 @@ agent, that each queue is complete, and that the state directory is
 writable. It prints one line per finding and exits 1
 when any is an error. An agent can run the same checks with `config_doctor`,
 and the Settings page has a Run doctor button.
+
+The server also runs these checks on its own: 10 seconds after it
+starts, whenever `.aegis.yaml` changes, and every 6 hours, since a harness can
+be upgraded outside aegis. While the last run found a warning or an error, an
+admin's new tab shows a row under the chips: "This server's setup has 2 errors
+and 1 warning", with a `/doctor` button that starts a session to fix them with
+an agent, and a chevron that unfolds each finding. Other people never see it.

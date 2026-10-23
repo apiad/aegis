@@ -8498,6 +8498,31 @@ def test_a_new_tabs_slash_line_runs_as_a_command_in_the_new_session(server, page
     assert page.errors == []
 
 
+def test_a_slash_in_the_new_tab_opens_the_command_list(server, page):
+    # #632: the commands were there to run (#570) but not to find.
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    open_new_tab(page)
+    page.type("#sp-text", "/")
+    page.wait_for_selector("#sp-cmd-menu:not([hidden]) .cmd-row >> text=effort")
+    page.type("#sp-text", "eff")
+    assert (
+        page.locator("#sp-cmd-rows .cmd-row.on .nm").inner_text().startswith("/effort")
+    )
+    page.press("#sp-text", "Tab")
+    assert page.input_value("#sp-text").startswith("/effort")
+    page.press("#sp-text", "Escape")
+    page.wait_for_selector("#sp-cmd-menu", state="hidden")
+    assert page.get_attribute("#a2", "data-view") == "spawn"
+    page.fill("#sp-text", "/effort low")
+    page.press("#sp-text", "Enter")
+    page.wait_for_selector("#a2[data-view=session]")
+    page.wait_for_function(
+        "document.querySelector('#chip-effort').textContent === 'low effort'"
+    )
+    assert page.errors == []
+
+
 # -- tokens and owners (#311) -------------------------------------------------------
 def member_page(browser, server, name="ben", policy=None):
     """A second browser, signed in with a member token minted by the CLI, and

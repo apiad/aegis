@@ -2,6 +2,9 @@
 title: Files
 kind: howto
 when: opening, reading or editing any file on the server in the browser with Alt+O or the folder tree, viewing rendered Markdown, HTML, images, PDF, audio and video, creating, renaming, moving or deleting files and folders, undoing a delete, and saving a file that changed on disk, and asking a session about selected lines or elements, or commenting on them
+hints:
+  - Press Alt+O to open any file on the server in the browser. #opening-a-file
+  - Select lines in a file and comment on them for the agent. #pointing-at-lines-and-comments
 ---
 
 Files opens any file under the config root in the browser, so reading a file,

@@ -2,6 +2,8 @@
 title: Running a server for others
 kind: tutorial
 when: a tutorial to practise running a server for other people step by step after getting started
+hints:
+  - Practise running a server for others: a token, a quota line, a revoke.
 ---
 
 This tutorial sets up an aegis server that other people use. You need a shell

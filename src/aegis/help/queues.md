@@ -2,6 +2,9 @@
 title: Queues
 kind: howto
 when: handing a batch of self-contained tasks to worker sessions that run in parallel
+hints:
+  - Hand a batch of tasks to workers and keep working; results come back as messages. #enqueue-a-task
+  - Each queue task runs in a fresh worker session, a few at a time. #what-a-worker-is
 ---
 
 A queue runs tasks in fresh worker sessions, a few at a time. You enqueue a

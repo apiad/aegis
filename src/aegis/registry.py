@@ -461,6 +461,10 @@ class Registry(Host):
         st = self.workflows.of_owner(s.log_id) if self.workflows is not None else None
         return st if st is not None and st.status == "running" else None
 
+    def attention_of(self, s: Session) -> str:
+        """What the session's card says it waits on: working, needs_you, ..."""
+        return self._attention(s)["attention"]
+
     def _attention(self, s: Session) -> dict:
         last = s.standing.get("last_message")
         run = self._running(s)

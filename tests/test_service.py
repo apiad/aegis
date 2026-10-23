@@ -123,9 +123,9 @@ def test_doctor_names_each_setting_a_live_unit_does_differently(host):
     found = check(read=lambda f, user: f.read_text())
     # MemoryHigh in bytes is the 5.5G install would write, so it is not named.
     assert [(f.level, f.where, f.message) for f in found] == [
-        ("warn", "service.aegis-web.service.KillMode", "control-group, recommended mixed"),
-        ("warn", "service.aegis-web.service.OOMScoreAdjust", "unset, recommended -500"),
-        ("warn", "service.aegis-web.service.Delegate", "unset, recommended yes"),
+        ("warn", "service.aegis-web.service.KillMode", "KillMode is control-group; aegis service install sets mixed"),
+        ("warn", "service.aegis-web.service.OOMScoreAdjust", "OOMScoreAdjust is unset; aegis service install sets -500"),
+        ("warn", "service.aegis-web.service.Delegate", "Delegate is unset; aegis service install sets yes"),
     ]  # fmt: skip
 
 
@@ -143,7 +143,7 @@ def test_aegis_doctor_reports_the_unit_and_says_nothing_without_one(host):
     (host / "system" / "aegis-fixture.service").write_text(LIVE)
     r = invoke("doctor", "--root", str(host))
     assert "service.aegis-fixture.service.KillMode" in r.output
-    assert "control-group, recommended mixed" in r.output
+    assert "KillMode is control-group; aegis service install sets mixed" in r.output
 
 
 def test_install_multi_user_adds_the_capability_lines(host):

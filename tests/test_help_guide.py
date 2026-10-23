@@ -4,6 +4,7 @@ behind it, called as the admin and as a member."""
 import pytest
 
 from aegis.app import App
+from aegis.config import Finding
 from aegis.help_ops import tutorial_prompt
 from aegis.helppages import load
 from aegis.helpstate import installed
@@ -39,6 +40,12 @@ async def call(app, op, params=None, caller=USER):
     return await app.registry.call(op, params or {}, caller)
 
 
+async def offers(app, caller=USER) -> dict:
+    """help.state's two offers, without the hints and the doctor row."""
+    s = await call(app, "help.state", caller=caller)
+    return {"tutorial": s["tutorial"], "whats_new": s["whats_new"]}
+
+
 async def replied(app, log_id) -> str:
     """The fake claude's answer to the guide's first prompt, which quotes it."""
     s = app.sessions.sessions[log_id]
@@ -72,12 +79,12 @@ async def test_the_help_ops_are_the_persons_not_agent_tools(app):
 
 
 async def test_a_new_person_is_offered_the_tutorial_and_no_release_notes(app):
-    assert await call(app, "help.state") == {"tutorial": False, "whats_new": None}
+    assert await offers(app) == {"tutorial": False, "whats_new": None}
 
 
 async def test_a_person_who_owned_sessions_before_is_offered_both(app):
     await call(app, "session.spawn", {"agent": "opus"})
-    assert await call(app, "help.state") == {
+    assert await offers(app) == {
         "tutorial": False,
         "whats_new": installed(),
     }
@@ -101,7 +108,7 @@ async def test_the_guide_spawns_from_the_chips_and_the_agent_reads_the_page(app)
     md = await replied(app, r["log_id"])
     assert "`getting-started`" in md and "help_read" in md
     # Decided before the spawn: the guide's own session leaves a new person new.
-    assert await call(app, "help.state") == {"tutorial": True, "whats_new": None}
+    assert await offers(app) == {"tutorial": True, "whats_new": None}
 
 
 async def test_a_spawn_that_fails_leaves_the_tutorial_on_offer(app):
@@ -139,7 +146,7 @@ async def test_a_dismiss_is_recorded_for_that_person_only(app):
     assert await call(app, "help.dismiss", {"what": "tutorial"}) == "noted"
     assert (await call(app, "help.state"))["tutorial"] is True
     await call(app, "session.spawn", {"agent": "opus"}, BEN)
-    assert await call(app, "help.state", caller=BEN) == {
+    assert await offers(app, BEN) == {
         "tutorial": False,
         "whats_new": installed(),
     }
@@ -215,3 +222,83 @@ async def test_a_long_question_with_line_breaks_gets_a_one_line_title(app):
     title = app.sessions.sessions[r["log_id"]].title
     assert "\n" not in title and len(title) <= TITLE_MAX
     assert title.startswith("Help: why does this x")
+
+
+# -- the new tab's hints, doctor row, /feedback and /doctor (#580) ------------
+
+WARN = Finding("warn", "harness.claude-code", "Claude Code 2.4.1 is older than 2.6.0")
+ERR = Finding("error", "agents.ds.harness", "harness 'deepsek' does not exist")
+
+
+def doctor_finds(app, *found):
+    async def run():
+        return [Finding("ok", "file", "fine"), *found]
+
+    app.doctor_watch._run = run
+    app.doctor_watch.findings = [Finding("ok", "file", "fine"), *found]
+
+
+async def test_every_page_s_hints_reach_the_new_tab(app):
+    hints = (await call(app, "help.state"))["hints"]
+    assert len(hints) == sum(len(p.hints) for p in PAGES.values())
+    assert {"text", "ref"} == set(hints[0])
+
+
+async def test_the_doctor_row_is_an_admin_s_and_only_with_a_problem(app):
+    doctor_finds(app)
+    assert (await call(app, "help.state"))["doctor"] is None
+    doctor_finds(app, WARN, ERR)
+    row = (await call(app, "help.state"))["doctor"]
+    assert (row["errors"], row["warns"]) == (1, 1)
+    assert [f["level"] for f in row["findings"]] == ["error", "warn"]
+    assert (await call(app, "help.state", caller=BEN))["doctor"] is None
+
+
+async def test_doctor_is_listed_only_for_an_admin_with_a_problem(app):
+    s = await call(app, "session.spawn", {"agent": "opus"})
+
+    async def names(caller=USER):
+        r = await call(app, "commands.list", {"log_id": s["log_id"]}, caller)
+        return {c["name"] for c in r["commands"]}
+
+    doctor_finds(app)
+    assert "doctor" not in await names()
+    doctor_finds(app, WARN)
+    assert "doctor" in await names()
+
+
+async def test_doctor_refuses_when_a_fresh_run_finds_nothing(app):
+    doctor_finds(app, ERR)
+
+    async def clean():
+        return [Finding("ok", "file", "fine")]
+
+    app.doctor_watch._run = clean
+    with pytest.raises(OpError) as e:
+        await call(app, "help.guide", {"kind": "doctor"})
+    assert e.value.code == "nothing_to_fix"
+
+
+async def test_doctor_is_not_for_a_member(app):
+    doctor_finds(app, ERR)
+    with pytest.raises(OpError) as e:
+        await call(app, "help.guide", {"kind": "doctor"}, caller=BEN)
+    assert e.value.code == "not_for_members"
+
+
+async def test_doctor_starts_a_session_with_the_report(app):
+    doctor_finds(app, WARN, ERR)
+    r = await call(app, "help.guide", {"kind": "doctor"})
+    s = app.sessions.sessions[r["log_id"]]
+    assert s.title == "Doctor: 1 error, 1 warning"
+    assert s.spec.cwd == app.roots.config_root
+    text = await replied(app, r["log_id"])
+    assert "harness 'deepsek' does not exist" in text
+    assert "1 errors, 1 warnings" in text and "fine" not in text
+
+
+async def test_feedback_from_the_new_tab_starts_a_session_that_asks(app):
+    r = await call(app, "help.guide", {"kind": "feedback", "agent": "quick"})
+    assert app.sessions.sessions[r["log_id"]].title == "Feedback"
+    text = await replied(app, r["log_id"])
+    assert "from /feedback on the new tab" in text and "help_read feedback" in text

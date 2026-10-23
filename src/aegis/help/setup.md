@@ -2,6 +2,9 @@
 title: Moving in with /setup
 kind: howto
 when: onboarding someone who used Claude Code, Codex, OpenCode or Cursor before; moving their skills, habits and cron jobs into aegis; running /setup again
+hints:
+  - Coming from Claude Code, Codex or Cursor? /setup moves your skills and jobs in.
+  - Run /setup again any time; it proposes only what is new.
 ---
 
 This page is for the agent that `/setup` starts. The person already has

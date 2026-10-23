@@ -2,6 +2,9 @@
 title: Tokens, owners and quota lines
 kind: concept
 when: letting other people use your server, or capping how much of the subscription their agents spend
+hints:
+  - Give someone a token to use your server, and cap what their agents spend. #members-and-admins
+  - Quota lines limit how much of the subscription each member can use. #quota-lines
 ---
 
 A server holds many tokens. Each token is a principal, with a name and a

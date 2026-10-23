@@ -2,6 +2,8 @@
 title: Sending feedback about aegis
 kind: howto
 when: reporting a bug, asking for a feature or pointing out a docs gap in aegis itself, or after /feedback
+hints:
+  - Found a bug in aegis? Type /feedback in any session and the agent drafts the issue.
 ---
 
 This page is how an agent turns a person's report about aegis into a GitHub

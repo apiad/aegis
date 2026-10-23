@@ -1653,27 +1653,17 @@ const RENDERERS = {
   },
 
   recap(e) {
+    // One quiet line, the latest as the older ones: what the person reads
+    // coming back, not a card that outshouts the transcript. Only the latest
+    // carries its ask; the model and cost are its tooltip.
     const det = e.detail || {};
     const body = el("div", "body");
-    if (det.folded) {
-      body.append(el("span", "lbl", "recap · "), el("span", "ctx", det.context));
-      const r = row(e, "recap folded", body);
-      r.querySelector(".g").replaceChildren(icon("sparkle"));
-      return r;
-    }
-    const hd = el("div", "hd");
-    hd.append(icon("sparkle"), el("span", null, det.ask ? "recap · needs you" : "recap"));
-    body.append(hd, el("div", "ctx", det.context));
-    if (det.ask) body.append(el("div", "ask", det.ask));
-    const ft = el("div", "ft");
-    const secs = det.duration_ms ? `${(det.duration_ms / 1000).toFixed(1)}s` : "";
-    ft.append(el("span", null, [det.model, secs, det.cost_usd ? money(det.cost_usd) : ""].filter(Boolean).join(" · ")));
-    const again = el("button", "btn link refresh", "refresh");
-    again.dataset.recap = "force";
-    ft.append(again);
-    body.append(ft);
-    const r = row(e, "recap", body);
+    body.append(el("span", "lbl", "recap · "), el("span", "ctx", det.context));
+    if (det.ask && !det.folded) body.append(el("span", "ask", ` · ${det.ask}`));
+    const r = row(e, det.folded ? "recap folded" : "recap", body);
     r.querySelector(".g").replaceChildren(icon("sparkle"));
+    const secs = det.duration_ms ? `${(det.duration_ms / 1000).toFixed(1)}s` : "";
+    r.title = [det.model, secs, det.cost_usd ? money(det.cost_usd) : ""].filter(Boolean).join(" · ");
     return r;
   },
 
