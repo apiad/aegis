@@ -1045,6 +1045,17 @@ no disk, so a transcript rebuilt from its log draws the same. Bare URLs carry
 an icon from a fixed set in the sprite and a short label: no favicon is
 fetched, so a link an agent writes sends no request anywhere (#393).
 
+**One icon set, in the theme.** Every icon is a `<symbol>` in the sprite
+`js/glyphs.js` installs once per page, drawn with `currentColor` (and
+`--knock` for a mark knocked out of a badge), so a theme recolours all of
+them and no font decides their shape. Code asks for a symbol by name:
+`icon()`, `iconText()`, a `*_ICON` table, `<use href="#g-name">` in markup,
+or a glyph name Python sends. A family is chosen by a value: `f-<kind>` for a
+file, `h-<harness>`, `e-<effort>`, `p-<permission>` for a session's facts,
+through `factIcon()`, which draws nothing for a value it has no symbol for.
+The help page `icons` lists each symbol with its meaning and where it shows,
+and `tests/test_glyphs.py` holds code, sprite and page to the same set (#644).
+
 **A sent file's URL is its key, and its content runs nowhere near the token.**
 `file_send` copies the file into the state root under 128 random bits, and
 `/files/<id>/<name>` serves it to anyone with the link, because `<img>`, a new tab

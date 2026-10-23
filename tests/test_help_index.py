@@ -198,6 +198,8 @@ FIRST = [
     ("run a workflow every night", "workflow-recipes#a-saved-workflow-every-night"),
     ("poll until a deploy is live", "workflow-recipes#poll-until-something-is-true"),
     ("give the person a password I generated", "secrets#send-a-new-password"),
+    ("what does this icon mean", "icons"),
+    ("which icon shows the effort level", "icons#session-facts"),
     ("let several people use one server as their own linux users", "multi-user"),
     ("add a person to a multi-user server", "multi-user#add-a-person"),
     ("members cannot see each other's sessions", "multi-user"),

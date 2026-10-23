@@ -125,6 +125,12 @@ that match the task. Use `uv`, never pip. Python 3.13 or newer.
 among its rules. CI runs the same rift, pinned to a tag, so a doc rule fails a
 PR like a test does.
 
+Every icon the client draws is a symbol in the sprite in
+`src/aegis/client/js/glyphs.js`, drawn in the theme: no emoji, no icon-like
+Unicode marks, no SVG written into a page. A new icon is a new symbol and a
+new row on its help page, `src/aegis/help/icons.md`; `tests/test_glyphs.py`
+fails a change that misses either.
+
 Release notes are **fragments**, not edits to `CHANGELOG.md`: drop a file in
 `changelog.d/` named `<slug>.<category>.md` and a release collates them
 (`changelog.d/README.md` has the format; `make changelog-check` blocks).
