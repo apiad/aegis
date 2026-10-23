@@ -94,6 +94,12 @@ body{background:#000}
 .tabcard .acts button.danger~button.danger{margin-left:0}
 .tabcard .acts button.danger:hover{color:var(--err)}
 .tabcard .acts button:disabled{opacity:.4;cursor:default}
+/* A sprite icon is a letter tall unless its place sizes it (glyphs.js). */
+:where(svg.ic){width:1em;height:1em;vertical-align:-.125em;flex:none}
+/* The icons help page: each symbol before its name, at a size its strokes read at. */
+.a2 .glyph-sample .ic{width:20px;height:20px;vertical-align:-5px;margin-right:8px;color:var(--strong)}
+/* A harness, effort or permission before its word (glyphs.js factIcon). */
+.a2 :is(#s-harness,#s-effort,#s-perm,#chip-model,#chip-effort,#chip-perm,.card .ln)>svg.ic:first-child{margin-right:5px;color:var(--muted)}
 .tabcard .acts .ic{width:15px;height:15px}
 .tabcard.tabsheet{top:auto;left:0;right:0;bottom:0;width:auto;max-width:none;border-radius:14px 14px 0 0;padding-bottom:env(safe-area-inset-bottom)}
 @media (pointer:coarse){.tabcard .acts button{width:44px;height:44px}}
@@ -574,7 +580,6 @@ body{background:#000}
 /* With the paperclip, three 44 px touch buttons and the textarea's own width
    (from its cols) outgrew a 390 px phone: the textarea takes only what is left. */
 .a2 .composer textarea{width:0}
-.a2 .clip svg path{fill:none}
 .a2 .row.user .body .fcard.att{white-space:normal;font-size:13px}
 .a2 .row.user .body .fcard.after{margin-top:8px}
 /* The bubble makes this card narrower than a file_send's: the actions wrap
