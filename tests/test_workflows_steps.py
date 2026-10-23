@@ -803,6 +803,7 @@ def row_of(world, run_id: str, node: str) -> dict:
     return next(r for r in world.app.workflows.wire(run_id)["tree"] if r["id"] == node)
 
 
+@pytest.mark.slow  # a check polls at most every 5s
 async def test_a_check_reads_its_progress_until_its_probe_passes(world):
     (world.root / "n").write_text("40\n")
     run_id = await run(
