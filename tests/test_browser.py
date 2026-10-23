@@ -1780,22 +1780,22 @@ ACTS = """bs => bs.map(b => {
 })"""
 
 
-def test_the_actions_are_one_row_of_equal_cells_with_icons(server, page):
+def test_the_actions_are_two_rows_of_equal_cells_with_icons(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page)
-    row = page.locator(".side-acts.live-only").bounding_box()
+    box = page.locator(".side-acts.live-only").bounding_box()
     cells = page.eval_on_selector_all(".side-acts.live-only .act", ACTS)
-    assert [c["icon"] for c in cells] == [
-        True
-    ] * 5  # Sleep, Quiet (#386), Continue, Restart, Archive
+    # Sleep, Quiet (#386), Autoclose (#691); Continue, Restart, Archive.
+    assert [c["icon"] for c in cells] == [True] * 6
     widths = [c["width"] for c in cells]
     assert max(widths) - min(widths) < 1, widths
-    # The row is covered edge to edge.
-    assert abs(cells[0]["left"] - row["x"]) < 1
-    assert abs(cells[-1]["right"] - (row["x"] + row["width"])) < 1
+    # Each row of three is covered edge to edge.
+    for row in (cells[:3], cells[3:]):
+        assert abs(row[0]["left"] - box["x"]) < 1
+        assert abs(row[-1]["right"] - (box["x"] + box["width"])) < 1
     assert all(c["label"] != "none" for c in cells)
-    # A narrow panel keeps the row and drops the labels.
+    # A narrow panel keeps the rows and drops the labels.
     drag_panel(page, 205)
     cells = page.eval_on_selector_all(".side-acts.live-only .act", ACTS)
     widths = [c["width"] for c in cells]
