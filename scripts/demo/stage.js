@@ -28,9 +28,23 @@ const boot = () => {
           color: #e0a458; margin-bottom: 18px; }
     .d-title .h { font: 600 56px/1.1 DemoSerif, Georgia, serif; }
     .d-title .s { margin-top: 12px; font-size: 22px; color: #b9b4aa; }
+    .d-logo { position: absolute; inset: 0; display: grid; place-items: center;
+          background: #11100e; opacity: 0; transition: opacity .8s ease; }
+    .d-logo .in { display: grid; justify-items: center; transform: translateY(-70px); }
+    .d-logo img { width: 230px; height: 230px; transform: scale(.82) rotate(-40deg);
+          transition: transform 1.6s cubic-bezier(.2,.8,.2,1); }
+    .d-logo .w { font: 500 76px/1 DemoMono, ui-monospace, monospace; color: #f4f1ea;
+          letter-spacing: .02em; margin-top: 4px; opacity: 0; transform: translateY(10px);
+          transition: opacity .8s ease .5s, transform .8s ease .5s; }
+    .d-logo .s { margin-top: 22px; font-size: 22px; color: #b9b4aa; min-height: 30px;
+          opacity: 0; transition: opacity .8s ease .9s; }
+    .d-logo .s code { font: 500 21px DemoMono, ui-monospace, monospace; color: #e0a458; }
+    .d-logo.on img { transform: none; }
+    .d-logo.on .w { opacity: 1; transform: none; }
+    .d-logo.on .s { opacity: 1; }
     .d-cap { position: absolute; left: 50%; bottom: 118px; transform: translateX(-50%);
           max-width: 1000px; padding: 10px 20px; border-radius: 12px; text-align: center;
-          background: rgba(11,13,16,.82); font-size: 23px; opacity: 0; }
+          background: rgba(11,13,16,.82); font-size: 23px; opacity: 0; z-index: 2; }
     .d-lower { position: absolute; left: 54px; bottom: 100px; padding: 12px 20px;
           border-left: 6px solid #e0a458; background: rgba(11,13,16,.88);
           border-radius: 0 12px 12px 0; opacity: 0; transform: translateX(-30px); }
@@ -174,6 +188,9 @@ const boot = () => {
   const cap = el("d-cap d-fade");
   const lower = el("d-lower d-fade", `<div class="l1"></div><div class="l2"></div>`);
   const title = el("d-title d-fade", `<div class="in"><div class="k"></div><div class="h"></div><div class="s"></div></div>`);
+  // The logo and the wordmark, as the site's header draws them: the mark in
+  // its own colours, the name in the mono face.
+  const logo = el("d-logo", `<div class="in"><img src="/static/icons/aegis-512.png" alt=""><div class="w">aegis</div><div class="s"></div></div>`);
   const cursor = el("d-cursor",
     `<svg viewBox="0 0 24 24" width="26" height="26"><path d="M3 2l7 19 2.6-7.4L20 11z" fill="#f4f1ea" stroke="#14110c" stroke-width="1.5"/></svg>`);
   cursor.style.left = "960px"; cursor.style.top = "800px";
@@ -243,6 +260,13 @@ const boot = () => {
       }
       show(title, !!head);
       title.classList.toggle("on", !!head);
+    },
+    logo(sub) {
+      const on = sub !== null && sub !== undefined;
+      if (on) logo.querySelector(".s").innerHTML = sub;
+      show(logo, on);
+      logo.classList.toggle("on", on);
+      cursor.style.visibility = on ? "hidden" : "";
     },
     callout(sel, label, opts = {}) {
       const id = ++n;

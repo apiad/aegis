@@ -10,7 +10,7 @@ person does: it types, clicks, opens tabs.
 
 On top, ``stage.js`` adds a camera (a 3D transform on the client's root) that
 drifts, tilts and zooms, a spotlight that dims all but one element, a lift
-that brings one forward, and overlays the camera does not move: a title card,
+that brings one forward, and overlays the camera does not move: the logo card, a title card,
 captions, callouts that point at a real element, a lower third, a cursor and a
 ring where it clicks.
 
@@ -22,7 +22,8 @@ the page's animations (CDP ``Animation.setPlaybackRate``), the camera, the
 typing, the fake model and every wait, while the video's clock runs that much
 faster. Only the client's own clocks (a turn's elapsed seconds) are not slowed. Narration clips are cached by the
 hash of their line, mixed at the time the beat cued them, and the same lines
-and times go into a WebVTT file.
+and times go into a WebVTT file. A music bed (``--music``, or the beat's
+``MUSIC``) loops under them, ducked while a line plays.
 
     uv run python scripts/demo/director.py rung2 --out /tmp/demo
     uv run python scripts/demo/director.py rung2 --tts 'gen-audio {yaml} --out {out}'
@@ -76,6 +77,8 @@ W, H, SCALE = 1280, 720, 1.5
 # long after it: a voice that starts on the cut, or a cut on its last word,
 # sounds clipped.
 LEAD, TAIL = 0.8, 1.6
+# Silence between two lines that would otherwise run into each other.
+GAP = 0.25
 SLOW = 3.0
 
 
@@ -281,6 +284,7 @@ class Stage:
         self.audio, self.tts = audio, tts
         self.server, self.slow = server, slow
         self.cues: list[Cue] = []
+        self.free_at = 0.0  # when the last line ends, in video seconds
         self.capture: Capture | None = None
         model.slow = slow
         self.vars: dict = {}  # what one beat leaves for the next
@@ -464,6 +468,11 @@ class Stage:
     def title(self, kicker: str = "", head: str = "", sub: str = "") -> None:
         self.js("demo.title", kicker, head, sub)
 
+    def logo(self, sub: str | None = "") -> None:
+        """The aegis logo and wordmark over a plain field, with ``sub`` (HTML)
+        under them; None fades the card out."""
+        self.js("demo.logo", sub)
+
     def lower(self, l1: str | None = None, l2: str = "") -> None:
         self.js("demo.lower", l1, l2)
 
@@ -484,6 +493,11 @@ class Stage:
         length; with ``wait``, returns after it."""
         clip = self.clip(text)
         length = _duration(clip) if clip.exists() else max(1.5, len(text) / 15)
+        # One voice at a time: a line cued while the last still plays waits
+        # for it, and the beat with it.
+        if (busy := self.free_at - self.now()) > 0:
+            self.wait(busy)
+        self.free_at = self.now() + length + GAP
         self.cues.append(Cue(self.now(), text, clip if clip.exists() else None, length))
         self.js("demo.caption", text, int(length * 1000))
         if wait:
@@ -526,9 +540,15 @@ def _speak_missing(beat, stage: Stage) -> None:
         os.unlink(f.name)
 
 
-def _mux(video: Path, cues: list[Cue], out: Path, length: float) -> None:
+# The music bed's level under the voice, and its fade-out at the end, in seconds.
+MUSIC_GAIN, FADE = 0.32, 3.0
+
+
+def _mux(
+    video: Path, cues: list[Cue], out: Path, length: float, music: Path | None = None
+) -> None:
     clips = [c for c in cues if c.clip]
-    if not clips:
+    if not clips and not music:
         shutil.copy(video, out)
         return
     args = [_ffmpeg, "-loglevel", "error", "-y", "-i", str(video)]
@@ -538,7 +558,21 @@ def _mux(video: Path, cues: list[Cue], out: Path, length: float) -> None:
         f"[{i + 1}:a]adelay={int(c.t * 1000)}:all=1[a{i}];" for i, c in enumerate(clips)
     )
     mix += "".join(f"[a{i}]" for i in range(len(clips)))
-    mix += f"amix=inputs={len(clips)}:normalize=0,apad,atrim=0:{length:.3f}[a]"
+    voice = f"amix=inputs={len(clips)}:normalize=0," if clips else "anullsrc,"
+    mix += f"{voice}apad,atrim=0:{length:.3f}"
+    if music:
+        # Looped to the film's length, faded at both ends, and pressed down
+        # while the narrator speaks, so a line never fights the music.
+        args += ["-stream_loop", "-1", "-i", str(music)]
+        mix += (
+            f",asplit=2[v][key];[{len(clips) + 1}:a]atrim=0:{length:.3f},"
+            f"volume={MUSIC_GAIN},afade=t=in:d=1.5,"
+            f"afade=t=out:st={max(0.0, length - FADE):.3f}:d={FADE}[bed];"
+            "[bed][key]sidechaincompress=threshold=0.02:ratio=6:attack=80:release=900[duck];"
+            "[v][duck]amix=inputs=2:normalize=0"
+        )
+    # Web video plays at about -16 LUFS; the raw mix sits near -28.
+    mix += ",loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000[a]"
     args += ["-filter_complex", mix, "-map", "0:v", "-map", "[a]", "-c:v", "copy",
              "-c:a", "aac", "-b:a", "160k", "-shortest", str(out)]  # fmt: skip
     subprocess.run(args, check=True)
@@ -584,6 +618,11 @@ def main() -> None:
         "--slow", type=float, default=SLOW, help="world time per video second"
     )
     ap.add_argument("--keep", action="store_true", help="keep the temporary files")
+    ap.add_argument(
+        "--music",
+        type=Path,
+        help="a music bed under the narration (default: the beat's MUSIC)",
+    )
     a = ap.parse_args()
     assert a.ffmpeg, "no ffmpeg: pass --ffmpeg or set FFMPEG"
     assert a.claude, "no claude on PATH: pass --claude"
@@ -659,7 +698,11 @@ def main() -> None:
         else:
             print(f"kept {tmp}")
     final = a.out / f"{a.beat}.mp4"
-    _mux(raw, stage.cues, final, length)
+    music = a.music or getattr(beat, "MUSIC", None)
+    if music and not Path(music).exists():
+        print(f"no music at {music}: narration only")
+        music = None
+    _mux(raw, stage.cues, final, length, music)
     raw.unlink()
     _vtt(stage.cues, a.out / f"{a.beat}.vtt")
     print(f"{final}: {length:.1f} s, {stage.capture.frames} frames captured, "
