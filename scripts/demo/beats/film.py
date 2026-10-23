@@ -2,13 +2,19 @@
 
 One server, one browser, one capture. Each beat adds its rules to the fake
 and moves the camera on from where the last one left it, so nothing is cut.
-The lines follow the spec's draft (docs/superpowers/specs/
-2026-10-22-landing-and-video-design.html, section 05).
+The lines grew from the spec's draft (docs/superpowers/specs/
+2026-10-22-landing-and-video-design.html, section 05) into a longer cut that
+says what each rung does, not only that it exists (#669). The film opens and
+closes on the logo card, over the music bed in ../music/. Every release reads
+this script against its changelog (know-how/releasing.md).
 """
+
+from pathlib import Path
 
 from director import Call, Rule, Say, Shell, World
 
 VOICE = "jim"
+MUSIC = Path(__file__).resolve().parents[1] / "music" / "film.mp3"
 ROOT = "/tmp/acme-shop"
 WORLD = World(
     cpu=14, ram=38, disk=34,
@@ -20,36 +26,49 @@ L = {
     "open": [
         "You already pay for an AI coding agent.",
         "aegis makes it better today, and grows with you when the work does.",
+        "It runs on your own machine and opens in your browser. It is free, and open source.",
     ],
     "r1": [
         "Bring the subscriptions you have: Claude Code, Codex, OpenCode, Cursor.",
         "Mix them however you like, in one interface, with every quota and its pace in view.",
+        "So you always know how much of the week is left, and whether you are spending it too fast.",
     ],
     "r2": [
         "Open a tab, and the agent does more than chat.",
-        "It keeps a plan you can see.",
+        "It keeps a plan you can see, so you know where it is and what comes next.",
         "It watches your build, instead of polling it.",
+        "It goes quiet while the build runs, and wakes the moment it ends, without spending a token on the wait.",
         "It sends you designs as pages you can click.",
+        "You make the choice on the page, and your answer goes straight back to the agent.",
         "And you can hand it a file, or simply talk to it.",
     ],
     "r3": [
         "Open more tabs, one per project.",
+        "The Fleet shows every session on one screen: what each one is doing, and which one is waiting on you.",
         "Each one tells you when it needs you, and you answer with a tap.",
     ],
     "r4": [
         "Ask them to work together, and they agree among themselves,",
         "with handoffs, and queues of workers.",
+        "Here one agent sends three reviewers off in parallel, and hands the API change to the session that owns it.",
+        "Each result comes back to it as a message, so nobody has to watch.",
     ],
     "r5": [
         "As the problem grows, so does the team:",
         "workflows you approve with one click, schedules, and reviewers checking implementers.",
+        "A workflow is a plan the server runs for you: one agent builds, another reviews, then the tests run.",
+        "A schedule wakes an agent on a clock, like a backup every night.",
         "A software company, on demand.",
     ],
     "r6": [
         "Link servers together, share a machine with your team,",
         "and keep working from your phone.",
+        "Every view fits a phone, so an agent that needs you can reach you anywhere.",
     ],
-    "close": ["aegis. Start with what you have. Grow as far as the work needs."],
+    "close": [
+        "aegis. Start with what you have. Grow as far as the work needs.",
+        "Install it with one command, and open it in your browser.",
+    ],
 }
 LINES = [line for beat in L.values() for line in beat]
 
@@ -67,12 +86,13 @@ def rung(stage, n: int, kicker: str, head: str) -> None:
 def opening(stage):
     stage.camera(1, rx=18, ry=-26, s=0.7, y=40)
     stage.drift(1)
-    stage.title("", "aegis", "A workplace for the coding agents you already pay for")
-    stage.wait(0.4)
-    stage.camera(3200, rx=5, ry=-8, s=0.92)
+    stage.logo("A workplace for the coding agents you already pay for")
+    stage.wait(2.4)
     stage.say(L["open"][0], wait=True)
-    stage.title()
+    stage.logo(None)
+    stage.camera(3200, rx=5, ry=-8, s=0.92)
     stage.say(L["open"][1], wait=True)
+    stage.say(L["open"][2], wait=True)
 
 
 # -- rung 1: the agents you already pay for ------------------------------------
@@ -97,6 +117,7 @@ def rung1(stage):
     stage.spotlight("#band-quota-col")
     c = stage.callout("#band-quota-col", "every quota, and its pace")
     stage.wait(3.4)
+    stage.say(L["r1"][2], wait=True)
     stage.uncallout(c)
     stage.spotlight()
 
@@ -213,23 +234,24 @@ def rung2(stage):
     stage.uncallout(c)
 
     stage.until("#s-monitors :text('npm run build')", timeout=60)
-    stage.say(L["r2"][2])
+    stage.say(L["r2"][2], wait=True)
     stage.spotlight("#s-monitors")
     stage.focus("#s-monitors", s=2.2, rx=7, ry=-4)
     c = stage.callout("#s-monitors", "a monitor, not a poll")
     stage.world(cpu=71, claude={"session": 26, "weekly_all": 38})
-    stage.wait(3.6)
+    stage.say(L["r2"][3], wait=True)
     stage.uncallout(c)
     stage.spotlight()
     stage.camera(1800, rx=3, ry=5, s=0.96)
 
     stage.until("iframe", timeout=120)
     stage.wait(0.8)
-    stage.say(L["r2"][3])
+    stage.say(L["r2"][4])
     stage.lift("iframe")
     stage.spotlight("iframe")
     stage.focus("iframe", s=1.5, ry=9, rx=2)
     stage.wait(2.6)
+    stage.say(L["r2"][5], wait=True)
     stage.camera(1200, s=1.15, y=-40)
     stage.wait(1.0)
     stage.click_frame("iframe", "#warm")
@@ -240,7 +262,7 @@ def rung2(stage):
     stage.world(cpu=22, claude={"session": 29, "weekly_all": 39})
     stage.wait(1.6)
 
-    stage.say(L["r2"][4])
+    stage.say(L["r2"][6])
     stage.attach("#attach", stage.root / FILE)
     stage.spotlight("#composer")
     c = stage.callout("#mic", "or dictate")
@@ -306,7 +328,8 @@ def rung3(stage):
     stage.wait(1.0)
     stack = "#cards .stack.need"
     stage.until(f"{stack} .alert", timeout=120)
-    stage.say(L["r3"][1])
+    stage.say(L["r3"][1], wait=True)
+    stage.say(L["r3"][2])
     stage.camera(1400, rx=4, ry=-4, s=1.0)
     stage.spotlight(stack)
     stage.lift(stack)
@@ -372,9 +395,9 @@ def rung4(stage):
     stage.until("text=Three reviewers are on it", timeout=120)
     stage.camera(1600, rx=12, ry=10, s=0.84)
     stage.click("#tab-fleet")
-    stage.wait(4.5)
+    stage.say(L["r4"][2], wait=True)
     stage.camera(1600, rx=3, ry=-3, s=0.98)
-    stage.wait(2.0)
+    stage.say(L["r4"][3], wait=True)
 
 
 # -- rung 5: a company ---------------------------------------------------------
@@ -436,11 +459,11 @@ def rung5(stage):
     stage.spotlight()
     stage.camera(1600, rx=3, ry=-6, s=0.96)
     stage.world(cpu=63, claude={"session": 34, "weekly_all": 41})
-    stage.wait(3.0)
+    stage.say(L["r5"][2], wait=True)
     c = stage.callout("#schedules-btn", "every night at 02:00")
-    stage.wait(2.2)
+    stage.say(L["r5"][3], wait=True)
     stage.uncallout(c)
-    stage.say(L["r5"][2])
+    stage.say(L["r5"][4])
     stage.camera(2400, rx=14, ry=-18, s=0.82)
     stage.wait(3.0)
 
@@ -461,7 +484,8 @@ def rung6(stage):
     stage.say(L["r6"][1])
     stage.lower()
     stage.phone(True)
-    stage.wait(4.2)
+    stage.wait(2.0)
+    stage.say(L["r6"][2], wait=True)
 
 
 # -- the close -----------------------------------------------------------------
@@ -495,10 +519,12 @@ def close(stage):
         f'<div class="d-ladder"><div class="in">{rows}</div></div>'
     )
     stage.wait(3.2)
-    stage.say(L["close"][0])
+    stage.say(L["close"][0], wait=True)
     stage.overlay()
-    stage.title("", "aegis", "uv tool install aegis-harness")
-    stage.wait(5.0)
+    stage.logo("<code>uv tool install aegis-harness</code>")
+    stage.wait(1.2)
+    stage.say(L["close"][1], wait=True)
+    stage.wait(3.0)
 
 
 def setup(stage):
