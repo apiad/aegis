@@ -2,6 +2,9 @@
 title: Several people on one server
 kind: howto
 when: setting up several people on one server, each as their own Linux user, so members cannot see each other's sessions or files
+hints:
+  - Share one server with several people, each as their own Linux user: type /multiuser.
+  - Each member sees only their own sessions, queues and files. #what-the-mode-does
 ---
 
 This page takes a server from one person to several, each signed in with
