@@ -86,8 +86,22 @@ def test_a_phone_header_is_one_row_above_fleet_and_the_tabs(server, browser):  #
     for p in ("one", "two", "three"):
         spawn(pg, p)
     box = lambda sel: pg.locator(sel).bounding_box()  # noqa: E731
-    tops = {s: box(f"#{s}")["y"] for s in [*HEADER_ICONS, "bell", "help-btn"]}
-    assert max(tops.values()) - min(tops.values()) < 4, tops
+    # Each button's drawn icon (the ? is a glyph), and the server's name.
+    row = pg.evaluate(
+        """ids => Object.fromEntries(ids.map(id => {
+          const b = document.getElementById(id), r = document.createRange();
+          r.selectNodeContents(b);
+          const q = (b.querySelector('svg, .ic') ?? r).getBoundingClientRect();
+          const o = b.getBoundingClientRect();
+          return [id, [q.y + q.height / 2, o.width, o.height]];
+        }))""",
+        [*HEADER_ICONS, "bell", "help-btn", "conn-text"],
+    )
+    mids = [m for m, _, _ in row.values()]
+    assert max(mids) - min(mids) <= 1, row
+    sizes = {(w, h) for k, (_, w, h) in row.items() if k != "conn-text"}
+    assert len(sizes) == 1, row
+    tops = {k: box(f"#{k}")["y"] for k in [*HEADER_ICONS, "bell", "help-btn"]}
     fleet, tabs = box("#tab-fleet"), box("#tablist")
     assert abs(fleet["y"] - tabs["y"]) < 8 and fleet["x"] < tabs["x"]
     assert fleet["y"] > max(tops.values())

@@ -1690,7 +1690,7 @@ body{background:#000}
   #a2 .tabs .tab-more{order:10}
   #a2 .tabs .tab.add{order:11}
   /* the name takes the row's free width with a zero basis, and shrinks first */
-  #a2 .tabs .servers{flex:1 1 0;justify-content:flex-start;padding:0 6px;min-width:0;overflow:hidden}
+  #a2 .tabs .servers{flex:1 1 0;justify-content:flex-start;padding:0 6px;margin-bottom:4px;min-width:0;overflow:hidden}
   /* the server's name gives way first, so the header's buttons keep their row */
   #a2 #conn-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #a2 .tabs .ver-top{display:none}
@@ -1789,7 +1789,8 @@ body{background:#000}
   #a2 :is(.composer,.spawn) .acts .send,#a2 .composer .acts .int,#a2 .mic{min-width:44px;min-height:44px}
   #a2 pick-chip .opt{min-height:44px;display:flex;align-items:center}
   #a2 .tab{min-height:40px}
-  #a2 .keys-btn.bell{min-width:44px;min-height:40px}
+  /* every header icon one size, so their icons share a line (#631) */
+  #a2 .tabs :is(.keys-btn.bell,.set-btn,.jr-btn,.help-btn){min-width:40px;min-height:40px}
   #a2 .nav button{height:34px;min-width:36px}
   #a2 .nav button::before{content:"";position:absolute;inset:-5px 0}
   #a2 .tr{padding-bottom:66px}
