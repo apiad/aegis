@@ -105,9 +105,10 @@ what a local run cannot.
    rather than believing the error.
 5. **End the PR with screenshots that prove it.** Shoot the changed screens in
    the real client, at desktop and at phone width (390 px), and a terminal
-   capture of the command and its output when nothing on screen changed. Put
-   them in the PR body and send them to the person; a PR without them is not
-   done.
+   capture of the command and its output when nothing on screen changed. Push
+   them to `<issue>/` on the orphan `pr-shots` branch, which never merges, link
+   their raw URLs in the PR body, and send them to the person; a PR without
+   them is not done.
 
 The PR body carries what the reviewer cannot re-derive: what was measured, what
 was tried and rejected, and what was deliberately left out. Wrong guesses you
