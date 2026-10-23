@@ -1,4 +1,4 @@
-.PHONY: check gates hooks test-durations lint lint-docs lint-detail format format-check typecheck changelog changelog-check test test-cov test-all test-slow test-live test-multiuser canary test-browser bench coverage know-how site-css
+.PHONY: check gates hooks ops-stubs test-durations lint lint-docs lint-detail format format-check typecheck changelog changelog-check test test-cov test-all test-slow test-live test-multiuser canary test-browser bench coverage know-how site-css
 
 # Every gate, on the fast lane: the tests marked slow, the browser tests among
 # them, are `test-slow`'s. The tests run before typecheck so a type error cannot
@@ -51,6 +51,12 @@ changelog-check:
 # verb and lives in know-how/releasing.md.
 changelog:
 	@uv run python scripts/changelog.py preview
+
+# The signatures of srv.ops (src/aegis/api/ops.pyi), from the operation
+# registry. tests/test_library.py fails when the committed file is stale.
+ops-stubs:
+	uv run python -m aegis.api.stubs > src/aegis/api/ops.pyi
+	uv run ruff format src/aegis/api/ops.pyi
 
 # Blocking. The legacy tree reported ~235 diagnostics and kept this advisory;
 # this tree has none, and new code keeps it that way.

@@ -1,0 +1,2 @@
+- **aegis runs inside your own Python program.** `async with Server(root) as srv` starts an aegis server in your event loop, with no browser needed. `srv.sessions.spawn()` returns a `Session`, `await session.ask(text)` returns the typed `Turn` it started, and `session.events()` yields typed transcript entries and the end of each turn. Every other operation is a typed method on `srv.ops`, with signatures an editor completes. The package now ships `py.typed`.
+help: library

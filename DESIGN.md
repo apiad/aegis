@@ -19,6 +19,18 @@ running; stopping the server ends their processes, not the sessions. The window
 `aegis` opens is the user's browser started detached, never a child of the server,
 so stopping the server leaves it to reconnect (`window.py`).
 
+**Or inside another program, as a library.** `Server` (`server.py`) builds what
+`aegis serve` builds, after the same checks (`prepare()`, which the CLI calls
+too), and runs uvicorn as a task in the host's event loop, on a socket bound
+first so `base_url` is known, with no signal handlers. It always listens:
+harness children reach aegis's tools at `<base_url>/mcp`. One runs per process
+at a time, because `launch.configure` sets a mode every child process reads.
+`aegis.api` puts typed objects over the registry, never beside it: `Session` is
+a handle by log id whose methods are operations called as the admin person,
+its models are parsed from the wire's dicts with unknown fields ignored, and
+`srv.ops` is every operation as a method, its signatures generated into
+`api/ops.pyi` from the params models.
+
 **A server may link others, as their client.** A link (`links.py`) is one
 websocket this server opens to another, saying `hello` with that server's token,
 exactly as a browser does. The people on this server see and drive the linked
