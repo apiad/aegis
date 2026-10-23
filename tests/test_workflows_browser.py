@@ -868,3 +868,35 @@ def test_approving_tells_the_main_agent_and_its_card_waits(server, page):  # noq
         f"#cards .card[data-id='{main}'] .s >> text=waiting · workflow", timeout=10000
     )
     assert not page.errors
+
+
+PROGRESS_FLOW = """id: progress
+title: Progress
+say: Wait for a flag, measuring how far along it is.
+root:
+  seq:
+    - {check: {sh: "test -f flag", every: 5s}, progress: "echo 40", id: ci, say: Wait for the flag.}
+  say: All of it.
+"""
+
+
+def test_the_card_draws_a_steps_progress_command_and_its_bar(server, page, tmp_path):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(
+        page,
+        "/mcp workflow_arm " + json.dumps({"definition": PROGRESS_FLOW, "args": {}}),
+    )
+    card = ".wfcard[data-status=armed]"
+    page.wait_for_selector(
+        f"{card} .wfrow[data-node=ci] pre.progress >> text=progress $ echo 40"
+    )
+    page.click(f"{card} button >> text=Approve and run")
+    now = ".wfcard[data-status=running] .wfnow .nowline[data-node=ci]"
+    page.wait_for_selector(f"{now} .pct >> text=40%", timeout=15000)
+    assert page.eval_on_selector(f"{now} .bar i", "i => i.style.width") == "40%"
+    page.wait_for_selector(".wfcard .wfrow[data-node=ci] .out >> text=40%")
+    (tmp_path / "flag").write_text("")
+    page.wait_for_selector(".wfcard[data-status=done]", timeout=20000)
+    page.wait_for_selector(".wfcard .wfrow[data-node=ci] .out >> text=100%")
+    assert not page.errors
