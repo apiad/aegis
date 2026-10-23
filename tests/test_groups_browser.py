@@ -165,6 +165,37 @@ def test_a_head_drags_its_group_and_a_member_stays_inside(server, page):  # noqa
     assert page.errors == []
 
 
+def test_alt_shift_brackets_move_the_tab_in_front_as_a_drag_does(server, page):  # noqa: F811
+    a, b, c, d = three_and_one(page, server)
+
+    def press(key: str, at: str, want: list, box: bool = False) -> None:
+        page.click(f"#tablist .tab[data-id='{at}']")
+        page.wait_for_selector(f"#tablist .tab.on[data-id='{at}']")
+        if box:
+            page.focus("#input")
+        page.keyboard.press(f"Alt+Shift+{key}")
+        page.wait_for_function(
+            """want => JSON.stringify([...document.querySelectorAll('#tablist .tblock')]
+                 .map(b => [...b.querySelectorAll('.tab')].map(t => t.dataset.id)))
+               === JSON.stringify(want)""",
+            arg=want,
+        )
+
+    press("BracketLeft", d, [[d], [a, b, c]])  # a lone tab passes a whole group
+    press("BracketLeft", d, [[d], [a, b, c]])  # the first stays
+    press("BracketLeft", c, [[d], [a, c, b]])  # a member, within its group
+    press("BracketLeft", c, [[d], [a, c, b]])  # never past its head
+    press("BracketRight", c, [[d], [a, b, c]])
+    press("BracketRight", c, [[d], [a, b, c]])  # nor out of its group
+    press("BracketRight", a, [[d], [a, b, c]])  # the last block stays
+    press("BracketLeft", a, [[a, b, c], [d]], box=True)  # a head, its group along
+    assert page.input_value("#input") == ""  # the chord typed nothing
+    page.reload()
+    page.wait_for_selector("#tablist .tblock")
+    assert bar(page) == [[a, b, c], [d]]
+    assert page.errors == []
+
+
 def test_alt_j_unfolds_a_group_to_reach_a_hidden_member(server, page):  # noqa: F811
     a, b, c, d = three_and_one(page, server)
     page.click(f"#tablist .tab[data-id='{c}']")

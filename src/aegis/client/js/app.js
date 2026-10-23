@@ -15,7 +15,7 @@ import { Canvas } from "./canvas.js";
 import { copyRow, installCopy, rowText } from "./copy.js";
 import { Find } from "./find.js";
 import * as artifacts from "./artifacts.js";
-import { TabOrder, patchTab, renderTabs } from "./tabs.js";
+import { TabOrder, patchTab, renderTabs, stepMove } from "./tabs.js";
 import { linesOf, mine, ownerOf, setWho } from "./me.js";
 import { ago, byNeed, modelLine, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards, tickPlan, card as fleetCard } from "./fleet.js";
 import { age, countdown, diskRows, elapsed, hostRow, hostSeverity, mbps, netRows, providerFor, quotaSideRow, quotaTile, tile } from "./gauges.js";
@@ -3336,6 +3336,8 @@ installKeys(
     needs: nextNeed,
     tabPrev: () => cycle(-1),
     tabNext: () => cycle(1),
+    tabLeft: () => stepTab(-1),
+    tabRight: () => stepTab(1),
     next: onTranscript(() => transcript.move(1)),
     prev: onTranscript(() => transcript.move(-1)),
     turnNext: onTranscript(() => transcript.moveTurn(1)),
@@ -3422,6 +3424,13 @@ function cycle(d) {
   const all = ["#fleet", ...tabbed().map((m) => hashOf(m.key))];
   const i = all.indexOf(location.hash || "#fleet");
   go(all[i < 0 ? (d > 0 ? 0 : all.length - 1) : (i + d + all.length) % all.length]);
+}
+
+// Alt+Shift+[ and Alt+Shift+]: the tab in front one place over (#661).
+function stepTab(d) {
+  const id = tabFocus(route());
+  const step = id && stepMove($("tablist"), id, d);
+  if (step) tabActions.onMove(...step);
 }
 
 // -- composer ---------------------------------------------------------------

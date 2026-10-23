@@ -6,6 +6,7 @@ import pytest
 
 from aegis import restarts
 from aegis.commands import parse_spawn
+from aegis.ops import OpError
 from aegis.queues import queues_from
 
 from .conftest import until
@@ -49,6 +50,25 @@ async def test_the_person_quiets_and_unquiets_by_log_id(world):
     assert r["quiet"] is True
     r = await world.app.registry.call("session.unquiet", {"log_id": b.log_id})
     assert r["quiet"] is False and not b.quiet
+
+
+async def test_slash_quiet_quiets_the_session_it_is_typed_in(world):
+    b = await world.spawn()
+    await hold(b)
+    send = {"log_id": b.log_id, "text": "/quiet"}
+    r = await world.app.registry.call("session.send", send)
+    assert r["quiet"] is True and b.quiet
+    assert meta_of(world, b.log_id)["quiet"] is True
+
+
+async def test_slash_quiet_is_refused_on_an_idle_session(world):
+    b = await world.spawn()
+    await turn(b, mcp("turn_end", attention="done", line="Done."))
+    with pytest.raises(OpError, match="only a working or waiting session"):
+        await world.app.registry.call(
+            "session.send", {"log_id": b.log_id, "text": "/quiet"}
+        )
+    assert not b.quiet
 
 
 @pytest.mark.slow  # a restart

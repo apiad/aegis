@@ -1372,6 +1372,8 @@ class App:
         if name == "sleep":
             await s.stop()
             return s.wire()
+        if name == "quiet":
+            return reg.set_quiet(s.log_id, True)
         if name == "restart":
             return await self._launch(s, caller, untested, s.restart)
         if name == "spawn":

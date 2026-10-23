@@ -57,6 +57,7 @@ AEGIS: dict[str, Command] = {
             "sleep", "", "End the process and keep the session; a message wakes it"
         ),
         Command("stop", "", "Alias of /sleep"),
+        Command("quiet", "", "Hide this tab until the turn ends, as Alt+Q"),
         Command("restart", "", "A fresh process on the same conversation"),
         Command("btw", "<question>", "Ask a side question; the agent never sees it"),
         Command(
