@@ -1,0 +1,2 @@
+- **The monitors page says how to wait on CI after a re-run or a push.** For a few seconds after either, `gh pr checks` still reports the last attempt, so a monitor armed then woke on the old failure or the old green run. The new section checks the pushed commit, or only the checks started after the re-run, and warns that a re-run is a new job id.
+help: monitors#wait-on-ci-again-after-a-re-run-or-a-push
