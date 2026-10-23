@@ -2022,7 +2022,7 @@ class App:
         @r.op("commands.list", LogParams)
         async def commands_list(p: LogParams, caller):
             """What the composer's menu offers this session."""
-            return listing(await self.catalogs.get(reg.open(p.log_id)))
+            return listing(await self.catalogs.get(reg.open(p.log_id)), caller)
 
         @r.op("commands.preview", PreviewParams)
         async def commands_preview(p: PreviewParams, caller):
@@ -2032,10 +2032,10 @@ class App:
             try:
                 cwd = self._resolve_cwd(p.cwd)
             except OpError:
-                return listing(None)
-            return listing(self.catalogs.cached(p.harness, cwd))
+                return listing(None, caller)
+            return listing(self.catalogs.cached(p.harness, cwd), caller)
 
-        def listing(cat) -> dict:
+        def listing(cat, caller) -> dict:
             try:
                 saved = self.saved.listing(self.workflows._agents())
             except Exception:
