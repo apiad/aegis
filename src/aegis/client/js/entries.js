@@ -7,6 +7,7 @@
 import { who } from "./me.js";
 import markdownit from "../vendor/markdown-it.mjs";
 import { copyButton } from "./copy.js";
+import { speakButton } from "./speak.js";
 import { money } from "./fleet.js";
 import { entryIcon, icon } from "./glyphs.js";
 import { diffView } from "./diff.js";
@@ -234,6 +235,13 @@ export function fileActions(remote) {
 // takes {files, at, remote, glyph} for a set of files, {artifact} for a page
 // or {workflow} for a run's card.
 let opener = () => {};
+// The browser's one Speaker (speak.js), which says whether a reply's chip
+// shows as reading. Unset, as on a page without it, prose rows get no chip.
+let speaker = null;
+export function setSpeaker(s) {
+  speaker = s;
+}
+
 export function setOpener(fn) {
   opener = fn;
 }
@@ -1428,15 +1436,17 @@ const RENDERERS = {
     const body = markdown(e.md, { paths: e.detail?.paths });
     body.classList.add("body");
     const r = row(e, "prose", body);
+    // The gutter: the read mark, then the chip that reads the reply aloud (speak.js).
+    const rm = el("span", "rm");
+    rm.dataset.chrome = "";
     // Only the live view carries the flag; an archived transcript draws no mark.
     if (e.unread !== undefined) {
-      const rm = el("span", "rm");
-      rm.dataset.chrome = "";
       rm.append(icon(e.unread ? "unread" : "read"));
-      r.append(rm);
       r.classList.toggle("unread", e.unread);
       r.dataset.rev = String(e.rev);
     }
+    if (speaker && !e.live) rm.append(speakButton(speaker.chipOn(e.id)));
+    r.append(rm);
     return r;
   },
 
@@ -1780,8 +1790,8 @@ const UPDATERS = {
   prose(e, node, prev) {
     const rm = node.querySelector(":scope > .rm");
     if (!rm || e.unread === undefined || node.dataset.rev !== String(e.rev)) return false;
-    if (prev?.md !== e.md) return false;
-    rm.replaceChildren(icon(e.unread ? "unread" : "read"));
+    if (prev?.md !== e.md || !!prev?.live !== !!e.live) return false;
+    rm.querySelector(":scope > .ic")?.replaceWith(icon(e.unread ? "unread" : "read"));
     node.classList.toggle("unread", e.unread);
     return true;
   },
