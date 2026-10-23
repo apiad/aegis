@@ -205,7 +205,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <table class="tbl">
 <thead><tr><th>Member</th><th>What it is</th></tr></thead>
 <tbody>
-<tr><td>Server(root=None, *, port=0, host="127.0.0.1", name=None, claude="claude", opencode="opencode", codex="codex", cursor="cursor-agent", origins=())</td><td>The options of <code>aegis serve</code>. <code>root</code> defaults to the nearest ancestor holding <code>.aegis.yaml</code>, as in the CLI. <code>port=0</code> takes a free port.</td></tr>
+<tr><td>Server(root, *, port=0, host="127.0.0.1", name=None, claude="claude", opencode="opencode", codex="codex", cursor="cursor-agent", origins=())</td><td>The options of <code>aegis serve</code>. <code>root</code> is the folder holding <code>.aegis.yaml</code>. <code>port=0</code> takes a free port.</td></tr>
 <tr><td>async with</td><td>Runs <code>prepare()</code>, binds the socket, builds the app, starts the listener, and returns once <code>boot()</code> has finished. It raises <code>StartError</code> when a check fails, and <code>RuntimeError</code> when another Server is running in the process.</td></tr>
 <tr><td>srv.sessions</td><td>The sessions on this server (section 05).</td></tr>
 <tr><td>srv.ops</td><td>Every operation as a typed method (section 06).</td></tr>
@@ -333,6 +333,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <li><code>SessionInfo.state</code>, not <code>status</code>: the card calls the field <code>state</code> (<code>Session.wire</code>, session.py), and the library keeps the wire's name.</li>
   <li><code>list()</code> takes no <code>archived</code> flag. The archive is paged across linked servers (<code>archive.list</code>), a different shape from a list of open sessions.</li>
   <li><code>close()</code> takes no <code>archive</code> flag. <code>session.close</code> always keeps the session in the archive.</li>
+  <li><code>root</code> is required. Nothing below the CLI reads the working directory (<code>tests/test_no_cwd.py</code>), so the library does not look for <code>.aegis.yaml</code> upward from it.</li>
   <li>Two operations have no dot, <code>meta</code> and <code>toast</code>. They are methods of <code>srv.ops</code> itself.</li>
 </ul>
 

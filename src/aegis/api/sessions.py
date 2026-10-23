@@ -175,6 +175,18 @@ class Session:
         )
         ssub = app.channels.subscribe("sessions", lambda _m: q.put_nowait(("s", None)))
         seen: dict[str, tuple] = {}
+
+        def fresh(rows: list[dict]) -> list[dict]:
+            out = []
+            for r in rows:
+                if r.get("status") in UNSETTLED:
+                    continue
+                key = (r.get("status"), r.get("md"), r.get("summary"))
+                if seen.get(r["id"]) != key:
+                    seen[r["id"]] = key
+                    out.append(r)
+            return out
+
         busy = self._live().busy
         try:
             while True:
@@ -184,6 +196,10 @@ class Session:
                     if s is None or s.archived:
                         return
                     if busy and not s.busy:
+                        # The card is read live, so the turn's last rows can
+                        # still be queued behind this message: send them first.
+                        for r in fresh(self._rows()):
+                            yield entry(r)
                         yield TurnEnded(turn=self._turn(_since_last_user, None))
                     busy = s.busy
                     continue
@@ -194,16 +210,9 @@ class Session:
                     if snapshot
                     else [op["upsert"] for op in m.get("ops", []) if "upsert" in op]
                 )
-                for r in rows:
-                    if r.get("status") in UNSETTLED:
-                        continue
-                    key = (r.get("status"), r.get("md"), r.get("summary"))
-                    if seen.get(r["id"]) == key:
-                        continue
-                    seen[r["id"]] = key
-                    if snapshot and not history:
-                        continue
-                    yield entry(r)
+                for r in fresh(rows):
+                    if not (snapshot and not history):
+                        yield entry(r)
         finally:
             app.channels.unsubscribe(tsub)
             app.channels.unsubscribe(ssub)

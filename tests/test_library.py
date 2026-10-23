@@ -59,8 +59,11 @@ async def test_ask_returns_only_its_own_turn(srv: Server):
 
 
 async def test_events_follow_a_tool_turn_in_order(srv: Server):
+    # No prompt: the first message is the harness's first turn. Its card can
+    # be read idle while the turn's rows are still queued behind it, and every
+    # row must still come before TurnEnded (failed 24 of 24 under load).
     s = await srv.sessions.spawn()
-    await s.wait(timeout=20)  # the harness's start is busy too
+    await s.wait(timeout=20)
     seen: list = []
 
     async def follow() -> None:

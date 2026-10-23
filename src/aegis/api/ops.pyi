@@ -74,6 +74,8 @@ class Ops:
     @property
     def setup(self) -> _setup: ...
     @property
+    def speech(self) -> _speech: ...
+    @property
     def task(self) -> _task: ...
     @property
     def term(self) -> _term: ...
@@ -681,6 +683,10 @@ class _setup:
         sources_until: str,
     ) -> Any:
         """Save what this /setup run applied and declined, for the person whose session this is, so their next run proposes only what is new. Call it once, at the end of a run (help_read setup record)."""
+
+class _speech:
+    async def prepare(self) -> Any:
+        """Phonon's package and model, on disk and verified, for a browser that opted in to it (speech.py)."""
 
 class _task:
     async def cancel(self, *, task_id: str) -> Any:
