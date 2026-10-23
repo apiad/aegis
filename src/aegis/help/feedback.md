@@ -107,11 +107,19 @@ Under the draft, say in one line what you removed.
 
 ## Show the draft
 
-Show the title and the body exactly as they will be filed, in one fenced
-block, with each field as a `### Label` heading in the order above. Then end
-your turn with `turn_end`, attention needs_you, and the replies "file it" and
-"change something". Any reply other than a yes is an edit: show the new draft
-and wait again.
+Show the draft as a page, rendered the way GitHub will show it (see
+[artifacts](artifacts)): `artifact_create`, then write the title, the label,
+each field as a `### Label` heading in the order above with its Markdown
+rendered, and one line saying what you removed. Under it, put a notes box and
+two buttons, "File it" and "Change something", each calling `aegis.submit`
+with `{action, notes}`. Keep the exact Markdown you will file in a file
+beside the page: that file, not the page, is what goes to GitHub.
+
+`artifact_send` it, then end your turn with `turn_end`, attention needs_you,
+and the replies "file it" and "change something". When `started` comes back
+null, no browser saw the page: also show the title and the body in one fenced
+block. Any answer other than a yes, from the page or the chat, is an edit:
+send the new draft as a new page and wait again.
 
 ## File it
 
