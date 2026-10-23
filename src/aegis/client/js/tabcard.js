@@ -77,9 +77,13 @@ export function attachTabCard(list, { meta, card, items, item = ".tab", place = 
       draw();
     }, OPEN_MS);
   };
+  // A sheet is not a hover: a touch release fires pointerleave, and the sheet
+  // stayed only while the browser still counted the row as hovered (#667).
+  // A press elsewhere, a key or a change of view closes it.
   const leave = () => {
     clearTimeout(openT);
     clearTimeout(closeT);
+    if (asSheet) return;
     closeT = setTimeout(() => {
       if (!box.matches(":hover") && !tab?.matches(":hover")) hide();
     }, CLOSE_MS);
