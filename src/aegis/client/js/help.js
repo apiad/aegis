@@ -20,6 +20,13 @@ const GROUPS = [
 // the pages an agent gets for the same words.
 const LIMIT = 10;
 
+// A symbol drawn large enough to read its strokes, for the icons page.
+function glyphSample(name) {
+  const s = el("span", "glyph-sample");
+  s.append(icon(name));
+  return s;
+}
+
 const escRe = (w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 // `text` with each of `words` in a <mark>, any case, where a word starts:
@@ -306,6 +313,12 @@ export class Help {
       const doc = markdown(text.replace(/^---\n[\s\S]*?\n---\n/, "").replace(/^# .*\n+/, ""));
       doc.classList.add("doc");
       for (const h of doc.querySelectorAll("h2")) h.id = `h-${slug(h.textContent)}`;
+      // A `g-<name>` that names a symbol (help/icons.md) shows the symbol
+      // itself before the name, in the theme.
+      for (const c of doc.querySelectorAll("code")) {
+        const name = /^g-([a-z0-9-]+)$/.exec(c.textContent)?.[1];
+        if (name && document.getElementById(`g-${name}`)) c.before(glyphSample(name));
+      }
       this.title.textContent = meta.title;
       this.when.textContent = `${page} · ${meta.when}`;
       this.back.after(this.start);

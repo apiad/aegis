@@ -25,6 +25,7 @@ import { installState, onInstallState, openInstallDialog } from "./install.js";
 import { onPushState, pushState, unsubscribePush } from "./pushpanel.js";
 import { markNeedsNet, offline } from "./net.js";
 import { ask } from "./dialog.js";
+import { MIN_SPEED } from "./speak.js";
 
 const h = (tag, props = {}, ...kids) => {
   const el = Object.assign(document.createElement(tag), props);
@@ -52,8 +53,9 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const readout = (l) => `start ${l.launch === "pace" ? "on pace" : `below ${l.launch}%`} · stop at ${l.stop}%`;
 
 export class Settings {
-  constructor(conn, box, { themes, setTheme }) {
+  constructor(conn, box, { themes, setTheme, speaker = null }) {
     this.conn = conn;
+    this.speaker = speaker; // app.js's Speaker: the Read aloud row chooses its voice (speak.js)
     this.box = box;
     this.themes = themes;
     this.setTheme = setTheme; // app.js's: the one path that changes the theme
@@ -287,6 +289,8 @@ export class Settings {
       this.themeChip.setAttribute("aria-label", "Theme");
       this.themeChip.options = this.themes;
       this.themeChip.addEventListener("change", () => this.setTheme(this.themeChip.value));
+      this.speakNode = h("div", { id: "set-speak" });
+      this.drawSpeak();
       this.appNode = h("div", { id: "set-app" });
       this.pushNode = h("div", { id: "set-push" });
       onInstallState(() => this.drawApp());
@@ -300,6 +304,7 @@ export class Settings {
         { className: "set-browser", id: "set-browser" },
         h("h3", { textContent: "This browser" }),
         h("div", { className: "set-browser-row" }, h("span", { className: "set-browser-k", textContent: "Theme" }), this.themeChip),
+        this.speakNode,
         this.appNode,
         this.pushNode,
         h("p", { className: "set-none", textContent: "Kept in this browser only: other browsers and devices keep their own." }),
@@ -317,6 +322,60 @@ export class Settings {
   }
 
   // Whether aegis is installed here, and what the service worker keeps.
+  // Read aloud: the browser's own voice, or Phonon after its download and
+  // speed check here (speak.js). `busy` is a line shown while one runs.
+  drawSpeak(busy = null) {
+    if (!this.speaker) return;
+    const s = this.speaker.settings;
+    const chip = h("pick-chip", { id: "set-speak-engine", name: "speech", className: "pick" });
+    chip.setAttribute("aria-label", "Read aloud voice");
+    chip.options = [
+      { value: "builtin", label: "Built-in" },
+      { value: "phonon", label: "Phonon" },
+    ];
+    chip.value = s.engine;
+    chip.addEventListener("change", () => this.chooseSpeech(chip.value));
+    const m = s.measured;
+    let note;
+    if (busy) note = busy;
+    else if (s.engine === "phonon") note = `Phonon for English replies, ${m.speed}× real time on ${m.device === "webgpu" ? "the GPU" : "the CPU"}; other languages use the browser's voice`;
+    else if (m && m.speed < MIN_SPEED) note = `Phonon made speech at ${m.speed}× real time here, under ${MIN_SPEED}×: it would stutter`;
+    else note = "the browser's own voice, in every language it has; Phonon sounds better: a 65 MB download, English only";
+    const kids = [h("span", { className: "set-app-v set-speak-note", textContent: note })];
+    if (!busy && s.engine !== "phonon" && m && m.speed < MIN_SPEED) {
+      const b = button("Use it anyway", null, () => this.chooseSpeech("phonon", true));
+      b.dataset.act = "speak-anyway";
+      kids.push(b);
+    }
+    this.speakNode.replaceChildren(
+      h("div", { className: "set-browser-row" }, h("span", { className: "set-browser-k", textContent: "Read aloud" }), chip),
+      h("div", { className: "set-speak-line" }, ...kids),
+    );
+  }
+
+  async chooseSpeech(engine, anyway = false) {
+    if (this.speechBusy) return this.drawSpeak(this.speechBusy);
+    const files = new Map();
+    const onProgress = (p) => {
+      files.set(p.file, p);
+      const all = [...files.values()];
+      const got = all.reduce((a, f) => a + f.loaded, 0) / 1e6;
+      const total = all.reduce((a, f) => a + (f.total || f.loaded), 0) / 1e6;
+      this.speechBusy = got < total ? `downloading Phonon: ${got.toFixed(1)} of ${total.toFixed(1)} MB` : `checking how fast this device speaks, on the ${p.device === "webgpu" ? "GPU" : "CPU"}…`;
+      this.drawSpeak(this.speechBusy);
+    };
+    if (engine === "phonon" && !anyway) this.drawSpeak((this.speechBusy = "preparing Phonon's files on the server…"));
+    try {
+      await this.speaker.choose(engine, { onProgress, anyway });
+      this.speechBusy = null;
+      this.drawSpeak();
+    } catch (e) {
+      this.speechBusy = null;
+      await this.speaker.choose("builtin");
+      this.drawSpeak(`Phonon did not start: ${e.message || e}`);
+    }
+  }
+
   drawApp() {
     const row = (k, v) => h("div", { className: "set-browser-row" }, h("span", { className: "set-browser-k", textContent: k }), v);
     const { canPrompt, installed } = installState();

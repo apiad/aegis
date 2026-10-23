@@ -151,6 +151,7 @@ SCRIPTS = (
     "argv",
     "bash",
     "md",
+    "split",
     "read",
     "readn",
     "stream",
@@ -673,6 +674,22 @@ def run(text: str) -> None:
         result()
     elif word == "/md":
         assistant({"type": "text", "text": arg.replace("\\n", "\n")})
+        result()
+    elif word == "/split":
+        # Two replies with a tool call between them: one turn's messages.
+        first, _, second = arg.partition(" || ")
+        assistant({"type": "text", "text": first.replace("\\n", "\n")})
+        tid = tool_id()
+        assistant(
+            {
+                "type": "tool_use",
+                "id": tid,
+                "name": "Bash",
+                "input": {"command": "true", "description": "between"},
+            }
+        )
+        tool_output(tid, "tool output nobody reads aloud")
+        assistant({"type": "text", "text": second.replace("\\n", "\n")})
         result()
     elif word == "/read":
         tid = tool_id()

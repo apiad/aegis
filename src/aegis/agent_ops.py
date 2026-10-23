@@ -332,10 +332,29 @@ HANDOFF_HEAD = (
 )
 
 
-def handoff_opening(handle: str, brief: str | None, tail: str) -> str:
-    """A handoff's first message: who it continues, the brief when the agent
-    wrote one, and the last turns as /spawn carries them (#354)."""
+HANDOFF_KIDS = (
+    "{handle} started these sessions, which are still open: {kids}. Once {handle} "
+    "is archived they are yours, as if you had started them. "
+    "Tell each one with peer_handoff that you continue {handle}'s work, so they "
+    "report to you from now on, and coordinate them as {handle} did."
+)
+HANDOFF_LEADS = " {handle} headed their group of tabs; you head it now."
+
+
+def handoff_opening(
+    handle: str,
+    brief: str | None,
+    tail: str,
+    kids: tuple[str, ...] = (),
+    leads: bool = False,
+) -> str:
+    """A handoff's first message: who it continues, the sessions it started
+    that the new one adopts (#641), the brief when the agent wrote one, and
+    the last turns as /spawn carries them (#354)."""
     parts = [HANDOFF_HEAD.format(handle=handle)]
+    if kids:
+        line = HANDOFF_KIDS.format(handle=handle, kids=", ".join(kids))
+        parts.append(line + (HANDOFF_LEADS.format(handle=handle) if leads else ""))
     if brief:
         parts.append("Its brief for you:\n\n" + brief)
     if tail:

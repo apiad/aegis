@@ -7,8 +7,9 @@
 import { who } from "./me.js";
 import markdownit from "../vendor/markdown-it.mjs";
 import { copyButton } from "./copy.js";
+import { speakButton } from "./speak.js";
 import { money } from "./fleet.js";
-import { entryIcon, icon } from "./glyphs.js";
+import { CARET_ICON, entryIcon, icon, iconText } from "./glyphs.js";
 import { diffView } from "./diff.js";
 import { cachedColour, colour, isPlain, langName, paint, splitLines } from "./highlight.js";
 import { hostIcon, repoUrl, shortLabel, sureRepo } from "./refs.js";
@@ -234,6 +235,13 @@ export function fileActions(remote) {
 // takes {files, at, remote, glyph} for a set of files, {artifact} for a page
 // or {workflow} for a run's card.
 let opener = () => {};
+// The browser's one Speaker (speak.js), which says whether a reply's chip
+// shows as reading. Unset, as on a page without it, prose rows get no chip.
+let speaker = null;
+export function setSpeaker(s) {
+  speaker = s;
+}
+
 export function setOpener(fn) {
   opener = fn;
 }
@@ -602,7 +610,7 @@ function since(a, b) {
 }
 
 const WF_WORDS = { armed: "waits for your go", done: "done", failed: "failed", stopped: "stopped", rejected: "rejected", replaced: "replaced" };
-const MARKS = { ok: "✓", bad: "✗", ask: "?", note: "·" };
+const STORY_ICON = { ok: "read", bad: "close", ask: "comment", note: "pip" };
 
 // What a run waits on, in one line under its lede: the person first.
 function openLine(w) {
@@ -761,7 +769,7 @@ function storyLines(w, fs) {
   const out = [];
   w.story.forEach((s, i) => {
     const f = hider(s);
-    if (!f) out.push(storyLine(s.t, s.mark, MARKS[s.mark] || "?", s.text));
+    if (!f) out.push(storyLine(s.t, s.mark, icon(STORY_ICON[s.mark] || "comment"), s.text));
     else if (last.get(f) === i) {
       const line = storyLine(s.t, "ok", "…", `${count.get(f)} lines folded · ${f.row.say}`);
       line.classList.add("folded");
@@ -775,7 +783,9 @@ function storyLines(w, fs) {
 function storyLine(t, mark, mk, text) {
   const line = el("div", "line");
   line.dataset.mark = mark;
-  line.append(el("span", "tm", hhmm(t)), el("span", "mk", mk), el("span", null, text));
+  const m = el("span", "mk");
+  m.append(mk);
+  line.append(el("span", "tm", hhmm(t)), m, el("span", null, text));
   return line;
 }
 
@@ -873,14 +883,19 @@ export function fillWorkflow(card) {
     if (r.branch) tags.append(el("span", "branch", r.branch));
     if (r.log_id) tags.append(stepLink(r));
     for (const a of r.after || []) tags.append(el("span", `after${a.met ? " met" : ""}`, `after ${a.name}`));
-    if (r.deadline) tags.append(el("span", "deadline", `⏱ ${fmtSecs(r.deadline)}`));
+    if (r.deadline) {
+      const d = el("span", "deadline");
+      d.append(...iconText("clock", fmtSecs(r.deadline)));
+      tags.append(d);
+    }
     if (r.retries) tags.append(el("span", "retries", `retries ${r.retries}`));
     if (r.attempts) tags.append(el("span", "attempt", `attempt ${r.attempts + 1} of ${(r.retries || 0) + 1}`));
     if (r.held) tags.append(el("span", "held", "waits for the change"));
     const key = `${w.run}/${r.id}`;
     const prompt = r.prompt || r.probe?.judge?.prompt;
     if (prompt) {
-      const tog = el("button", "tog", openPrompts.has(key) ? "▾ prompt" : "▸ prompt");
+      const tog = el("button", "tog");
+      tog.append(...iconText(CARET_ICON[openPrompts.has(key) ? "open" : "shut"], "prompt"));
       tog.type = "button";
       tog.onclick = () => {
         openPrompts.has(key) ? openPrompts.delete(key) : openPrompts.add(key);
@@ -1400,7 +1415,7 @@ const RENDERERS = {
     if (e.md) body.append(markdown(e.md, { breaks: true }));
     if (e.detail?.files?.length) {
       // What the person attached: one card that pages, as a file_send's.
-      const card = fileCard(e.detail.files, "▤");
+      const card = fileCard(e.detail.files, "file");
       card.classList.add("att");
       if (e.md) card.classList.add("after");
       body.append(card);
@@ -1412,7 +1427,11 @@ const RENDERERS = {
       body.append(d);
     }
     // Sent from the mic: the agent read a note asking it to allow for misheard words (#579).
-    if (e.detail?.dictated) body.append(el("div", "dictated", "🎙 dictated"));
+    if (e.detail?.dictated) {
+      const d = el("div", "dictated");
+      d.append(...iconText("mic", "dictated"));
+      body.append(d);
+    }
     body.append(copyButton("message"));
     return row(e, `user ${e.status}`, body);
   },
@@ -1428,15 +1447,17 @@ const RENDERERS = {
     const body = markdown(e.md, { paths: e.detail?.paths });
     body.classList.add("body");
     const r = row(e, "prose", body);
+    // The gutter: the read mark, then the chip that reads the reply aloud (speak.js).
+    const rm = el("span", "rm");
+    rm.dataset.chrome = "";
     // Only the live view carries the flag; an archived transcript draws no mark.
     if (e.unread !== undefined) {
-      const rm = el("span", "rm");
-      rm.dataset.chrome = "";
       rm.append(icon(e.unread ? "unread" : "read"));
-      r.append(rm);
       r.classList.toggle("unread", e.unread);
       r.dataset.rev = String(e.rev);
     }
+    if (speaker && !e.live) rm.append(speakButton(speaker.chipOn(e.id)));
+    r.append(rm);
     return r;
   },
 
@@ -1780,8 +1801,8 @@ const UPDATERS = {
   prose(e, node, prev) {
     const rm = node.querySelector(":scope > .rm");
     if (!rm || e.unread === undefined || node.dataset.rev !== String(e.rev)) return false;
-    if (prev?.md !== e.md) return false;
-    rm.replaceChildren(icon(e.unread ? "unread" : "read"));
+    if (prev?.md !== e.md || !!prev?.live !== !!e.live) return false;
+    rm.querySelector(":scope > .ic")?.replaceWith(icon(e.unread ? "unread" : "read"));
     node.classList.toggle("unread", e.unread);
     return true;
   },

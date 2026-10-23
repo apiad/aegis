@@ -62,6 +62,12 @@ body{background:#000}
 .tabcard .acts button.danger~button.danger{margin-left:0}
 .tabcard .acts button.danger:hover{color:var(--err)}
 .tabcard .acts button:disabled{opacity:.4;cursor:default}
+/* A sprite icon is a letter tall unless its place sizes it (glyphs.js). */
+:where(svg.ic){width:1em;height:1em;vertical-align:-.125em;flex:none}
+/* The icons help page: each symbol before its name, at a size its strokes read at. */
+#a2 .glyph-sample .ic{width:20px;height:20px;vertical-align:-5px;margin-right:8px;color:var(--strong)}
+/* A harness, effort or permission before its word (glyphs.js factIcon). */
+#a2 :is(#s-harness,#s-effort,#s-perm,#chip-model,#chip-effort,#chip-perm,.card .ln)>svg.ic:first-child{margin-right:5px;color:var(--muted)}
 .tabcard .acts .ic{width:15px;height:15px}
 .tabcard.tabsheet{top:auto;left:0;right:0;bottom:0;width:auto;max-width:none;border-radius:14px 14px 0 0;padding-bottom:env(safe-area-inset-bottom)}
 @media (pointer:coarse){.tabcard .acts button{width:44px;height:44px}}
@@ -304,6 +310,18 @@ body{background:#000}
 #a2 .row.prose .rm .ic{width:12px;height:12px}
 #a2 .row.prose .rm .ic.i-unread{color:var(--accent)}
 #a2 .row.prose .rm .ic.i-read{color:var(--faint)}
+/* the read-aloud chip under the read mark (speak.js): shown on hover like a
+   copy button, always on a touch screen, which has no hover */
+#a2 .row.prose .rm .speak{position:relative;display:grid;place-items:center;width:16px;height:18px;margin:2px auto 0;padding:0;border:none;background:none;color:var(--faint);cursor:pointer;opacity:0;transition:opacity .12s}
+#a2 .row.prose .rm .speak .ic{width:13px;height:13px}
+#a2 .row.prose:hover .rm .speak,#a2 .row.prose .rm .speak:focus-visible,#a2 .row.prose .rm .speak.on{opacity:1}
+#a2 .row.prose .rm .speak:hover{color:var(--strong)}
+#a2 .row.prose .rm .speak.on{color:var(--accent)}
+#a2 .row.prose .rm .speak.load{animation:speak-load .8s ease-in-out infinite alternate}
+@keyframes speak-load{from{opacity:.3}to{opacity:1}}
+#a2 .row.prose.speaking>.g{color:var(--accent)}
+#a2 .mic.speak-follow.on{color:var(--accent);background:var(--accent-soft)}
+@media (pointer:coarse){#a2 .row.prose .rm .speak{opacity:.7}#a2 .row.prose .rm .speak::before{content:"";position:absolute;inset:-10px -8px}}
 #a2 .card .ft .unr{color:var(--accent)}
 /* Tables query the transcript's scroller, not their row: a size container
    inside the scroller stops Chromium's scroll anchoring, so rows drawn above
@@ -530,7 +548,6 @@ body{background:#000}
 /* With the paperclip, three 44 px touch buttons and the textarea's own width
    (from its cols) outgrew a 390 px phone: the textarea takes only what is left. */
 #a2 .composer textarea{width:0}
-#a2 .clip svg path{fill:none}
 #a2 .row.user .body .fcard.att{white-space:normal;font-size:13px}
 #a2 .row.user .body .fcard.after{margin-top:8px}
 /* The bubble makes this card narrower than a file_send's: the actions wrap
@@ -1887,6 +1904,8 @@ body{background:#000}
 #a2 .set-browser h3,#a2 .set-servers h3{margin:0 0 4px;font-family:var(--font-head);font-weight:500;font-size:15px;color:var(--strong)}
 #a2 .set-browser-row{display:flex;align-items:center;gap:12px;margin:10px 0 8px}
 #a2 .set-browser-k{font-family:var(--font-chrome);font-size:12px;color:var(--muted);min-width:64px}
+#a2 .set-speak-line{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 8px}
+#a2 .set-speak-note{color:var(--muted);overflow-wrap:anywhere}
 #a2 .set-push-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;align-items:center;padding:8px 0;border-top:1px solid var(--rule)}
 #a2 .set-push-row .btn{grid-row:span 2}
 #a2 .set-push-dev{font-size:12.5px;color:var(--ink);overflow-wrap:anywhere}

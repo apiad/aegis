@@ -188,7 +188,8 @@ def test_the_more_button_shows_only_when_the_strip_overflows(server, browser):  
     for _ in range(5):
         spawn(pg)
     pg.wait_for_selector("#tab-more:visible")
-    assert pg.inner_text("#tab-more") == "6 ▾"
+    assert pg.inner_text("#tab-more").strip() == "6"
+    assert pg.locator('#tab-more use[href="#g-caret-d"]').count() == 1
     pg.close()
 
 

@@ -2,7 +2,7 @@
 
 Operations: ``agents.list``, ``session.spawn``, ``session.send`` (which
 resolves a ``/`` line first, ``commands.py``), ``session.read``,
-``recap.request``, ``btw.cancel``, ``dictation.prepare``, ``session.configure``,
+``recap.request``, ``btw.cancel``, ``dictation.prepare``, ``speech.prepare``, ``session.configure``,
 ``commands.list``, ``session.interrupt``, ``session.stop``, ``session.reopen``,
 ``session.rename``, ``archive.list``, ``server.version``, ``file.open``, ``file.peek``,
 ``attachment.begin``, ``attachment.put``, ``attachment.drop``,
@@ -58,7 +58,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 from pydantic.json_schema import SkipJsonSchema
 
-from . import archive, attachments as att, commands, dictation, files, restarts
+from . import archive, attachments as att, commands, dictation, files, restarts, speech
 from . import feedback, harness_versions, multiuser, setup
 from . import workflow_store
 from .agent_ops import (
@@ -434,6 +434,7 @@ class App:
         self.codex_bin = codex_bin
         self.cursor_bin = cursor_bin
         self.dictation = dictation.Store(dictation_dir or dictation.default_dir())
+        self.speech = speech.SpeechStore(speech.default_dir())
         self.channels = Channels(self._resolve)
         # Every session's card changes go out together, a few times a second at
         # most, however many sessions are working (#158).
@@ -1880,11 +1881,28 @@ class App:
                     "busy", f"{old.handle} is working; hand it off when its turn ends"
                 )
             report = old.standing.get("report") or {}
+            # The new session takes the old one's place in its group (#641):
+            # it joins it, heads it when the old one did, and adopts the old
+            # one's children once the old one is archived (_retire_predecessor).
+            leads = old.spec.group is None or old.spec.leads
+            kids = tuple(
+                k.handle
+                for k in reg.sessions.values()
+                if k.spec.spawned_by == old.log_id
+            )
             prompt = handoff_opening(
-                old.handle, report.get("handoff"), spawn_tail(old.entries())
+                old.handle,
+                report.get("handoff"),
+                spawn_tail(old.entries()),
+                kids=kids,
+                leads=leads and bool(kids),
             )
             spec = dataclasses.replace(
-                old.spec, continues=old.log_id, spawned_by=None, spawned_from=None
+                old.spec,
+                continues=old.log_id,
+                spawned_from=None,
+                group=old.group_key(),
+                leads=leads,
             )
             spec, g = self.start_spec(spec)
             if not g.may_start:
@@ -2012,6 +2030,16 @@ class App:
                     [*(a.name for a in snap.agents), *snap.queues],
                 ),
             }
+
+        @r.op("speech.prepare", NoParams)
+        async def speech_prepare(p: NoParams, caller):
+            """Phonon's package and model, on disk and verified, for a browser
+            that opted in to it (speech.py)."""
+            try:
+                await self.speech.ensure()
+            except dictation.Unavailable as e:
+                raise OpError("speech_unavailable", str(e)) from e
+            return {"base": f"/speech/{self.speech.id}/"}
 
         @r.op("session.configure", ConfigureParams, owned="log_id")
         async def configure(p: ConfigureParams, caller):

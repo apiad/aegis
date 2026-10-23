@@ -6,7 +6,7 @@ const OWNER = "[A-Za-z0-9-]{1,39}";
 const NAME = "[A-Za-z0-9._-]{1,100}";
 const REPO_N = new RegExp(`^(${OWNER})/(${NAME})#(\\d+)$`);
 const GITHUB = new RegExp(`^github\\.com/${OWNER}/${NAME}(?:/\\S*)?$`);
-const HOSTS = { "github.com": "github", "pypi.org": "pypi", "arxiv.org": "arxiv", "npmjs.com": "npm" };
+const HOST_ICON = { "github.com": "github", "pypi.org": "pypi", "arxiv.org": "arxiv", "npmjs.com": "npm" };
 
 // A repo whatever the disk holds: an issue ref or a github.com path.
 export function sureRepo(text) {
@@ -23,7 +23,7 @@ export function repoUrl(text) {
 const host = (u) => u.hostname.replace(/^www\./, "");
 
 export function hostIcon(u) {
-  return HOSTS[host(u)] || "globe";
+  return HOST_ICON[host(u)] || "globe";
 }
 
 // A bare URL's label: owner/repo#n for a GitHub issue or pull request, a

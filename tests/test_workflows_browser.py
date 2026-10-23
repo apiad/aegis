@@ -61,7 +61,9 @@ def test_the_card_shows_every_command_before_approval(server, page):  # noqa: F8
     page.wait_for_selector(
         f"{card} .wfrow[data-node=ok] pre.cmd >> text=$ test -n {{{{hi.out}}}}"
     )
-    page.wait_for_selector(f"{card} .wfrow[data-node=ok] .tags >> text=⏱ 2h")
+    page.wait_for_selector(
+        f"{card} .wfrow[data-node=ok] .tags .deadline:has(use[href='#g-clock']) >> text=2h"
+    )
     page.wait_for_selector(
         f"{card} .apbar .runs >> text=Runs 1 shell command and 1 probe"
     )

@@ -83,6 +83,13 @@ turn, unless you have written to it since; the new one can still `peer_read`
 it. A cache-expired notice carries the same button, with the last turns alone
 when no brief was written.
 
+The new session takes the old one's place in its group of tabs: it joins the
+group, and heads it when the old one did. Its first message names the sessions
+the old one started that are still open, and asks it to tell each one with
+`peer_handoff` that it continues the work. Once the old session is archived,
+those sessions count as started by the new one: its card lists them, and it
+waits on them as their parent.
+
 ## Peers on a linked server
 
 A session on a server this one links is addressed `handle@server`. An agent

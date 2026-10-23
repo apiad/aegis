@@ -6,11 +6,13 @@
 // pane of a session's canvas (canvas.js) at once, each view subscribed.
 
 import { toast } from "./toast.js";
+import { icon, iconText } from "./glyphs.js";
 
 const refused = (e) => toast(e.message, { kind: "error" });
 // CDP's modifier bits.
 const mods = (ev) => (ev.altKey ? 1 : 0) | (ev.ctrlKey ? 2 : 0) | (ev.metaKey ? 4 : 0) | (ev.shiftKey ? 8 : 0);
 const BUTTON = ["left", "middle", "right"];
+const NAV_ICON = { back: "left", forward: "right", reload: "again" };
 const views = new Set(); // every mounted view, for card updates
 
 // The card of a browser by id, and the person's sessions to give one to; app.js sets both.
@@ -41,7 +43,8 @@ export function mountBrowser(host, id, card, { conn, server = null }) {
   const bar = el("header", "br-bar");
   const name = el("span", "br-name");
   const nav = ["back", "forward", "reload"].map((a) => {
-    const b = button("br-nav", { back: "‹", forward: "›", reload: "↻" }[a], a[0].toUpperCase() + a.slice(1));
+    const b = button("br-nav", "", a[0].toUpperCase() + a.slice(1));
+    b.append(icon(NAV_ICON[a]));
     b.dataset.action = a;
     b.addEventListener("click", () => call(v, "browser.nav", { action: a }));
     return b;
@@ -179,7 +182,7 @@ function draw(v, card) {
   if (handed) requestAnimationFrame(() => fit(v));
   const running = card.state === "running";
   const person = card.holder === "person";
-  v.name.textContent = `◫ ${card.name}`;
+  v.name.replaceChildren(...iconText("globe", card.name));
   if (document.activeElement !== v.url) v.url.value = card.url || "";
   v.url.readOnly = !(running && person);
   v.holder.textContent = !running ? card.state : person ? "you" : "agent";

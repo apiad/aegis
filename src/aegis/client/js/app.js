@@ -8,7 +8,7 @@
 
 import { Connection } from "./protocol.js";
 import { Transcript } from "./transcript.js";
-import { artifactStage, btwFolds, fadeTables, fileUrl, refreshApprovals, refreshWorkflows, setApprovals, setDocker, setFileBase, setOpener, setSecrets, setWorkflows, syncDock, tickWorkflows, workflowLocked, workflowTitle } from "./entries.js";
+import { artifactStage, btwFolds, fadeTables, fileUrl, refreshApprovals, refreshWorkflows, setApprovals, setDocker, setFileBase, setOpener, setSecrets, setSpeaker, setWorkflows, syncDock, tickWorkflows, workflowLocked, workflowTitle } from "./entries.js";
 import { setScroller } from "./highlight.js";
 import { Viewer, peekRoots } from "./viewer.js";
 import { Canvas } from "./canvas.js";
@@ -22,7 +22,7 @@ import { age, countdown, diskRows, elapsed, hostRow, hostSeverity, mbps, netRows
 import { closeCard, initSide, restState, toggleCollapsed } from "./side.js";
 import { installKeys, renderKeys } from "./keys.js";
 import { Palette } from "./palette.js";
-import { entryIcon, glyph, gorgoneion, icon, installGlyphs, LABEL } from "./glyphs.js";
+import { entryIcon, factIcon, glyph, gorgoneion, icon, iconText, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
 import * as cmenu from "./menu.js";
 import { attachTabCard } from "./tabcard.js";
@@ -42,6 +42,7 @@ import { Dictation } from "./dictation.js";
 import { Attachments } from "./attach.js";
 import { dur, planTimes } from "./plantime.js";
 import { setToastOpener, toast } from "./toast.js";
+import { Speaker } from "./speak.js";
 import { closeTerm, drawCard, openTerm } from "./termview.js";
 import { browserSources, closeBrowser, drawBrowser, mountBrowser, openBrowser } from "./browserview.js";
 import { applyUpdate, checkForUpdate, setAutoApply, startWorker } from "./appworker.js";
@@ -129,6 +130,7 @@ const transcript = new Transcript($("tr"), $("entries"), $("jump"), {
     }
   },
   onSelect: drawNav,
+  onReply: (id) => speaker.arrived(id),
   // In tab mode with another tab open the transcript is laid out but hidden.
   seen: () => canvas.transcriptShown(),
   loadDetail: (ids) => {
@@ -344,6 +346,38 @@ function foldLevel(level) {
 }
 foldLevel(Number(localStorage.getItem("aegis.foldLevel")) % 3 || 0);
 $("nav-fold").addEventListener("click", () => foldLevel((transcript.foldLevel + 1) % 3));
+// Reading replies aloud (speak.js): one speaker for this browser. The
+// composer's toggle, beside the mic, follows a session, reading each new reply as it arrives;
+// which sessions are followed is this tab's, kept across a reload.
+const speaker = new Speaker({
+  prepare: () => conn.call("speech.prepare"),
+  row: (id) => transcript.nodes.get(id) || null,
+  onError: (message) => toast(`Read aloud: ${message}`, { kind: "error" }),
+});
+setSpeaker(speaker);
+const followed = new Set(JSON.parse(sessionStorage.getItem("aegis.speakFollow") || "[]"));
+$("speak-follow").append(icon("speak"));
+function drawSpeak() {
+  const on = !!shown && followed.has(shown);
+  $("speak-follow").classList.toggle("on", on);
+  $("speak-follow").setAttribute("aria-pressed", String(on));
+  $("speak-follow").title = on ? "Stop reading new replies aloud" : "Read new replies aloud";
+  speaker.setFollowing(on);
+}
+$("speak-follow").addEventListener("click", () => {
+  if (!shown) return;
+  if (followed.has(shown)) followed.delete(shown);
+  else followed.add(shown);
+  sessionStorage.setItem("aegis.speakFollow", JSON.stringify([...followed]));
+  drawSpeak();
+});
+$("entries").addEventListener("click", (ev) => {
+  const b = ev.target.closest("button.speak");
+  const row = b?.closest(".row.prose");
+  if (!row) return;
+  ev.preventDefault();
+  speaker.toggle(row);
+});
 // How the Fleet orders its cards: this browser's choice, like the tab order.
 let fleetOrder = localStorage.getItem("aegis.fleetOrder") || "attention";
 // Unfolded groups in the Fleet (#586), this browser's own and apart from the
@@ -592,7 +626,7 @@ document.addEventListener("visibilitychange", () => {
   conn.retryNow();
   if (conn.open) checkPush(); // otherwise the connect does
 });
-const settings = new Settings(conn, $("settings"), { themes: THEMES, setTheme });
+const settings = new Settings(conn, $("settings"), { themes: THEMES, setTheme, speaker });
 let landEntry = null; // {key, id}: reveal this entry once its transcript lands
 const journal = new Journal(conn, $("journal"), {
   onOpen: (r) => {
@@ -1660,7 +1694,9 @@ function follow(id) {
   drawNavNow(); // at once: the old session's navigator goes with its rows
   find.close(false); // it searched the old session
   if (dictation.target?.el === input) dictation.stop("tab"); // a recording belongs to its session
+  speaker.stop(); // what is being read belongs to the session on screen
   shown = id;
+  drawSpeak();
   if (sessions.has(id)) sessionStorage.setItem("aegis.lastShown", (lastShown = id));
   tellView();
   const turn = ++follows;
@@ -1954,8 +1990,8 @@ function repoLine(g) {
     line.append(dot);
   }
   const [r] = g.lines;
-  const where = g.lines.length > 1 ? `${g.lines.length} checkouts` : r.worktree ? `⑂ ${rpBase(r.top)}` : r.branch || "detached";
-  line.append(span("n", g.name), span("rp-br", where));
+  const where = g.lines.length > 1 ? `${g.lines.length} checkouts` : r.worktree ? rpBase(r.top) : r.branch || "detached";
+  line.append(span("n", g.name), span("rp-br", where, g.lines.length === 1 && r.worktree ? RP_ICON.worktree : ""));
   const right = span("rp-r", "");
   const sum = (k) => g.lines.reduce((a, l) => a + l[k], 0);
   if (g.lines.every((l) => l.removed)) right.append(span("rp-gone", "removed"));
@@ -1968,7 +2004,7 @@ function repoLine(g) {
     seen.add(pr.n);
     right.append(prLink(pr));
   }
-  if (g.lines.every((l) => l.clean)) right.prepend(span("rp-clean", "✓"));
+  if (g.lines.every((l) => l.clean)) right.prepend(span("rp-clean", "", RP_ICON.clean));
   line.append(right);
   return line;
 }
@@ -2047,7 +2083,7 @@ function repoSection(g, ghOk) {
   for (const [handle, wheres] of g.peers) {
     const d = document.createElement("div");
     d.className = "rp-peer";
-    d.textContent = `● ${handle} is also here`;
+    d.append(...iconText("dot", `${handle} is also here`));
     sec.append(d, rpList(wheres.map((w) => [w]), wheres.length, wheres.length));
   }
   return sec;
@@ -2095,12 +2131,12 @@ function renderMeta(s) {
   // colour (harness_versions.py, #456).
   const u = s.untested_version;
   const hEl = $("s-harness");
-  hEl.textContent = (s.harness_label || s.harness || "") + (u ? ` ${u.version || "?"}` : "");
+  hEl.replaceChildren(factIcon("h", s.harness), `${s.harness_label || s.harness || ""}${u ? ` ${u.version || "?"}` : ""}`);
   hEl.classList.toggle("warn", !!u);
   hEl.title = u ? `${u.state === "unknown" ? "version unknown" : `${u.state} than tested`} · tested with ${u.range}` : "";
   $("s-model").textContent = s.model_id && s.model_id !== s.model ? `${modelLine(s)} → ${s.model_id}` : modelLine(s);
-  $("s-effort").textContent = s.effort || "";
-  $("s-perm").textContent = s.permission || "";
+  $("s-effort").replaceChildren(factIcon("e", s.effort), s.effort || "");
+  $("s-perm").replaceChildren(factIcon("p", s.permission), s.permission || "");
   $("s-server").textContent = s.server || conn.server || "this server";
   // The handle as peers address it, handle@server, and the badge a Fleet card
   // gives a queue worker.
@@ -2126,10 +2162,10 @@ function renderMeta(s) {
   drawCold(s);
   drawClosing(s);
   $("s-cwd").textContent = s.cwd;
-  $("chip-model").textContent = s.model;
+  $("chip-model").replaceChildren(factIcon("h", s.harness), s.model);
   $("chip-model").title = s.model_id || "";
-  $("chip-effort").textContent = `${s.effort} effort`;
-  $("chip-perm").textContent = s.permission;
+  $("chip-effort").replaceChildren(factIcon("e", s.effort), `${s.effort} effort`);
+  $("chip-perm").replaceChildren(factIcon("p", s.permission), s.permission);
   const p = sideProvider(s);
   if (`${s.server || ""}:${p ? p.name : ""}` !== sideQuotaKey) drawSideQuota(s);
   drawSideUsage(s);
@@ -2237,6 +2273,9 @@ setInterval(() => {
 // -- version: the running aegis and the latest release ------------------------
 // Asked again every hour, so a tab left open learns about a new release; the
 // server caches PyPI's answer for that long anyway.
+
+// A repo line's marks: a linked worktree, and nothing left to commit or push.
+const RP_ICON = { worktree: "branch", clean: "read" };
 
 function span(cls, text, name) {
   const el = document.createElement("span");
@@ -4142,7 +4181,7 @@ const MARK_ICON = { needs_you: "need", working: "work", waiting: "wait", error: 
 function sizeTabMore() {
   const list = $("tablist");
   $("tab-more").hidden = list.scrollWidth <= list.clientWidth + 1;
-  $("tab-more").textContent = `${tabbed().length} ▾`;
+  $("tab-more").replaceChildren(`${tabbed().length} `, icon("caret-d"));
 }
 new ResizeObserver(sizeTabMore).observe($("tablist"));
 new MutationObserver(sizeTabMore).observe($("tablist"), { childList: true });

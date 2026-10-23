@@ -523,7 +523,7 @@ KINDS = {
 
 def glyph_of(pg, selector: str) -> str:
     return pg.eval_on_selector(
-        selector, "r => r.querySelector('svg.ic use').getAttribute('href')"
+        selector, "r => r.querySelector(':scope > svg.ic use').getAttribute('href')"
     )
 
 

@@ -47,7 +47,7 @@
 import { browserCard } from "./browserview.js";
 import { drawArtifact, drawFile } from "./viewer.js";
 import { DOCKED, fileUrl, fillWorkflow, hold, inWindow, popButton, workflowTitle } from "./entries.js";
-import { icon } from "./glyphs.js";
+import { icon, iconText } from "./glyphs.js";
 import * as menu from "./menu.js";
 
 const TRANSCRIPT = "transcript";
@@ -506,7 +506,9 @@ export class Canvas {
       // bar, which keeps its name and the move and undock buttons.
       const host = el("div", "br-host");
       body.append(host);
-      bar.append(el("span", "fname", `◫ ${this.label(id)}`), acts);
+      const fname = el("span", "fname");
+      fname.append(...iconText("globe", this.label(id)));
+      bar.append(fname, acts);
       acts.append(this.moveButton(id), this.undockButton(id));
       node._browser = this.mountBrowser?.(host, id) || null;
       if (!node._browser) host.textContent = "This browser is closed.";

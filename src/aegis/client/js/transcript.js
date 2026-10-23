@@ -29,7 +29,7 @@
 // window above still holds; the walks below skip them.
 
 import { applyKinds, fadeTables, hhmm, render, update } from "./entries.js";
-import { icon } from "./glyphs.js";
+import { CARET_ICON, icon } from "./glyphs.js";
 import { unwatch, watch } from "./highlight.js";
 import * as menu from "./menu.js";
 import { offsetsIn, rangeIn } from "./quote.js";
@@ -62,7 +62,7 @@ const PAGE = 100;
 const NEAR_TOP_PX = 400;
 
 export class Transcript {
-  constructor(scroller, list, jump, { loadDetail, statPaths = null, onRead = () => {}, onSelect = () => {}, seen = () => true } = {}) {
+  constructor(scroller, list, jump, { loadDetail, statPaths = null, onRead = () => {}, onSelect = () => {}, onReply = () => {}, seen = () => true } = {}) {
     this.scroller = scroller;
     this.list = list;
     this.jump = jump;
@@ -76,6 +76,7 @@ export class Transcript {
     this.sinceId = null; // the entry the "new since you left" divider sits above
     this.sinceText = "";
     this.onSelect = onSelect; // after every selection change: each path ends in mark()
+    this.onReply = onReply; // an agent reply that arrived whole, or stopped streaming (speak.js)
     this.loadDetail = loadDetail; // ids -> Promise of whole entries
     this.rev = -1; // the highest revision seen: what a resubscribe asks since
     this.full = new Map(); // id -> the whole entry, fetched when its row opened
@@ -307,7 +308,7 @@ export class Transcript {
 
   // A delta: what changed since the revision this tab held, removals first.
   resume(data) {
-    this.apply([...data.removed.map((id) => ({ remove: id })), ...data.entries.map((e) => ({ upsert: e }))]);
+    this.apply([...data.removed.map((id) => ({ remove: id })), ...data.entries.map((e) => ({ upsert: e }))], { live: false });
     this.rev = Math.max(this.rev, data.rev);
   }
 
@@ -383,8 +384,10 @@ export class Transcript {
     while (this.scroller.scrollTop < NEAR_TOP_PX && this.mountEarlier());
   }
 
-  apply(ops) {
+  // `live` false for a resume: what arrived while the tab was away is not news.
+  apply(ops, { live = true } = {}) {
     let added = false;
+    const replies = [];
     for (const op of ops) {
       if (op.upsert) {
         const e = op.upsert;
@@ -396,6 +399,7 @@ export class Transcript {
           this.sent.delete(e.id);
           this.since.delete(e.id);
         }
+        const done = e.kind === "prose" && !e.live && (!known || prev.live);
         const old = this.nodes.get(e.id);
         if (old) {
           if (update(e, old, prev)) this.nodes.set(e.id, old);
@@ -410,6 +414,7 @@ export class Transcript {
           added = true;
         }
         // A known entry above the mounted rows changes only its data.
+        if (done && live) replies.push(e.id);
       } else if (op.remove !== undefined) {
         this.entries.delete(op.remove);
         const old = this.nodes.get(op.remove);
@@ -438,6 +443,7 @@ export class Transcript {
     this.mark();
     if (this.following) this.toBottom();
     else if (added) this.jump.classList.add("new");
+    for (const id of replies) this.onReply(id);
   }
 
   // An open menu's row, after the rows changed: redrawn, the menu follows
@@ -746,7 +752,7 @@ function drawLine(head, run, next, open) {
   const [t, g, rs] = b.children;
   const text = runText(run, next);
   const time = hhmm(run[0].ts);
-  const caret = open ? "caret-d" : "caret-r";
+  const caret = CARET_ICON[open ? "open" : "shut"];
   if (t.textContent !== time) t.textContent = time;
   if (g.dataset.caret !== caret) {
     g.dataset.caret = caret;

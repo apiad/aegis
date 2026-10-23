@@ -1,7 +1,7 @@
 // The Fleet view: a card per open session, then the archive.
 // Every field comes from the session's meta; nothing here computes activity.
 
-import { glyph, icon, LABEL } from "./glyphs.js";
+import { factIcon, glyph, icon, iconText, LABEL, PANE_ICON } from "./glyphs.js";
 import { idleFor } from "./lifecycle.js";
 import { diskRows, hostRow, netRows, noteRow, providerLine, quotaHeading, quotaRow } from "./gauges.js";
 import { shownOwner } from "./me.js";
@@ -195,7 +195,9 @@ function termCard(m, onOpen, onClose) {
   c.dataset.rank = rank(m);
   const hd = el("div", "hd");
   const browser = m.kind === "browser";
-  hd.append(markNode(m), el("span", "h", `${browser ? "◫" : "▸_"} ${m.name}`));
+  const h = el("span", "h");
+  h.append(...iconText(PANE_ICON[browser ? "browser" : "term"], m.name));
+  hd.append(markNode(m), h);
   const owner = shownOwner(m);
   if (owner) hd.append(el("span", "who", owner));
   const state = browser
@@ -237,7 +239,7 @@ export function card(m, onOpen, onClose) {
   const parts = [hd, el("div", "ttl", m.title || "untitled")];
   if (m.attention_line) parts.push(el("div", `ask at-${m.attention}`, m.attention_line));
   const sub = el("div", "ln");
-  sub.append(el("b", null, `${m.agent}${(m.overridden || []).length ? "*" : ""}`), document.createTextNode(`${modelLine(m)} · ${cwdTail(m.cwd)}`));
+  sub.append(factIcon("h", m.harness), el("b", null, `${m.agent}${(m.overridden || []).length ? "*" : ""}`), document.createTextNode(`${modelLine(m)} · ${cwdTail(m.cwd)}`));
   parts.push(sub);
   if (m.plan_now || m.plan_did) {
     const pl = el("div", "pl");
