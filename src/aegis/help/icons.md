@@ -83,6 +83,7 @@ The buttons of the session panel and the menus of a tab or a card.
 | `g-send` | Send the message | the composer, the spawn form |
 | `g-clip` | Attach files | the composer, the spawn form |
 | `g-mic` | Dictate; a message that was dictated | the composer, the transcript |
+| `g-speak` | Read a reply aloud; read new replies aloud as they come | the composer, the agent's replies |
 | `g-prompt` | Your message; reply or ask | the transcript's gutter, menus, the journal |
 | `g-btw` | An aside the agent answers without stopping | the transcript, menus |
 | `g-up` | Previous: message, match | the navigator, find |
