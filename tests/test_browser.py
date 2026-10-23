@@ -3823,6 +3823,44 @@ def test_the_transcript_follows_when_it_grows_under_its_own_scroll(server, page)
     assert page.errors == []
 
 
+def test_a_reply_streaming_at_the_bottom_never_jumps_the_view_up(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "\n\n".join(f"line {i}" for i in range(60)))
+    # Every frame while the reply streams, how far the view moved up. Each delta replaces the row;
+    # a new row skips layout at its 40 px placeholder until it is drawn, so
+    # the list shrank for a frame and the view jumped up, then back (#668).
+    page.evaluate(
+        """() => {
+          window.worst = 0;
+          const t = document.querySelector('#tr');
+          let last = t.scrollTop;
+          const tick = () => {
+            window.worst = Math.max(window.worst, last - t.scrollTop);
+            last = t.scrollTop;
+            requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        }"""
+    )
+    page.fill("#input", "/stream 30 tall")
+    page.press("#input", "Enter")
+    page.wait_for_function(
+        "[...document.querySelectorAll('.row.prose .body')]"
+        ".some(b => b.textContent.includes('para12'))",
+        timeout=15000,
+    )
+    turns_done(page, 2)
+    assert page.evaluate(
+        "[...document.querySelectorAll('.row.prose')].at(-1).offsetHeight"
+        " > document.querySelector('#tr').clientHeight"
+    ), "the reply grew taller than the view"
+    # A row that ends shorter than its placeholder (the turn's 21 px footer
+    # under a 40 px one) still pulls the view a few pixels: never a screen.
+    assert page.evaluate("window.worst") < 64
+    assert page.errors == []
+
+
 def test_selecting_the_row_under_the_new_divider_keeps_the_divider(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
