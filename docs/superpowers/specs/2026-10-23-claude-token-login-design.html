@@ -117,7 +117,7 @@ svg text{font-family:var(--font-mono)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · Claude sign-in that lasts a year</span>
-  <span class="st"><span class="pill acc">draft</span><span class="pill">2026-10-23</span><span class="pill">#361</span></span>
+  <span class="st"><span class="pill acc">built on branch 361-claude-token</span><span class="pill">2026-10-23</span><span class="pill">#361</span></span>
 </div>
 
 <div class="wrap">
@@ -138,7 +138,7 @@ svg text{font-family:var(--font-mono)}
 
 <main>
 <h1>Claude sign-in that lasts a year, and a card that fixes it when it fails</h1>
-<div class="meta"><span>spec</span><span>·</span><span>status: draft, awaiting the maintainer</span><span>·</span><span>issue <a href="https://github.com/apiad/aegis/issues/361">#361</a></span></div>
+<div class="meta"><span>spec</span><span>·</span><span>status: approved; built on branch 361-claude-token</span><span>·</span><span>issue <a href="https://github.com/apiad/aegis/issues/361">#361</a></span></div>
 <p class="lede">aegis's Claude Code sessions stop signing out when several of them run at once. They use the one-year token that <code>claude setup-token</code> prints, which aegis keeps in a private file. When a session still fails to sign in, its transcript shows a card with the steps and a field for a new token, and the sessions that failed start again on their own.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
@@ -268,8 +268,14 @@ svg text{font-family:var(--font-mono)}
   <li><code>harness.py</code>: the token file in <code>session_env()</code>; doctor findings; the expiry notice.</li>
   <li><code>quota/core.py</code>: <code>observe()</code>, and the endpoint's 401 and 403 not hiding a stream reading.</li>
   <li>The card: the operation, the check, the restart of the sessions on its list, and the client's card.</li>
-  <li>Help: a "Claude sign-in" section in <code>service.md</code>; a <code>changelog.d</code> fragment.</li>
+  <li>Help: the <code>claude-sign-in</code> page; a <code>changelog.d</code> fragment.</li>
 </ol>
+<h3>Where the build departs from this spec</h3>
+<ul>
+  <li>Recaps and side notes, which also run <code>claude -p</code>, get the token too (<code>oneshot.run</code> takes the harness), or they would keep racing over the stored sign-in.</li>
+  <li>The expiry warning is a <code>claude.token</code> doctor finding, shown on the new tab, not a host notice.</li>
+  <li>The help is a page of its own, <code>claude-sign-in</code>, since <code>service.md</code> is about the systemd unit.</li>
+</ul>
 
 <h2 id="testing"><span class="n">11</span>Testing</h2>
 <ul>
