@@ -26,7 +26,7 @@ def _line(label: str, hits: list[Hit]) -> str:
 def block(skills: list[Hit], memories: list[Hit]) -> str:
     if not skills and not memories:
         return ""
-    lines = [HEADER]
+    lines = []
     if skills:
         lines.append(_line("skills", skills))
     if memories:
@@ -38,4 +38,6 @@ def block(skills: list[Hit], memories: list[Hit]) -> str:
         + " · search with "
         + " / ".join(f"{k}_search" for k in kinds)
     )
-    return "\n".join(lines)
+    # A blank line between the lines, so the transcript's Markdown shows each
+    # on its own instead of running them into one paragraph.
+    return HEADER + "\n" + "\n\n".join(lines)

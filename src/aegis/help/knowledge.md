@@ -38,6 +38,7 @@ transcript:
 ```text
 > from aegis:notice · knowledge · may be relevant
 memories: deploy-host: Where the bot runs; check before any ssh · ...
+
 read with memory_read · search with memory_search
 ```
 

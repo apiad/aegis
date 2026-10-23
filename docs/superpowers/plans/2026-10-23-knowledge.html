@@ -534,7 +534,7 @@ async def test_a_member_is_never_hinted_another_principals_memory(world):
 <div class="verify"><span class="lbl">verify</span><p><code>uv run pytest tests/test_knowledge_ops.py -q &amp;&amp; make lint-docs</code></p></div>
 </div></details>
 
-<details class="task" id="task-8" data-state="pending">
+<details class="task" id="task-8" data-state="done">
 <summary><span class="num">8</span><span><span class="ttl">Live check of slice 1</span><span class="files">tests/live/test_knowledge_live.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <ol class="steps">
@@ -759,6 +759,14 @@ async def test_a_member_is_never_hinted_another_principals_memory(world):
 <ul>
   <li>The hint uses the notice header (<code>&gt; from aegis:notice · knowledge · …</code>) instead of a header of its own. Because of that, <code>split_notices</code> in <code>transcript/entries.py:135</code> folds it into its own row with no change to the fold.</li>
   <li>The spec's open question 1 (MCP tools from a skill) is settled inside Task 13 by measuring each harness first.</li>
+  <li><b>Slice 1, Task 1.</b> Frontmatter is parsed and written with <code>ruamel.yaml</code> in safe mode, the YAML library the repo already depends on (<code>pyproject.toml:29</code>); there is no PyYAML. <code>items.dump</code> writes either kind, name and description first; <code>dump_memory</code> is an alias.</li>
+  <li><b>Slice 1, Task 3.</b> <code>Store.save(principal, item, author, extra=None)</code>: <code>extra</code> is a keyword. A bad principal is <code>bad_params</code>, as in <code>setup.py:34</code>. The test helpers <code>mem()</code> and <code>skill()</code> live in <code>tests/knowledge_samples.py</code>.</li>
+  <li><b>Slice 1, Task 4.</b> The bench row is <code>knowledge_miss_at_3_pct</code> (<code>scripts/bench.py</code>, <code>knowledge_retrieval</code>), not a hit rate, because <code>scripts/bench_compare.py:16</code> reads every metric as lower-is-better. The fixture scores hit@3 = 0.800 (48 of 60). A first draft scored 0.983, so 14 queries were reworded away from the items' own words to leave room to measure a better engine.</li>
+  <li><b>Slice 1, Task 5.</b> <code>Usage.rows(principal, name=None)</code> was added beside <code>summary</code> for the tests.</li>
+  <li><b>Slice 1, Task 6.</b> A session's owner and cwd are <code>session.spec.owner</code> and <code>session.spec.cwd</code>. The registry gets <code>knowledge</code> and <code>principal_of</code> from the App (<code>registry.py:137</code>), because it holds no reference to the App. The app has no daily loop to hook, so <code>Knowledge.hint_for</code> prunes the usage log at most once a day (<code>knowledge/service.py</code>). <code>SessionRegistry.close</code> calls <code>Knowledge.forget</code>.</li>
+  <li><b>Slice 1, the hint's text.</b> The last line names only the tools for the kinds shown. <code>skill_read</code> and <code>skill_search</code> do not exist until slice 2, and the hint should not name them. The body lines are separated by blank lines, because the browser showed the transcript's Markdown joining them into one paragraph (<code>knowledge/hint.py</code>).</li>
+  <li><b>Slice 1, Task 7.</b> The fragment is <code>changelog.d/694-knowledge-memories.added.md</code>; <code>feature</code> is not a category (<code>changelog.d/README.md</code>). The MCP tests run on <code>test_agents.World</code>, because <code>test_commands</code>'s <code>app</code> has no MCP endpoint. <code>memory_read</code> returns each memory's whole file as <code>text</code>. A temporary memory without <code>expires</code> is <code>bad_params</code>. Also changed: the pinned menu order in <code>tests/test_commands.py</code>, the <code>/remember</code> row in <code>help/commands.md</code>, and <code>src/aegis/api/ops.pyi</code>, regenerated.</li>
+  <li><b>Slice 1, Task 8.</b> The live case is in <code>tests/test_live.py</code>, since there is no <code>tests/live/</code> directory. It is named <code>test_a_real_agent_uses_a_knowledge_memory_from_the_hint</code> so that <code>-k knowledge</code> selects it, and it runs on Sonnet at low effort, as the help-search case does. The browser check ran <code>uv run aegis serve -d</code> from the worktree; this repo has no <code>bin/aegis-dev</code>.</li>
 </ul>
 <p class="meta">Workers add their departures here, with file and line.</p>
 </main>
