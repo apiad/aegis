@@ -1,0 +1,1 @@
+- **The tab bar's session menu opens under its button.** With the tabs overflowing, the "N ▾" menu opened in the top-left corner over the header and transcript, because its position came out as NaN.
