@@ -36,6 +36,7 @@ process.
 from __future__ import annotations
 
 import asyncio
+import os
 import pwd
 import shutil
 import subprocess
@@ -51,6 +52,8 @@ DEVNULL = asyncio.subprocess.DEVNULL
 STDOUT = asyncio.subprocess.STDOUT
 # asyncio.create_subprocess_exec's own default for a pipe's line limit.
 LIMIT = 2**16
+# die_with_parent: go on only while the parent is the server that started it.
+_STILL_PARENT = '[ "$PPID" = "$0" ] || exit 143; exec "$@"'
 
 # The multi-user mode: its pool, setpriv's path and a login's PATH; None off.
 _mode: tuple[users.Pool, str, str] | None = None
@@ -122,11 +125,27 @@ async def child(
     cgroup: Path | None = None,
     oom: bool = False,
     new_session: bool = False,
+    die_with_parent: bool = False,
     limit: int = LIMIT,
 ) -> asyncio.subprocess.Process:
     """``argv`` started inside ``cgroup`` when there is one. ``env`` None is
     the server's environment. Raises FileNotFoundError for a missing binary,
-    with or without the cgroup."""
+    with or without the cgroup.
+
+    ``die_with_parent`` has the kernel send the child SIGTERM when the thread
+    that started it ends, through ``setpriv --pdeathsig`` (a preexec_fn is
+    unsafe in a threaded server): for a child that is no use to anyone once
+    its parent is gone, such as an OpenCode server (#620). A parent that ended
+    before setpriv set the signal sends none, so a shell checks the parent
+    after it and then execs the program, whose pid stays the child's. Without
+    setpriv on PATH the child starts as it would without the flag."""
+    setpriv = shutil.which("setpriv") if die_with_parent else None
+    if setpriv is not None:
+        exe = shutil.which(argv[0])
+        if exe is None:
+            raise FileNotFoundError(argv[0])
+        argv = [setpriv, "--pdeathsig", "TERM", "/bin/sh", "-c", _STILL_PARENT,
+                str(os.getpid()), exe, *argv[1:]]  # fmt: skip
     argv, env, cwd = _as(user, argv, env, cwd)
     proc = await asyncio.create_subprocess_exec(
         *wrap(cgroup, argv),
