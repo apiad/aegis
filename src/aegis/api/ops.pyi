@@ -619,6 +619,8 @@ class _server:
         """server.version"""
 
 class _session:
+    async def autoclose(self, *, log_id: str, on: bool) -> Any:
+        """session.autoclose"""
     async def close(self, *, handle: str | None = ..., token: str | None = ...) -> Any:
         """Close a session: its tab goes away and it stays in the archive. A session you spawned, or whose queue task you enqueued, closes at once when its attention is done; any other, your own included, is refused with a one-time token and what to weigh first, and closes on a second call that passes the token."""
     async def configure(

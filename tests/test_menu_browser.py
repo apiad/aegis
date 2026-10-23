@@ -256,6 +256,7 @@ def test_a_cards_menu_follows_its_state_and_acts_on_that_card(server, page, brow
         "restart",
         "handoff",
         "rename",
+        "autoclose",
         "archive",
     ]
     assert page.locator(".cmenu .grp").count() == 3
