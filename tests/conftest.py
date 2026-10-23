@@ -1,7 +1,10 @@
 import asyncio
+import contextlib
 import fcntl
 import json
 import os
+import re
+import signal
 import stat
 import sys
 import tempfile
@@ -134,6 +137,52 @@ def _no_real_quota(tmp_path_factory, monkeypatch):
     # The network probes need no credentials, so only a switch keeps a test's
     # `aegis serve` off the network (net/service.py).
     monkeypatch.setenv("AEGIS_NET_PROBES", "offline")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _no_opencode_left(tmp_path_factory):
+    """No OpenCode server, real or fake, outlives the run that started it
+    (#620): a day of leaked ones, about 300 MB each, took a 32 GB host into
+    the OOM killer. Every child this run caused, through a test or a test's
+    `aegis serve`, inherits an OPENCODE_AUTH under this run's base temp
+    (_no_real_quota), and nothing else does. Those left are ended by pid."""
+    from aegis.opencode.sweep import SERVE_ARGS
+
+    mark = b"OPENCODE_AUTH=" + str(tmp_path_factory.getbasetemp()).encode()
+    yield
+
+    def left() -> dict[int, int]:
+        """The run's servers still running, with their RSS in kB."""
+        out = {}
+        for d in Path("/proc").iterdir():
+            if not d.name.isdigit():
+                continue
+            try:
+                argv = (d / "cmdline").read_bytes().decode(errors="replace")
+                if argv.split("\0")[-6:-1] != SERVE_ARGS:
+                    continue
+                env = (d / "environ").read_bytes().split(b"\0")
+                status = (d / "status").read_text()
+            except OSError:
+                continue
+            if any(e.startswith(mark) for e in env):
+                rss = re.search(r"VmRSS:\s+(\d+)", status)
+                out[int(d.name)] = int(rss.group(1)) if rss else 0
+        return out
+
+    deadline = time.monotonic() + 10  # a last server's children may be ending
+    while (strays := left()) and time.monotonic() < deadline:
+        time.sleep(0.2)
+    for pid in strays:
+        with contextlib.suppress(OSError):
+            os.kill(pid, signal.SIGKILL)
+    if strays:
+        mb = sum(strays.values()) / 1024
+        pytest.fail(
+            f"{len(strays)} opencode serve process(es) outlived the run, "
+            f"{mb:.0f} MB resident: {sorted(strays)}",
+            pytrace=False,
+        )
 
 
 # A half-full disk and no memory or CPU reading: below every default line.
