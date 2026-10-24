@@ -371,3 +371,36 @@ async def test_a_long_body_is_marked_shown_in_part(world):
     got = await save_skill(s, body="step\n" * 1000)
     d = card(s, got["card"])["detail"]
     assert d["partial"] and len(d["body"]) == 4000
+
+
+async def settled(s, id: str) -> None:
+    """The card's wake has run its turn, so the next prompt is answered alone."""
+    await until(lambda: woken(s, f"knowledge:{id} ·"), timeout=8, what="wake")
+    await until(lambda: s.status == "idle", timeout=8, what="idle")
+
+
+async def test_answering_a_card_refreshes_the_items_flags(world):
+    app = world.app
+    kn = app.knowledge
+    s = await world.spawn()
+    gone = "Read `gone/notes.md` first."
+    # Undo of a change that quoted a missing path: the flag goes with it.
+    await save(s, asked=True)
+    changed = (await save(s, body=gone))["card"]
+    await until(lambda: kn.flags_of(app.user, "merge-after-green") != [])
+    assert await press(world, s, changed, "undo") == "ok"
+    assert kn.flags_of(app.user, "merge-after-green") == []
+    await settled(s, changed)
+    # Discard of a flagged proposal: no flags are left for a deleted item.
+    proposed = (await save(s, name="other-fact", body=gone))["card"]
+    await until(lambda: kn.flags_of(app.user, "other-fact") != [])
+    assert await press(world, s, proposed, "discard") == "ok"
+    assert kn.flags_of(app.user, "other-fact") == []
+    await settled(s, proposed)
+    # Undo of an Undo-able delete brings the flags back with the memory.
+    await save(s, name="third-fact", body=gone, asked=True)
+    await until(lambda: kn.flags_of(app.user, "third-fact") != [])
+    deleted = ok(await turn(s, mcp("memory_delete", name="third-fact")))["card"]
+    assert kn.flags_of(app.user, "third-fact") == []
+    assert await press(world, s, deleted, "undo") == "ok"
+    assert kn.flags_of(app.user, "third-fact") == ["stale:gone/notes.md"]

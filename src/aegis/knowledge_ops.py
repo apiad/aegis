@@ -872,6 +872,15 @@ def register_knowledge_ops(app: App) -> None:
         finally:
             answering.discard((s.log_id, id))
 
+    async def reflag(owner: str, name: str) -> None:
+        """An answered card's item flagged as it now is: checked again, or
+        its flags dropped when it is gone."""
+        it = kn.store.get(owner, name)
+        if it is None or it.kind != "memory":
+            kn.drop_flags(owner, name)
+        else:
+            await app.bounded_check(owner, [it])
+
     async def card_done(s, id: str, outcome: str, caller: Caller, body: str) -> None:
         s.record_knowledge(
             {
@@ -942,6 +951,7 @@ def register_knowledge_ops(app: App) -> None:
                 await refused(s, p.id, err, caller, d)
                 raise
             await kn.refresh(owner)
+            await reflag(owner, d["name"])
             it = kn.store.get(owner, d["name"])
             kn.usage.add(owner, s.log_id, d["item_kind"], d["name"], "approved")
             offered_as = (
@@ -976,6 +986,7 @@ def register_knowledge_ops(app: App) -> None:
                 await refused(s, p.id, err, caller, d)
                 raise
             await kn.refresh(owner)
+            await reflag(owner, d["name"])
             kn.usage.add(owner, s.log_id, d["item_kind"], d["name"], "discarded")
             await card_done(
                 s,
@@ -1001,6 +1012,7 @@ def register_knowledge_ops(app: App) -> None:
                 await refused(s, p.id, err, caller, d)
                 raise
             await kn.refresh(owner)
+            await reflag(owner, d["name"])
             done = {
                 "deleted": "restored",
                 "saved": "as it was before you saved it",

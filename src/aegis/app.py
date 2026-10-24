@@ -1217,7 +1217,7 @@ class App:
         some = await self.knowledge.items(principal) if items is None else items
         await self.knowledge.check(principal, some, run, roots, everything=whole)
 
-    async def _bounded_check(self, principal: str, items: list[Item] | None) -> None:
+    async def bounded_check(self, principal: str, items: list[Item] | None) -> None:
         """knowledge_check within ``KNOWLEDGE_CHECK_TIMEOUT_S``; a timeout or
         an error is logged, never raised. A file read already in a thread
         runs on to its end, but nothing waits for it."""
@@ -1237,7 +1237,7 @@ class App:
     def knowledge_check_soon(self, principal: str, items: list[Item]) -> None:
         """Check ``items`` in the background, as a save does: the save has
         already committed, so nothing the check does may fail or hold it."""
-        task = asyncio.create_task(self._bounded_check(principal, items))
+        task = asyncio.create_task(self.bounded_check(principal, items))
         self._knowledge_soon.add(task)
         task.add_done_callback(self._knowledge_soon.discard)
 
@@ -1252,7 +1252,7 @@ class App:
                 log.exception("aegis: the knowledge check could not list stores")
                 names = []
             for name in names:
-                await self._bounded_check(name, None)
+                await self.bounded_check(name, None)
             await asyncio.sleep(KNOWLEDGE_CHECK_S)
 
     def _place(self, user: str | None, member: bool) -> Place:
