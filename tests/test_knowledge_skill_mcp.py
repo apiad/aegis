@@ -174,3 +174,34 @@ async def test_a_refused_signal_never_stops_close_or_shutdown(
     monkeypatch.setattr(app.skill_servers, "shutdown", broken)
     await app.shutdown()
     assert stopped == [1]
+
+
+async def test_a_long_answer_is_cut_and_the_server_answers_on(agents_world):
+    app = agents_world.app
+    await save_echoer(app)
+    s = await agents_world.spawn()
+    ok(await turn(s, mcp("skill_read", name="echoer")))
+    got = ok(await turn(s, call("echoer", "echo", {"text": "y" * 70000})))
+    (text,) = [c["text"] for c in got["content"]]
+    assert text == "echo: " + "y" * 19994 + "\n[cut at 20000 characters]"
+    got = ok(await turn(s, call("echoer", "echo", {"text": "small"})))
+    assert got["content"][0]["text"] == "echo: small"
+
+
+async def test_a_line_over_the_limit_fails_the_call_and_restarts_the_server(
+    agents_world, monkeypatch
+):
+    from aegis import skill_mcp
+
+    monkeypatch.setattr(skill_mcp, "READ_LIMIT", 4096)
+    app = agents_world.app
+    await save_echoer(app)
+    s = await agents_world.spawn()
+    ok(await turn(s, mcp("skill_read", name="echoer")))
+    first = app.skill_servers._servers[(s.log_id, "echoer")]
+    said = await turn(s, call("echoer", "echo", {"text": "z" * 10000}))
+    assert said.startswith("mcp error: mcp_failed"), said
+    assert not first.alive
+    got = ok(await turn(s, call("echoer", "echo", {"text": "again"})))
+    assert got["content"][0]["text"] == "echo: again"
+    assert app.skill_servers._servers[(s.log_id, "echoer")] is not first

@@ -140,7 +140,8 @@ out of the menu.
   `aegis.scripts`, with arguments, and returns its exit code, stdout and
   stderr, each cut at 20,000 characters.
 - `skill_tool` calls a tool of the MCP server a loaded skill brings, with
-  its arguments; `skill_read` lists those tools.
+  its arguments, and cuts the answer at 20,000 characters; `skill_read`
+  lists those tools.
 - `knowledge_stats` lists each item with how often it was hinted, read,
   invoked or run, and when it was last used; `unused_days=60` keeps the
   ones nobody used in that time.

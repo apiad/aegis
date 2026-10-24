@@ -770,7 +770,7 @@ class _skill:
     async def tool(
         self, *, skill: str, tool: str, args: dict[str, Any] = ..., timeout_s: int = ...
     ) -> Any:
-        """Call a tool of the MCP server a skill you loaded brings; skill_read lists those tools and their arguments. Only this session reaches the server, and it stops when the session closes. Needs a session with full permission."""
+        """Call a tool of the MCP server a skill you loaded brings; skill_read lists those tools and their arguments. Only this session reaches the server, and it stops when the session closes. The answer is cut at 20,000 characters. Needs a session with full permission."""
 
 class _speech:
     async def prepare(self) -> Any:

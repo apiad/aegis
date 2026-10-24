@@ -25,6 +25,7 @@ import asyncio
 import base64
 import binascii
 import io
+import json
 import tarfile
 import time
 from datetime import date, datetime, timezone
@@ -178,6 +179,26 @@ def _cut(data: bytes | bytearray) -> str:
     if len(text) <= OUTPUT_CHARS and len(data) <= KEEP_BYTES:
         return text
     return text[:OUTPUT_CHARS] + f"\n[cut at {OUTPUT_CHARS} characters]"
+
+
+def _cut_content(content: list) -> list:
+    """An MCP tool's content cut at ``OUTPUT_CHARS``: text counts its
+    characters, any other item its JSON."""
+    out, left = [], OUTPUT_CHARS
+    mark = f"\n[cut at {OUTPUT_CHARS} characters]"
+    for c in content:
+        text = c.get("text") if isinstance(c, dict) else None
+        if isinstance(text, str) and c.get("type") == "text":
+            if len(text) > left:
+                return [*out, {**c, "text": text[:left] + mark}]
+            left -= len(text)
+        else:
+            size = len(json.dumps(c))
+            if size > left:
+                return [*out, {"type": "text", "text": mark.lstrip()}]
+            left -= size
+        out.append(c)
+    return out
 
 
 async def _feed(stream, data: bytes) -> None:
@@ -540,8 +561,8 @@ def register_knowledge_ops(app: App) -> None:
     async def skill_tool(p: CallSkillTool, caller):
         """Call a tool of the MCP server a skill you loaded brings; skill_read
         lists those tools and their arguments. Only this session reaches the
-        server, and it stops when the session closes. Needs a session with
-        full permission."""
+        server, and it stops when the session closes. The answer is cut at
+        20,000 characters. Needs a session with full permission."""
         owner = principal(caller)
         it = skill(owner, p.skill)
         s = app.sessions.sessions.get(caller.log_id or "")
@@ -567,7 +588,7 @@ def register_knowledge_ops(app: App) -> None:
         kn.usage.add(owner, s.log_id, "skill", it.name, "ran", f"tool={p.tool}")
         return {
             "is_error": bool(got.get("isError")),
-            "content": got.get("content") or [],
+            "content": _cut_content(got.get("content") or []),
         }
 
     @r.op("knowledge.stats", Stats, agent=True, read=True)

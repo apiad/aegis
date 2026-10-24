@@ -36,6 +36,10 @@ log = logging.getLogger("aegis.skill_mcp")
 START_S = 30.0
 STOP_GRACE_S = 2.0
 STDERR_CHARS = 2000
+# The longest line a server may send; a longer one, or any read error,
+# fails what is pending and marks the server dead, so the next call starts
+# it again.
+READ_LIMIT = 16 * 2**20
 # Read exactly the tar's bytes from fd 0, leaving the MCP stream behind them:
 # os.read never reads ahead, where a buffered reader would.
 UNPACK_PY = (
@@ -109,10 +113,11 @@ class Server:
     next_id: int = 1
     reader: asyncio.Task | None = None
     errors: asyncio.Task | None = None
+    dead: bool = False
 
     @property
     def alive(self) -> bool:
-        return self.proc.returncode is None
+        return self.proc.returncode is None and not self.dead
 
     async def request(self, method: str, params: dict, timeout: float) -> dict:
         n = self.next_id
@@ -141,18 +146,25 @@ class Server:
 
     async def read(self) -> None:
         """Hand each answer to its request; a line that is not JSON-RPC is
-        logged and skipped."""
+        logged and skipped. When the stream ends or cannot be read, the
+        server is dead and every pending request fails."""
         assert self.proc.stdout is not None
-        while line := await self.proc.stdout.readline():
-            try:
-                msg = json.loads(line)
-            except ValueError:
-                log.warning("skill mcp: a line that is not JSON: %r", line[:200])
-                continue
-            fut = self.pending.get(msg.get("id")) if isinstance(msg, dict) else None
-            if fut is not None and not fut.done():
-                fut.set_result(msg)
-        why = f"the server ended: {self.stderr[-500:]}"
+        why = "the server ended"
+        try:
+            while line := await self.proc.stdout.readline():
+                try:
+                    msg = json.loads(line)
+                except ValueError:
+                    log.warning("skill mcp: a line that is not JSON: %r", line[:200])
+                    continue
+                fut = self.pending.get(msg.get("id")) if isinstance(msg, dict) else None
+                if fut is not None and not fut.done():
+                    fut.set_result(msg)
+        except Exception as e:  # noqa: BLE001 - LimitOverrun, a reset pipe...
+            why = f"its output could not be read ({e})"
+            log.warning("skill mcp: %s", why)
+        self.dead = True
+        why = f"{why}: {self.stderr[-500:]}"
         for fut in self.pending.values():
             if not fut.done():
                 fut.set_exception(SkillToolError(why))
@@ -165,7 +177,7 @@ class Server:
             ]
 
     async def stop(self) -> None:
-        if self.alive:
+        if self.proc.returncode is None:
             await stop_group(self.proc, self.user)
         for t in (self.reader, self.errors):
             if t is not None:
@@ -214,6 +226,7 @@ class SkillServers:
                 stdout=launch.PIPE,
                 stderr=launch.PIPE,
                 new_session=True,
+                limit=READ_LIMIT,
             )
         except OSError as e:
             raise SkillToolError(f"the server could not start: {e}") from e
