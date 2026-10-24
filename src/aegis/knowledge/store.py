@@ -32,6 +32,7 @@ class Store:
         self.root = root
         self._locks: dict[str, asyncio.Lock] = {}
         self._versions: dict[str, int] = {}
+        self._item_versions: dict[tuple[str, str], int] = {}
         self._logged: set[tuple[str, float]] = set()
         # principal -> path -> ((mtime_ns, size), the item or None if bad)
         self._parsed: dict[str, dict[Path, tuple[tuple[int, int], Item | None]]] = {}
@@ -138,11 +139,17 @@ class Store:
     def version(self, principal: str) -> int:
         return self._versions.get(principal, 0)
 
+    def item_version(self, principal: str, name: str) -> int:
+        """Moves on every save or delete of that one item through the store."""
+        return self._item_versions.get((principal, name), 0)
+
     def _changed(self, principal: str, item: Item) -> None:
         """A change through the store: bump the version and forget the cached
         parse, which a rewrite of the same size in the same clock tick would
         otherwise keep."""
         self._versions[principal] = self.version(principal) + 1
+        key = (principal, item.name)
+        self._item_versions[key] = self._item_versions.get(key, 0) + 1
         f = self._path(self.dir(principal), item.kind, item.name)
         self._parsed.get(principal, {}).pop(
             f if item.kind == "memory" else f / "SKILL.md", None

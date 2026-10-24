@@ -28,7 +28,7 @@ import json
 import logging
 import os
 import signal
-from collections.abc import Iterator
+from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass, field
 
 from . import launch
@@ -116,6 +116,7 @@ class Server:
     reader: asyncio.Task | None = None
     errors: asyncio.Task | None = None
     dead: bool = False
+    version: int = 0  # the skill's store version it started from
 
     @property
     def alive(self) -> bool:
@@ -212,6 +213,9 @@ class SkillServers:
         self._runs: dict[
             str, dict[int, tuple[asyncio.subprocess.Process, str | None]]
         ] = {}
+        # Moves each time a session's processes are stopped, so a start that
+        # began before the stop stops what it made instead of keeping it.
+        self._closed: dict[str, int] = {}
 
     def runs(self, log_id: str) -> list[int]:
         """The process groups of the session's running scripts."""
@@ -242,18 +246,28 @@ class SkillServers:
         log_id: str,
         skill: str,
         command: list[str],
-        tar: bytes,
+        tar: Callable[[], Awaitable[bytes]],
         user: str | None,
+        version: int,
     ) -> Server:
-        """The session's server for ``skill``, started if it is not running."""
+        """The session's server for ``skill``, started if it is not running
+        or the skill changed since it started (``version``, the skill's
+        store version). ``tar`` packs the skill's folder, only for a start.
+        A start the session's close overtook stops what it made."""
         key = (log_id, skill)
+        closed = self._closed.get(log_id, 0)
         async with self._starting.setdefault(key, asyncio.Lock()):
             held = self._servers.get(key)
-            if held is not None and held.alive:
+            if held is not None and held.alive and held.version == version:
                 return held
             if held is not None:
+                self._servers.pop(key, None)
                 await held.stop()
-            server = await self._start(command, tar, user)
+            server = await self._start(command, await tar(), user)
+            server.version = version
+            if self._closed.get(log_id, 0) != closed:
+                await server.stop()
+                raise SkillToolError("the session is closing")
             self._servers[key] = server
             return server
 
@@ -311,6 +325,7 @@ class SkillServers:
         return await s.request("tools/call", {"name": tool, "arguments": args}, timeout)
 
     async def stop_session(self, log_id: str) -> None:
+        self._closed[log_id] = self._closed.get(log_id, 0) + 1
         for key in [k for k in self._servers if k[0] == log_id]:
             await self._servers.pop(key).stop()
             self._starting.pop(key, None)

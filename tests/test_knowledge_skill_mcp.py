@@ -214,3 +214,66 @@ async def test_a_servers_own_requests_are_answered_not_taken_for_answers(agents_
     ok(await turn(s, mcp("skill_read", name="echoer")))
     got = ok(await turn(s, call("echoer", "pinged", {})))
     assert got["content"][0]["text"] == "ping {}, roots/list -32601"
+
+
+async def test_a_changed_skill_restarts_its_server(agents_world):
+    app = agents_world.app
+    await save_echoer(app)
+    s = await agents_world.spawn()
+    ok(await turn(s, mcp("skill_read", name="echoer")))
+    first = app.skill_servers._servers[(s.log_id, "echoer")]
+    ok(await turn(s, call("echoer", "echo", {"text": "a"})))
+    assert app.skill_servers._servers[(s.log_id, "echoer")] is first
+    louder = ECHO.replace(b'f"echo: {text}"', b'f"ECHO: {text}"')
+    await app.knowledge.store.save(
+        app.user,
+        skill(
+            "echoer",
+            "Echo text through a tool",
+            aegis={"mcp": {"command": ["python3", "server.py"]}},
+        ),
+        "t",
+        extra={"server.py": louder},
+    )
+    got = ok(await turn(s, call("echoer", "echo", {"text": "b"})))
+    assert got["content"][0]["text"] == "ECHO: b"
+    assert app.skill_servers._servers[(s.log_id, "echoer")] is not first
+    await until(lambda: not alive(first.proc.pid), what="the old server's end")
+
+
+async def test_a_start_racing_the_sessions_close_leaves_no_server(agents_world):
+    import asyncio
+
+    import pytest
+
+    from aegis.skill_mcp import SkillToolError
+
+    app = agents_world.app
+    servers = app.skill_servers
+    started, go, made = asyncio.Event(), asyncio.Event(), []
+    real = servers._start
+
+    async def slow(*args):
+        server = await real(*args)
+        made.append(server)
+        started.set()
+        await go.wait()
+        return server
+
+    servers._start = slow
+
+    async def tar():
+        from aegis.knowledge_ops import _tar
+
+        return _tar({"server.py": ECHO})
+
+    task = asyncio.create_task(
+        servers.ensure("L1", "echoer", ["python3", "server.py"], tar, None, 1)
+    )
+    await started.wait()
+    await servers.stop_session("L1")
+    go.set()
+    with pytest.raises(SkillToolError, match="closing"):
+        await task
+    assert servers.running("L1") == [] and ("L1", "echoer") not in servers._servers
+    await until(lambda: not alive(made[0].proc.pid), what="the late server's end")

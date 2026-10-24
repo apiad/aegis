@@ -448,10 +448,17 @@ def register_knowledge_ops(app: App) -> None:
             names = kn.store.files(owner, it.name)
             return _tar({n: kn.store.read_file(owner, it.name, n) for n in names})
 
-        tar = await asyncio.to_thread(pack)
+        async def tar() -> bytes:
+            return await asyncio.to_thread(pack)
+
         try:
             return await app.skill_servers.ensure(
-                s.log_id, it.name, cmd, tar, s.spec.linux_user
+                s.log_id,
+                it.name,
+                cmd,
+                tar,
+                s.spec.linux_user,
+                kn.store.item_version(owner, it.name),
             )
         except SkillToolError as e:
             raise OpError("mcp_failed", f"the skill's server: {e}") from e
