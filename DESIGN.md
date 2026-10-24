@@ -476,6 +476,13 @@ caller's own store, an admin's included. A person's edit is saved approved,
 guarded by a stamp: the SHA-256 of the item's file when the view read it,
 checked under the store's lock, so an edit never overwrites a change it did
 not see.
+`/setup`'s import (`knowledge.import`, `knowledge/importer.py`) reads each
+ticked source on the session user's `as_user` runner, so a member's files are
+read as the member and never on the event loop, and saves it approved with
+`fresh`, which refuses a name any item holds. The ticks are the approval, so
+one transcript card lists the items, each with an Undo that reverts its own
+import commit. The setup record (`setup.Records`) keeps what was imported
+and is merged, never replaced, by each write.
 
 **A session's own status is a notice its subsystems push.** Beside the host
 kinds, `Notices.set(log_id, source, items)` takes per-session items from a

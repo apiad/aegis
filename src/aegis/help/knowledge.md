@@ -232,6 +232,10 @@ out of the menu.
   keeps the ones nobody used in that time, `flag=stale` or
   `flag=expired` the ones with that flag.
 
+- `knowledge_import` moves skill folders, memory files and procedure
+  docs the person ticked on the `/setup` page into aegis (help_read setup
+  knowledge).
+
 A session with read permission can search, read and see stats, but not
 save or delete. `skill_run` and `skill_tool` need full permission.
 
@@ -244,3 +248,15 @@ names a date that will pass. It tells you what it saved.
 
 You can also ask in your own words ("remember that we never deploy on
 Fridays"); the agent saves it the same way.
+
+## Moving in what a harness kept
+
+`/setup` finds the skills, auto-memory files and procedure docs another
+harness kept, and proposes moving each into aegis on its page. The agent
+moves the rows you tick with `knowledge_import`: a skill's folder is copied
+whole, scripts and binaries included, each item is saved approved as one
+commit, and a name aegis already holds is refused, never overwritten. One
+card in the transcript lists what came in, with an Undo per item, which
+takes that item out of aegis again. Removing an original from where the
+harness loaded it is a row of its own, done after the import, and nothing
+outside aegis is deleted unless you ticked its row.

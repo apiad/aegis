@@ -12,6 +12,7 @@ step with the registry.
 
 from __future__ import annotations
 
+import keyword
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
@@ -20,9 +21,12 @@ if TYPE_CHECKING:
 
 
 def attr_name(op: str) -> tuple[str, str]:
-    """The namespace and the method name operation ``op`` gets."""
+    """The namespace and the method name operation ``op`` gets; a Python
+    keyword gets a trailing underscore (``knowledge.import`` is
+    ``srv.ops.knowledge.import_``)."""
     ns, _, rest = op.partition(".")
-    return ns, rest.replace(".", "_")
+    name = rest.replace(".", "_")
+    return ns, f"{name}_" if keyword.iskeyword(name) else name
 
 
 class Ops:

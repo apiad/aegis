@@ -28,8 +28,13 @@ if TYPE_CHECKING:
 
 
 class Records:
+    """One record per principal. Reads come from memory after the first, so
+    the knowledge setting can be asked at every spawn; each write replaces
+    the file whole, merged over what it held."""
+
     def __init__(self, state_root: Path):
         self.dir = state_root / "setup"
+        self._held: dict[str, dict | None] = {}
 
     def _path(self, principal: str) -> Path:
         if not principal or "/" in principal or principal.startswith("."):
@@ -37,17 +42,40 @@ class Records:
         return self.dir / f"{principal}.json"
 
     def get(self, principal: str) -> dict | None:
-        try:
-            return json.loads(self._path(principal).read_text())
-        except (OSError, ValueError):
-            return None
+        if principal not in self._held:
+            try:
+                got = json.loads(self._path(principal).read_text())
+            except (OSError, ValueError):
+                got = None
+            self._held[principal] = got if isinstance(got, dict) else None
+        held = self._held[principal]
+        return None if held is None else dict(held)
 
     def put(self, principal: str, rec: dict) -> None:
         self.dir.mkdir(parents=True, exist_ok=True)
         path = self._path(principal)
         tmp = path.with_name(f".{path.name}.tmp")
-        tmp.write_text(json.dumps({**rec, "at": iso_now()}, indent=2))
+        whole = {**rec, "at": iso_now()}
+        tmp.write_text(json.dumps(whole, indent=2))
         os.replace(tmp, path)
+        self._held[principal] = whole
+
+    def merge(self, principal: str, part: dict) -> None:
+        """``part``'s keys written over the record's, the rest kept: a run's
+        record keeps what the import and the Settings switch wrote."""
+        self.put(principal, {**(self.get(principal) or {}), **part})
+
+    def native(self, principal: str) -> bool:
+        return (self.get(principal) or {}).get("knowledge") == "native"
+
+    def imported(self, principal: str) -> list[dict]:
+        got = (self.get(principal) or {}).get("imported")
+        return got if isinstance(got, list) else []
+
+    def add_imported(self, principal: str, rows: list[dict]) -> None:
+        """Each item an import brought in: its source, kind and name, so the
+        next /setup proposes only what is new."""
+        self.merge(principal, {"imported": [*self.imported(principal), *rows]})
 
 
 def facts(version: str, found: list[dict], agents: list[str], queues: list[str]) -> str:
@@ -75,7 +103,7 @@ def turn(typed: str, facts: str, record: dict | None, now: str) -> tuple[str, st
     scratch = typed.strip().lower().startswith("from scratch")
     if scratch:
         last = "They asked to start from scratch: ignore the record of earlier runs.\n"
-    elif record is None:
+    elif record is None or "sources_until" not in record:
         last = "There is no earlier run: everything you find is new.\n"
     else:
         declined = ", ".join(
@@ -88,6 +116,16 @@ def turn(typed: str, facts: str, record: dict | None, now: str) -> tuple[str, st
             f"the evidence count: {declined or 'nothing'}. Propose what is new "
             "since, and a declined key again only if its evidence has doubled "
             "(help_read setup record).\n"
+        )
+    if not scratch and record is not None and record.get("imported"):
+        # Sources only: a second run proposes a source not listed here.
+        last += (
+            "Already moved into aegis (knowledge_import), by source: "
+            + ", ".join(
+                f"{r.get('source')} as {r.get('kind')} {r.get('name')}"
+                for r in record["imported"]
+            )
+            + ".\n"
         )
     how = (
         "They want aegis to take over how they already work. Read the help page\n"
@@ -132,7 +170,7 @@ def register_setup(app: App) -> Records:
         """Save what this /setup run applied and declined, for the person
         whose session this is, so their next run proposes only what is new.
         Call it once, at the end of a run (help_read setup record)."""
-        records.put(app.who(caller).name, p.model_dump())
+        records.merge(app.who(caller).name, p.model_dump())
         return "ok"
 
     return records

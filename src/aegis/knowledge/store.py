@@ -198,12 +198,14 @@ class Store:
         author: str,
         extra: dict[str, bytes] | None = None,
         verb: str | None = None,
+        fresh: bool = False,
     ) -> str:
         """Write ``item`` (and, for a skill, ``extra`` files in its folder) and
         commit; the commit's sha, "" when nothing changed. Refused with
         ``name_taken`` when the other kind holds the name; an item of the
-        same kind is replaced. ``verb`` names the change in the commit
-        message (``approve``), else ``save`` or ``update``."""
+        same kind is replaced, unless ``fresh`` (an import), which refuses
+        it too. ``verb`` names the change in the commit message
+        (``approve``), else ``save`` or ``update``."""
         base = self.dir(principal)
         check_name(item.name)
         files = {}
@@ -222,6 +224,8 @@ class Store:
             if self._path(base, other, item.name).exists():
                 raise OpError("name_taken", f"{item.name!r} already names another item")
             held = self._path(base, item.kind, item.name).exists()
+            if held and fresh:
+                raise OpError("name_taken", f"{item.name!r} already names an item")
             verb = verb or ("update" if held else "save")
             sha = await asyncio.to_thread(self._write, base, item, files, verb, author)
             self._changed(principal, item)

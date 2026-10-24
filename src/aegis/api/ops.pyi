@@ -397,10 +397,14 @@ class _knowledge:
         """knowledge.card.discard"""
     async def card_undo(self, *, log_id: str, id: str) -> Any:
         """knowledge.card.undo"""
+    async def card_undo_item(self, *, log_id: str, id: str, name: str) -> Any:
+        """Undo one item of an import card: its import commit is reverted, so it leaves aegis. Its original is wherever it then was."""
     async def get(self, *, name: str) -> Any:
         """One item for the view: its file's whole text, the stamp an edit sends back, and a skill's files."""
     async def history(self, *, name: str) -> Any:
         """The commits that changed an item, newest first, a deleted one's included."""
+    async def import_(self, *, items: builtins.list[dict[str, Any]]) -> Any:
+        """Move the skills, memories and procedure docs the person ticked on the /setup page into aegis, approved, one commit each. Reads each source as the session's user; a skill's folder is copied whole, up to 20 MiB. A name aegis already holds is refused, never overwritten. Returns what came in and what was refused, and leaves every source where it is: remove each original with its own ticked row (help_read setup)."""
     async def list(
         self,
         *,

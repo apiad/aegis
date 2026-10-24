@@ -675,7 +675,7 @@ async def test_a_member_is_never_hinted_another_principals_memory(world):
 <!-- ============================================================ SLICE 5 -->
 <div class="slice" id="s5">slice 5 · /setup migration and the switch · one PR</div>
 
-<details class="task" id="task-18" data-state="pending">
+<details class="task" id="task-18" data-state="done">
 <summary><span class="num">18</span><span><span class="ttl">knowledge.import: copy ticked items in</span><span class="files">knowledge_ops.py · as_user.py · tests/test_knowledge_import.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <p><code>knowledge.import</code> {items: list[{source: abs path, kind: "skill"|"memory"|"doc", name: str | None}]}, <code>agent=True</code>. /setup's agent calls it once with the rows the person ticked, so the ticks are the approval. It reads each source as the session's user (<code>as_user</code>):</p>

@@ -1041,6 +1041,7 @@ class Fold:
                     "expires",
                     "sha",
                     "digest",
+                    "items",
                 )
             }
             det["by"] = None
@@ -1052,11 +1053,26 @@ class Fold:
                     "pending",
                     ts,
                     d.KNOWLEDGE_GLYPH,
-                    title=f"{rec.get('item_kind')} {rec.get('name')}",
+                    title=f"imported {rec.get('name')}"
+                    if op == "imported"
+                    else f"{rec.get('item_kind')} {rec.get('name')}",
                     summary="proposed" if op == "new" else op,
                     detail=det,
                 )
             )
+        if kind == "knowledge_card_item_done":
+            # One item of an import card undone: the card stays, its row
+            # says so (knowledge_ops.py, card_undo_item).
+            e = self._entries.get(str(rec.get("card_id")))
+            if e is None:
+                return []
+            items = [
+                {**x, "outcome": rec.get("outcome"), "by": rec.get("by")}
+                if x.get("name") == rec.get("name")
+                else x
+                for x in e["detail"].get("items") or []
+            ]
+            return self._upsert({**e, "detail": {**e["detail"], "items": items}})
         if kind == "knowledge_card_done":
             e = self._entries.get(str(rec.get("card_id")))
             if e is None:
