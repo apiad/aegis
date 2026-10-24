@@ -198,12 +198,14 @@ class Store:
         author: str,
         extra: dict[str, bytes] | None = None,
         verb: str | None = None,
+        fresh: bool = False,
     ) -> str:
         """Write ``item`` (and, for a skill, ``extra`` files in its folder) and
         commit; the commit's sha, "" when nothing changed. Refused with
         ``name_taken`` when the other kind holds the name; an item of the
-        same kind is replaced. ``verb`` names the change in the commit
-        message (``approve``), else ``save`` or ``update``."""
+        same kind is replaced, unless ``fresh`` (an import), which refuses
+        it too. ``verb`` names the change in the commit message
+        (``approve``), else ``save`` or ``update``."""
         base = self.dir(principal)
         check_name(item.name)
         files = {}
@@ -222,6 +224,8 @@ class Store:
             if self._path(base, other, item.name).exists():
                 raise OpError("name_taken", f"{item.name!r} already names another item")
             held = self._path(base, item.kind, item.name).exists()
+            if held and fresh:
+                raise OpError("name_taken", f"{item.name!r} already names an item")
             verb = verb or ("update" if held else "save")
             sha = await asyncio.to_thread(self._write, base, item, files, verb, author)
             self._changed(principal, item)
@@ -334,14 +338,23 @@ class Store:
         return sha
 
     async def revert(
-        self, principal: str, sha: str, kind: Kind, name: str, author: str
+        self,
+        principal: str,
+        sha: str,
+        kind: Kind,
+        name: str,
+        author: str,
+        expect: Callable[[], None] | None = None,
     ) -> str:
         """Undo the commit ``sha``, which changed the item ``kind``/``name``,
         with a new commit; its sha. A revert git refuses (a later change to
-        the same lines) leaves the store as it was and is ``conflict``."""
+        the same lines) leaves the store as it was and is ``conflict``.
+        ``expect`` runs first under the lock, off the loop, and may refuse."""
         base = self.dir(principal)
         check_name(name)
         async with self._lock(principal):
+            if expect is not None:
+                await asyncio.to_thread(expect)
             try:
                 new = await asyncio.to_thread(history.revert, base, sha, author)
             except subprocess.CalledProcessError as e:

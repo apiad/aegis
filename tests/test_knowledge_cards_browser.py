@@ -105,3 +105,33 @@ def test_a_skills_card_lists_its_files(server, page):
     assert "Shown in part" in text and "bump.py (9 B)" in text and "SKILL.md (" in text
     fits(page)
     assert page.errors == []
+
+
+def test_the_import_card_undoes_one_item(server, page, tmp_path):
+    src = tmp_path / "harness" / "release"
+    src.mkdir(parents=True)
+    (src / "SKILL.md").write_text("---\nname: release\ndescription: Cut one\n---\n1.\n")
+    host = tmp_path / "harness" / "bot_host.md"
+    host.write_text("---\ndescription: The bot runs on ben-2\n---\nben-2.\n")
+    items = [
+        {"source": str(src), "kind": "skill"},
+        {"source": str(host), "kind": "memory"},
+    ]
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    mcp(page, 2, "knowledge_import", {"items": items})
+    page.wait_for_selector(f"{CARD} .krow[data-name=bot_host] button")
+    text = page.inner_text(CARD)
+    assert "imported 2 items" in text and f"from {src}" in text
+    fits(page)
+    page.click(f"{CARD} .krow[data-name=bot_host] button:has-text('Undo')")
+    page.wait_for_function(
+        "([s]) => document.querySelector(s)?.textContent.includes('no longer in aegis')",
+        arg=[f"{CARD} .krow[data-name=bot_host]"],
+    )
+    assert stored(server, "bot_host") is None
+    assert page.locator(f"{CARD} .krow[data-name=release] button").count() == 1
+    turns_done(page, 3)  # the wake ran a turn
+    fits(page)
+    assert page.errors == []

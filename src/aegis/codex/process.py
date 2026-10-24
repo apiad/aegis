@@ -139,7 +139,12 @@ class CodexProcess:
         mcp = self._launch.mcp
         self._launch.stderr_path.parent.mkdir(parents=True, exist_ok=True)
         self._proc = await launch.child(
-            argv(self._bin, mcp[0] if mcp else None, person_excludes()),
+            argv(
+                self._bin,
+                mcp[0] if mcp else None,
+                person_excludes(),
+                native=self._launch.knowledge_native,
+            ),
             cwd=self._launch.cwd,
             env=session_env(self._launch, child_env(os.environ, mcp)),
             stdin=launch.PIPE,

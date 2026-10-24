@@ -488,8 +488,47 @@ function fileSize(n) {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
+// What /setup moved into aegis (knowledge.import): a row per item, each with
+// its own Undo, which reverts that item's import commit.
+const IMPORT_DONE = { undone: "undone: no longer in aegis", conflict: "changed since, not undone" };
+
+function fillImported(card, e) {
+  const d = e.detail || {};
+  const items = d.items || [];
+  const bar = el("div", "fbar");
+  bar.append(entryIcon(e.glyph), el("span", "fn", `imported ${items.length === 1 ? "1 item" : `${items.length} items`}`), el("span", "fs", "approved"));
+  const hint = el("span", "hint");
+  const rows = items.map((x) => {
+    const r = el("div", "krow");
+    r.dataset.name = x.name;
+    const what = el("span", "kwhat");
+    what.append(el("b", null, x.name), el("span", "dim", ` ${x.kind} · from ${x.source}`));
+    r.append(what);
+    if (x.outcome) r.append(el("span", "dim", IMPORT_DONE[x.outcome] || x.outcome));
+    else {
+      const b = el("button", "btn", "Undo");
+      b.type = "button";
+      b.onclick = async () => {
+        b.disabled = true;
+        try {
+          await secretCall("knowledge.card.unimport", { id: e.id, name: x.name });
+        } catch (err) {
+          b.disabled = false;
+          hint.textContent = String(err?.message || err);
+          hint.classList.add("err");
+        }
+      };
+      r.append(b);
+    }
+    return r;
+  });
+  const about = el("div", "sbody dim", "Moved in from /setup, as you ticked. Undo takes one out of aegis; it does not put back an original that was removed.");
+  card.replaceChildren(bar, about, ...rows, hint);
+}
+
 function fillKnowledge(card, e) {
   const d = e.detail || {};
+  if (d.op === "imported") return fillImported(card, e);
   const pending = e.status === "pending";
   card.classList.toggle("gone", !pending);
   const bar = el("div", "fbar");

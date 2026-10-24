@@ -355,7 +355,15 @@ for it anyway works around the transcript and the inbox. An agent keeps one
 with `keep_harness_tools`, fixed at spawn like its priming. A session without
 aegis's tools keeps them all, since nothing would replace them. The primer is
 not trimmed to match: OpenCode and Codex share it and still have their own
-twins.
+twins. The harness's own skills and memory are a person's choice, not the
+server's: the owner's `knowledge: native` (their setup record) is read once
+at a spawn into `SpawnSpec.knowledge_native`, kept in the meta, so every
+process of that session and its command menu follow the mode it began
+with; the session passes it as `Launch.knowledge_native`, and each harness turns
+its own off its own way: Claude Code adds `Skill` to the disallowed tools
+and runs with `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, Codex gets `-c` keys and
+`--disable memories` (`codex/config.py` `NATIVE`), OpenCode a rule denying
+the `skill` action (`opencode/config.py` `NATIVE`).
 
 **A `/` line is resolved on the server, and a typo costs nothing.** `session.send`
 runs an aegis command (`commands.py`) as the operation it stands for, passes a name
@@ -476,6 +484,16 @@ caller's own store, an admin's included. A person's edit is saved approved,
 guarded by a stamp: the SHA-256 of the item's file when the view read it,
 checked under the store's lock, so an edit never overwrites a change it did
 not see.
+`/setup`'s import (`knowledge.import`, `knowledge/importer.py`) reads each
+ticked source on the session user's `as_user` runner, so a member's files are
+read as the member and never on the event loop, and saves it with `fresh`,
+which refuses a name any item holds. The ticks are the approval only in a
+turn the person began (`Session.person_turn`, which `/setup`'s line and an
+artifact's submit set): then one transcript card lists the items, each with
+an Undo that reverts its own import commit; in any other turn each item is
+a proposal with its own card. A person calling the op names the session
+for its card (`log_id`). The setup record (`setup.Records`) keeps what was imported
+and is merged, never replaced, by each write.
 
 **A session's own status is a notice its subsystems push.** Beside the host
 kinds, `Notices.set(log_id, source, items)` takes per-session items from a

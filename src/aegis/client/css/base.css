@@ -930,6 +930,8 @@ body{background:#000}
 #a2 .ccard .cdiff .at,#a2 .ccard .cdiff .h{color:var(--faint)}
 #a2 .ccard .sbody.why{color:var(--ink)}
 #a2 .kcard .kbody{color:var(--ink);max-height:240px}
+#a2 .kcard .krow{display:flex;align-items:center;gap:8px;padding:6px 12px;border-top:1px solid var(--rule);background:var(--bg);font-size:13px}
+#a2 .kcard .krow .kwhat{flex:1;min-width:0;overflow-wrap:anywhere}
 @media (pointer:coarse){#a2 .scard .btn,#a2 .scard .sform input{min-height:44px}}
 #a2 .fcard .stage{border-top:1px solid var(--rule);background:var(--bg)}
 #a2 .fcard .stage.image{display:flex;justify-content:center;padding:12px}
@@ -1974,8 +1976,12 @@ body{background:#000}
 #a2 .set-page>.notice{margin:0;text-align:left}
 #a2 .set-page>.set-empty{margin:4vh 0 0;padding:0}
 #a2 .set-page>.set-empty+.set-browser,#a2 .set-page>.notice+.set-browser{margin-top:36px}
-#a2 .set-browser h3,#a2 .set-servers h3{margin:0 0 4px;font-family:var(--font-head);font-weight:500;font-size:15px;color:var(--strong)}
+#a2 .set-knowledge h3,#a2 .set-browser h3,#a2 .set-servers h3{margin:0 0 4px;font-family:var(--font-head);font-weight:500;font-size:15px;color:var(--strong)}
 #a2 .set-browser-row{display:flex;align-items:center;gap:12px;margin:10px 0 8px}
+#a2 .set-knowledge{margin:0 0 26px}
+#a2 .set-native{cursor:pointer;font-size:14px;color:var(--ink)}
+#a2 .set-native input{width:16px;height:16px;flex:none;margin:0;accent-color:var(--accent)}
+#a2 #set-native-note.err{color:var(--err)}
 #a2 .set-browser-k{font-family:var(--font-chrome);font-size:12px;color:var(--muted);min-width:64px}
 #a2 .set-speak-line{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 8px}
 #a2 .set-speak-note{color:var(--muted);overflow-wrap:anywhere}

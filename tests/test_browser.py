@@ -8242,14 +8242,18 @@ def test_settings_opens_on_its_title_then_this_browser_then_servers(server, page
     page.goto(server.url + "#settings")
     page.wait_for_selector("#a2[data-view=settings] .set-harness")
     order = page.evaluate(SECTIONS)
-    assert order[:3] == ["set-head", "set-browser", "set-servers"], order
+    assert order[:4] == ["set-head", "set-browser", "set-knowledge", "set-servers"], (
+        order
+    )
 
 
 def test_settings_without_a_config_keeps_the_page_width(empty_server, page):
     page.goto(empty_server.url + "#settings")
     page.wait_for_selector("#set-setup")
     order = page.evaluate(SECTIONS)
-    assert order[:3] == ["set-empty", "set-browser", "set-servers"], order
+    assert order[:4] == ["set-empty", "set-browser", "set-knowledge", "set-servers"], (
+        order
+    )
 
 
 def test_a_settings_redraw_leaves_the_theme_list_open(server, page):

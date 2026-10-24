@@ -83,6 +83,16 @@ async def test_setup_delivers_one_turn_and_no_session(app):
     assert len(app.sessions.sessions) == before
 
 
+async def test_the_setup_line_begins_a_person_turn(app):
+    """The person's /setup line is their own message, as /remember is: the
+    turn it begins may import approved (knowledge_ops.honoured)."""
+    lid = await spawn_here(app)
+    s = app.sessions.sessions[lid]
+    assert await send(app, lid, "/setup") == {"status": "delivered"}
+    await until(lambda: inbox(s), timeout=5)
+    assert s.person_turn
+
+
 async def test_a_member_may_run_setup_and_records_are_per_principal(world):
     ben = world.app.sessions.sessions[await spawn(world, BEN)]
     adm = world.app.sessions.sessions[await spawn(world, ADMIN)]
@@ -100,3 +110,29 @@ async def test_a_member_may_run_setup_and_records_are_per_principal(world):
     files = sorted(p.name for p in (world.app.roots.state_root / "setup").iterdir())
     assert files == sorted(["ben.json", f"{world.app.user}.json"])
     assert json.loads((world.app.roots.state_root / "setup" / files[0]).read_text())
+
+
+def test_the_setup_page_names_knowledge_import_and_the_keys():
+    from aegis import helppages
+
+    page = next(p for p in helppages.load() if p.id == "setup")
+    knowledge = next(s for s in page.sections if s.slug == "knowledge")
+    text = knowledge.text
+    for needle in (
+        "knowledge_import",
+        "knowledge:skill:<name>",
+        "knowledge:memory:<name>",
+        "remove:<path>",
+        "knowledge:native",
+        "~/.claude/skills",
+        "~/.claude/projects/*/memory/",
+        "when:",
+        "commit",
+        "stops being shared",
+        "never its target",
+        "remove:<link>",
+        "edit:<dir>/MEMORY.md",
+    ):
+        assert needle in text, needle
+    # The old advice to leave skills where they are is gone.
+    assert "Skills keep working as they are" not in page.body

@@ -141,6 +141,9 @@ class Registry(Host):
         self.skill_servers = None  # skill_mcp.SkillServers, set by App
         self._hint_failures: set[str] = set()  # causes already logged
         self.principal_of: Callable[[Session], str] = lambda s: s.spec.owner or ""
+        # Whether a session's owner turned the harness's own knowledge off;
+        # set by App from the owner's setup record.
+        self.native_of: Callable[[str | None], bool] = lambda owner: False
         self.nudges = None  # nudges.Nudges, set by App
         # The live config's context block (config.py); the app points it at
         # Config.current().
@@ -402,6 +405,9 @@ class Registry(Host):
 
     def notice_blocks(self, session: Session, at: str) -> str:
         return "" if self.notices is None else self.notices.pending(session, at)
+
+    def knowledge_native(self, owner: str | None) -> bool:
+        return self.native_of(owner)
 
     def knowledge_hint(self, session: Session, text: str) -> str:
         if self.knowledge is None or not hint.wanted(text):
@@ -870,6 +876,8 @@ class Registry(Host):
                 )
             except PermissionError as e:
                 raise OpError("no_linux_user", str(e)) from None
+        if self.knowledge_native(spec.owner):
+            spec = dataclasses.replace(spec, knowledge_native=True)
         s = self._session(
             {
                 "log_id": log_id,

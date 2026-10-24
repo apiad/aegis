@@ -38,6 +38,7 @@ import binascii
 import hashlib
 import io
 import json
+import logging
 import secrets
 import tarfile
 import time
@@ -47,14 +48,22 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field
 
+from pathlib import Path
+
 from . import launch
 from .skill_mcp import SkillToolError, stop_group
+from .knowledge import history, importer
 from .knowledge.items import Item, check_name, dump, parse_memory, parse_skill
 from .monitors import iso_now
 from .ops import Caller, OpError
 
 if TYPE_CHECKING:
     from .app import App
+
+log = logging.getLogger("aegis.knowledge")
+
+# Items one knowledge.import call takes: a library of 70 is two calls.
+MAX_IMPORT_ITEMS = 50
 
 
 class _Strict(BaseModel):
@@ -264,6 +273,51 @@ class CallSkillTool(_Strict):
 class CardRef(_Strict):
     log_id: str
     id: str
+
+
+class CardItem(_Strict):
+    log_id: str
+    id: str
+    name: str
+
+
+class ImportItem(_Strict):
+    source: str = Field(
+        min_length=1,
+        description="The absolute path of a skill's folder, a memory file or a "
+        "procedure doc, as the person ticked it.",
+    )
+    kind: Literal["skill", "memory", "doc"] = Field(
+        description="skill: a folder with SKILL.md, copied whole; memory: one "
+        "fact's file, such as Claude Code's auto-memory; doc: a procedure doc "
+        "whose when: line becomes the skill's description."
+    )
+    name: str | None = Field(
+        None,
+        description="Its name in aegis; the folder's or file's own name when omitted.",
+    )
+    expires: date | None = Field(
+        None,
+        description="For a memory that names a date or an event: the day it "
+        "stops being true. It is then temporary; otherwise permanent.",
+    )
+
+
+class Setting(_Strict):
+    native: bool | None = Field(
+        None, description="Set the switch; omit it to read the setting."
+    )
+
+
+class ImportItems(_Strict):
+    items: list[ImportItem] = Field(
+        min_length=1, description=f"At most {MAX_IMPORT_ITEMS}; split a longer list."
+    )
+    log_id: str | None = Field(
+        None,
+        description="A person's call only: the session of theirs whose "
+        "transcript gets the card. An agent's card goes in its own session.",
+    )
 
 
 # What a card keeps of a body: enough to read, not a whole skill.
@@ -869,6 +923,161 @@ def register_knowledge_ops(app: App) -> None:
             "content": _cut_content(got.get("content") or []),
         }
 
+    def reader(caller: Caller):
+        """The runner that reads an import's sources: as the session's
+        Linux user for an agent, else as the person's."""
+        try:
+            if caller.is_agent and (caller.log_id or "") in app.sessions.sessions:
+                return app.place_of_session(caller.log_id or "").run
+            return app.place_of(caller).run
+        except PermissionError as e:
+            raise OpError("not_allowed", str(e)) from None
+
+    @r.op("knowledge.import", ImportItems, agent=True)
+    async def knowledge_import(p: ImportItems, caller):
+        """Move the skills, memories and procedure docs the person ticked on
+        the /setup page into aegis, one commit each. In the turn the
+        person's submit began, the ticks are their approval and each item is
+        saved approved, with one card that undoes each; in any other turn
+        each is a proposal with its own card. Reads each source as the
+        session's user; a skill's folder is copied whole, up to 20 MiB. A
+        name aegis already holds is refused, never overwritten. Returns what
+        came in and what was refused, and leaves every source where it is:
+        remove each original with its own ticked row (help_read setup)."""
+        owner = principal(caller)
+        s = agent_session(caller)
+        if not caller.is_agent:
+            # A person's own call: their approval, carded in a session of theirs.
+            if not p.log_id:
+                raise OpError(
+                    "bad_params", "name the session for the import's card: log_id"
+                )
+            s = app.sessions.open(p.log_id)
+            if (s.spec.owner or app.user) != owner:
+                raise OpError("not_owner", f"{p.log_id} is not one of your sessions")
+        if len(p.items) > MAX_IMPORT_ITEMS:
+            raise OpError(
+                "too_many",
+                f"{len(p.items)} items; one call imports at most "
+                f"{MAX_IMPORT_ITEMS}: split them over several calls",
+            )
+        approved = honoured(caller, True)
+        run = reader(caller)
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        done: list[dict] = []
+        refused: list[dict] = []
+        memories: list[Item] = []
+        for x in p.items:
+            try:
+                it, extra = await run(
+                    importer.load, x.kind, Path(x.source), x.name, x.expires, now
+                )
+                if not approved:
+                    it = Item(
+                        it.kind,
+                        it.name,
+                        it.description,
+                        it.body,
+                        {**it.meta, "status": "proposed"},
+                    )
+                sha = await kn.store.save(
+                    owner, it, author(caller), extra=extra, verb="import", fresh=True
+                )
+            except OpError as e:
+                refused.append(
+                    {"source": x.source, "error": e.code, "message": e.message}
+                )
+                continue
+            except OSError as e:
+                refused.append(
+                    {"source": x.source, "error": "unreadable", "message": str(e)}
+                )
+                continue
+            except Exception as e:
+                # One item's fault never strands the ones already committed.
+                log.exception("aegis: importing %s failed", x.source)
+                refused.append(
+                    {
+                        "source": x.source,
+                        "error": "failed",
+                        "message": f"{type(e).__name__}: {e}",
+                    }
+                )
+                continue
+            done.append(
+                {"source": x.source, "kind": it.kind, "name": it.name, "sha": sha}
+            )
+            if it.kind == "memory":
+                memories.append(it)
+        out: dict = {
+            "status": "approved" if approved else "proposed",
+            "imported": [{k: d[k] for k in ("source", "kind", "name")} for d in done],
+            "refused": refused,
+        }
+        if not done:
+            return out
+        # The card first: whatever fails after, each committed item has one.
+        if s is not None and not approved:
+            # Not the person's turn: each item waits for its own Approve.
+            out["cards"] = []
+            for d in done:
+                try:
+                    it = kn.store.get(owner, d["name"])
+                    if it is not None:
+                        files = await asyncio.to_thread(folder, owner, it)
+                        out["cards"].append(record_card(s, "new", it, d["sha"], files))
+                except Exception:
+                    log.exception("aegis: the card of %s failed", d["name"])
+        elif s is not None:
+            id = "kn-" + secrets.token_hex(4)
+            s.record_knowledge(
+                {
+                    "kind": "knowledge_card",
+                    "card_id": id,
+                    "op": "imported",
+                    "item_kind": "import",
+                    "name": f"{len(done)} item{'s' if len(done) != 1 else ''}",
+                    "items": done,
+                }
+            )
+            out["card"] = id
+        errors: list[str] = []
+
+        async def step(what: str, fn, *a) -> None:
+            try:
+                got = fn(*a)
+                if asyncio.iscoroutine(got):
+                    await got
+            except Exception as e:
+                log.exception("aegis: after an import, %s failed", what)
+                errors.append(f"{what}: {e}")
+
+        await step("refreshing the index", kn.refresh, owner)
+        await step(
+            "the usage log",
+            lambda: [
+                kn.usage.add(
+                    owner, caller.log_id or "", d["kind"], d["name"], "saved", "import"
+                )
+                for d in done
+            ],
+        )
+        await step(
+            "writing the setup record",
+            app.setup_records.add_imported,
+            owner,
+            [{k: d[k] for k in ("source", "kind", "name")} | {"at": now} for d in done],
+        )
+        if memories:
+            await step(
+                "checking the memories", app.knowledge_check_soon, owner, memories
+            )
+        if errors:
+            out["error"] = (
+                "the items listed under imported are in aegis, but " + "; ".join(errors)
+            )
+        return out
+
     # Cards being answered now: a second press while the first is at work is
     # refused, so a card is answered once whatever the timing.
     answering: set[tuple[str, str]] = set()
@@ -900,6 +1109,14 @@ def register_knowledge_ops(app: App) -> None:
             yield
         finally:
             answering.discard((s.log_id, id))
+
+    def unrecord(owner: str, kind: str, name: str) -> None:
+        """Take an item out of the setup record's imports; a failed write is
+        logged, never raised into a press that already changed the store."""
+        try:
+            app.setup_records.drop_imported(owner, kind, name)
+        except Exception:
+            log.exception("aegis: the setup record of %s could not be written", owner)
 
     async def reflag(owner: str, name: str) -> None:
         """An answered card's item flagged as it now is: checked again, or
@@ -1017,6 +1234,7 @@ def register_knowledge_ops(app: App) -> None:
             await kn.refresh(owner)
             await reflag(owner, d["name"])
             kn.usage.add(owner, s.log_id, d["item_kind"], d["name"], "discarded")
+            unrecord(owner, d["item_kind"], d["name"])
             await card_done(
                 s,
                 p.id,
@@ -1052,6 +1270,85 @@ def register_knowledge_ops(app: App) -> None:
                 "undone",
                 caller,
                 f"The person undid your change: {what} is {done}.",
+            )
+        return "ok"
+
+    @r.op("knowledge.card.unimport", CardItem, owned="log_id")
+    async def card_unimport(p: CardItem, caller):
+        """Undo one item of an import card: its import commit is reverted,
+        so it leaves aegis. Its original is wherever it then was."""
+        s, e, owner = pending_card(
+            CardRef(log_id=p.log_id, id=p.id), ("imported",), caller
+        )
+        row = next(
+            (x for x in e["detail"].get("items") or [] if x["name"] == p.name), None
+        )
+        if row is None:
+            raise OpError("not_found", f"the card {p.id} imported no {p.name!r}")
+        key = f"{p.id}/{p.name}"
+        if row.get("outcome") or (s.log_id, key) in answering:
+            raise OpError("gone", f"{p.name!r} was already undone")
+        what = f"the {row['kind']} {p.name}"
+
+        def item_done(outcome: str) -> None:
+            s.record_knowledge(
+                {
+                    "kind": "knowledge_card_item_done",
+                    "card_id": p.id,
+                    "name": p.name,
+                    "outcome": outcome,
+                    "by": principal(caller),
+                }
+            )
+
+        def nothing_added() -> None:
+            """A skill's folder holds only what the import brought: a revert
+            would leave a file added since behind, in a folder with no
+            SKILL.md."""
+            if row["kind"] != "skill":
+                return
+            rel = f"skills/{p.name}"
+            top = kn.store.dir(owner) / rel
+            now = {q.relative_to(top).as_posix() for q in top.rglob("*") if q.is_file()}
+            added = sorted(
+                now - set(history.files_at(kn.store.dir(owner), row["sha"], rel))
+            )
+            if added:
+                raise OpError(
+                    "conflict",
+                    f"{what} gained files since the import ({', '.join(added)}); "
+                    "undoing it would leave them behind, so nothing was undone",
+                )
+
+        with answer(s, key):
+            try:
+                await kn.store.revert(
+                    owner,
+                    row["sha"],
+                    row["kind"],
+                    p.name,
+                    principal(caller),
+                    expect=nothing_added,
+                )
+            except OpError as err:
+                if err.code == "conflict":
+                    item_done("conflict")
+                    await s.deliver(
+                        card_header(p.id, "conflict"),
+                        f"The person tried to undo the import of {what}, but it "
+                        f"changed since; nothing was undone. {err.message}",
+                    )
+                raise
+            await kn.refresh(owner)
+            await reflag(owner, p.name)
+            kn.usage.add(owner, s.log_id, row["kind"], p.name, "deleted", "by=person")
+            item_done("undone")
+            unrecord(owner, row["kind"], p.name)
+            await s.deliver(
+                card_header(p.id, "undone"),
+                f"The person undid the import of {what}: it is no longer in "
+                "aegis. Its original is wherever it was; if you removed it, "
+                "tell them where it was.",
             )
         return "ok"
 
@@ -1103,6 +1400,19 @@ def register_knowledge_ops(app: App) -> None:
             "last_used": u.get("last_used"),
             "reads": u.get("read", 0) + u.get("invoked", 0),
         }
+
+    @r.op("knowledge.setting", Setting)
+    async def knowledge_setting(p: Setting, caller):
+        """The caller's own knowledge switch, read or set: native starts
+        their sessions without the harness's own skills and memory. A
+        session keeps the setting it was started with; the switch reaches the
+        sessions started after it."""
+        owner = principal(caller)
+        if p.native is not None:
+            app.setup_records.merge(
+                owner, {"knowledge": "native" if p.native else "side-by-side"}
+            )
+        return {"native": app.knowledge_native(owner)}
 
     @r.op("knowledge.list", ListItems)
     async def knowledge_list(p: ListItems, caller):

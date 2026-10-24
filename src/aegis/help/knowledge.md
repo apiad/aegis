@@ -232,6 +232,10 @@ out of the menu.
   keeps the ones nobody used in that time, `flag=stale` or
   `flag=expired` the ones with that flag.
 
+- `knowledge_import` moves skill folders, memory files and procedure
+  docs the person ticked on the `/setup` page into aegis (help_read setup
+  knowledge).
+
 A session with read permission can search, read and see stats, but not
 save or delete. `skill_run` and `skill_tool` need full permission.
 
@@ -244,3 +248,40 @@ names a date that will pass. It tells you what it saved.
 
 You can also ask in your own words ("remember that we never deploy on
 Fridays"); the agent saves it the same way.
+
+## Moving in what a harness kept
+
+`/setup` finds the skills, auto-memory files and procedure docs another
+harness kept, and proposes moving each into aegis on its page. The agent
+moves the rows you tick with `knowledge_import`: a skill's folder is copied
+whole, scripts and binaries included, each item is saved approved as one
+commit when your submit of the page began the agent's turn (otherwise each
+waits for your Approve on its own card), and a name aegis already holds is refused, never overwritten. One
+card in the transcript lists what came in, with an Undo per item, which
+takes that item out of aegis again; the next `/setup` then proposes it
+again. Undo is refused for a skill that gained files since it came in,
+since undoing the import would leave them behind. Removing an original from where the
+harness loaded it is a row of its own, done after the import, and nothing
+outside aegis is deleted unless you ticked its row.
+
+## Turning the harness's own off
+
+Moving items in does not stop a harness from loading what is left. That is
+a separate switch, off by default: Settings, under Skills and memory, "Only
+aegis's skills and memory in my sessions". It is yours alone; in multi-user
+mode another member's sessions are not touched. `/setup` offers it as the
+`knowledge:native` row. With it on, your sessions start:
+
+- in Claude Code, without its `Skill` tool (aegis's `skill_read` and
+  `skill_search` replace it) and with its auto-memory off, through the
+  `CLAUDE_CODE_DISABLE_AUTO_MEMORY` variable;
+- in Codex, without its skills catalog, its bundled skills and its
+  memories;
+- in OpenCode, with every skill denied, so none is listed or loaded.
+
+A skill in your store then also takes the name of a harness command, so
+`/<name>` runs yours. A session keeps the setting it was started with, a
+restart of its process included, so its menu and its tools always agree;
+the switch reaches the sessions you start after it. Turn the switch off in Settings to go back: until it
+is on, what aegis holds and what the harness still holds both run, and the
+hint names only aegis's.

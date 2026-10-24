@@ -97,6 +97,13 @@ def show(root: Path, relpath: str, sha: str) -> str | None:
     return r.stdout if r.returncode == 0 else None
 
 
+def files_at(root: Path, sha: str, relpath: str) -> list[str]:
+    """The files under ``relpath`` as the commit ``sha`` left them, each
+    relative to ``relpath``."""
+    out = _git(root, "ls-tree", "-r", "--name-only", sha, "--", relpath).stdout
+    return [p.removeprefix(f"{relpath}/") for p in out.splitlines()]
+
+
 def restore(root: Path, relpath: str, sha: str, message: str, author: str) -> str:
     """Put ``relpath`` (a file or a folder) back as it was at ``sha`` and
     commit; the new sha, "" when it already was. A folder loses the tracked
