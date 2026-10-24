@@ -464,7 +464,9 @@ reverts and a digest of the proposal's files (a skill's whole folder), so the bu
 restart and Approve never approves a later text the person was not shown.
 The card ops are owned by the session and act on its owner's store, whoever
 presses them. Expiry and staleness flags (`knowledge/checks.py`) are
-computed on a save and in a daily pass the App runs from boot, through the
+computed on a save (in the background, so a hung read never holds or fails
+a committed save) and in a daily pass the App runs from boot, each bounded
+at 30 s per principal, through the
 principal's `as_user` runner, so the paths a memory quotes are looked for as
 the member and never on the event loop; they live in memory in `Knowledge`.
 

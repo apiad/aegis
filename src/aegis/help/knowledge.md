@@ -71,7 +71,10 @@ memory's paths, then under your Files root and your home. One that is
 found nowhere flags the memory stale, naming the path. A stale memory
 stays in the block, since a moved file does not make the fact false, but
 it is worth a look. On a server with several people the files are looked
-for as your Linux user, so a check sees only what you can see. The flags
+for as your Linux user, so a check sees only what you can see. The check
+after a save runs in the background, so a slow disk never holds the save;
+a check that takes longer than 30 seconds is dropped until the next one,
+and only the first 200 paths of a memory are looked for. The flags
 are kept in memory and computed again when aegis starts.
 
 Search results and `knowledge_stats` carry the flags: `expired` or

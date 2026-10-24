@@ -149,6 +149,9 @@ from .version import Versions
 log = logging.getLogger("aegis.app")
 # How often every principal's memories are checked for expiry and staleness.
 KNOWLEDGE_CHECK_S = 86400
+# The most one principal's staleness check may take: a hung mount must not
+# hold the pass, or the others, forever.
+KNOWLEDGE_CHECK_TIMEOUT_S = 30.0
 # A log id as registry.new_log_id mints it, checked on what a link answers.
 LOG_ID = re.compile(r"^\d{8}-\d{6}-[0-9a-f]{6}$")
 # How many nonced sends the server remembers, across every session.
@@ -498,6 +501,8 @@ class App:
         self._config_task: asyncio.Task | None = None
         self._versions_task: asyncio.Task | None = None
         self._knowledge_task: asyncio.Task | None = None
+        # Checks a save started in the background, held so none is collected.
+        self._knowledge_soon: set[asyncio.Task] = set()
         self._background: set[asyncio.Task] = set()
         self.queues = Queues(
             self.sessions, self.monitors, roots.state_root / "tasks.jsonl", self.config
@@ -1111,6 +1116,8 @@ class App:
             self._versions_task.cancel()
         if self._knowledge_task is not None:
             self._knowledge_task.cancel()
+        for task in list(self._knowledge_soon):
+            task.cancel()
         await self.doctor_watch.stop()
         if self._config_task is not None:
             self._config_task.cancel()
@@ -1210,6 +1217,30 @@ class App:
         some = await self.knowledge.items(principal) if items is None else items
         await self.knowledge.check(principal, some, run, roots, everything=whole)
 
+    async def _bounded_check(self, principal: str, items: list[Item] | None) -> None:
+        """knowledge_check within ``KNOWLEDGE_CHECK_TIMEOUT_S``; a timeout or
+        an error is logged, never raised. A file read already in a thread
+        runs on to its end, but nothing waits for it."""
+        try:
+            await asyncio.wait_for(
+                self.knowledge_check(principal, items), KNOWLEDGE_CHECK_TIMEOUT_S
+            )
+        except TimeoutError:
+            log.warning(
+                "aegis: the knowledge check of %s took over %ss; skipped",
+                principal,
+                KNOWLEDGE_CHECK_TIMEOUT_S,
+            )
+        except Exception:
+            log.exception("aegis: the knowledge check of %s failed", principal)
+
+    def knowledge_check_soon(self, principal: str, items: list[Item]) -> None:
+        """Check ``items`` in the background, as a save does: the save has
+        already committed, so nothing the check does may fail or hold it."""
+        task = asyncio.create_task(self._bounded_check(principal, items))
+        self._knowledge_soon.add(task)
+        task.add_done_callback(self._knowledge_soon.discard)
+
     async def _knowledge_checks(self) -> None:
         """The daily pass: every principal's memories flagged once at boot,
         then every ``KNOWLEDGE_CHECK_S``. Never fails the server, and one
@@ -1221,10 +1252,7 @@ class App:
                 log.exception("aegis: the knowledge check could not list stores")
                 names = []
             for name in names:
-                try:
-                    await self.knowledge_check(name)
-                except Exception:
-                    log.exception("aegis: the knowledge check of %s failed", name)
+                await self._bounded_check(name, None)
             await asyncio.sleep(KNOWLEDGE_CHECK_S)
 
     def _place(self, user: str | None, member: bool) -> Place:

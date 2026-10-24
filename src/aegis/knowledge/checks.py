@@ -11,6 +11,7 @@ extension, and holds no space, no URL scheme and no placeholder (``<x>``,
 ``roots`` the caller gives (the principal's Files root and home), so
 ``repos/bot/run.py`` is found under the workspace it was written in. A stale
 memory stays in the hint: a missing file is not proof the fact is false.
+Only the first ``MAX_PATHS`` paths of a memory are looked for.
 
 ``flags`` does no I/O itself: ``exists`` is the caller's, which in
 multi-user mode runs as the member (as_user.py), so the check sees what the
@@ -34,6 +35,9 @@ EXTENSIONS = frozenset(
     rs sh sql sqlite toml ts tsx txt xml yaml yml
     """.split()
 )
+# The most paths one memory has checked: a pasted listing must not turn one
+# check into thousands of file reads.
+MAX_PATHS = 200
 NOT_A_PATH = re.compile(r"\s|://|[<>{}$*?\[\]|;()=,'\"]")
 
 
@@ -97,7 +101,7 @@ def flags(
     if item.kind != "memory":
         return []
     out = ["expired"] if item.expired(today) else []
-    for token in quoted_paths(item.body):
+    for token in quoted_paths(item.body)[:MAX_PATHS]:
         if not any(exists(c) for c in candidates(token, item.paths, roots or [])):
             out.append(f"stale:{token}")
     return out

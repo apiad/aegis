@@ -103,7 +103,12 @@ async def test_a_missing_backticked_path_flags_stale_but_stays_hinted(world):
             by_person=True,
         )
     )
-    assert got["flags"] == ["stale:repos/bot/run.py"]
+    assert "flags" not in got  # looked for in the background
+    await until(
+        lambda: (
+            app.knowledge.flags_of(app.user, "bot-runner") == ["stale:repos/bot/run.py"]
+        )
+    )
     hint = app.knowledge.hint_for(app.user, s.log_id, "start the bot", None)
     assert "bot-runner" in hint
     stats = ok(await turn(s, mcp("knowledge_stats")))["items"]
@@ -133,6 +138,7 @@ async def test_a_present_path_raises_no_flag(world):
         )
     )
     assert "flags" not in got
+    await asyncio.gather(*app._knowledge_soon)
     rows = app.knowledge.usage.rows(app.user, "deploy-note")
     assert not [r for r in rows if r["event"] == "flagged"]
 
@@ -181,7 +187,10 @@ async def test_a_members_paths_are_checked_as_the_member_in_their_home(members, 
             by_person=True,
         )
     )
-    assert got["flags"] == ["stale:old/plan.md"]
+    assert got["saved"] == "ben-plan"
+    await until(
+        lambda: app.knowledge.flags_of("ben", "ben-plan") == ["stale:old/plan.md"]
+    )
     assert threads and all(t.startswith("as-ben") for t in threads)
 
 
@@ -226,3 +235,63 @@ async def test_one_principal_failing_does_not_stop_the_pass(world, monkeypatch):
     finally:
         task.cancel()
     assert seen[:2] == ["ana", "ben"]
+
+
+def save_bot_runner(s):
+    return turn(
+        s,
+        mcp(
+            "memory_save",
+            name="bot-runner",
+            description="The bot starts from its run script",
+            body="Start the bot with `repos/bot/run.py`.",
+            asked=True,
+        ),
+        by_person=True,
+    )
+
+
+async def test_a_hanging_reader_never_holds_up_a_save_or_the_pass(world, monkeypatch):
+    app = world.app
+    s = await world.spawn()
+    release = threading.Event()
+    app.knowledge.exists = lambda p: release.wait(30) and False
+    monkeypatch.setattr("aegis.app.KNOWLEDGE_CHECK_TIMEOUT_S", 0.5)
+    try:
+        got = ok(await save_bot_runner(s))  # within turn()'s 8 s
+        assert got["saved"] == "bot-runner"
+        seen = []
+        real = app.knowledge_check
+
+        async def check(name, items=None):
+            seen.append(name)
+            await real(name, items)
+
+        monkeypatch.setattr(app.knowledge.store, "principals", lambda: ["ana", "ben"])
+        monkeypatch.setattr(app, "knowledge_check", check)
+        task = asyncio.create_task(app._knowledge_checks())
+        try:
+            await until(lambda: "ben" in seen, timeout=5, what="ben checked")
+        finally:
+            task.cancel()
+    finally:
+        release.set()
+
+
+async def test_a_reader_that_raises_never_fails_a_save(world):
+    app = world.app
+    s = await world.spawn()
+
+    def exists(p):
+        raise OSError("the disk went away")
+
+    app.knowledge.exists = exists
+    got = ok(await save_bot_runner(s))
+    assert got["saved"] == "bot-runner"
+    assert app.knowledge.store.get(app.user, "bot-runner") is not None
+
+
+def test_only_the_first_200_paths_are_checked():
+    body = " ".join(f"`gone/{i}.py`" for i in range(250))
+    got = checks.flags(body_item(body), TODAY, lambda p: False, ["/r"])
+    assert len(got) == 200 and got[-1] == "stale:gone/199.py"

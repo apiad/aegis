@@ -543,9 +543,11 @@ def register_knowledge_ops(app: App) -> None:
         card = await after_save(caller, owner, asked, held, p.name, sha)
         out = saved_answer(p.name, status, card, p.asked and not asked)
         if (now := kn.store.get(owner, p.name)) is not None:
-            await app.knowledge_check(owner, [now])
-            if flags := kn.flags_of(owner, p.name, now.expired()):
-                out["flags"] = flags
+            # Its paths are looked for in the background: a hung or failing
+            # read must not hold or fail a save that has committed.
+            app.knowledge_check_soon(owner, [now])
+            if now.expired():
+                out["flags"] = ["expired"]
         return out
 
     @r.op("memory.delete", DeleteMemory, agent=True)
