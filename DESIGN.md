@@ -356,8 +356,10 @@ with `keep_harness_tools`, fixed at spawn like its priming. A session without
 aegis's tools keeps them all, since nothing would replace them. The primer is
 not trimmed to match: OpenCode and Codex share it and still have their own
 twins. The harness's own skills and memory are a person's choice, not the
-server's: under the owner's `knowledge: native` (their setup record), the
-host sets `Launch.knowledge_native` at each spawn, and each harness turns
+server's: the owner's `knowledge: native` (their setup record) is read once
+at a spawn into `SpawnSpec.knowledge_native`, kept in the meta, so every
+process of that session and its command menu follow the mode it began
+with; the session passes it as `Launch.knowledge_native`, and each harness turns
 its own off its own way: Claude Code adds `Skill` to the disallowed tools
 and runs with `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, Codex gets `-c` keys and
 `--disable memories` (`codex/config.py` `NATIVE`), OpenCode a rule denying

@@ -279,7 +279,8 @@ mode another member's sessions are not touched. `/setup` offers it as the
 - in OpenCode, with every skill denied, so none is listed or loaded.
 
 A skill in your store then also takes the name of a harness command, so
-`/<name>` runs yours. A session already running keeps how it started until
-its process restarts. Turn the switch off in Settings to go back: until it
+`/<name>` runs yours. A session keeps the setting it was started with, a
+restart of its process included, so its menu and its tools always agree;
+the switch reaches the sessions you start after it. Turn the switch off in Settings to go back: until it
 is on, what aegis holds and what the harness still holds both run, and the
 hint names only aegis's.

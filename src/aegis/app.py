@@ -542,7 +542,7 @@ class App:
         self.skill_servers = SkillServers()
         reg.skill_servers = self.skill_servers
         reg.principal_of = lambda s: s.spec.owner or self.user
-        reg.native_of = lambda s: self.knowledge_native(s.spec.owner or self.user)
+        reg.native_of = lambda owner: self.knowledge_native(owner or self.user)
         self.repos = Repos(
             self.journal.path,
             self.publish,
@@ -1469,8 +1469,8 @@ class App:
     async def _skill_command(self, s, name: str):
         """The store skill ``/name`` runs in ``s``, or None. ``skill:<name>``
         reaches one named like an aegis command, or like a harness command
-        the skill does not shadow because its owner's knowledge is not
-        native."""
+        the skill does not shadow because the session was not spawned native
+        (SpawnSpec.knowledge_native)."""
         bare = name.removeprefix("skill:")
         if not NAME_RE.match(bare):
             return None
@@ -1478,7 +1478,7 @@ class App:
         it = self.knowledge.store.get(owner, bare)
         if it is None or not offered(it):
             return None
-        if bare == name and not self.knowledge_native(owner):
+        if bare == name and not s.spec.knowledge_native:
             cat = await self.catalogs.get(s)
             if cat is not None and cat.has(name):
                 return None
@@ -2337,7 +2337,8 @@ class App:
             s = reg.open(p.log_id)
             owner = s.spec.owner or self.user
             skills = await self._offered_skills(owner)
-            return listing(await self.catalogs.get(s), caller, skills, owner)
+            cat = await self.catalogs.get(s)
+            return listing(cat, caller, skills, s.spec.knowledge_native)
 
         @r.op("commands.preview", PreviewParams)
         async def commands_preview(p: PreviewParams, caller):
@@ -2346,14 +2347,16 @@ class App:
             directory has already listed them."""
             owner = self.who(caller).name
             skills = await self._offered_skills(owner)
+            # The session about to start takes the setting as it is now.
+            native = self.knowledge_native(owner)
             try:
                 cwd = self._resolve_cwd(p.cwd)
             except OpError:
-                return listing(None, caller, skills, owner)
+                return listing(None, caller, skills, native)
             cat = self.catalogs.cached(p.harness, cwd)
-            return listing(cat, caller, skills, owner)
+            return listing(cat, caller, skills, native)
 
-        def listing(cat, caller, skills: list[tuple[str, str]], owner: str) -> dict:
+        def listing(cat, caller, skills: list[tuple[str, str]], native: bool) -> dict:
             try:
                 saved = self.saved.listing(self.workflows._agents())
             except Exception:
@@ -2363,10 +2366,10 @@ class App:
             # /doctor only for an admin while the doctor finds a problem.
             doctor = bool(self.doctor_watch.problems()) and self.who(caller).is_admin
             # A harness command keeps its name beside a skill of that name
-            # unless the owner's knowledge is native.
+            # unless the session is native (SpawnSpec.knowledge_native).
             taken = (
                 {c["name"] for c in cat.commands}.difference(commands.AEGIS)
-                if cat and not self.knowledge_native(owner)
+                if cat and not native
                 else set()
             )
             return {

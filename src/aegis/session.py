@@ -199,9 +199,9 @@ class Host:
         (knowledge/hint.py), or ""."""
         return ""
 
-    def knowledge_native(self, session: "Session") -> bool:
-        """Whether a new process starts without the harness's own skills and
-        memory: its owner's knowledge setting is native."""
+    def knowledge_native(self, owner: str | None) -> bool:
+        """Whether ``owner``'s knowledge setting is native now, read once at
+        a spawn (``SpawnSpec.knowledge_native``)."""
         return False
 
     def compacted(self, session: "Session") -> None:
@@ -268,6 +268,12 @@ class SpawnSpec:
     # fixed at creation, so a later change of the token's user reaches new
     # sessions only. None runs as the server's own user.
     linux_user: str | None = None
+    # The owner's knowledge setting when it was spawned (setup.Records):
+    # native starts every process of it without the harness's own skills and
+    # memory, and lets a store skill take a harness command's name. Fixed at
+    # spawn, so the menu and the process never disagree; the switch reaches
+    # new sessions.
+    knowledge_native: bool = False
 
     def record(self) -> dict:
         """The fields a spawn record and a meta carry."""
@@ -301,6 +307,8 @@ class SpawnSpec:
             d["cascade"] = list(self.cascade)
         if self.linux_user:
             d["linux_user"] = self.linux_user
+        if self.knowledge_native:
+            d["knowledge_native"] = True
         return d
 
     @classmethod
@@ -325,6 +333,7 @@ class SpawnSpec:
             keep_harness_tools=tuple(d.get("keep_harness_tools") or ()),
             cascade=_cascade_of(d.get("cascade")),
             linux_user=d.get("linux_user") or None,
+            knowledge_native=bool(d.get("knowledge_native")),
         )
 
 
@@ -786,7 +795,7 @@ class Session:
                 log_id=self.log_id,
                 user=user,
                 keep_harness_tools=self.spec.keep_harness_tools,
-                knowledge_native=self._host.knowledge_native(self),
+                knowledge_native=self.spec.knowledge_native,
             )
         )
         # Before the start: a harness can speak while it starts (OpenCode's

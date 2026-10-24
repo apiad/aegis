@@ -10,6 +10,7 @@ from pathlib import Path
 
 from aegis.codex.config import argv as codex_argv
 from aegis.opencode.config import child_config
+from aegis.session import SpawnSpec
 
 from .conftest import until
 from .knowledge_samples import skill
@@ -96,18 +97,25 @@ async def test_native_on_disallows_skill_for_that_owner_only(members):
     assert "Skill" not in denied(mine) and VAR not in proc_env(mine)
 
 
-async def test_the_switch_is_undone_and_reaches_the_next_start(world):
+async def test_the_switch_is_undone_and_reaches_the_next_session(world):
+    """A session's mode is fixed at spawn and kept in its meta: a restart of
+    its process keeps it, and a new session takes the setting."""
     app = world.app
     await setting(app, native=True)
     s = await world.spawn()
     await started(s)
-    assert "Skill" in denied(s)
+    assert "Skill" in denied(s) and s.spec.record()["knowledge_native"] is True
     assert await setting(app, native=False) is False
-    assert "Skill" in denied(s)  # a running process keeps how it started
     await s.stop()
     await s.ensure_running()
     await started(s)
-    assert "Skill" not in denied(s) and VAR not in proc_env(s)
+    assert "Skill" in denied(s) and proc_env(s)[VAR] == "1"
+    again = SpawnSpec.from_record(s.spec.record(), Path("/"))
+    assert again.knowledge_native is True
+    fresh = await world.spawn()
+    await started(fresh)
+    assert "Skill" not in denied(fresh) and VAR not in proc_env(fresh)
+    assert "knowledge_native" not in fresh.spec.record()
     assert app.setup_records.get(app.user)["knowledge"] == "side-by-side"
 
 
@@ -154,8 +162,23 @@ async def test_with_the_setting_a_store_skill_takes_a_harness_command_name(app):
     rows = (await app.registry.call("commands.list", {"log_id": lid}))["commands"]
     assert "skill:busy" in {c["name"] for c in rows}
     await setting(app, native=True)
+    lid = await spawn_here(app)
     rows = (await app.registry.call("commands.list", {"log_id": lid}))["commands"]
     assert [c["source"] for c in rows if c["name"] == "busy"] == ["aegis skill"]
+
+
+async def test_switching_on_leaves_a_running_session_side_by_side(app):
+    """/name in a session spawned side by side still reaches the harness's
+    command, as its menu says, after the switch goes on."""
+    await app.knowledge.store.save(app.user, skill("busy", "The store's busy"), "t")
+    lid = await spawn_here(app)
+    s = app.sessions.sessions[lid]
+    await setting(app, native=True)
+    rows = (await app.registry.call("commands.list", {"log_id": lid}))["commands"]
+    assert "skill:busy" in {c["name"] for c in rows}
+    assert (await send(app, lid, "/busy 0")) != {"status": "delivered"}
+    await until(lambda: s.status == "idle", timeout=8, what="the harness's /busy")
+    assert not [e for e in s.entries() if "> from skill:busy" in (e.get("md") or "")]
 
 
 def test_codex_native_turns_its_skills_and_memories_off():

@@ -1381,7 +1381,8 @@ def register_knowledge_ops(app: App) -> None:
     async def knowledge_setting(p: Setting, caller):
         """The caller's own knowledge switch, read or set: native starts
         their sessions without the harness's own skills and memory. A
-        running session keeps how it started until its process restarts."""
+        session keeps the setting it was started with; the switch reaches the
+        sessions started after it."""
         owner = principal(caller)
         if p.native is not None:
             app.setup_records.merge(

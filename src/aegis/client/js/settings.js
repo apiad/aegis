@@ -338,7 +338,7 @@ export class Settings {
         this.nativeBox.disabled = true;
         try {
           const r = await this.conn.call("knowledge.setting", { native: want });
-          this.drawNative(r.native, "Saved. A session already running keeps how it started until its process restarts.");
+          this.drawNative(r.native, "Saved. A session already open keeps how it started; sessions you start from now on use this.");
         } catch (e) {
           this.nativeBox.checked = !want;
           this.drawNative(!want, String(e?.message || e), true);
