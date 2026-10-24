@@ -1,7 +1,7 @@
 ---
 title: Moving in with /setup
 kind: howto
-when: onboarding someone who used Claude Code, Codex, OpenCode or Cursor before; moving their skills, habits and cron jobs into aegis; running /setup again
+when: onboarding someone who used Claude Code, Codex, OpenCode or Cursor before; moving their skills, memories, habits and cron jobs into aegis; running /setup again
 hints:
   - Coming from Claude Code, Codex or Cursor? /setup moves your skills and jobs in.
   - Run /setup again any time; it proposes only what is new.
@@ -32,8 +32,10 @@ an earlier run, read transcripts newer than the time it read up to only.
 | Claude Code transcripts | `~/.claude/projects/*/*.jsonl` | projects, sessions a week, the same request made again and again, long waits on CI, Claude Code's /loop |
 | Codex sessions | `~/.codex/sessions/` | the same |
 | OpenCode sessions | OpenCode's data directory, `~/.local/share/opencode/` | the same |
-| skills and commands | `~/.claude/skills`, `~/.claude/commands`, plugins, each project's `.claude/` | procedures, and which ones sleep, poll or fan out to subagents |
-| instruction files | `CLAUDE.md` and `AGENTS.md` in the home and the projects | rules aegis now carries out for them |
+| skills and commands | `~/.claude/skills`, `~/.claude/commands`, plugins, each project's `.claude/`, Codex's and OpenCode's skill folders | procedures, and which ones sleep, poll or fan out to subagents; what to move into aegis (knowledge) |
+| auto-memory | `~/.claude/projects/*/memory/` | facts Claude Code saved, to move into aegis (knowledge) |
+| procedure docs | Markdown files whose frontmatter has a `when:` line, such as a `know-how/` folder | procedures to move into aegis as skills (knowledge) |
+| instruction files | `CLAUDE.md` and `AGENTS.md` in the home and the projects, and notebooks about working with agents | rules aegis now carries out for them; settled patterns that become memories |
 | clocks | `crontab -l`, `systemctl --user list-timers` | jobs that start a harness |
 | aegis | `.aegis.yaml`, `workflow_list`, `schedule_list` | what exists already |
 
@@ -64,9 +66,80 @@ key unless its evidence has at least doubled. End your turn needs_you.
 
 A key names each proposal as kind and name: `queue:tests`,
 `schedule:weekly-prs`, `workflow:release`, `agent:codex`, `edit:<path>`.
-Skills keep working as they are, because each harness loads its own skills
-inside aegis; propose a change to one only where aegis gives it something it
-lacked.
+Skills, memories and procedure docs have rows of their own, in the same
+artifact (knowledge).
+
+## Knowledge
+
+aegis keeps skills and memories itself, one store per person, and finds
+the ones that matter for each message (help_read knowledge). Moving in is a
+migration, not a copy: an item aegis takes leaves the harness, so there is
+one source per item. The person accepts or rejects each row; what they do
+not tick keeps working in the harness as before.
+
+Look in these places, as the person's own user:
+
+- skill folders (a folder with a `SKILL.md`): `~/.claude/skills/`, each
+  project's `.claude/skills/`, the plugins' skills under
+  `~/.claude/plugins/`, `~/.codex/skills/`, `~/.agents/skills/`,
+  `~/.config/opencode/skills/` and a project's `.opencode/skills/`;
+- Claude Code's auto-memory: `~/.claude/projects/*/memory/`, one file per
+  fact (its `MEMORY.md` is an index; leave it out);
+- procedure docs: Markdown files with a `when:` line in their frontmatter;
+- instruction files (`CLAUDE.md`, `AGENTS.md`) and notebooks the person
+  keeps about how they work with agents.
+
+Propose a row per item, with its path as evidence. Each found thing becomes:
+
+| found | becomes | key |
+|---|---|---|
+| a harness skill or plugin skill | an aegis skill, copied with its folder | `knowledge:skill:<name>` |
+| a procedure doc | an aegis skill, its `when:` line as the description | `knowledge:skill:<name>` |
+| an auto-memory file | an aegis memory, approved, permanent unless it names a date | `knowledge:memory:<name>` |
+| a notebook or a rule section about working together | memories, one per settled pattern, which you draft | `knowledge:memory:<name>` |
+| a rule telling agents to do by hand what aegis does (keep a journal file, poll, keep a todo list) | the rule removed, naming the aegis feature that replaces it | `remove:<path>` |
+| an original that has been imported | removed, or a one-line pointer saying it now lives in aegis | `remove:<path>` |
+
+Every original to remove is a row of its own, ticked or not, so nothing
+outside aegis is deleted unless its row is ticked. Say on the row:
+
+- for a skill in a project's `.claude/skills/`: it stops being shared with
+  the other people and agents who use that repository;
+- for a plugin's skill: a plugin's folder is rewritten when it updates, so
+  propose turning the plugin off (its `enabledPlugins` entry in
+  `~/.claude/settings.json`) only when every skill it brings moved;
+- for a file git tracks (`git -C <repo> ls-files --error-unmatch <path>`),
+  such as a repository's `CLAUDE.md`, `AGENTS.md` or `.claude/skills/`: the
+  change is a commit in that repository, made the way its own `AGENTS.md`
+  says (a branch and a pull request, or straight to its main branch).
+
+Leave out every source the turn says was already moved into aegis.
+
+One more row, `knowledge:native`, offers the switch that stops the harness
+loading its own skills and memory in this person's sessions: Claude Code's
+`Skill` tool and its auto-memory, Codex's and OpenCode's skill catalogs and
+Codex's memories. It is optional and separate from the moves, and the
+person can turn it off again from Settings. Until it is on, what aegis
+holds and what the harness still holds both run.
+
+Apply in this order, after the rest of the page's rows:
+
+1. Call `knowledge_import` once with every ticked `knowledge:skill:` and
+   `knowledge:memory:` row: `source` (the absolute path), `kind` (`skill`
+   for a folder, `memory` for one fact's file, `doc` for a procedure doc),
+   and `name` when aegis should know it by another. A memory you drafted
+   from a notebook is not a file: save it with `memory_save` and `asked:
+   true`. The ticks are the person's approval, so each item is saved
+   approved; one card lists them with an Undo each. Read the answer: a
+   refused row (a name aegis already holds, a link that leaves the folder,
+   a folder over 20 MiB) is not imported, so do not remove its original.
+2. Remove each ticked `remove:<path>` original that was imported, with
+   ordinary file operations as the person's user, or as a commit in its
+   repository for a file git tracks.
+3. For a ticked `knowledge:native`, call `setup_record` with
+   `knowledge="native"` (below).
+
+`knowledge_import` writes what it imported into the setup record itself.
 
 ## Apply
 
@@ -80,13 +153,17 @@ Apply the ticked rows, each through its own door:
   person starts it from there.
 - workflows: `workflow_save`, in the project the skill came from.
 - files the person owns, such as a skill, `AGENTS.md` or `CLAUDE.md`:
-  ordinary edits, listed at the end with their paths.
+  ordinary edits, listed at the end with their paths; a file git tracks
+  is changed as a commit in its repository, following its rules.
+- skills, memories and procedure docs: `knowledge_import`, then each
+  removal row (knowledge).
 
 ## Record
 
 Call `setup_record` once, at the end: `applied` and `declined` as keys,
 each declined key with the evidence count you showed, and
-`sources_until=<ISO time>`, the newest transcript time you read. The record is the person's own, so a
+`sources_until=<ISO time>`, the newest transcript time you read. Add
+`knowledge="native"` when the person ticked `knowledge:native`. The record is the person's own, so a
 member's run never sees another's.
 
 ## Check

@@ -100,3 +100,26 @@ async def test_a_member_may_run_setup_and_records_are_per_principal(world):
     files = sorted(p.name for p in (world.app.roots.state_root / "setup").iterdir())
     assert files == sorted(["ben.json", f"{world.app.user}.json"])
     assert json.loads((world.app.roots.state_root / "setup" / files[0]).read_text())
+
+
+def test_the_setup_page_names_knowledge_import_and_the_keys():
+    from aegis import helppages
+
+    page = next(p for p in helppages.load() if p.id == "setup")
+    knowledge = next(s for s in page.sections if s.slug == "knowledge")
+    text = knowledge.text
+    for needle in (
+        "knowledge_import",
+        "knowledge:skill:<name>",
+        "knowledge:memory:<name>",
+        "remove:<path>",
+        "knowledge:native",
+        "~/.claude/skills",
+        "~/.claude/projects/*/memory/",
+        "when:",
+        "commit",
+        "stops being shared",
+    ):
+        assert needle in text, needle
+    # The old advice to leave skills where they are is gone.
+    assert "Skills keep working as they are" not in page.body

@@ -692,7 +692,7 @@ async def test_a_member_is_never_hinted_another_principals_memory(world):
 <div class="verify"><span class="lbl">verify</span><p><code>uv run pytest tests/test_knowledge_import.py -q</code></p></div>
 </div></details>
 
-<details class="task" id="task-19" data-state="pending">
+<details class="task" id="task-19" data-state="done">
 <summary><span class="num">19</span><span><span class="ttl">The knowledge step in /setup</span><span class="files">help/setup.md · setup.py · tests/test_setup_command.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <p>The help page <code>setup</code> gains a "Knowledge" part under Sources, Propose and Apply. It lists the places to look (harness skill folders, plugin skills, auto-memory directories, procedure docs with <code>when:</code>, instruction files and notebooks) and the spec's table of what each becomes, removals included. It also says how to apply: <code>knowledge_import</code> for the ticked items, then removing each moved original with its own row. An original that git tracks is changed as a commit in its repository, following that repository's rules. The proposal keys are <code>knowledge:skill:&lt;name&gt;</code>, <code>knowledge:memory:&lt;name&gt;</code> and <code>remove:&lt;path&gt;</code>. <code>setup.turn</code> needs no change if the page carries it. Check that with the existing test that reads the turn.</p>

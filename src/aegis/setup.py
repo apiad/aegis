@@ -136,7 +136,8 @@ def turn(typed: str, facts: str, record: dict | None, now: str) -> tuple[str, st
         "- send one artifact with a row per proposal, its evidence and a\n"
         "  checkbox, and wait for their submit (propose);\n"
         "- apply the ticked rows: config_suggest for .aegis.yaml, schedule_create,\n"
-        "  workflow_save, and ordinary edits to their own files (apply);\n"
+        "  workflow_save, knowledge_import for skills and memories, then each\n"
+        "  removal row, and ordinary edits to their own files (apply, knowledge);\n"
         "- check with config_doctor, list where each change now lives, and call\n"
         "  setup_record with what was applied and declined (record, check).\n"
     )
