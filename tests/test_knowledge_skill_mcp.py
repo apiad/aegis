@@ -133,3 +133,44 @@ async def test_a_write_session_reads_the_skill_but_starts_no_server(agents_world
     said = await turn(s, call("echoer", "echo", {"text": "x"}))
     assert said.startswith("mcp error: not_allowed"), said
     assert app.skill_servers.running(s.log_id) == []
+
+
+async def test_a_refused_signal_never_stops_close_or_shutdown(
+    agents_world, monkeypatch
+):
+    """A member's server runs as another Linux user, whose group the server
+    may not signal itself: the stop goes through the launcher as that user,
+    and close and shutdown finish either way."""
+    app = agents_world.app
+    await save_echoer(app)
+    s = await agents_world.spawn()
+    ok(await turn(s, mcp("skill_read", name="echoer")))
+    pid = app.skill_servers._servers[(s.log_id, "echoer")].proc.pid
+    real = os.killpg
+
+    def refused(pgid, sig):
+        if pgid == pid:
+            raise PermissionError(1, "Operation not permitted")
+        real(pgid, sig)
+
+    monkeypatch.setattr(os, "killpg", refused)
+    await app.registry.call("session.close", {"log_id": s.log_id})
+    assert s.log_id in app.sessions.archived
+    await until(lambda: not alive(pid), what="the server's end, through kill")
+    # A stop that fails outright is logged, and shutdown goes on to the end.
+    t = await agents_world.spawn()
+    ok(await turn(t, mcp("skill_read", name="echoer")))
+
+    async def broken(log_id):
+        raise RuntimeError("cannot stop")
+
+    monkeypatch.setattr(app.skill_servers, "stop_session", broken)
+    stopped, stop = [], app.knowledge.usage.stop
+    monkeypatch.setattr(
+        app.knowledge.usage, "stop", lambda: (stopped.append(1), stop())
+    )
+    await app.registry.call("session.close", {"log_id": t.log_id})
+    assert t.log_id in app.sessions.archived
+    monkeypatch.setattr(app.skill_servers, "shutdown", broken)
+    await app.shutdown()
+    assert stopped == [1]

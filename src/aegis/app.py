@@ -1122,7 +1122,10 @@ class App:
         await self.browsers.shutdown()
         await self.side_notes.shutdown()
         await self.sessions.shutdown()
-        await self.skill_servers.shutdown()
+        try:
+            await self.skill_servers.shutdown()
+        except Exception:
+            log.exception("aegis: the skill servers did not stop")
         await self.repos.stop()
         await asyncio.to_thread(self.journal.stop)
         await asyncio.to_thread(self.knowledge.usage.stop)

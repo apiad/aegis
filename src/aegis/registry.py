@@ -911,7 +911,10 @@ class Registry(Host):
         if self.knowledge is not None:
             self.knowledge.forget(log_id)
         if self.skill_servers is not None:
-            await self.skill_servers.stop_session(log_id)
+            try:
+                await self.skill_servers.stop_session(log_id)
+            except Exception:
+                log.exception("aegis: %s's skill servers did not stop", log_id)
         await s.stop()
         if self.secrets is not None:
             # Pads and open requests die with the session, and so do the

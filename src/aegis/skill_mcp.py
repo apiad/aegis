@@ -23,7 +23,6 @@ started again by the next call.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import logging
 import os
@@ -58,17 +57,42 @@ SERVE_SH = (
 )
 
 
-async def stop_group(proc: asyncio.subprocess.Process) -> None:
+async def _signal_group(pgid: int, sig: signal.Signals, user: str | None) -> None:
+    """Signal group ``pgid``. In the multi-user mode a member's group runs as
+    another Linux user, which the server may not signal itself, so a refused
+    signal is sent again by ``kill`` started through the launcher as that
+    user. Never raises: a failure is logged."""
+    try:
+        os.killpg(pgid, sig)
+        return
+    except ProcessLookupError:
+        return
+    except PermissionError:
+        pass
+    try:
+        await asyncio.to_thread(
+            launch.run,
+            ["kill", "-s", sig.name.removeprefix("SIG"), "--", f"-{pgid}"],
+            user=user,
+            timeout=5,
+        )
+    except Exception as e:  # noqa: BLE001 - a stop must finish
+        log.warning(
+            "skill mcp: could not %s group %s as %s: %s", sig.name, pgid, user, e
+        )
+
+
+async def stop_group(proc: asyncio.subprocess.Process, user: str | None) -> None:
     """TERM the process's group, so the shell's EXIT trap removes its folder,
-    then KILL it if it is still there after ``STOP_GRACE_S``."""
+    then KILL it if it is still there after ``STOP_GRACE_S``. Never raises."""
     for sig, wait in ((signal.SIGTERM, STOP_GRACE_S), (signal.SIGKILL, 5.0)):
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(proc.pid, sig)
+        await _signal_group(proc.pid, sig, user)
         try:
             await asyncio.wait_for(proc.wait(), wait)
             return
         except TimeoutError:
             continue
+    log.warning("skill mcp: group %s outlived SIGKILL", proc.pid)
 
 
 class SkillToolError(Exception):
@@ -78,6 +102,7 @@ class SkillToolError(Exception):
 @dataclass
 class Server:
     proc: asyncio.subprocess.Process
+    user: str | None = None
     tools: list[dict] = field(default_factory=list)
     pending: dict[int, asyncio.Future] = field(default_factory=dict)
     stderr: str = ""
@@ -141,7 +166,7 @@ class Server:
 
     async def stop(self) -> None:
         if self.alive:
-            await stop_group(self.proc)
+            await stop_group(self.proc, self.user)
         for t in (self.reader, self.errors):
             if t is not None:
                 t.cancel()
@@ -192,7 +217,7 @@ class SkillServers:
             )
         except OSError as e:
             raise SkillToolError(f"the server could not start: {e}") from e
-        s = Server(proc)
+        s = Server(proc, user)
         s.reader = asyncio.create_task(s.read())
         s.errors = asyncio.create_task(s.drain_stderr())
         try:

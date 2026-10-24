@@ -529,7 +529,7 @@ def register_knowledge_ops(app: App) -> None:
             code = await proc.wait()
         except TimeoutError:
             # The whole group: python3 under the shell holds the pipes too.
-            await stop_group(proc)
+            await stop_group(proc, s.spec.linux_user)
             await io_done
             err += f"\n[killed after {p.timeout_s}s]".encode()
         s.ran_skill(it.name)
