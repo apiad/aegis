@@ -5,7 +5,7 @@ when: remembering a fact for later sessions, keeping a procedure as a skill, fin
 hints:
   - Type /remember and a fact; every later session can find it. #remember-something
   - The knowledge block under your message names what may help the agent. #the-hint
-  - A memory an agent saves on its own waits for your Approve on its card. #approving-what-an-agent-saves
+  - The Knowledge view lists your memories and skills to search, edit and restore. #the-knowledge-view
 ---
 
 aegis keeps your memories and skills on the server: one Markdown file per
@@ -29,8 +29,8 @@ Names are unique across your memories and skills: a memory cannot take the
 name of a skill. A link to another item is written `[[name]]`.
 
 Every change goes through aegis and is one commit in a git history kept
-with your memories on the server, so a deleted memory is kept there. The
-Knowledge view, in a later release, will restore one.
+with your memories on the server, so a deleted memory is kept there, and
+the Knowledge view, below, restores it.
 
 ## Approving what an agent saves
 
@@ -61,6 +61,32 @@ The cards are kept in the transcript, so their buttons work after aegis
 restarts. Only the person who owns the session can answer them, even on
 a server where an admin can read every transcript; they act on that
 person's store, and the agent is told the outcome.
+
+## The Knowledge view
+
+The Knowledge button in the top bar, or Alt+I, opens the Knowledge view:
+your own memories and skills, never anyone else's, an admin's
+included. A search box and the chips all, skills, memories and flagged
+narrow the list; flagged lists proposals and expired or stale memories.
+Proposals come first. Each row shows the name, the description, when an
+agent last read it and how often, and its flag: proposed, expired, stale
+(hover it for the missing path) or ok.
+
+Open a row to read and edit the item's whole file, its frontmatter
+included, in the editor. Save, or Ctrl+S, commits the edit
+and approves the item, so editing a proposal approves the text you
+saved; Approve on its card then does nothing and says it changed. If
+the file changed since you opened it, by an agent or by hand, nothing is
+saved and Reload is offered. The card of a proposal has an Edit
+button that opens it here.
+
+Below the editor, History lists every commit that changed the item,
+newest first, with who made it. Restore puts the item back as it was at
+that commit, as a new commit, so a restore can be undone the same way.
+Delete removes the item after asking; its history is still shown, and
+Restore on an earlier version brings it back. On a phone the rows drop
+the usage column, and an open item takes the whole width, with a back
+button to the list.
 
 ## Expired and stale memories
 

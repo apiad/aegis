@@ -63,6 +63,7 @@ export const ACTIONS = [
   { id: "spawn", title: "New session", nav: true, keys: [on("global", "Alt+N", alt("KeyN")), on("browse", "n", key("n"))] },
   { id: "settings", title: "Settings: .aegis.yaml", nav: true, keys: [on("global", "Alt+S", alt("KeyS"))] },
   { id: "journal", title: "Journal: what was done", nav: true, keys: [on("global", "Alt+L", alt("KeyL"))] },
+  { id: "knowledge", title: "Knowledge: your skills and memories", nav: true, keys: [on("global", "Alt+I", alt("KeyI"))] },
   { id: "files", title: "Open a file under the root, newest first", nav: true, keys: [on("global", "Alt+O", alt("KeyO"))] },
   // Inside the editor Mod-s is CodeMirror's (editor.js); this is the rest of the view.
   { id: "save", title: "Save the open file", when: ["files"], keys: [on("files", MAC ? "⌘S" : "Ctrl+S", mod("s"))] },

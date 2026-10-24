@@ -15,7 +15,13 @@ from .test_browser import (  # noqa: F401
 
 pytestmark = [pytest.mark.browser, pytest.mark.slow]
 
-HEADER_ICONS = ["schedules-btn", "settings-btn", "files-btn", "journal-btn"]
+HEADER_ICONS = [
+    "schedules-btn",
+    "settings-btn",
+    "files-btn",
+    "journal-btn",
+    "knowledge-btn",
+]
 
 
 @pytest.fixture

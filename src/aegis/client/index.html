@@ -41,6 +41,7 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
     <button class="keys-btn set-btn" id="settings-btn" title="Settings (Alt+S)" aria-label="Settings"><span class="lbl">Settings</span></button>
     <button class="jr-btn" id="files-btn" title="Files (Alt+O)" aria-label="Files"></button>
     <button class="jr-btn" id="journal-btn" title="Journal (Alt+L)" aria-label="Journal"></button>
+    <button class="jr-btn" id="knowledge-btn" title="Knowledge: skills and memories (Alt+I)" aria-label="Knowledge"></button>
     <button class="keys-btn bell" id="bell" title="Turn on desktop notifications"></button>
     <button class="side-btn" id="side-btn" title="Session panel (Alt+B)" aria-label="Session panel"><svg class="ic i-panel" aria-hidden="true"><use href="#g-panel"/></svg></button>
     <button class="keys-btn help-btn" id="help-btn" title="Help: how to use aegis" aria-label="Help">?</button>
@@ -132,6 +133,7 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
 
   <main class="view v-settings"><section class="settings" id="settings"></section></main>
   <main class="view v-journal"><section class="journal" id="journal"></section></main>
+  <main class="view v-knowledge"><section class="knowledge" id="knowledge"></section></main>
   <main class="view v-files"><section class="files" id="files"></section></main>
   <main class="view v-schedules"><section class="schedules" id="schedules"></section></main>
   <main class="view v-help"><section class="helpv" id="help"></section></main>

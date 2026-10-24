@@ -470,6 +470,12 @@ at 30 s per principal, through the
 principal's `as_user` runner, so the paths a memory quotes are looked for as
 the member and never on the event loop; they live in memory in `Knowledge`
 and in the usage db's `flags` table, so a restart logs no flag twice.
+The Knowledge view's ops (`knowledge.list`, `.get`, `.put`, `.history`,
+`.restore`, `.remove`) are a person's, never an agent's, and act on the
+caller's own store, an admin's included. A person's edit is saved approved,
+guarded by a stamp: the SHA-256 of the item's file when the view read it,
+checked under the store's lock, so an edit never overwrites a change it did
+not see.
 
 **A session's own status is a notice its subsystems push.** Beside the host
 kinds, `Notices.set(log_id, source, items)` takes per-session items from a
