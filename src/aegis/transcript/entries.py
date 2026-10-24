@@ -1034,6 +1034,8 @@ class Fold:
                     "name",
                     "description",
                     "body",
+                    "partial",
+                    "files",
                     "type",
                     "lifetime",
                     "expires",

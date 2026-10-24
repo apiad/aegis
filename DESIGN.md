@@ -460,7 +460,7 @@ or a person's `/` line and cleared by any other, in memory only. An item saved
 approved because of it gets an Undo card, as every agent change to an
 approved item does. A proposal's card and the Undo cards are transcript records
 like config_suggest's: the record carries what the card shows, the commit Undo
-reverts and a digest of the proposal's text, so the buttons work after a
+reverts and a digest of the proposal's files (a skill's whole folder), so the buttons work after a
 restart and Approve never approves a later text the person was not shown.
 The card ops are owned by the session and act on its owner's store, whoever
 presses them. Expiry and staleness flags (`knowledge/checks.py`) are

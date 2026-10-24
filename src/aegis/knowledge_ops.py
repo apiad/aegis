@@ -273,10 +273,16 @@ def card_header(id: str, outcome: str) -> str:
     return f"> from knowledge:{id} · {outcome} · {iso_now()}"
 
 
-def digest(it: Item) -> str:
+def digest(it: Item, files: dict[str, bytes] | None = None) -> str:
     """What a proposal's card was drawn from, so Approve never approves a
-    later text the person was not shown."""
-    return hashlib.sha256(dump(it).encode()).hexdigest()
+    later text the person was not shown. A skill's covers ``files``, the
+    other files of its folder, so a changed script makes the card stale."""
+    h = hashlib.sha256(dump(it).encode())
+    for name in sorted(files or {}):
+        data = (files or {})[name]
+        h.update(f"\0{name}\0{len(data)}\0".encode())
+        h.update(data)
+    return h.hexdigest()
 
 
 class Stats(_Strict):
@@ -386,9 +392,29 @@ def register_knowledge_ops(app: App) -> None:
             "approved" if held is not None and held.status == "approved" else "proposed"
         )
 
-    def record_card(s, op: str, it: Item, sha: str) -> str:
+    def folder(owner: str, it: Item) -> dict[str, bytes]:
+        """A skill's files other than SKILL.md, by relative path; a memory
+        has none. Reads files, so never on the loop."""
+        if it.kind != "skill":
+            return {}
+        return {
+            n: kn.store.read_file(owner, it.name, n)
+            for n in kn.store.files(owner, it.name)
+            if n != "SKILL.md"
+        }
+
+    def record_card(
+        s, op: str, it: Item, sha: str, files: dict[str, bytes] | None = None
+    ) -> str:
         id = "kn-" + secrets.token_hex(4)
         expires = it.expires
+        files = files or {}
+        listed = (
+            [{"name": "SKILL.md", "size": len(dump(it).encode())}]
+            if it.kind == "skill"
+            else []
+        )
+        listed += [{"name": n, "size": len(files[n])} for n in sorted(files)]
         s.record_knowledge(
             {
                 "kind": "knowledge_card",
@@ -398,11 +424,13 @@ def register_knowledge_ops(app: App) -> None:
                 "name": it.name,
                 "description": it.description,
                 "body": it.body[:CARD_BODY_CHARS],
+                "partial": len(it.body) > CARD_BODY_CHARS,
+                "files": listed,
                 "type": it.meta.get("type"),
                 "lifetime": it.lifetime if it.kind == "memory" else None,
                 "expires": expires.isoformat() if expires else None,
                 "sha": sha,
-                "digest": digest(it),
+                "digest": digest(it, files),
             }
         )
         return id
@@ -417,14 +445,15 @@ def register_knowledge_ops(app: App) -> None:
         it = kn.store.get(owner, name)
         if s is None or it is None:
             return None
+        files = await asyncio.to_thread(folder, owner, it)
         if it.status == "proposed":
-            return record_card(s, "new", it, sha)
+            return record_card(s, "new", it, sha, files)
         if not sha:
             return None
         if held is not None and held.status == "approved":
-            return record_card(s, "changed", it, sha)
+            return record_card(s, "changed", it, sha, files)
         if asked:
-            return record_card(s, "saved", it, sha)
+            return record_card(s, "saved", it, sha, files)
         return None
 
     def memory(owner: str, name: str) -> Item:
@@ -844,7 +873,7 @@ def register_knowledge_ops(app: App) -> None:
         )
         await s.deliver(card_header(id, outcome), body)
 
-    def as_shown(d: dict):
+    def as_shown(d: dict, owner: str):
         """The store's check, under its lock, that the proposal is still the
         text its card showed: else ``gone`` or ``stale``, and nothing moves."""
         what = f"the {d['item_kind']} {d['name']}"
@@ -852,7 +881,9 @@ def register_knowledge_ops(app: App) -> None:
         def expect(it: Item | None) -> None:
             if it is None or it.kind != d["item_kind"]:
                 raise OpError("gone", f"{what} no longer exists")
-            if it.status != "proposed" or digest(it) != d.get("digest"):
+            if it.status != "proposed" or digest(it, folder(owner, it)) != d.get(
+                "digest"
+            ):
                 raise OpError("stale", f"{what} changed since this card was shown")
 
         return expect
@@ -895,7 +926,7 @@ def register_knowledge_ops(app: App) -> None:
                     "approved",
                     principal(caller),
                     "approve",
-                    expect=as_shown(d),
+                    expect=as_shown(d, owner),
                 )
             except OpError as err:
                 await refused(s, p.id, err, caller, d)
@@ -925,7 +956,11 @@ def register_knowledge_ops(app: App) -> None:
         with answer(s, p.id):
             try:
                 await kn.store.delete(
-                    owner, d["name"], principal(caller), "discard", expect=as_shown(d)
+                    owner,
+                    d["name"],
+                    principal(caller),
+                    "discard",
+                    expect=as_shown(d, owner),
                 )
             except OpError as err:
                 await refused(s, p.id, err, caller, d)

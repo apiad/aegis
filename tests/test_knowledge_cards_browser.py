@@ -3,6 +3,8 @@
 its change to an approved memory, at desktop and phone width
 (knowledge_ops.py, #696)."""
 
+import base64
+
 import pytest
 
 from .test_browser import browser, new_page, page, server, spawn, turns_done  # noqa: F401
@@ -83,5 +85,23 @@ def test_the_card_undoes(server, page):
     page.locator(CARD).last.locator("button:has-text('Undo')").click()
     last_says(page, "Undone")
     assert "without being asked" in stored(server, "merge-after-green")
+    fits(page)
+    assert page.errors == []
+
+
+def test_a_skills_card_lists_its_files(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    skill = {
+        "name": "release",
+        "description": "Cut a release",
+        "body": "step\n" * 1000,
+        "files": {"bump.py": base64.b64encode(b"print(1)\n").decode()},
+    }
+    mcp(page, 2, "skill_save", skill)
+    page.wait_for_selector(f"{CARD} button:has-text('Approve')")
+    text = page.inner_text(CARD)
+    assert "Shown in part" in text and "bump.py (9 B)" in text and "SKILL.md (" in text
     fits(page)
     assert page.errors == []

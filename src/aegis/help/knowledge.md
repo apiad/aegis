@@ -39,7 +39,11 @@ kept, and a card in the session's transcript shows it with Approve and
 Discard. Approve makes it a memory like any other. Discard deletes it.
 Until you approve it, a proposal is never named under a message, and a
 proposed skill is not a command in the composer, though an agent that
-knows its name can still load it with `skill_read`. A proposal you do not
+knows its name can still load it with `skill_read`. A proposed skill's
+card lists every file of its folder with its size, and a text longer than
+4,000 characters is shown in part, marked so. If the proposal changes
+after its card was drawn, a script included, Approve and Discard do
+nothing and the card says it changed. A proposal you do not
 answer stays proposed. When you asked for it in the message that began
 the agent's turn, with /remember or in your own words, the agent saves it
 approved, and its card says so and offers Undo. A request that reaches the

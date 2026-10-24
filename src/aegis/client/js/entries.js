@@ -482,6 +482,12 @@ const KNOWLEDGE_DONE = {
   conflict: "It changed again since, so this change cannot be undone by itself. Nothing was done; the agent was told.",
 };
 
+function fileSize(n) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
 function fillKnowledge(card, e) {
   const d = e.detail || {};
   const pending = e.status === "pending";
@@ -492,6 +498,9 @@ function fillKnowledge(card, e) {
   const about = [d.op === "saved" ? `${d.item_kind} saved by the agent, as you asked` : `${d.item_kind} ${KNOWLEDGE_VERB[d.op] || d.op} by the agent`, d.type, d.lifetime === "temporary" && d.expires ? `until ${d.expires}` : d.lifetime];
   const kids = [bar, el("div", "sbody dim", about.filter(Boolean).join(" · ")), el("div", "sbody why", d.description || "")];
   if (d.body) kids.push(el("pre", "cdiff kbody", d.body));
+  if (d.partial) kids.push(el("div", "sbody dim", "Shown in part: the first 4,000 characters of the text."));
+  // A skill's every file, so a script that changed is not hidden behind its text.
+  if (d.files?.length) kids.push(el("div", "sbody dim", "files: " + d.files.map((f) => `${f.name} (${fileSize(f.size)})`).join(" · ")));
   if (!pending) {
     kids.push(el("div", "sbody dim", KNOWLEDGE_DONE[e.status] || e.status));
   } else {

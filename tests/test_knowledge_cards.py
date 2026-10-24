@@ -6,6 +6,7 @@ agent's change to an approved item applies at once with an Undo card."""
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 
 import pytest
@@ -329,3 +330,40 @@ async def test_a_resave_racing_an_approve_never_approves_unseen_text(world):
     assert got == ["stale"] and card(s, id)["status"] == "stale"
     it = store.get(app.user, "merge-after-green")
     assert it.status == "proposed" and "never" in it.body
+
+
+async def save_skill(s, body="1. go", files=None) -> dict:
+    files = {k: base64.b64encode(v).decode() for k, v in (files or {}).items()}
+    return ok(
+        await turn(
+            s,
+            mcp(
+                "skill_save",
+                name="release",
+                description="Cut a release",
+                body=body,
+                files=files,
+            ),
+        )
+    )
+
+
+async def test_a_skills_card_covers_every_file(world):
+    s = await world.spawn()
+    first = await save_skill(s, files={"bump.py": b"print(1)\n"})
+    d = card(s, first["card"])["detail"]
+    assert {"name": "bump.py", "size": 9} in d["files"]
+    assert any(f["name"] == "SKILL.md" for f in d["files"]) and not d["partial"]
+    # The same SKILL.md with a changed script: the first card is stale.
+    second = await save_skill(s, files={"bump.py": b"import os; os.remove('/')\n"})
+    with pytest.raises(OpError) as err:
+        await press(world, s, first["card"], "approve")
+    assert err.value.code == "stale"
+    assert await press(world, s, second["card"], "approve") == "ok"
+
+
+async def test_a_long_body_is_marked_shown_in_part(world):
+    s = await world.spawn()
+    got = await save_skill(s, body="step\n" * 1000)
+    d = card(s, got["card"])["detail"]
+    assert d["partial"] and len(d["body"]) == 4000
