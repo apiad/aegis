@@ -170,10 +170,14 @@ PIPES_AFTER_KILL_S = 5.0
 KEEP_BYTES = 4 * OUTPUT_CHARS
 # Unpack the tar on stdin into a fresh directory of the user's, run the
 # script there with its arguments, and remove the directory however it ends.
+# The script runs in the background and the shell waits for it, so a TERM to
+# the shell alone (the launcher's die-with-parent signal) reaches the trap at
+# once, and the trap passes it to the whole group.
 RUN_SH = (
     "d=$(mktemp -d) || exit 125; trap 'rm -rf -- \"$d\"' EXIT; "
-    "trap 'exit 143' TERM; "
-    'tar -x -C "$d" || exit 125; cd -- "$d" && s=$1 && shift && python3 "./$s" "$@"'
+    "trap 'trap \"\" TERM; kill -TERM 0; exit 143' TERM; "
+    'tar -x -C "$d" || exit 125; cd -- "$d" && s=$1 && shift || exit 125; '
+    'python3 "./$s" "$@" & wait $!'
 )
 
 
@@ -540,6 +544,7 @@ def register_knowledge_ops(app: App) -> None:
                 stdout=launch.PIPE,
                 stderr=launch.PIPE,
                 new_session=True,
+                die_with_parent=True,
             )
         except OSError as e:
             raise OpError("run_failed", f"the script could not start: {e}") from e
@@ -549,21 +554,22 @@ def register_knowledge_ops(app: App) -> None:
         )
         code: int | None = None
         timed_out = False
-        try:
-            await asyncio.wait_for(asyncio.shield(io_done), p.timeout_s)
-            code = await proc.wait()
-        except TimeoutError:
-            timed_out = True
-            # The whole group: python3 under the shell holds the pipes too.
-            await stop_group(proc, s.spec.linux_user)
+        with app.skill_servers.tracking(s.log_id, proc, s.spec.linux_user):
             try:
-                # A child that left the group may still hold them.
-                await asyncio.wait_for(io_done, PIPES_AFTER_KILL_S)
+                await asyncio.wait_for(asyncio.shield(io_done), p.timeout_s)
+                code = await proc.wait()
             except TimeoutError:
-                transport = getattr(proc, "_transport", None)
-                if transport is not None:
-                    transport.close()
-            err += f"\n[killed after {p.timeout_s}s]".encode()
+                timed_out = True
+                # The whole group: python3 under the shell holds the pipes too.
+                await stop_group(proc, s.spec.linux_user)
+                try:
+                    # A child that left the group may still hold them.
+                    await asyncio.wait_for(io_done, PIPES_AFTER_KILL_S)
+                except TimeoutError:
+                    transport = getattr(proc, "_transport", None)
+                    if transport is not None:
+                        transport.close()
+                err += f"\n[killed after {p.timeout_s}s]".encode()
         s.ran_skill(it.name)
         kn.usage.add(owner, s.log_id, "skill", it.name, "ran", p.script)
         return {

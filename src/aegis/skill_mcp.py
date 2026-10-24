@@ -23,10 +23,12 @@ started again by the next call.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
 import signal
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 from . import launch
@@ -185,11 +187,34 @@ class Server:
 
 
 class SkillServers:
-    """Each session's running skill servers, by (log id, skill name)."""
+    """Each session's running skill servers, by (log id, skill name), and its
+    running ``skill_run`` scripts, which stop with it too."""
 
     def __init__(self) -> None:
         self._servers: dict[tuple[str, str], Server] = {}
         self._starting: dict[tuple[str, str], asyncio.Lock] = {}
+        self._runs: dict[
+            str, dict[int, tuple[asyncio.subprocess.Process, str | None]]
+        ] = {}
+
+    def runs(self, log_id: str) -> list[int]:
+        """The process groups of the session's running scripts."""
+        return sorted(self._runs.get(log_id, {}))
+
+    @contextlib.contextmanager
+    def tracking(
+        self, log_id: str, proc: asyncio.subprocess.Process, user: str | None
+    ) -> Iterator[None]:
+        """Hold a script's process while it runs, so the session's close and
+        aegis's shutdown stop it."""
+        self._runs.setdefault(log_id, {})[proc.pid] = (proc, user)
+        try:
+            yield
+        finally:
+            held = self._runs.get(log_id, {})
+            held.pop(proc.pid, None)
+            if not held:
+                self._runs.pop(log_id, None)
 
     def running(self, log_id: str) -> list[str]:
         return sorted(
@@ -273,7 +298,9 @@ class SkillServers:
         for key in [k for k in self._servers if k[0] == log_id]:
             await self._servers.pop(key).stop()
             self._starting.pop(key, None)
+        for proc, user in list(self._runs.get(log_id, {}).values()):
+            await stop_group(proc, user)
 
     async def shutdown(self) -> None:
-        for log_id in {k[0] for k in self._servers}:
+        for log_id in {k[0] for k in self._servers} | set(self._runs):
             await self.stop_session(log_id)

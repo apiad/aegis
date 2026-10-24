@@ -147,3 +147,21 @@ async def test_a_timed_out_run_returns_though_a_child_holds_its_pipes(agents_wor
         assert took < 12, took
     finally:
         os.kill(pid, signal.SIGKILL)
+
+
+async def test_closing_the_session_stops_its_running_script(agents_world):
+    from aegis import restarts
+
+    from .conftest import until
+
+    app = agents_world.app
+    await save_release(app, app.user)
+    s = await agents_world.spawn()
+    ok(await turn(s, mcp("skill_read", name="release")))
+    await s.send(mcp("skill_run", skill="release", script="loop.py", timeout_s=300))
+    await until(lambda: app.skill_servers.runs(s.log_id), what="the run's start")
+    (pgid,) = app.skill_servers.runs(s.log_id)
+    assert restarts.group_alive(pgid)
+    await app.sessions.close(s.log_id)
+    await until(lambda: not restarts.group_alive(pgid), what="the run stopped")
+    assert app.skill_servers.runs(s.log_id) == []
