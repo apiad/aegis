@@ -278,12 +278,16 @@ async def test_a_proposed_skill_is_not_a_command_but_skill_read_loads_it(world):
     assert "release" in [n for n, _ in await app._offered_skills(app.user)]
 
 
-async def test_the_card_acts_on_the_session_owners_store(members):
+async def test_only_the_session_owner_answers_its_card(members):
     app = members.app
     ben = app.sessions.sessions[await spawn(members, BEN)]
     id = (await save(ben, name="ben-fact"))["card"]
-    # Pressed by the admin: still ben's item, in ben's store.
-    await app.registry.call("knowledge.card.approve", {"log_id": ben.log_id, "id": id})
+    ref = {"log_id": ben.log_id, "id": id}
+    # The admin may read ben's transcript, but the card is ben's to answer.
+    with pytest.raises(OpError) as err:
+        await app.registry.call("knowledge.card.approve", ref)
+    assert err.value.code == "not_owner" and card(ben, id)["status"] == "pending"
+    assert await app.registry.call("knowledge.card.approve", ref, BEN) == "ok"
     assert app.knowledge.store.get("ben", "ben-fact").status == "approved"
     assert app.knowledge.store.get(app.user, "ben-fact") is None
 

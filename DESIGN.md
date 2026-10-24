@@ -462,8 +462,8 @@ approved item does. A proposal's card and the Undo cards are transcript records
 like config_suggest's: the record carries what the card shows, the commit Undo
 reverts and a digest of the proposal's files (a skill's whole folder), so the buttons work after a
 restart and Approve never approves a later text the person was not shown.
-The card ops are owned by the session and act on its owner's store, whoever
-presses them. Expiry and staleness flags (`knowledge/checks.py`) are
+The card ops act on the session owner's store and are refused
+(`not_owner`) to anyone but that owner, an admin included. Expiry and staleness flags (`knowledge/checks.py`) are
 computed on a save (in the background, so a hung read never holds or fails
 a committed save) and in a daily pass the App runs from boot, each bounded
 at 30 s per principal, through the

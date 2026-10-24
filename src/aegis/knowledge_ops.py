@@ -15,8 +15,9 @@ message began (Session.person_turn); an item it saves approved still gets a
 card that offers Undo. An agent's update or delete of an approved item
 applies at once, asked or not, and its card offers Undo, which reverts that
 commit. Approve,
-Discard and Undo are the session owner's ops on the owner's store. The card
-is a transcript record, so it works after a restart.
+Discard and Undo are the session owner's ops on the owner's store, refused
+to anyone else, an admin included. The card is a transcript record, so it
+works after a restart.
 
 Reading a skill's SKILL.md loads it in the calling session: the name joins
 ``Session.skills``, which the card shows and which ``skill_run`` checks.
@@ -843,8 +844,15 @@ def register_knowledge_ops(app: App) -> None:
     # refused, so a card is answered once whatever the timing.
     answering: set[tuple[str, str]] = set()
 
-    def pending_card(p: CardRef, ops: tuple[str, ...]):
+    def pending_card(p: CardRef, ops: tuple[str, ...], caller: Caller):
         s = app.sessions.open(p.log_id)
+        owner = s.spec.owner or app.user
+        if principal(caller) != owner:
+            # An admin may read a member's transcript, but what the member's
+            # agent believes is the member's to approve.
+            raise OpError(
+                "not_owner", f"only {owner}, who owns this session, answers its cards"
+            )
         e = s.fold().entry(p.id)
         if e is None or e["kind"] != "knowledge" or e["detail"].get("op") not in ops:
             raise OpError(
@@ -853,7 +861,7 @@ def register_knowledge_ops(app: App) -> None:
         if e["status"] != "pending" or (s.log_id, p.id) in answering:
             raise OpError("gone", f"the card {p.id} was already answered")
         # The session owner's store: the card is about the agent's items.
-        return s, e, s.spec.owner or app.user
+        return s, e, owner
 
     @contextmanager
     def answer(s, id: str):
@@ -918,7 +926,7 @@ def register_knowledge_ops(app: App) -> None:
 
     @r.op("knowledge.card.approve", CardRef, owned="log_id")
     async def card_approve(p: CardRef, caller):
-        s, e, owner = pending_card(p, ("new",))
+        s, e, owner = pending_card(p, ("new",), caller)
         d = e["detail"]
         with answer(s, p.id):
             try:
@@ -953,7 +961,7 @@ def register_knowledge_ops(app: App) -> None:
 
     @r.op("knowledge.card.discard", CardRef, owned="log_id")
     async def card_discard(p: CardRef, caller):
-        s, e, owner = pending_card(p, ("new",))
+        s, e, owner = pending_card(p, ("new",), caller)
         d = e["detail"]
         with answer(s, p.id):
             try:
@@ -981,7 +989,7 @@ def register_knowledge_ops(app: App) -> None:
 
     @r.op("knowledge.card.undo", CardRef, owned="log_id")
     async def card_undo(p: CardRef, caller):
-        s, e, owner = pending_card(p, ("changed", "deleted", "saved"))
+        s, e, owner = pending_card(p, ("changed", "deleted", "saved"), caller)
         d = e["detail"]
         what = f"the {d['item_kind']} {d['name']}"
         with answer(s, p.id):

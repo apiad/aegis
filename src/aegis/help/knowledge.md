@@ -57,8 +57,9 @@ a change that a later change to the same lines built on; the card then
 says so and nothing moves.
 
 The cards are kept in the transcript, so their buttons work after aegis
-restarts. Whoever presses them, they act on the store of the person who
-owns the session, and the agent is told the outcome.
+restarts. Only the person who owns the session can answer them, even on
+a server where an admin can read every transcript; they act on that
+person's store, and the agent is told the outcome.
 
 ## Expired and stale memories
 
