@@ -10,9 +10,10 @@ principal, finds a file changed by hand; the scan parses only changed files
 
 Flags (checks.py) are computed when a memory is saved and in the app's daily
 pass, through a runner the caller gives, which in multi-user mode reads the
-member's files as the member. They are kept here, in memory: a restart
-forgets them until the pass that runs at boot. A flag an item did not have
-before writes one ``flagged`` usage row.
+member's files as the member. They are kept here, in memory, and in the
+usage db's ``flags`` table, which a principal's first check after a restart
+reads back: a flag an item did not have before, across restarts too, writes
+one ``flagged`` usage row.
 """
 
 from __future__ import annotations
@@ -144,7 +145,8 @@ class Knowledge:
         return held
 
     def drop_flags(self, principal: str, name: str) -> None:
-        self._flags.get(principal, {}).pop(name, None)
+        if self._flags.get(principal, {}).pop(name, None) is not None:
+            self.usage.keep_flags(principal, name, [])
 
     async def check(
         self,
@@ -167,14 +169,20 @@ class Knowledge:
             }
 
         got = await run(compute)
-        held = self._flags.setdefault(principal, {})
+        if principal not in self._flags:  # the first check since a start
+            kept = await asyncio.to_thread(self.usage.raised, principal)
+            self._flags.setdefault(principal, kept)  # unless another loaded it
+        held = self._flags[principal]
         if everything:
             for name in set(held) - set(got):
                 del held[name]
+                self.usage.keep_flags(principal, name, [])
         for name, now in got.items():
             for f in now:
                 if f not in held.get(name, []):
                     self.usage.add(principal, "", "memory", name, "flagged", f)
+            if now != held.get(name, []):
+                self.usage.keep_flags(principal, name, now)
             if now:
                 held[name] = now
             else:

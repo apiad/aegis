@@ -295,3 +295,23 @@ def test_only_the_first_200_paths_are_checked():
     body = " ".join(f"`gone/{i}.py`" for i in range(250))
     got = checks.flags(body_item(body), TODAY, lambda p: False, ["/r"])
     assert len(got) == 200 and got[-1] == "stale:gone/199.py"
+
+
+async def test_a_restart_logs_no_flag_it_had_already_logged(world):
+    app = world.app
+    await app.knowledge.store.save(app.user, body_item("`gone/x.py`"), "t")
+    await app.knowledge_check(app.user)
+    await world.restart()
+    kn = world.app.knowledge
+    await until(lambda: kn.flags_of(world.app.user, "m") == ["stale:gone/x.py"])
+    await asyncio.sleep(0.2)  # the boot pass has run its whole check
+
+    def flagged():
+        rows = kn.usage.rows(world.app.user, "m")
+        return [r["detail"] for r in rows if r["event"] == "flagged"]
+
+    assert flagged() == ["stale:gone/x.py"]
+    # A flag raised for the first time still logs one row.
+    await kn.store.save(world.app.user, body_item("`gone/x.py` `gone/y.py`"), "t")
+    await world.app.knowledge_check(world.app.user)
+    assert flagged() == ["stale:gone/x.py", "stale:gone/y.py"]

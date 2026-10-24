@@ -468,7 +468,8 @@ computed on a save (in the background, so a hung read never holds or fails
 a committed save) and in a daily pass the App runs from boot, each bounded
 at 30 s per principal, through the
 principal's `as_user` runner, so the paths a memory quotes are looked for as
-the member and never on the event loop; they live in memory in `Knowledge`.
+the member and never on the event loop; they live in memory in `Knowledge`
+and in the usage db's `flags` table, so a restart logs no flag twice.
 
 **A session's own status is a notice its subsystems push.** Beside the host
 kinds, `Notices.set(log_id, source, items)` takes per-session items from a
