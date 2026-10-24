@@ -517,3 +517,29 @@ async def test_a_discarded_import_proposal_leaves_the_record(world, tmp_path):
     )
     assert said == "ok"
     assert app.setup_records.imported(app.user) == []
+
+
+async def test_undo_refuses_a_skill_that_gained_files_since_the_import(world, tmp_path):
+    app = world.app
+    s = await world.spawn()
+    got = await bring(s, {"source": str(skill_dir(tmp_path)), "kind": "skill"})
+    store = app.knowledge.store
+    it = store.get(app.user, "release")
+    held = {
+        n: store.read_file(app.user, "release", n)
+        for n in store.files(app.user, "release")
+        if n != "SKILL.md"
+    }
+    await store.save(app.user, it, "t", extra={**held, "notes.md": b"mine"})
+    before = store.files(app.user, "release")
+    try:
+        await app.registry.call(
+            "knowledge.card.unimport",
+            {"log_id": s.log_id, "id": got["card"], "name": "release"},
+        )
+        raise AssertionError("the undo should be refused")
+    except OpError as e:
+        assert e.code == "conflict" and "notes.md" in e.message
+    assert store.files(app.user, "release") == before
+    assert store.get(app.user, "release") is not None
+    assert app.setup_records.imported(app.user)[0]["name"] == "release"

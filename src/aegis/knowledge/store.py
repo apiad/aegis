@@ -338,14 +338,23 @@ class Store:
         return sha
 
     async def revert(
-        self, principal: str, sha: str, kind: Kind, name: str, author: str
+        self,
+        principal: str,
+        sha: str,
+        kind: Kind,
+        name: str,
+        author: str,
+        expect: Callable[[], None] | None = None,
     ) -> str:
         """Undo the commit ``sha``, which changed the item ``kind``/``name``,
         with a new commit; its sha. A revert git refuses (a later change to
-        the same lines) leaves the store as it was and is ``conflict``."""
+        the same lines) leaves the store as it was and is ``conflict``.
+        ``expect`` runs first under the lock, off the loop, and may refuse."""
         base = self.dir(principal)
         check_name(name)
         async with self._lock(principal):
+            if expect is not None:
+                await asyncio.to_thread(expect)
             try:
                 new = await asyncio.to_thread(history.revert, base, sha, author)
             except subprocess.CalledProcessError as e:

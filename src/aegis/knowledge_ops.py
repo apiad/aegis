@@ -52,7 +52,7 @@ from pathlib import Path
 
 from . import launch
 from .skill_mcp import SkillToolError, stop_group
-from .knowledge import importer
+from .knowledge import history, importer
 from .knowledge.items import Item, check_name, dump, parse_memory, parse_skill
 from .monitors import iso_now
 from .ops import Caller, OpError
@@ -1301,10 +1301,34 @@ def register_knowledge_ops(app: App) -> None:
                 }
             )
 
+        def nothing_added() -> None:
+            """A skill's folder holds only what the import brought: a revert
+            would leave a file added since behind, in a folder with no
+            SKILL.md."""
+            if row["kind"] != "skill":
+                return
+            rel = f"skills/{p.name}"
+            top = kn.store.dir(owner) / rel
+            now = {q.relative_to(top).as_posix() for q in top.rglob("*") if q.is_file()}
+            added = sorted(
+                now - set(history.files_at(kn.store.dir(owner), row["sha"], rel))
+            )
+            if added:
+                raise OpError(
+                    "conflict",
+                    f"{what} gained files since the import ({', '.join(added)}); "
+                    "undoing it would leave them behind, so nothing was undone",
+                )
+
         with answer(s, key):
             try:
                 await kn.store.revert(
-                    owner, row["sha"], row["kind"], p.name, principal(caller)
+                    owner,
+                    row["sha"],
+                    row["kind"],
+                    p.name,
+                    principal(caller),
+                    expect=nothing_added,
                 )
             except OpError as err:
                 if err.code == "conflict":
@@ -1312,7 +1336,7 @@ def register_knowledge_ops(app: App) -> None:
                     await s.deliver(
                         card_header(p.id, "conflict"),
                         f"The person tried to undo the import of {what}, but it "
-                        "changed since; nothing was undone.",
+                        f"changed since; nothing was undone. {err.message}",
                     )
                 raise
             await kn.refresh(owner)
