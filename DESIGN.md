@@ -459,7 +459,10 @@ like config_suggest's: the record carries what the card shows, the commit Undo
 reverts and a digest of the proposal's text, so the buttons work after a
 restart and Approve never approves a later text the person was not shown.
 The card ops are owned by the session and act on its owner's store, whoever
-presses them.
+presses them. Expiry and staleness flags (`knowledge/checks.py`) are
+computed on a save and in a daily pass the App runs from boot, through the
+principal's `as_user` runner, so the paths a memory quotes are looked for as
+the member and never on the event loop; they live in memory in `Knowledge`.
 
 **A session's own status is a notice its subsystems push.** Beside the host
 kinds, `Notices.set(log_id, source, items)` takes per-session items from a

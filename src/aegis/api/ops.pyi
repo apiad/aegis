@@ -402,8 +402,9 @@ class _knowledge:
         *,
         unused_days: int | None = ...,
         kind: Literal["skill", "memory"] | None = ...,
+        flag: Literal["expired", "stale"] | None = ...,
     ) -> Any:
-        """How your skills and memories are used: per item, how often it was hinted, read, invoked or run, and when it was last used. unused_days keeps only the items not used in that many days."""
+        """How your skills and memories are used: per item, how often it was hinted, read, invoked or run, when it was last used, and its flags (expired, or stale:<path> for a quoted path that is gone). unused_days keeps only the items not used in that many days, flag only the items with that flag."""
 
 class _layout:
     async def dock(self, *, log_id: str, pane: str, where: str) -> Any:

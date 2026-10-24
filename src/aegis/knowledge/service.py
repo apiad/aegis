@@ -7,15 +7,24 @@ event loop, when the store's version for that principal moves (a change
 through aegis) or when a stat scan, at most every ``SCAN_EVERY_S`` per
 principal, finds a file changed by hand; the scan parses only changed files
 (store.py). The usage log is pruned at most once a day, on a hint.
+
+Flags (checks.py) are computed when a memory is saved and in the app's daily
+pass, through a runner the caller gives, which in multi-user mode reads the
+member's files as the member. They are kept here, in memory: a restart
+forgets them until the pass that runs at boot. A flag an item did not have
+before writes one ``flagged`` usage row.
 """
 
 from __future__ import annotations
 
 import asyncio
+import os
 import time
+from collections.abc import Awaitable, Callable
+from datetime import date
 from pathlib import Path
 
-from . import hint
+from . import checks, hint
 from .items import Item
 from .search import Index
 from .store import Store
@@ -36,6 +45,9 @@ class Knowledge:
         self._pruned = 0.0
         self._refreshing: dict[str, asyncio.Task] = {}
         self._clock = time.monotonic
+        # principal -> item name -> its flags, from the last check
+        self._flags: dict[str, dict[str, list[str]]] = {}
+        self.exists: Callable[[str], bool] = os.path.exists
 
     def _rebuild(self, principal: str, old) -> tuple[list[Item], Index]:
         items, changed = self.store.scan(principal)
@@ -117,6 +129,56 @@ class Knowledge:
                 )
         self._ranks[session_id] = ranks
         return hint.block(skills, memories)
+
+    def flags_of(self, principal: str, name: str, expired: bool = False) -> list[str]:
+        """An item's flags: the last check's, with ``expired`` when the
+        caller found it past its day, since an expiry needs no file read and
+        may pass between checks."""
+        held = [
+            f
+            for f in self._flags.get(principal, {}).get(name, [])
+            if f != "expired" or expired
+        ]
+        if expired and "expired" not in held:
+            held.insert(0, "expired")
+        return held
+
+    def drop_flags(self, principal: str, name: str) -> None:
+        self._flags.get(principal, {}).pop(name, None)
+
+    async def check(
+        self,
+        principal: str,
+        items: list[Item],
+        run: Callable[..., Awaitable],
+        roots: list[str],
+        everything: bool = False,
+    ) -> None:
+        """Flag ``items`` (checks.flags), reading files through ``run``, as
+        the member in multi-user mode. With ``everything``, ``items`` is the
+        whole store and an item no longer in it loses its flags."""
+        today = date.today()
+
+        def compute() -> dict[str, list[str]]:
+            return {
+                it.name: checks.flags(it, today, self.exists, roots)
+                for it in items
+                if it.kind == "memory"
+            }
+
+        got = await run(compute)
+        held = self._flags.setdefault(principal, {})
+        if everything:
+            for name in set(held) - set(got):
+                del held[name]
+        for name, now in got.items():
+            for f in now:
+                if f not in held.get(name, []):
+                    self.usage.add(principal, "", "memory", name, "flagged", f)
+            if now:
+                held[name] = now
+            else:
+                held.pop(name, None)
 
     def read_rank(self, session_id: str, name: str) -> int | None:
         """The rank ``name`` had in the last hint ``session_id`` got."""

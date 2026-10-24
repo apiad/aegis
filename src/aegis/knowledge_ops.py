@@ -281,6 +281,11 @@ class Stats(_Strict):
         description="Only items not read, invoked or run in this many days.",
     )
     kind: Literal["skill", "memory"] | None = None
+    flag: Literal["expired", "stale"] | None = Field(
+        None,
+        description="Only items with this flag: expired (a temporary memory "
+        "past its day) or stale (it quotes a path that is gone).",
+    )
 
 
 def remember_turn(text: str, now: str) -> tuple[str, str]:
@@ -410,7 +415,8 @@ def register_knowledge_ops(app: App) -> None:
         they want you to work) with your own words. Returns the best names with
         their description, score, status and flags; read one with memory_read.
         Proposed and expired memories are included and marked."""
-        hits = (await kn.index(principal(caller))).rank(p.query, "memory", p.limit)
+        owner = principal(caller)
+        hits = (await kn.index(owner)).rank(p.query, "memory", p.limit)
         return {
             "hits": [
                 {
@@ -418,7 +424,7 @@ def register_knowledge_ops(app: App) -> None:
                     "description": h.description,
                     "score": round(h.score, 3),
                     "status": h.status,
-                    "flags": h.flags,
+                    "flags": kn.flags_of(owner, h.name, "expired" in h.flags),
                 }
                 for h in hits
             ]
@@ -478,7 +484,12 @@ def register_knowledge_ops(app: App) -> None:
         await kn.refresh(owner)  # the next send's hint sees it
         kn.usage.add(owner, caller.log_id or "", "memory", p.name, "saved")
         card = await after_save(caller, owner, p.asked, held, p.name, sha)
-        return saved_answer(p.name, status, card)
+        out = saved_answer(p.name, status, card)
+        if (now := kn.store.get(owner, p.name)) is not None:
+            await app.knowledge_check(owner, [now])
+            if flags := kn.flags_of(owner, p.name, now.expired()):
+                out["flags"] = flags
+        return out
 
     @r.op("memory.delete", DeleteMemory, agent=True)
     async def memory_delete(p: DeleteMemory, caller):
@@ -491,6 +502,7 @@ def register_knowledge_ops(app: App) -> None:
         sha = await kn.store.delete(owner, p.name, author(caller))
         await kn.refresh(owner)
         kn.usage.add(owner, caller.log_id or "", "memory", p.name, "deleted")
+        kn.drop_flags(owner, p.name)
         out: dict = {"deleted": p.name, "sha": sha}
         s = agent_session(caller)
         if s is not None and held.status == "approved" and sha:
@@ -890,8 +902,10 @@ def register_knowledge_ops(app: App) -> None:
     @r.op("knowledge.stats", Stats, agent=True, read=True)
     async def knowledge_stats(p: Stats, caller):
         """How your skills and memories are used: per item, how often it was
-        hinted, read, invoked or run, and when it was last used. unused_days
-        keeps only the items not used in that many days."""
+        hinted, read, invoked or run, when it was last used, and its flags
+        (expired, or stale:<path> for a quoted path that is gone). unused_days
+        keeps only the items not used in that many days, flag only the items
+        with that flag."""
         owner = principal(caller)
         used = await asyncio.to_thread(kn.usage.summary, owner)
         cutoff = time.time() - p.unused_days * 86400 if p.unused_days else None
@@ -903,13 +917,16 @@ def register_knowledge_ops(app: App) -> None:
             last = u.get("last_used")
             if cutoff is not None and last is not None and last >= cutoff:
                 continue
+            flags = kn.flags_of(owner, it.name, it.expired())
+            if p.flag and not any(f.split(":", 1)[0] == p.flag for f in flags):
+                continue
             out.append(
                 {
                     "kind": it.kind,
                     "name": it.name,
                     "description": it.description,
                     "status": it.status,
-                    "flags": ["expired"] if it.expired() else [],
+                    "flags": flags,
                     **{k: u.get(k, 0) for k in ("hinted", "read", "invoked", "ran")},
                     "last_used": last,
                 }

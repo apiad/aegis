@@ -43,6 +43,16 @@ class Store:
             raise OpError("bad_params", f"no knowledge for {principal!r}")
         return self.root / principal
 
+    def principals(self) -> list[str]:
+        """Every principal with a store. Blocking: lists a directory."""
+        if not self.root.is_dir():
+            return []
+        return sorted(
+            p.name
+            for p in self.root.iterdir()
+            if p.is_dir() and not p.name.startswith(".")
+        )
+
     def items(self, principal: str) -> list[Item]:
         """Every memory and skill of ``principal``, memories first, by name."""
         return self.scan(principal)[0]

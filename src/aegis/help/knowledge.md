@@ -53,6 +53,23 @@ The cards are kept in the transcript, so their buttons work after aegis
 restarts. Whoever presses them, they act on the store of the person who
 owns the session, and the agent is told the outcome.
 
+## Expired and stale memories
+
+A temporary memory past its day is flagged expired and leaves the block
+under messages that day; a search still finds it.
+
+When a memory is saved, and once a day, aegis looks for each path the
+memory quotes in backticks, such as `repos/bot/run.py`: under each of the
+memory's paths, then under your Files root and your home. One that is
+found nowhere flags the memory stale, naming the path. A stale memory
+stays in the block, since a moved file does not make the fact false, but
+it is worth a look. On a server with several people the files are looked
+for as your Linux user, so a check sees only what you can see. The flags
+are kept in memory and computed again when aegis starts.
+
+Search results and `knowledge_stats` carry the flags: `expired` or
+`stale:<path>`.
+
 ## The hint
 
 When a message reaches a session, aegis searches your memories and skills
@@ -169,8 +186,9 @@ out of the menu.
   its arguments, and cuts the answer at 20,000 characters; `skill_read`
   lists those tools.
 - `knowledge_stats` lists each item with how often it was hinted, read,
-  invoked or run, and when it was last used; `unused_days=60` keeps the
-  ones nobody used in that time.
+  invoked or run, when it was last used and its flags; `unused_days=60`
+  keeps the ones nobody used in that time, `flag=stale` or
+  `flag=expired` the ones with that flag.
 
 A session with read permission can search, read and see stats, but not
 save or delete. `skill_run` and `skill_tool` need full permission.
