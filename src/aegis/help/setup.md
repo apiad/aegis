@@ -127,15 +127,20 @@ Apply in this order, after the rest of the page's rows:
 1. Call `knowledge_import` once with every ticked `knowledge:skill:` and
    `knowledge:memory:` row: `source` (the absolute path), `kind` (`skill`
    for a folder, `memory` for one fact's file, `doc` for a procedure doc),
-   and `name` when aegis should know it by another. A memory you drafted
+   and `name` when aegis should know it by another. A memory is named by
+   its frontmatter `name:` when that is a valid name (Claude Code links
+   `[[name]]` by it, so the links keep working), else by its file's stem;
+   a skill by its folder, a doc by its file's stem. Use that name in the
+   row's key. A memory you drafted
    from a notebook is not a file: save it with `memory_save` and `asked:
    true`. The ticks are the person's approval, so in the turn their
    submit began each item is saved approved and one card lists them with
    an Undo each. Call it in that turn: in any other (a queue task, a
    handoff, a monitor's wake) each item is only proposed, with its own
-   card for the person to approve. Read the answer: a
-   refused row (a name aegis already holds, a link that leaves the folder,
-   a folder over 20 MiB, a memory or doc over 1 MiB) is not imported, so do not remove its original.
+   card for the person to approve. Read the answer: a refused row (a name
+   aegis already holds, a link that leaves the folder, a folder over
+   20 MiB, a memory or doc over 1 MiB) is not imported, so do not remove
+   its original.
 2. Remove each ticked `remove:<path>` original that was imported, with
    ordinary file operations as the person's user, or as a commit in its
    repository for a file git tracks.

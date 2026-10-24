@@ -27,7 +27,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-from .items import FRONT, Item, check_name, parse_memory, parse_skill, _split
+from .items import FRONT, NAME_RE, Item, check_name, parse_memory, parse_skill, _split
 from ..ops import OpError
 
 MAX_FOLDER_BYTES = 20 * 2**20
@@ -152,25 +152,40 @@ def _described(item: Item, source: Path) -> Item:
     return Item(item.kind, item.name, line[:200], item.body, item.meta)
 
 
+def _own_name(text: str, stem: str) -> str:
+    """A memory file's name: its frontmatter ``name:`` when that is a usable
+    name, since Claude Code links ``[[name]]`` by it, else the file's stem."""
+    try:
+        said = _split(text)[0].get("name")
+    except ValueError:
+        said = None
+    return said if isinstance(said, str) and NAME_RE.match(said) else check_name(stem)
+
+
 def load(
     kind: str, source: Path, name: str | None, expires: date | None, now: str
 ) -> tuple[Item, dict[str, bytes]]:
     """The item ``source`` becomes, saved approved, and a skill's other
-    files. ``name`` defaults to the folder's or file's own name; ``expires``
-    makes a memory temporary."""
+    files. ``name`` defaults to a memory's frontmatter name, else the
+    folder's or file's own name; ``expires`` makes a memory temporary."""
     if not source.is_absolute():
         raise _refuse(source, "is not an absolute path")
     if source.is_symlink():
         raise _refuse(source, "is a link; tick the file or folder it names")
     stem = source.name if kind == "skill" else source.stem
-    name = check_name(name if name is not None else stem)
+    # A memory's own name is in its text, read below.
+    named = (
+        check_name(name if name is not None else stem)
+        if (name is not None or kind != "memory")
+        else ""
+    )
     try:
         if kind == "skill":
             text, files = skill_folder(source)
-            got = parse_skill(text, name)
+            got = parse_skill(text, named)
             meta = {k: v for k, v in got.meta.items() if k != "status"}
             return _described(
-                Item("skill", name, got.description, got.body, meta), source
+                Item("skill", named, got.description, got.body, meta), source
             ), files
         if not source.is_file():
             raise _refuse(source, "is not a file")
@@ -184,8 +199,8 @@ def load(
                 raise _refuse(source, "has no when: line to describe it")
             data.pop("name", None)
             data.pop("status", None)
-            return _described(Item("skill", name, when, body, data), source), {}
-        got = parse_memory(text, name)
+            return _described(Item("skill", named, when, body, data), source), {}
+        got = parse_memory(text, named or _own_name(text, stem))
     except ValueError as e:
         raise _refuse(source, str(e)) from None
     # Claude Code's auto-memory keeps type under metadata: in newer files.
@@ -207,4 +222,6 @@ def load(
         imported_from=str(source),
     )
     meta = {k: v for k, v in meta.items() if v is not None}
-    return _described(Item("memory", name, got.description, got.body, meta), source), {}
+    return _described(
+        Item("memory", got.name, got.description, got.body, meta), source
+    ), {}

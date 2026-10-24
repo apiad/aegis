@@ -88,19 +88,19 @@ async def test_an_auto_memory_file_imports_with_its_type(world, tmp_path):
     )
     old = tmp_path / "deploy_gap.md"
     old.write_text(
-        "---\nname: x\ndescription: A deploy gap\ntype: project\n---\nIt is open.\n"
+        "---\nname: deploy-gap\ndescription: A deploy gap\ntype: project\n---\nIt is open.\n"
     )
     got = await bring(
         s,
         {"source": str(f), "kind": "memory", "name": "merge-after-green"},
         {"source": str(old), "kind": "memory", "expires": "2026-12-01"},
     )
-    assert [i["name"] for i in got["imported"]] == ["merge-after-green", "deploy_gap"]
+    assert [i["name"] for i in got["imported"]] == ["merge-after-green", "deploy-gap"]
     it = app.knowledge.store.get(app.user, "merge-after-green")
     assert it.meta["type"] == "feedback" and "metadata" not in it.meta
     assert it.status == "approved" and it.lifetime == "permanent"
     assert it.meta["imported_from"] == str(f) and it.meta["source"] == "import"
-    gap = app.knowledge.store.get(app.user, "deploy_gap")
+    gap = app.knowledge.store.get(app.user, "deploy-gap")
     assert gap.meta["type"] == "project" and gap.lifetime == "temporary"
     assert str(gap.expires) == "2026-12-01"
 
@@ -400,3 +400,34 @@ async def test_a_memory_or_doc_over_a_mebibyte_is_refused_unread(world, tmp_path
     )
     assert [r["error"] for r in got["refused"]] == ["too_large", "too_large"]
     assert "1048576" in got["refused"][0]["message"]
+
+
+async def test_a_memory_takes_its_frontmatter_name_so_links_still_resolve(
+    world, tmp_path
+):
+    """Claude Code names a memory in its frontmatter and links by that name;
+    the file's stem is only where it was kept."""
+    app = world.app
+    s = await world.spawn()
+    a = tmp_path / "feedback_merge_after_green.md"
+    a.write_text(
+        "---\nname: merge-after-green\ndescription: Merge only after every check\n"
+        "metadata:\n  type: feedback\n---\nSee [[deploy-hosts]].\n"
+    )
+    b = tmp_path / "reference_hosts.md"
+    b.write_text(
+        "---\nname: deploy-hosts\ndescription: Where each bot runs\n---\n"
+        "Linked from [[merge-after-green]].\n"
+    )
+    odd = tmp_path / "project_gap.md"
+    odd.write_text("---\nname: Not A Name\ndescription: A gap\n---\nOpen.\n")
+    got = await bring(s, *({"source": str(f), "kind": "memory"} for f in (a, b, odd)))
+    assert [i["name"] for i in got["imported"]] == [
+        "merge-after-green",
+        "deploy-hosts",
+        "project_gap",  # an unusable name: the stem
+    ]
+    store = app.knowledge.store
+    for it in (store.get(app.user, n) for n in ("merge-after-green", "deploy-hosts")):
+        (link,) = __import__("re").findall(r"\[\[([^\]]+)\]\]", it.body)
+        assert store.get(app.user, link) is not None, link
