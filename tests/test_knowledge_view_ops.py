@@ -241,3 +241,21 @@ async def test_knowledge_list_is_per_principal_for_an_admin_too(members):
     rows = app.sessions.sessions[lid].entries()
     assert any("ben-fact" in (e.get("md") or "") for e in rows)
     assert app.sees(app.who(ADMIN), "ben")
+
+
+async def test_an_edit_and_a_remove_work_in_a_store_filled_by_hand(world):
+    app = world.app
+    d = app.knowledge.store.dir(app.user) / "memories"
+    d.mkdir(parents=True)
+    (d / "deploy-host.md").write_text(
+        "---\nname: deploy-host\ndescription: x\n---\nA\n"
+    )
+    (d / "other-fact.md").write_text("---\nname: other-fact\ndescription: y\n---\nB\n")
+    got = await call(world, "knowledge.get", name="deploy-host")
+    text = got["text"].replace("A\n", "B\n")
+    await call(
+        world, "knowledge.put", name="deploy-host", text=text, stamp=got["stamp"]
+    )
+    assert text_of(world, "deploy-host").endswith("B\n")
+    await call(world, "knowledge.remove", name="other-fact")
+    assert app.knowledge.store.get(app.user, "other-fact") is None

@@ -302,6 +302,7 @@ class Store:
             path = path / "SKILL.md"
         before = _snapshot([path])
         try:
+            history.ensure_repo(base)  # a store filled by hand has none yet
             path.write_text(dump(item), encoding="utf-8")
             return history.commit(
                 base, [self._rel(item)], f"{verb} {item.kind} {item.name}", author
@@ -455,6 +456,7 @@ class Store:
         held = [target] if item.kind == "memory" else sorted(target.rglob("*"))
         before = _snapshot([p for p in held if p.is_file()])
         try:
+            history.ensure_repo(base)
             if item.kind == "memory":
                 target.unlink()
             else:
