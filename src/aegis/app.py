@@ -106,7 +106,9 @@ from .queues import Queues
 from .journal.ops import register_journal_ops
 from .journal.service import Journal
 from .knowledge.service import Knowledge
-from .knowledge_ops import register_knowledge_ops, remember_turn
+from .knowledge.items import NAME_RE
+from .skill_mcp import SkillServers
+from .knowledge_ops import offered, register_knowledge_ops, remember_turn, skill_turn
 from .repos.service import Repos
 from .layout_ops import register_layout_ops
 from .fs_ops import register_fs_ops
@@ -529,6 +531,8 @@ class App:
         reg.journal = self.journal
         self.knowledge = Knowledge(roots.state_root)
         reg.knowledge = self.knowledge
+        self.skill_servers = SkillServers()
+        reg.skill_servers = self.skill_servers
         reg.principal_of = lambda s: s.spec.owner or self.user
         self.repos = Repos(
             self.journal.path,
@@ -1118,6 +1122,10 @@ class App:
         await self.browsers.shutdown()
         await self.side_notes.shutdown()
         await self.sessions.shutdown()
+        try:
+            await self.skill_servers.shutdown()
+        except Exception:
+            log.exception("aegis: the skill servers did not stop")
         await self.repos.stop()
         await asyncio.to_thread(self.journal.stop)
         await asyncio.to_thread(self.knowledge.usage.stop)
@@ -1361,6 +1369,65 @@ class App:
         except (BrokenPipeError, ConnectionResetError) as e:
             raise _dead(e) from e
         return s.wire()
+
+    async def _offered_skills(self, principal: str) -> list[tuple[str, str]]:
+        """The (name, description) of the skills ``principal`` is offered as
+        commands. A store that cannot be read offers none: the menu outlives it."""
+        try:
+            items = await self.knowledge.items(principal)
+        except Exception:
+            log.exception("aegis: the skills of %s could not be listed", principal)
+            return []
+        return [(it.name, it.description) for it in items if offered(it)]
+
+    def knowledge_native(self, principal: str) -> bool:
+        """Whether ``principal``'s knowledge setting is native, under which a
+        store skill takes the name of a harness command. The setting comes
+        with the switch that turns the harness's own skills off; until then
+        it is off for everyone."""
+        return False
+
+    async def _skill_command(self, s, name: str):
+        """The store skill ``/name`` runs in ``s``, or None. ``skill:<name>``
+        reaches one named like an aegis command, or like a harness command
+        the skill does not shadow because its owner's knowledge is not
+        native."""
+        bare = name.removeprefix("skill:")
+        if not NAME_RE.match(bare):
+            return None
+        owner = s.spec.owner or self.user
+        it = self.knowledge.store.get(owner, bare)
+        if it is None or not offered(it):
+            return None
+        if bare == name and not self.knowledge_native(owner):
+            cat = await self.catalogs.get(s)
+            if cat is not None and cat.has(name):
+                return None
+        return it
+
+    async def _run_skill(
+        self, s, it, arg: str, caller: Caller, untested: str | None
+    ) -> dict:
+        """Deliver a skill's text as one turn, mark it loaded and write an
+        ``invoked`` row. aegis delivers it, so every harness runs it alike.
+        Gated as a typed message is: refused behind a closed quota gate, and
+        a resume asks the version gate; mid-turn it is held, and says so."""
+        if (why := self.sessions.quota_hold(s)) is not None:
+            raise OpError("quota_closed", _held(s.spec.owner or self.user, why))
+        not_saved = None
+        if not s.running and s.asleep_why != "idle":
+            not_saved = await self._version_gate(caller, s.spec.harness, untested, s)
+            s.launch_by = "agent" if caller.is_agent else "person"
+        try:
+            did = await s.deliver(*skill_turn(it.name, it.body, arg, iso_now()))
+        finally:
+            s.launch_by = "agent"
+        s.load_skill(it.name)
+        self.knowledge.usage.add(
+            s.spec.owner or self.user, s.log_id, "skill", it.name, "invoked"
+        )
+        out = {"status": "held" if did == "held" else "delivered"}
+        return out | {"not_saved": not_saved} if not_saved else out
 
     async def _command(
         self,
@@ -1938,6 +2005,12 @@ class App:
                 name, arg = cmd
                 if name in commands.AEGIS:
                     return await self._command(s, name, arg, caller, p.untested)
+                if (sk := await self._skill_command(s, name)) is not None:
+                    return await self._run_skill(s, sk, arg, caller, p.untested)
+                if name.startswith("skill:"):
+                    raise OpError(
+                        "unknown_command", f"no skill {name[6:]!r} to run as /{name}"
+                    )
                 cat = await self.catalogs.get(s)
                 if cat is not None and cat.commands and not cat.has(name):
                     raise OpError(
@@ -2175,20 +2248,26 @@ class App:
         @r.op("commands.list", LogParams)
         async def commands_list(p: LogParams, caller):
             """What the composer's menu offers this session."""
-            return listing(await self.catalogs.get(reg.open(p.log_id)), caller)
+            s = reg.open(p.log_id)
+            owner = s.spec.owner or self.user
+            skills = await self._offered_skills(owner)
+            return listing(await self.catalogs.get(s), caller, skills, owner)
 
         @r.op("commands.preview", PreviewParams)
         async def commands_preview(p: PreviewParams, caller):
             """What the new tab's menu offers before its session exists (#632):
             aegis's commands, and the harness's when a session in that
             directory has already listed them."""
+            owner = self.who(caller).name
+            skills = await self._offered_skills(owner)
             try:
                 cwd = self._resolve_cwd(p.cwd)
             except OpError:
-                return listing(None, caller)
-            return listing(self.catalogs.cached(p.harness, cwd), caller)
+                return listing(None, caller, skills, owner)
+            cat = self.catalogs.cached(p.harness, cwd)
+            return listing(cat, caller, skills, owner)
 
-        def listing(cat, caller) -> dict:
+        def listing(cat, caller, skills: list[tuple[str, str]], owner: str) -> dict:
             try:
                 saved = self.saved.listing(self.workflows._agents())
             except Exception:
@@ -2197,11 +2276,25 @@ class App:
                 saved = []
             # /doctor only for an admin while the doctor finds a problem.
             doctor = bool(self.doctor_watch.problems()) and self.who(caller).is_admin
+            # A harness command keeps its name beside a skill of that name
+            # unless the owner's knowledge is native.
+            taken = (
+                {c["name"] for c in cat.commands}.difference(commands.AEGIS)
+                if cat and not self.knowledge_native(owner)
+                else set()
+            )
             return {
                 "commands": [
                     c for c in commands.aegis_wire() if doctor or c["name"] != "doctor"
                 ]
-                + (cat.wire_commands(shadowed=commands.AEGIS) if cat else []),
+                + commands.skills_wire(skills, taken)
+                + (
+                    cat.wire_commands(
+                        shadowed={*commands.AEGIS, *(n for n, _ in skills)} - taken
+                    )
+                    if cat
+                    else []
+                ),
                 "models": cat.wire_models() if cat else [],
                 "permissions": list(PERMISSION_MODE),
                 # What /workflow completes: the saved workflows that lint.

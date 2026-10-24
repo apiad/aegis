@@ -1812,6 +1812,25 @@ function drawPlan(s) {
   tickSidePlan(s);
 }
 
+// The skills the session loaded, one row each in the order read, with how
+// many times skill_run ran its scripts.
+function drawSkills(s) {
+  const skills = s.skills || [];
+  const runs = s.skill_runs || {};
+  $("s-skills-sec").hidden = !skills.length;
+  const key = JSON.stringify([skills, runs]);
+  if ($("s-skills").dataset.key === key) return;
+  $("s-skills").dataset.key = key;
+  $("s-skills").replaceChildren(
+    ...skills.map((n) => {
+      const d = document.createElement("div");
+      const r = runs[n] || 0;
+      d.append(span("", ""), span("", n), span("t", r ? `${r} run${r > 1 ? "s" : ""}` : ""));
+      return d;
+    }),
+  );
+}
+
 // The panel keeps the two items done last and everything still to do; the
 // rest is one line whose card holds the whole plan. Each row carries its
 // index, so the clock finds its time cell in either list.
@@ -2155,6 +2174,7 @@ function renderMeta(s) {
   $("s-ask").textContent = s.attention_line || "";
   $("s-ask").className = `askbox at-${s.attention}`;
   drawPlan(s);
+  drawSkills(s);
   if (s.key === shown) showCanvas(s);
   drawSideJournal(s.key);
   followRepos(s.key);

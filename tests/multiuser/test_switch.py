@@ -220,3 +220,74 @@ async def test_no_token_in_a_members_harness_argv(mu_server):
     argv = json.dumps(rep["argv"])
     assert "${AEGIS_SESSION_TOKEN}" in argv
     assert not re.search(r'X-Aegis-Session\\?":\s*\\?"[\w-]{20,}', argv)
+
+
+async def test_in_multi_user_mode_the_script_runs_as_the_member(mu_server):
+    s = mu_server
+    folder = s.state / "knowledge" / BEN / "skills" / "who"
+    folder.mkdir(parents=True)
+    (folder / "SKILL.md").write_text(
+        "---\nname: who\ndescription: Say who runs it\n"
+        "aegis:\n  scripts: [who.py]\n---\n1. run who.py\n"
+    )
+    (folder / "who.py").write_text(
+        "import os, pwd, sys\n"
+        "me = pwd.getpwuid(os.getuid()).pw_name\n"
+        "open(os.path.join(sys.argv[1], 'skill'), 'w').write(me + ' ' + os.getcwd())\n"
+    )
+    log_id, _ = await spawn(s)
+    await send(s, BEN, log_id, f"/mcp skill_read {json.dumps({'name': 'who'})}")
+    run = {"skill": "who", "script": "who.py", "args": [str(s.out)]}
+    await send(s, BEN, log_id, f"/mcp skill_run {json.dumps(run)}")
+    f = s.out / "skill"
+    said = await until(lambda: f.exists() and f.read_text().strip(), what="the run")
+    user, cwd = said.split(" ", 1)
+    assert user == BEN and cwd != "/" and "knowledge" not in cwd
+
+
+def _procs_of(user: str, word: str) -> list[int]:
+    """The pids of ``user``'s processes whose argv holds ``word``."""
+    import os
+    import pwd
+    from pathlib import Path
+
+    uid = pwd.getpwnam(user).pw_uid
+    found = []
+    for d in Path("/proc").iterdir():
+        if not d.name.isdigit():
+            continue
+        try:
+            if d.stat().st_uid == uid and word in (d / "cmdline").read_bytes().decode():
+                found.append(int(d.name))
+        except OSError:
+            continue
+    return [p for p in found if p != os.getpid()]
+
+
+async def test_a_members_old_skill_server_is_stopped_as_the_member(mu_server):
+    """The server may not signal a member's processes itself, so stopping a
+    skill server goes through the launcher as the member: here the old one,
+    when the skill changed and the next call starts it again."""
+    from pathlib import Path
+
+    s = mu_server
+    echo = (Path(__file__).parents[1] / "fixtures" / "skill_mcp_echo.py").read_bytes()
+    skill = {
+        "name": "echoer",
+        "description": "Echo text through a tool",
+        "body": "1. echo",
+        "aegis": {"mcp": {"command": ["python3", "echo_server.py"]}},
+        "files": {"echo_server.py": __import__("base64").b64encode(echo).decode()},
+    }
+    await s.call(BEN, "skill.save", skill)
+    log_id, _ = await spawn(s)
+    await send(s, BEN, log_id, f"/mcp skill_read {json.dumps({'name': 'echoer'})}")
+    # The shell and python3 under it both name the file.
+    old = set(await until(lambda: _procs_of(BEN, "echo_server.py"), what="the server"))
+    await s.call(BEN, "skill.save", skill | {"body": "1. echo again"})
+    call = {"skill": "echoer", "tool": "echo", "args": {"text": "x"}}
+    await send(s, BEN, log_id, f"/mcp skill_tool {json.dumps(call)}")
+    await until(
+        lambda: (p := set(_procs_of(BEN, "echo_server.py"))) and not p & old,
+        what="the old server's end and the new one's start",
+    )

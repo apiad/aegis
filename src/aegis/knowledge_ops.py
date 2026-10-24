@@ -1,4 +1,4 @@
-"""The knowledge operations: memory tools for agents, and stats.
+"""The knowledge operations: memory and skill tools for agents, and stats.
 
 Every op works on the caller's own principal (``App.who``): an agent's is its
 session's owner, so a member's agent never reaches another member's items, and
@@ -7,17 +7,34 @@ not exist. Reads are open to read-permission sessions, as help_read is; saves
 and deletes are not. A save is one commit in the principal's store
 (knowledge/store.py). In this slice every save is approved; proposals for
 memories an agent saves on its own initiative come with the approval card.
+
+Reading a skill's SKILL.md loads it in the calling session: the name joins
+``Session.skills``, which the card shows and which ``skill_run`` checks.
+
+``skill_run`` runs a script the loaded skill declares under ``aegis.scripts``.
+The store is out of a member's reach, so the server packs the skill's folder
+as a tar and pipes it to one process started through the launcher as the
+session's Linux user: a shell that unpacks it into a fresh ``mktemp -d``
+directory, which is therefore the member's, runs ``python3`` on the script
+there and removes the directory when it ends.
 """
 
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
+import io
+import json
+import tarfile
 import time
 from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field
 
+from . import launch
+from .skill_mcp import SkillToolError, stop_group
 from .knowledge.items import Item, check_name, dump
 from .ops import Caller, OpError
 
@@ -89,6 +106,145 @@ class DeleteMemory(_Strict):
     name: str
 
 
+class SearchSkills(_Strict):
+    query: str = Field(
+        min_length=1,
+        description="What you are about to do, in your own words, such as "
+        "'cut a release' or 'rotate the bot token'.",
+    )
+    limit: int = Field(5, ge=1, le=20, description="How many skills to return.")
+
+
+class ReadSkill(_Strict):
+    name: str = Field(description="A skill's name, from the hint or skill_search.")
+    file: str | None = Field(
+        None,
+        description="One file of the skill's folder, as skill_read lists it; "
+        "omit it for SKILL.md, which loads the skill.",
+    )
+
+
+class SaveSkill(_Strict):
+    name: str = Field(
+        description="Lowercase letters, digits, - and _, such as 'release'. "
+        "Saving an existing skill's name replaces it, files included."
+    )
+    description: str = Field(
+        min_length=1,
+        max_length=300,
+        description="When to use it, in one line, such as 'Use when cutting a "
+        "release'; the hint and search show it.",
+    )
+    body: str = Field(min_length=1, description="The procedure in Markdown.")
+    files: dict[str, str] = Field(
+        default_factory=dict,
+        description="Other files of the skill's folder: relative path to the "
+        "file's bytes in base64.",
+    )
+    aegis: dict | None = Field(
+        None,
+        description="The SKILL.md's aegis block: command (offer it as "
+        "/<name>, default true), scripts (files skill_run may run).",
+    )
+    asked: bool = Field(
+        False, description="true when the person asked you to save this skill."
+    )
+
+
+class RunSkill(_Strict):
+    skill: str = Field(description="A skill you loaded with skill_read.")
+    script: str = Field(
+        description="One of the files its aegis.scripts declares, such as 'bump.py'."
+    )
+    args: list[str] = Field(default_factory=list, description="The script's arguments.")
+    timeout_s: int = Field(
+        120, ge=1, le=600, description="Seconds before it is killed."
+    )
+
+
+OUTPUT_CHARS = 20000
+# The largest file skill_read returns, and the most a skill_save's files hold.
+READ_FILE_BYTES = 2**20
+SAVE_FILES_BYTES = 20 * 2**20
+# How long a timed-out run waits for its pipes after the kill, for a child
+# that left the group and still holds them.
+PIPES_AFTER_KILL_S = 5.0
+# What a run keeps of each stream: enough for OUTPUT_CHARS of any UTF-8.
+KEEP_BYTES = 4 * OUTPUT_CHARS
+# Unpack the tar on stdin into a fresh directory of the user's, run the
+# script there with its arguments, and remove the directory however it ends.
+# The script runs in the background and the shell waits for it, so a TERM to
+# the shell alone (the launcher's die-with-parent signal) reaches the trap at
+# once, and the trap passes it to the whole group.
+RUN_SH = (
+    "d=$(mktemp -d) || exit 125; trap 'rm -rf -- \"$d\"' EXIT; "
+    "trap 'trap \"\" TERM; kill -TERM 0; exit 143' TERM; "
+    'tar -x -C "$d" || exit 125; cd -- "$d" && s=$1 && shift || exit 125; '
+    'python3 "./$s" "$@" & wait $!'
+)
+
+
+def _cut(data: bytes | bytearray) -> str:
+    text = bytes(data).decode("utf-8", "replace")
+    if len(text) <= OUTPUT_CHARS and len(data) <= KEEP_BYTES:
+        return text
+    return text[:OUTPUT_CHARS] + f"\n[cut at {OUTPUT_CHARS} characters]"
+
+
+def _cut_content(content: list) -> list:
+    """An MCP tool's content cut at ``OUTPUT_CHARS``: text counts its
+    characters, any other item its JSON."""
+    out, left = [], OUTPUT_CHARS
+    mark = f"\n[cut at {OUTPUT_CHARS} characters]"
+    for c in content:
+        text = c.get("text") if isinstance(c, dict) else None
+        if isinstance(text, str) and c.get("type") == "text":
+            if len(text) > left:
+                return [*out, {**c, "text": text[:left] + mark}]
+            left -= len(text)
+        else:
+            size = len(json.dumps(c))
+            if size > left:
+                return [*out, {"type": "text", "text": mark.lstrip()}]
+            left -= size
+        out.append(c)
+    return out
+
+
+async def _feed(stream, data: bytes) -> None:
+    try:
+        stream.write(data)
+        await stream.drain()
+        stream.close()
+    except (BrokenPipeError, ConnectionResetError):
+        pass  # it stopped reading; what it wrote says why
+
+
+async def _drain(stream, buf: bytearray) -> None:
+    """Read ``stream`` to its end into ``buf``, so a killed run keeps what it
+    printed before."""
+    while chunk := await stream.read(65536):
+        if len(buf) <= KEEP_BYTES:  # beyond, read on and keep nothing
+            buf += chunk[: KEEP_BYTES + 1 - len(buf)]
+
+
+def _tar(files: dict[str, bytes]) -> bytes:
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        for rel, data in files.items():
+            info = tarfile.TarInfo(rel)
+            info.size, info.mode = len(data), 0o700
+            tar.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
+class CallSkillTool(_Strict):
+    skill: str = Field(description="A skill you loaded whose server skill_read listed.")
+    tool: str = Field(description="One of the tools skill_read listed for it.")
+    args: dict = Field(default_factory=dict, description="The tool's arguments.")
+    timeout_s: int = Field(120, ge=1, le=600, description="Seconds to wait for it.")
+
+
 class Stats(_Strict):
     unused_days: int | None = Field(
         None,
@@ -108,6 +264,33 @@ def remember_turn(text: str, now: str) -> tuple[str, str]:
         "with expires when it names a date or an event that will pass. Then "
         "say in one line what you saved.",
     )
+
+
+def escape_headers(body: str) -> str:
+    """A stored body with a backslash before every line that starts like a
+    message header (``> from ``), so the transcript's fold never reads part
+    of it as a notice or a nudge aegis sent."""
+    return "\n".join(
+        "\\" + ln if ln.startswith("> from ") else ln for ln in body.split("\n")
+    )
+
+
+def skill_turn(name: str, body: str, args: str, now: str) -> tuple[str, str]:
+    """The turn ``/<skill> args`` delivers: the skill's text and the
+    person's arguments."""
+    said = f"the person's arguments: {args}" if args else "no arguments were given"
+    return (
+        f"> from skill:{name} · {now}",
+        f'Run the skill "{name}". Its text follows; {said}.\n\n' + escape_headers(body),
+    )
+
+
+def offered(it: Item) -> bool:
+    """Whether a skill is offered as a slash command: approved, and its
+    ``aegis.command`` not false."""
+    block = it.meta.get("aegis")
+    command = block.get("command", True) if isinstance(block, dict) else True
+    return it.kind == "skill" and it.status == "approved" and command is not False
 
 
 def register_knowledge_ops(app: App) -> None:
@@ -212,6 +395,267 @@ def register_knowledge_ops(app: App) -> None:
         await kn.refresh(owner)
         kn.usage.add(owner, caller.log_id or "", "memory", p.name, "deleted")
         return {"deleted": p.name, "sha": sha}
+
+    def need_full(s, what: str) -> None:
+        """A skill's scripts and server run on the server without asking, so
+        only a full-permission session reaches them, as with a workflow's
+        shell steps."""
+        if s is not None and s.spec.permission != "full":
+            raise OpError(
+                "not_allowed",
+                f"{what} runs on the server without asking, so only a session "
+                f"with full permission may; yours has {s.spec.permission}",
+            )
+
+    def skill(owner: str, name: str) -> Item:
+        check_name(name)
+        it = kn.store.get(owner, name)
+        if it is None or it.kind != "skill":
+            raise OpError("not_found", f"no skill named {name!r}")
+        return it
+
+    @r.op("skill.search", SearchSkills, agent=True, read=True)
+    async def skill_search(p: SearchSkills, caller):
+        """Search your skills (procedures for a kind of task, such as cutting
+        a release) with your own words, before you start a task. Returns the
+        best names with their description, score and status; load one with
+        skill_read."""
+        hits = (await kn.index(principal(caller))).rank(p.query, "skill", p.limit)
+        return {
+            "hits": [
+                {
+                    "name": h.name,
+                    "description": h.description,
+                    "score": round(h.score, 3),
+                    "status": h.status,
+                }
+                for h in hits
+            ]
+        }
+
+    def mcp_command(it: Item) -> list[str] | None:
+        block = it.meta.get("aegis")
+        mcp = block.get("mcp") if isinstance(block, dict) else None
+        cmd = mcp.get("command") if isinstance(mcp, dict) else None
+        if isinstance(cmd, list) and cmd and all(isinstance(c, str) for c in cmd):
+            return cmd
+        return None
+
+    # (principal, skill) -> (store version, its folder as a tar): what a
+    # server's start sends, packed once per version of the skill.
+    tars: dict[tuple[str, str], tuple[int, bytes]] = {}
+
+    async def server_of(owner: str, it: Item, s):
+        """The session's running server for the skill, started if need be."""
+        cmd = mcp_command(it)
+        if cmd is None:
+            raise OpError("no_mcp", f"the skill {it.name!r} brings no MCP server")
+        version = kn.store.item_version(owner, it.name)
+
+        def pack() -> bytes:
+            names = kn.store.files(owner, it.name)
+            return _tar({n: kn.store.read_file(owner, it.name, n) for n in names})
+
+        async def tar() -> bytes:
+            held = tars.get((owner, it.name))
+            if held is not None and held[0] == version:
+                return held[1]
+            data = await asyncio.to_thread(pack)
+            tars[(owner, it.name)] = (version, data)
+            return data
+
+        try:
+            return await app.skill_servers.ensure(
+                s.log_id,
+                it.name,
+                cmd,
+                tar,
+                s.spec.linux_user,
+                version,
+            )
+        except SkillToolError as e:
+            raise OpError("mcp_failed", f"the skill's server: {e}") from e
+
+    @r.op("skill.read", ReadSkill, agent=True, read=True)
+    async def skill_read(p: ReadSkill, caller):
+        """Load a skill: returns its SKILL.md, which you then follow, and the
+        files of its folder. With file, returns that one file instead, up to
+        1 MiB."""
+        owner = principal(caller)
+        it = skill(owner, p.name)
+        files = kn.store.files(owner, p.name)
+        if p.file is not None and p.file != "SKILL.md":
+            data = kn.store.read_file(owner, p.name, p.file, READ_FILE_BYTES)
+            try:
+                return {"name": p.name, "file": p.file, "text": data.decode("utf-8")}
+            except UnicodeDecodeError:
+                return {
+                    "name": p.name,
+                    "file": p.file,
+                    "base64": base64.b64encode(data).decode("ascii"),
+                }
+        session = caller.log_id or ""
+        rank = kn.read_rank(session, it.name)
+        kn.usage.add(
+            owner, session, "skill", it.name, "read", f"rank={rank}" if rank else None
+        )
+        s = app.sessions.sessions.get(session)
+        if s is not None:
+            s.load_skill(it.name)
+        out: dict = {"name": it.name, "text": dump(it), "files": files}
+        # Its MCP server's tools, called with skill_tool. Only a full session
+        # may call them, so any other starts nothing.
+        if mcp_command(it) is not None and s is not None:
+            if s.spec.permission != "full":
+                out["tools_error"] = (
+                    "this skill's MCP tools need a session with full "
+                    f"permission; yours has {s.spec.permission}"
+                )
+            else:
+                try:
+                    out["tools"] = (await server_of(owner, it, s)).tools
+                except OpError as e:
+                    out["tools_error"] = e.message
+        return out
+
+    @r.op("skill.save", SaveSkill, agent=True)
+    async def skill_save(p: SaveSkill, caller):
+        """Save a skill: a procedure later sessions should follow for one
+        kind of task, with any files it needs, 20 MiB at most in all.
+        Saving an existing name replaces it. Set asked: true when the person
+        asked for it."""
+        owner = principal(caller)
+        check_name(p.name)
+        try:
+            extra = {k: base64.b64decode(v, validate=True) for k, v in p.files.items()}
+        except (binascii.Error, ValueError):
+            raise OpError("bad_params", "files must hold base64") from None
+        if (total := sum(map(len, extra.values()))) > SAVE_FILES_BYTES:
+            raise OpError(
+                "too_large",
+                f"the files hold {total} bytes; a skill holds at most "
+                f"{SAVE_FILES_BYTES}",
+            )
+        meta = {"aegis": p.aegis} if p.aegis else {}
+        it = Item("skill", p.name, p.description.strip(), p.body.rstrip() + "\n", meta)
+        await kn.store.save(owner, it, author(caller), extra=extra)
+        await kn.refresh(owner)
+        kn.usage.add(owner, caller.log_id or "", "skill", p.name, "saved")
+        return {"saved": p.name, "status": "approved"}
+
+    @r.op("skill.run", RunSkill, agent=True)
+    async def skill_run(p: RunSkill, caller):
+        """Run a script a skill you loaded declares under aegis.scripts, with
+        arguments, in a fresh copy of the skill's folder. Returns its exit
+        code, stdout and stderr, each cut at 20,000 characters, and whether
+        it timed out. Needs a session with full permission."""
+        owner = principal(caller)
+        it = skill(owner, p.skill)
+        s = app.sessions.sessions.get(caller.log_id or "")
+        need_full(s, "a skill's script")
+        if s is None or it.name not in s.skills:
+            raise OpError(
+                "not_loaded", f"load the skill {it.name!r} with skill_read first"
+            )
+        block = it.meta.get("aegis")
+        declared = block.get("scripts") if isinstance(block, dict) else None
+        if not isinstance(declared, list) or p.script not in declared:
+            raise OpError(
+                "not_declared",
+                f"{p.script!r} is not among the scripts {it.name!r} declares",
+            )
+
+        def pack() -> bytes:
+            names = kn.store.files(owner, it.name)
+            if p.script not in names:
+                raise OpError("not_found", f"the skill has no file {p.script!r}")
+            return _tar({n: kn.store.read_file(owner, it.name, n) for n in names})
+
+        tar = await asyncio.to_thread(pack)
+        try:
+            proc = await launch.child(
+                ["bash", "-c", RUN_SH, "skill-run", p.script, *p.args],
+                user=s.spec.linux_user,
+                cwd="/",
+                stdin=launch.PIPE,
+                stdout=launch.PIPE,
+                stderr=launch.PIPE,
+                new_session=True,
+                die_with_parent=True,
+            )
+        except OSError as e:
+            raise OpError("run_failed", f"the script could not start: {e}") from e
+        out, err = bytearray(), bytearray()
+        io_done = asyncio.gather(
+            _feed(proc.stdin, tar), _drain(proc.stdout, out), _drain(proc.stderr, err)
+        )
+        code: int | None = None
+        timed_out = False
+        with app.skill_servers.tracking(s.log_id, proc, s.spec.linux_user):
+            try:
+                await asyncio.wait_for(asyncio.shield(io_done), p.timeout_s)
+                code = await proc.wait()
+            except TimeoutError:
+                timed_out = True
+                # The whole group: python3 under the shell holds the pipes too.
+                await stop_group(proc, s.spec.linux_user)
+                try:
+                    # A child that left the group may still hold them.
+                    await asyncio.wait_for(io_done, PIPES_AFTER_KILL_S)
+                except TimeoutError:
+                    transport = getattr(proc, "_transport", None)
+                    if transport is not None:
+                        transport.close()
+                err += f"\n[killed after {p.timeout_s}s]".encode()
+        s.ran_skill(it.name)
+        kn.usage.add(owner, s.log_id, "skill", it.name, "ran", p.script)
+        return {
+            "exit": code,
+            "stdout": _cut(out),
+            "stderr": _cut(err),
+            "timed_out": timed_out,
+        }
+
+    @r.op("skill.tool", CallSkillTool, agent=True)
+    async def skill_tool(p: CallSkillTool, caller):
+        """Call a tool of the MCP server a skill you loaded brings; skill_read
+        lists those tools and their arguments. Only this session reaches the
+        server, and it stops when the session closes. The answer is cut at
+        20,000 characters. Needs a session with full permission."""
+        owner = principal(caller)
+        check_name(p.skill)
+        s = app.sessions.sessions.get(caller.log_id or "")
+        need_full(s, "a skill's MCP server")
+        # A server running on the skill as it is now is called without
+        # reading the store; any other goes through the store and starts.
+        name = p.skill
+        if s is None or name not in s.skills:
+            skill(owner, name)  # not_found first, for a name nobody has
+            raise OpError(
+                "not_loaded", f"load the skill {name!r} with skill_read first"
+            )
+        version = kn.store.item_version(owner, name)
+        server = app.skill_servers.current(s.log_id, name, version)
+        if server is None:
+            server = await server_of(owner, skill(owner, name), s)
+        if p.tool not in {t["name"] for t in server.tools}:
+            raise OpError(
+                "no_such_tool",
+                f"{name!r} has no tool {p.tool!r}; it has "
+                + ", ".join(t["name"] for t in server.tools),
+            )
+        try:
+            got = await app.skill_servers.call(
+                s.log_id, name, p.tool, p.args, p.timeout_s
+            )
+        except SkillToolError as e:
+            raise OpError("mcp_failed", f"{name}/{p.tool}: {e}") from e
+        s.ran_skill(name)
+        kn.usage.add(owner, s.log_id, "skill", name, "ran", f"tool={p.tool}")
+        return {
+            "is_error": bool(got.get("isError")),
+            "content": _cut_content(got.get("content") or []),
+        }
 
     @r.op("knowledge.stats", Stats, agent=True, read=True)
     async def knowledge_stats(p: Stats, caller):

@@ -138,6 +138,7 @@ class Registry(Host):
         # knowledge.Knowledge, and whose knowledge a session's sends are
         # hinted from (its owner, else the admin); both set by App.
         self.knowledge = None
+        self.skill_servers = None  # skill_mcp.SkillServers, set by App
         self._hint_failures: set[str] = set()  # causes already logged
         self.principal_of: Callable[[Session], str] = lambda s: s.spec.owner or ""
         self.nudges = None  # nudges.Nudges, set by App
@@ -667,6 +668,8 @@ class Registry(Host):
             quota_paused=meta.get("quota_paused"),
             notices_sent=meta.get("notices_sent"),
             items_sent=meta.get("items_sent"),
+            skills=meta.get("skills"),
+            skill_runs=meta.get("skill_runs"),
             tool_calls=meta.get("tool_calls") or 0,
             cache_recent=meta.get("cache_recent"),
             compactions=meta.get("compactions") or 0,
@@ -907,6 +910,11 @@ class Registry(Host):
             self.side_notes.drop(log_id)
         if self.knowledge is not None:
             self.knowledge.forget(log_id)
+        if self.skill_servers is not None:
+            try:
+                await self.skill_servers.stop_session(log_id)
+            except Exception:
+                log.exception("aegis: %s's skill servers did not stop", log_id)
         await s.stop()
         if self.secrets is not None:
             # Pads and open requests die with the session, and so do the

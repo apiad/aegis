@@ -32,6 +32,7 @@ class Store:
         self.root = root
         self._locks: dict[str, asyncio.Lock] = {}
         self._versions: dict[str, int] = {}
+        self._item_versions: dict[tuple[str, str], int] = {}
         self._logged: set[tuple[str, float]] = set()
         # principal -> path -> ((mtime_ns, size), the item or None if bad)
         self._parsed: dict[str, dict[Path, tuple[tuple[int, int], Item | None]]] = {}
@@ -101,14 +102,61 @@ class Store:
             return self._read(p, parse_skill, name)
         return None
 
+    def _skill_dir(self, principal: str, name: str) -> Path:
+        folder = self.dir(principal) / "skills" / check_name(name)
+        if not (folder / "SKILL.md").is_file():
+            raise OpError("not_found", f"no skill named {name!r}")
+        return folder
+
+    def files(self, principal: str, name: str) -> list[str]:
+        """The files of a skill's folder, relative and sorted. A symlink is
+        left out, since ``read_file`` would refuse it."""
+        folder = self._skill_dir(principal, name)
+        return sorted(
+            p.relative_to(folder).as_posix()
+            for p in folder.rglob("*")
+            if p.is_file() and not p.is_symlink()
+        )
+
+    def read_file(
+        self, principal: str, name: str, rel: str, max_bytes: int | None = None
+    ) -> bytes:
+        """One file of a skill's folder. A path that leaves the folder, by
+        ``..``, an absolute path or a symlink, is ``bad_params``; a file over
+        ``max_bytes`` is ``too_large``, refused before it is read."""
+        folder = self._skill_dir(principal, name)
+        norm = posixpath.normpath(rel) if rel else ""
+        p = folder / norm
+        if (
+            not norm
+            or posixpath.isabs(norm)
+            or norm == ".."
+            or norm.startswith("../")
+            or any(q.is_symlink() for q in [p, *p.parents] if q.is_relative_to(folder))
+        ):
+            raise OpError("bad_params", f"{rel!r} is not a file of the skill")
+        if not p.is_file():
+            raise OpError("not_found", f"the skill {name!r} has no file {rel!r}")
+        if max_bytes is not None and (size := p.stat().st_size) > max_bytes:
+            raise OpError(
+                "too_large", f"{rel!r} holds {size} bytes; at most {max_bytes} are read"
+            )
+        return p.read_bytes()
+
     def version(self, principal: str) -> int:
         return self._versions.get(principal, 0)
+
+    def item_version(self, principal: str, name: str) -> int:
+        """Moves on every save or delete of that one item through the store."""
+        return self._item_versions.get((principal, name), 0)
 
     def _changed(self, principal: str, item: Item) -> None:
         """A change through the store: bump the version and forget the cached
         parse, which a rewrite of the same size in the same clock tick would
         otherwise keep."""
         self._versions[principal] = self.version(principal) + 1
+        key = (principal, item.name)
+        self._item_versions[key] = self._item_versions.get(key, 0) + 1
         f = self._path(self.dir(principal), item.kind, item.name)
         self._parsed.get(principal, {}).pop(
             f if item.kind == "memory" else f / "SKILL.md", None

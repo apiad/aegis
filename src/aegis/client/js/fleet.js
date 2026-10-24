@@ -249,10 +249,16 @@ export function card(m, onOpen, onClose) {
   const sub = el("div", "ln");
   sub.append(factIcon("h", m.harness), el("b", null, `${m.agent}${(m.overridden || []).length ? "*" : ""}`), document.createTextNode(`${modelLine(m)} · ${cwdTail(m.cwd)}`));
   parts.push(sub);
-  if (m.plan_now || m.plan_did) {
+  const skills = m.skills || [];
+  if (m.plan_now || m.plan_did || skills.length) {
     const pl = el("div", "pl");
     if (m.plan_now) pl.append(planRow("now", m.plan_now, "now", el("span", "t")));
     if (m.plan_did) pl.append(planRow("did", m.plan_did, ""));
+    // The skills it loaded, in order: which worker follows which procedure,
+    // and how many times it ran each one's scripts.
+    const runs = m.skill_runs || {};
+    const named = skills.map((n) => (runs[n] ? `${n} (${runs[n]} run${runs[n] > 1 ? "s" : ""})` : n));
+    if (skills.length) pl.append(planRow("skills", named.join(" · "), "skills"));
     parts.push(pl);
   }
   if (m.attention === "working") parts.push(el("div", "act", m.activity || ""));

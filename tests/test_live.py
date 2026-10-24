@@ -865,6 +865,76 @@ async def test_a_real_agent_uses_a_knowledge_memory_from_the_hint(tmp_path: Path
         await asyncio.wait_for(task, 30)
 
 
+async def test_a_real_agent_calls_a_skill_tool(tmp_path: Path):
+    """A skill's MCP server, used by a real model (#695): the agent loads a
+    skill that brings a server, learns its tool from skill_read, and calls it
+    through skill_tool. The usage log shows the call."""
+    import asyncio
+
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.knowledge.items import Item
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  sonnet: {{harness: claude-code, model: {SONNET}, effort: low, permission: full}}\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        claude_bin=claude,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+    echo = Path(__file__).parent / "fixtures" / "skill_mcp_echo.py"
+    try:
+        await app.knowledge.store.save(
+            app.user,
+            Item(
+                "skill",
+                "echoer",
+                "Use when asked to echo a text through the echoer skill's tool",
+                "1. Call the skill's echo tool with the text.\n"
+                "2. Answer with what it returned, word for word.\n",
+                {"aegis": {"mcp": {"command": ["python3", "server.py"]}}},
+            ),
+            "test",
+            extra={"server.py": echo.read_bytes()},
+        )
+        r = await app.registry.call("session.spawn", {"agent": "sonnet"})
+        s = app.sessions.sessions[r["log_id"]]
+        await s.send(
+            "Use the echoer skill to echo the text pineapple-42, and answer with "
+            "exactly what its tool returned"
+        )
+        await until(
+            lambda: s.status == "idle" and s.cost_usd,
+            timeout=180,
+            what="the answer",
+        )
+        said = " ".join(e.get("md") or "" for e in s.entries() if e["kind"] == "prose")
+        assert "echo: pineapple-42" in said, said
+        rows = app.knowledge.usage.rows(app.user, "echoer")
+        assert ("ran", "tool=echo") in [(r["event"], r["detail"]) for r in rows], rows
+        assert s.skills == ["echoer"]
+    finally:
+        await app.skill_servers.shutdown()
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)
+
+
 async def test_real_claude_reports_its_turns_with_turn_end(tmp_path: Path):
     """A real Sonnet primed by aegis calls turn_end: needs_you with replies after
     laying out two options, done without needs_you after finished work. Sonnet,

@@ -443,7 +443,15 @@ for a session from before owners) against the message with BM25, built in
 memory per principal and rebuilt when the store's version moves, and writes a
 `hinted` usage row per item to `<state>/knowledge-usage.sqlite`. The block
 uses the notice header, so the fold already gives it its own row, and like a
-notice it never goes into the system prompt or onto a `/` command.
+notice it never goes into the system prompt or onto a `/` command. Loading a
+skill (`skill_read` of its SKILL.md) is a fact about the session:
+`Session.skills` lists the loaded names in order, in the meta so a restart
+keeps them, and the card shows them. A skill's scripts (`skill_run`) and its
+MCP server (`skill_mcp.py`) run as the session's Linux user in a fresh copy of
+its folder, which the server pipes to the launched shell as a tar, since the
+store is out of a member's reach. A skill's MCP tools stay behind the one
+`skill_tool`: the endpoint is stateless and Codex does not re-read a tool list
+mid-session by default, so no tool is added to it per session.
 
 **A session's own status is a notice its subsystems push.** Beside the host
 kinds, `Notices.set(log_id, source, items)` takes per-session items from a

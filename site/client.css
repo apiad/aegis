@@ -1306,6 +1306,7 @@ body{background:#000}
 .a2 .st .ic{width:13px;height:13px}
 .a2 .plan{display:grid;gap:5px;font-size:12.5px}
 .a2 .plan div{display:grid;grid-template-columns:16px 1fr auto;gap:6px;color:var(--muted)}
+.a2 .plan div>span{min-width:0;overflow-wrap:anywhere}
 .a2 .plan>.done{color:var(--faint)}.a2 .plan>.doing{color:var(--strong)}
 .a2 .plan .ic{width:12px;height:12px;margin-top:3px}.a2 .plan:not(.live) .ic.work{animation:none}
 .a2 .plan .t{color:var(--faint);font-family:var(--font-chrome);font-size:11.5px}
