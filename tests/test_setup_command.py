@@ -83,6 +83,16 @@ async def test_setup_delivers_one_turn_and_no_session(app):
     assert len(app.sessions.sessions) == before
 
 
+async def test_the_setup_line_begins_a_person_turn(app):
+    """The person's /setup line is their own message, as /remember is: the
+    turn it begins may import approved (knowledge_ops.honoured)."""
+    lid = await spawn_here(app)
+    s = app.sessions.sessions[lid]
+    assert await send(app, lid, "/setup") == {"status": "delivered"}
+    await until(lambda: inbox(s), timeout=5)
+    assert s.person_turn
+
+
 async def test_a_member_may_run_setup_and_records_are_per_principal(world):
     ben = world.app.sessions.sessions[await spawn(world, BEN)]
     adm = world.app.sessions.sessions[await spawn(world, ADMIN)]

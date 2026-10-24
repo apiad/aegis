@@ -255,7 +255,8 @@ Fridays"); the agent saves it the same way.
 harness kept, and proposes moving each into aegis on its page. The agent
 moves the rows you tick with `knowledge_import`: a skill's folder is copied
 whole, scripts and binaries included, each item is saved approved as one
-commit, and a name aegis already holds is refused, never overwritten. One
+commit when your submit of the page began the agent's turn (otherwise each
+waits for your Approve on its own card), and a name aegis already holds is refused, never overwritten. One
 card in the transcript lists what came in, with an Undo per item, which
 takes that item out of aegis again. Removing an original from where the
 harness loaded it is a row of its own, done after the import, and nothing

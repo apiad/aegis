@@ -1602,7 +1602,7 @@ class App:
                 ver, found, [a.name for a in cfg.agents], list(cfg.queues)
             )
             rec = self.setup_records.get(self.who(caller).name)
-            await s.deliver(*setup.turn(arg, line, rec, iso_now()))
+            await s.deliver(*setup.turn(arg, line, rec, iso_now()), by_person=True)
             return {"status": "delivered"}
         if name == "remember":
             # The agent saves the text as a memory the person asked for

@@ -484,10 +484,13 @@ checked under the store's lock, so an edit never overwrites a change it did
 not see.
 `/setup`'s import (`knowledge.import`, `knowledge/importer.py`) reads each
 ticked source on the session user's `as_user` runner, so a member's files are
-read as the member and never on the event loop, and saves it approved with
-`fresh`, which refuses a name any item holds. The ticks are the approval, so
-one transcript card lists the items, each with an Undo that reverts its own
-import commit. The setup record (`setup.Records`) keeps what was imported
+read as the member and never on the event loop, and saves it with `fresh`,
+which refuses a name any item holds. The ticks are the approval only in a
+turn the person began (`Session.person_turn`, which `/setup`'s line and an
+artifact's submit set): then one transcript card lists the items, each with
+an Undo that reverts its own import commit; in any other turn each item is
+a proposal with its own card. A person calling the op names the session
+for its card (`log_id`). The setup record (`setup.Records`) keeps what was imported
 and is merged, never replaced, by each write.
 
 **A session's own status is a notice its subsystems push.** Beside the host

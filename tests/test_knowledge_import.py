@@ -11,7 +11,10 @@ import threading
 from aegis import setup
 from aegis.knowledge import history, importer
 
+from aegis.ops import Caller, OpError
+
 from .conftest import until
+from .test_artifacts_e2e import landed
 from .knowledge_samples import mem
 from .test_acts_for import BEN, recorded  # noqa: F401
 from .test_agents import inbox, mcp, turn, world  # noqa: F401  (fixture)
@@ -37,8 +40,17 @@ def skill_dir(root, name="release", desc="Use when cutting a release"):
     return d
 
 
-async def bring(s, *items) -> dict:
-    return ok(await turn(s, mcp("knowledge_import", items=list(items))))
+async def bring(s, *items, by_person: bool = True) -> dict:
+    """An import in a turn the person began, as the submit of /setup's page
+    begins one, unless ``by_person`` is false."""
+    said = await turn(
+        s, mcp("knowledge_import", items=list(items)), by_person=by_person
+    )
+    return ok(said)
+
+
+def cards(s) -> list[dict]:
+    return [e for e in s.entries() if e["kind"] == "knowledge"]
 
 
 async def test_a_skill_folder_with_a_binary_imports_whole(world, tmp_path):
@@ -248,3 +260,89 @@ async def test_the_card_undoes_one_item_and_keeps_the_rest(world, tmp_path):
     await until(
         lambda: "undid the import" in json.dumps(inbox(s)), timeout=8, what="wake"
     )
+
+
+async def test_a_person_turn_imports_approved_with_one_card(world, tmp_path):
+    app = world.app
+    s, aid = await landed(world, tmp_path)
+    await app.registry.call(
+        "artifact.submit",
+        {
+            "log_id": s.log_id,
+            "artifact_id": aid,
+            "data": {"rows": ["x"]},
+            "label": "Apply",
+        },
+    )
+    await until(lambda: s.status == "idle", timeout=8, what="the submit's turn")
+    assert s.person_turn  # the person's submit began it, as /setup's apply
+    f = tmp_path / "host.md"
+    f.write_text("---\ndescription: The bot runs on ben-2\n---\nben-2.\n")
+    got = await app.registry.call(
+        "knowledge.import",
+        {"items": [{"source": str(f), "kind": "memory"}]},
+        Caller("agent", log_id=s.log_id),
+    )
+    assert got["imported"][0]["name"] == "host" and got["status"] == "approved"
+    assert app.knowledge.store.get(app.user, "host").status == "approved"
+    assert [e["detail"]["op"] for e in cards(s)] == ["imported"]
+
+
+async def test_a_worker_turn_imports_proposed_with_proposal_cards(world, tmp_path):
+    app = world.app
+    s = await world.spawn()
+    f = tmp_path / "host.md"
+    f.write_text("---\ndescription: The bot runs on ben-2\n---\nben-2.\n")
+    payload = mcp("knowledge_import", items=[{"source": str(f), "kind": "memory"}])
+    said = await turn(
+        s, mcp("queue_enqueue", queue="general", payload=payload), by_person=True
+    )
+    t = app.queues.tasks[ok(said)["task_id"]]
+    await until(
+        lambda: t.worker and cards(world.session(t.worker)),
+        timeout=10,
+        what="the worker's card",
+    )
+    assert app.knowledge.store.get(app.user, "host").status == "proposed"
+    (e,) = cards(world.session(t.worker))
+    assert e["detail"]["op"] == "new" and e["detail"]["name"] == "host"
+    assert app.setup_records.imported(app.user)[0]["name"] == "host"
+
+
+async def test_a_handoff_turn_imports_proposed(world, tmp_path):
+    app = world.app
+    s = await world.spawn()
+    await s.deliver(f"> from agent:{s.handle} · now", "move these in")
+    await until(lambda: s.status == "idle", timeout=8, what="idle")
+    assert not s.person_turn
+    got = await app.registry.call(
+        "knowledge.import",
+        {"items": [{"source": str(skill_dir(tmp_path)), "kind": "skill"}]},
+        Caller("agent", log_id=s.log_id),
+    )
+    assert got["imported"][0]["name"] == "release" and got["status"] == "proposed"
+    assert app.knowledge.store.get(app.user, "release").status == "proposed"
+    assert [e["detail"]["op"] for e in cards(s)] == ["new"]
+    assert "release" not in app.knowledge.hint_for(
+        app.user, s.log_id, "cut a release", None
+    )
+
+
+async def test_a_person_imports_into_a_session_they_name(world, tmp_path):
+    app = world.app
+    s = await world.spawn()
+    f = tmp_path / "host.md"
+    f.write_text("---\ndescription: The bot runs on ben-2\n---\nben-2.\n")
+    items = [{"source": str(f), "kind": "memory"}]
+    try:
+        await app.registry.call("knowledge.import", {"items": items})
+        raise AssertionError("a person's import needs a session for its card")
+    except OpError as e:
+        assert e.code == "bad_params" and "log_id" in e.message
+    got = await app.registry.call(
+        "knowledge.import", {"items": items, "log_id": s.log_id}
+    )
+    assert got["status"] == "approved"
+    assert app.knowledge.store.get(app.user, "host").status == "approved"
+    (e,) = cards(s)
+    assert e["id"] == got["card"] and e["detail"]["op"] == "imported"

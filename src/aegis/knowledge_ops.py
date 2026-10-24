@@ -305,6 +305,11 @@ class Setting(_Strict):
 
 class ImportItems(_Strict):
     items: list[ImportItem] = Field(min_length=1, max_length=200)
+    log_id: str | None = Field(
+        None,
+        description="A person's call only: the session of theirs whose "
+        "transcript gets the card. An agent's card goes in its own session.",
+    )
 
 
 # What a card keeps of a body: enough to read, not a whole skill.
@@ -923,13 +928,26 @@ def register_knowledge_ops(app: App) -> None:
     @r.op("knowledge.import", ImportItems, agent=True)
     async def knowledge_import(p: ImportItems, caller):
         """Move the skills, memories and procedure docs the person ticked on
-        the /setup page into aegis, approved, one commit each. Reads each
-        source as the session's user; a skill's folder is copied whole, up
-        to 20 MiB. A name aegis already holds is refused, never overwritten.
-        Returns what came in and what was refused, and leaves every source
-        where it is: remove each original with its own ticked row
-        (help_read setup)."""
+        the /setup page into aegis, one commit each. In the turn the
+        person's submit began, the ticks are their approval and each item is
+        saved approved, with one card that undoes each; in any other turn
+        each is a proposal with its own card. Reads each source as the
+        session's user; a skill's folder is copied whole, up to 20 MiB. A
+        name aegis already holds is refused, never overwritten. Returns what
+        came in and what was refused, and leaves every source where it is:
+        remove each original with its own ticked row (help_read setup)."""
         owner = principal(caller)
+        s = agent_session(caller)
+        if not caller.is_agent:
+            # A person's own call: their approval, carded in a session of theirs.
+            if not p.log_id:
+                raise OpError(
+                    "bad_params", "name the session for the import's card: log_id"
+                )
+            s = app.sessions.open(p.log_id)
+            if (s.spec.owner or app.user) != owner:
+                raise OpError("not_owner", f"{p.log_id} is not one of your sessions")
+        approved = honoured(caller, True)
         run = reader(caller)
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         done: list[dict] = []
@@ -940,6 +958,14 @@ def register_knowledge_ops(app: App) -> None:
                 it, extra = await run(
                     importer.load, x.kind, Path(x.source), x.name, x.expires, now
                 )
+                if not approved:
+                    it = Item(
+                        it.kind,
+                        it.name,
+                        it.description,
+                        it.body,
+                        {**it.meta, "status": "proposed"},
+                    )
                 sha = await kn.store.save(
                     owner, it, author(caller), extra=extra, verb="import", fresh=True
                 )
@@ -959,6 +985,7 @@ def register_knowledge_ops(app: App) -> None:
             if it.kind == "memory":
                 memories.append(it)
         out: dict = {
+            "status": "approved" if approved else "proposed",
             "imported": [{k: d[k] for k in ("source", "kind", "name")} for d in done],
             "refused": refused,
         }
@@ -975,8 +1002,14 @@ def register_knowledge_ops(app: App) -> None:
         )
         if memories:
             app.knowledge_check_soon(owner, memories)
-        s = agent_session(caller)
-        if s is not None:
+        if s is not None and not approved:
+            # Not the person's turn: each item waits for its own Approve.
+            for d in done:
+                it = kn.store.get(owner, d["name"])
+                if it is not None:
+                    files = await asyncio.to_thread(folder, owner, it)
+                    record_card(s, "new", it, d["sha"], files)
+        elif s is not None:
             id = "kn-" + secrets.token_hex(4)
             s.record_knowledge(
                 {

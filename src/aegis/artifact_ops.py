@@ -344,8 +344,12 @@ def register_artifact_ops(app: App) -> None:
             s.artifacts.submit(p.artifact_id, p.data, p.label)
         except ArtifactError as e:
             raise _err(e) from e
+        # The person's own answer: the turn it begins is theirs, as /setup's
+        # apply is (Session.person_turn).
         await s.deliver(
-            artifacts.header(p.artifact_id, "submit"), artifacts.body(p.data, p.label)
+            artifacts.header(p.artifact_id, "submit"),
+            artifacts.body(p.data, p.label),
+            by_person=not caller.is_agent,
         )
         return "ok"
 
