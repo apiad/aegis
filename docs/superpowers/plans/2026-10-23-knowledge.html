@@ -569,7 +569,7 @@ async def test_a_member_is_never_hinted_another_principals_memory(world):
 <div class="verify"><span class="lbl">verify</span><p><code>uv run pytest tests/test_knowledge_skill_ops.py -q</code> and that browser test alone.</p></div>
 </div></details>
 
-<details class="task" id="task-11" data-state="pending">
+<details class="task" id="task-11" data-state="done">
 <summary><span class="num">11</span><span><span class="ttl">Skills as slash commands for every harness</span><span class="files">commands.py · app.py · tests/test_knowledge_commands.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <p>The composer's catalog lists the session principal's skills that have <code>aegis.command</code> unset or true, with the description as help, after aegis's own commands. An aegis command with the same name wins. A skill whose name collides with one is listed as <code>/skill:&lt;name&gt;</code>. Running <code>/&lt;skill&gt; args</code> delivers one turn: <code>Run the skill "&lt;name&gt;". Its text follows; the person's arguments: &lt;args&gt;.</code> followed by the SKILL.md body. It also marks the skill loaded and writes an <code>invoked</code> row. This works the same for claude-code, codex and opencode sessions, because aegis delivers the turn itself.</p>

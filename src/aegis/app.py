@@ -106,7 +106,8 @@ from .queues import Queues
 from .journal.ops import register_journal_ops
 from .journal.service import Journal
 from .knowledge.service import Knowledge
-from .knowledge_ops import register_knowledge_ops, remember_turn
+from .knowledge.items import NAME_RE
+from .knowledge_ops import offered, register_knowledge_ops, remember_turn, skill_turn
 from .repos.service import Repos
 from .layout_ops import register_layout_ops
 from .fs_ops import register_fs_ops
@@ -1362,6 +1363,35 @@ class App:
             raise _dead(e) from e
         return s.wire()
 
+    async def _offered_skills(self, principal: str) -> list[tuple[str, str]]:
+        """The (name, description) of the skills ``principal`` is offered as
+        commands. A store that cannot be read offers none: the menu outlives it."""
+        try:
+            items = await self.knowledge.items(principal)
+        except Exception:
+            log.exception("aegis: the skills of %s could not be listed", principal)
+            return []
+        return [(it.name, it.description) for it in items if offered(it)]
+
+    def _skill_command(self, s, name: str):
+        """The store skill ``/name`` runs in ``s``, or None. ``skill:<name>``
+        reaches one named like an aegis command."""
+        name = name.removeprefix("skill:")
+        if not NAME_RE.match(name):
+            return None
+        it = self.knowledge.store.get(s.spec.owner or self.user, name)
+        return it if it is not None and offered(it) else None
+
+    async def _run_skill(self, s, it, arg: str) -> dict:
+        """Deliver a skill's text as one turn, mark it loaded and write an
+        ``invoked`` row. aegis delivers it, so every harness runs it alike."""
+        await s.deliver(*skill_turn(it.name, it.body, arg, iso_now()))
+        s.load_skill(it.name)
+        self.knowledge.usage.add(
+            s.spec.owner or self.user, s.log_id, "skill", it.name, "invoked"
+        )
+        return {"status": "delivered"}
+
     async def _command(
         self,
         s,
@@ -1938,6 +1968,12 @@ class App:
                 name, arg = cmd
                 if name in commands.AEGIS:
                     return await self._command(s, name, arg, caller, p.untested)
+                if (sk := self._skill_command(s, name)) is not None:
+                    return await self._run_skill(s, sk, arg)
+                if name.startswith("skill:"):
+                    raise OpError(
+                        "unknown_command", f"no skill {name[6:]!r} to run as /{name}"
+                    )
                 cat = await self.catalogs.get(s)
                 if cat is not None and cat.commands and not cat.has(name):
                     raise OpError(
@@ -2175,20 +2211,23 @@ class App:
         @r.op("commands.list", LogParams)
         async def commands_list(p: LogParams, caller):
             """What the composer's menu offers this session."""
-            return listing(await self.catalogs.get(reg.open(p.log_id)), caller)
+            s = reg.open(p.log_id)
+            skills = await self._offered_skills(s.spec.owner or self.user)
+            return listing(await self.catalogs.get(s), caller, skills)
 
         @r.op("commands.preview", PreviewParams)
         async def commands_preview(p: PreviewParams, caller):
             """What the new tab's menu offers before its session exists (#632):
             aegis's commands, and the harness's when a session in that
             directory has already listed them."""
+            skills = await self._offered_skills(self.who(caller).name)
             try:
                 cwd = self._resolve_cwd(p.cwd)
             except OpError:
-                return listing(None, caller)
-            return listing(self.catalogs.cached(p.harness, cwd), caller)
+                return listing(None, caller, skills)
+            return listing(self.catalogs.cached(p.harness, cwd), caller, skills)
 
-        def listing(cat, caller) -> dict:
+        def listing(cat, caller, skills: list[tuple[str, str]]) -> dict:
             try:
                 saved = self.saved.listing(self.workflows._agents())
             except Exception:
@@ -2201,7 +2240,14 @@ class App:
                 "commands": [
                     c for c in commands.aegis_wire() if doctor or c["name"] != "doctor"
                 ]
-                + (cat.wire_commands(shadowed=commands.AEGIS) if cat else []),
+                + commands.skills_wire(skills)
+                + (
+                    cat.wire_commands(
+                        shadowed={*commands.AEGIS, *(n for n, _ in skills)}
+                    )
+                    if cat
+                    else []
+                ),
                 "models": cat.wire_models() if cat else [],
                 "permissions": list(PERMISSION_MODE),
                 # What /workflow completes: the saved workflows that lint.

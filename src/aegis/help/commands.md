@@ -55,6 +55,10 @@ that is free, such as a prompt, completes nothing.
 | `/whats-new` | start a guide session in a new tab that walks you through what changed in aegis since your last tour, one change per turn, opening each change's help page to show you how to use it. It covers the releases after the last one you toured, up to the version you run, from the release notes that ship with it; if you have toured this version already, it tours it again. Typed in a session, the guide runs on the agent `default_agent:` names, in that session's directory. The hint under the new tab's chips does the same with the chips you picked there, and its × marks this version toured without starting a guide. |
 | `/doctor` | an admin's, listed only while `aegis doctor` finds a warning or an error. It runs the doctor again and starts a session in a new tab, on the agent `default_agent:` names, in the config root, whose first message is the report; the agent works through each problem with you and asks before it edits `.aegis.yaml`, installs or upgrades anything. When nothing is wrong any more it refuses. The new tab's doctor row has the same button, which uses the chips you picked there |
 
+Your skills come after aegis's commands in the menu, marked aegis skill:
+`/<name> [args]` sends the session the skill's text and your arguments, in
+any harness (help page knowledge, Skills as commands).
+
 A line that starts with // is sent as text, its first slash turned into a
 space so the harness does not read a command, for when you mean the text. When
 the harness has told aegis its commands, a slash line that names none of them

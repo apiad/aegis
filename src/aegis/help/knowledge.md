@@ -78,6 +78,19 @@ in the Fleet, as a skills line under the plan, and in its sidebar under
 Skills loaded, in the order the agent read them, so you can tell which
 session follows which procedure.
 
+### Skills as commands
+
+Each of your skills is a command in the composer. Type `/<name>` and
+any arguments, such as /release v2.1 for a skill named release, and aegis
+sends the session one turn holding the skill's text and your arguments,
+marks the skill loaded and counts the run. aegis sends it
+itself, so a skill works the same in Claude Code, Codex and OpenCode
+sessions. The menu lists your skills after aegis's own commands, marked
+aegis skill. A skill named like an aegis command is offered as
+`/skill:<name>`, and a harness command with a skill's name is hidden
+behind it. Set `command: false` in a skill's `aegis:` block to keep it
+out of the menu.
+
 ## Tools for agents
 
 - `memory_search` ranks your memories against a query in the agent's own

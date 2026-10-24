@@ -18,11 +18,14 @@ DESCRIPTION_CHARS = 120
 # carry no new request, so they get no hint; a message from the person,
 # another agent, a queue task, a schedule or a workflow does.
 WAKES = ("> from aegis:", "> from monitor:", "> from artifact:")
+# A skill the person ran as /<name>: a slash command, which carries its own
+# text and gets no hint.
+COMMANDS = ("> from skill:",)
 
 
 def wanted(text: str) -> bool:
     """Whether a send of ``text`` gets a hint."""
-    return not text.startswith(WAKES)
+    return not text.startswith(WAKES + COMMANDS)
 
 
 def _line(label: str, hits: list[Hit]) -> str:

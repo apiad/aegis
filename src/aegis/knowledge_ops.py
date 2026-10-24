@@ -160,6 +160,24 @@ def remember_turn(text: str, now: str) -> tuple[str, str]:
     )
 
 
+def skill_turn(name: str, body: str, args: str, now: str) -> tuple[str, str]:
+    """The turn ``/<skill> args`` delivers: the skill's text and the
+    person's arguments."""
+    said = f"the person's arguments: {args}" if args else "no arguments were given"
+    return (
+        f"> from skill:{name} · {now}",
+        f'Run the skill "{name}". Its text follows; {said}.\n\n{body}',
+    )
+
+
+def offered(it: Item) -> bool:
+    """Whether a skill is offered as a slash command: approved, and its
+    ``aegis.command`` not false."""
+    block = it.meta.get("aegis")
+    command = block.get("command", True) if isinstance(block, dict) else True
+    return it.kind == "skill" and it.status == "approved" and command is not False
+
+
 def register_knowledge_ops(app: App) -> None:
     r = app.registry
     kn = app.knowledge
