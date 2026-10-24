@@ -52,7 +52,7 @@ from pathlib import Path
 
 from . import launch
 from .skill_mcp import SkillToolError, stop_group
-from .knowledge import history, importer
+from .knowledge import checks, history, importer
 from .knowledge.items import Item, check_name, dump, parse_memory, parse_skill
 from .monitors import iso_now
 from .ops import Caller, OpError
@@ -64,6 +64,9 @@ log = logging.getLogger("aegis.knowledge")
 
 # Items one knowledge.import call takes: a library of 70 is two calls.
 MAX_IMPORT_ITEMS = 50
+# knowledge_stats marks an item never_recalled once it was hinted this often
+# with no read or invocation: the hint keeps offering it and nobody takes it.
+NEVER_RECALLED_HINTS = 10
 
 
 class _Strict(BaseModel):
@@ -347,10 +350,16 @@ class Stats(_Strict):
         description="Only items not read, invoked or run in this many days.",
     )
     kind: Literal["skill", "memory"] | None = None
-    flag: Literal["expired", "stale"] | None = Field(
+    flag: Literal["expired", "stale", "never_recalled"] | None = Field(
         None,
         description="Only items with this flag: expired (a temporary memory "
-        "past its day) or stale (it quotes a path that is gone).",
+        "past its day), stale (it quotes a path that is gone) or "
+        "never_recalled (hinted at least 10 times, never read or invoked).",
+    )
+    duplicates: bool = Field(
+        False,
+        description="Also list pairs of items of one kind that are likely "
+        "duplicates, with their similarity score.",
     )
 
 
@@ -1358,12 +1367,15 @@ def register_knowledge_ops(app: App) -> None:
         hinted, read, invoked or run, when it was last used, and its flags
         (expired, or stale:<path> for a quoted path that is gone). unused_days
         keeps only the items not used in that many days, flag only the items
-        with that flag."""
+        with that flag. never_recalled marks an item hinted at least 10 times
+        and never read or invoked. duplicates adds the pairs of likely
+        duplicates (checks.duplicates), each pair once."""
         owner = principal(caller)
         used = await asyncio.to_thread(kn.usage.summary, owner)
         cutoff = time.time() - p.unused_days * 86400 if p.unused_days else None
         out = []
-        for it in await kn.items(owner):
+        items = await kn.items(owner)
+        for it in items:
             if p.kind and it.kind != p.kind:
                 continue
             u = used.get(it.name, {})
@@ -1371,7 +1383,15 @@ def register_knowledge_ops(app: App) -> None:
             if cutoff is not None and last is not None and last >= cutoff:
                 continue
             flags = kn.flags_of(owner, it.name, it.expired())
-            if p.flag and not any(f.split(":", 1)[0] == p.flag for f in flags):
+            never = (
+                u.get("hinted", 0) >= NEVER_RECALLED_HINTS
+                and not u.get("read")
+                and not u.get("invoked")
+            )
+            if p.flag == "never_recalled":
+                if not never:
+                    continue
+            elif p.flag and not any(f.split(":", 1)[0] == p.flag for f in flags):
                 continue
             out.append(
                 {
@@ -1382,9 +1402,17 @@ def register_knowledge_ops(app: App) -> None:
                     "flags": flags,
                     **{k: u.get(k, 0) for k in ("hinted", "read", "invoked", "ran")},
                     "last_used": last,
+                    "never_recalled": never,
                 }
             )
-        return {"items": out}
+        if not p.duplicates:
+            return {"items": out}
+        ix = await kn.index(owner)
+        pairs = await asyncio.to_thread(
+            checks.duplicates, ix, items, checks.DUPLICATE_SCORE
+        )
+        dups = [{"a": a, "b": b, "score": score} for a, b, score in pairs]
+        return {"items": out, "duplicates": dups}
 
     # The Knowledge view's ops: a person's, never an agent's, on the caller's
     # own store, an admin's included.

@@ -1,4 +1,4 @@
-"""Expiry and staleness flags on a memory.
+"""Expiry and staleness flags on a memory, and likely duplicates.
 
 ``expired``: a temporary memory past its ``expires`` day. Search already
 leaves it out of the hint the day it passes; the flag says why.
@@ -20,6 +20,14 @@ Only the first ``MAX_PATHS`` paths of a memory are looked for.
 ``flags`` does no I/O itself: ``exists`` is the caller's, which in
 multi-user mode runs as the member (as_user.py), so the check sees what the
 member sees and nothing more.
+
+``duplicates``: two items of one kind that each rank the other first when
+their own name and description are searched for, both scores at least
+``DUPLICATE_SCORE``. Mutual first keeps one broad item from pairing with
+everything; the threshold was tuned on the public fixture library
+(tests/fixtures/knowledge/), where it finds the two planted pairs, which
+score 14.6 and more both ways, and no other pair, the best of which scores
+2.6. It ranks every item against its kind, so callers run it in a thread.
 """
 
 from __future__ import annotations
@@ -30,6 +38,7 @@ from collections.abc import Callable, Iterable
 from datetime import date
 
 from .items import Item
+from .search import Index
 
 TICKED = re.compile(r"`([^`\n]+)`")
 FENCED = re.compile(r"^(```|~~~).*?^\1", re.S | re.M)
@@ -38,6 +47,8 @@ EXTENSION = re.compile(r"[^./]\.[A-Za-z0-9]{1,10}$")
 # The most paths one memory has checked: a pasted listing must not turn one
 # check into thousands of file reads.
 MAX_PATHS = 200
+# Both directions of a pair must score this much (BM25, search.py).
+DUPLICATE_SCORE = 4.0
 NOT_A_PATH = re.compile(r"\s|://|[<>{}$*?\[\]|;()=,'\"]")
 
 
@@ -119,3 +130,24 @@ def flags(
         if not any(exists(c) for c in where):
             out.append(f"stale:{token}")
     return out
+
+
+def duplicates(
+    index: Index, items: list[Item], min_score: float
+) -> list[tuple[str, str, float]]:
+    """Pairs ``(a, b, score)`` of likely duplicates, ``a`` before ``b`` by
+    name, best first; ``score`` is the lower of the two directions."""
+    best: dict[str, tuple[str, float]] = {}
+    for it in items:
+        query = f"{it.name.replace('-', ' ').replace('_', ' ')} {it.description}"
+        for h in index.rank(query, it.kind, 2):
+            if h.name != it.name:
+                best[it.name] = (h.name, h.score)
+                break
+    pairs = []
+    for a, (b, score) in best.items():
+        back = best.get(b)
+        if a < b and back and back[0] == a and min(score, back[1]) >= min_score:
+            pairs.append((a, b, round(min(score, back[1]), 2)))
+    pairs.sort(key=lambda p: (-p[2], p[0], p[1]))
+    return pairs

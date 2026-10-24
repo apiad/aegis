@@ -427,9 +427,10 @@ class _knowledge:
         *,
         unused_days: int | None = ...,
         kind: Literal["skill", "memory"] | None = ...,
-        flag: Literal["expired", "stale"] | None = ...,
+        flag: Literal["expired", "stale", "never_recalled"] | None = ...,
+        duplicates: bool = ...,
     ) -> Any:
-        """How your skills and memories are used: per item, how often it was hinted, read, invoked or run, when it was last used, and its flags (expired, or stale:<path> for a quoted path that is gone). unused_days keeps only the items not used in that many days, flag only the items with that flag."""
+        """How your skills and memories are used: per item, how often it was hinted, read, invoked or run, when it was last used, and its flags (expired, or stale:<path> for a quoted path that is gone). unused_days keeps only the items not used in that many days, flag only the items with that flag. never_recalled marks an item hinted at least 10 times and never read or invoked. duplicates adds the pairs of likely duplicates (checks.duplicates), each pair once."""
 
 class _layout:
     async def dock(self, *, log_id: str, pane: str, where: str) -> Any:

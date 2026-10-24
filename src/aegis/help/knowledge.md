@@ -230,7 +230,12 @@ out of the menu.
 - `knowledge_stats` lists each item with how often it was hinted, read,
   invoked or run, when it was last used and its flags; `unused_days=60`
   keeps the ones nobody used in that time, `flag=stale` or
-  `flag=expired` the ones with that flag.
+  `flag=expired` the ones with that flag. An item hinted 10 times or more
+  and never read or invoked is marked never recalled, and
+  `flag=never_recalled` lists only those. `duplicates=true` adds the
+  pairs of items of one kind that are likely duplicates: each one is the
+  other's best match by name and description, both ways, with a high
+  score.
 
 - `knowledge_import` moves skill folders, memory files and procedure
   docs the person ticked on the `/setup` page into aegis (help_read setup

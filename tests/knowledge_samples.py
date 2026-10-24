@@ -1,7 +1,10 @@
 """Sample items for the knowledge tests, and the public fixture library in
-tests/fixtures/knowledge/: a fictional team (ana, ben, cara), 12 skills, 12
-memories and 60 labelled queries, half in Spanish. scripts/bench.py reads the
-same library for its retrieval row."""
+tests/fixtures/knowledge/: a fictional team (ana, ben, cara), 13 skills, 13
+memories and 60 labelled queries, half in Spanish. Two pairs are planted
+duplicates, which checks.duplicates must find and nothing else:
+no-force-push and shared-branch-history, database-backup and
+restore-database. scripts/bench.py reads the same library for its retrieval
+row."""
 
 import json
 from pathlib import Path
