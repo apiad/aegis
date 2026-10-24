@@ -159,6 +159,9 @@ class Server:
                 except ValueError:
                     log.warning("skill mcp: a line that is not JSON: %r", line[:200])
                     continue
+                if isinstance(msg, dict) and "method" in msg:
+                    self._answer_server(msg)
+                    continue
                 fut = self.pending.get(msg.get("id")) if isinstance(msg, dict) else None
                 if fut is not None and not fut.done():
                     fut.set_result(msg)
@@ -170,6 +173,19 @@ class Server:
         for fut in self.pending.values():
             if not fut.done():
                 fut.set_exception(SkillToolError(why))
+
+    def _answer_server(self, msg: dict) -> None:
+        """A request or notification from the server, never an answer: a
+        ping gets an empty result, any other request -32601, and a
+        notification nothing."""
+        if "id" not in msg:
+            return
+        if msg["method"] == "ping":
+            reply: dict = {"result": {}}
+        else:
+            reply = {"error": {"code": -32601, "message": "aegis does not offer it"}}
+        with contextlib.suppress(SkillToolError, OSError):
+            self._write({"jsonrpc": "2.0", "id": msg["id"], **reply})
 
     async def drain_stderr(self) -> None:
         assert self.proc.stderr is not None

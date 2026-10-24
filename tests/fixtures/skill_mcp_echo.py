@@ -20,12 +20,30 @@ TOOL = {
 }
 
 
-def answer(n, result):
-    sys.stdout.write(json.dumps({"jsonrpc": "2.0", "id": n, "result": result}) + "\n")
+PINGED = {
+    "name": "pinged",
+    "description": "Ask the client first, then answer.",
+    "inputSchema": {"type": "object", "properties": {}},
+}
+
+
+def send(msg):
+    sys.stdout.write(json.dumps(msg) + "\n")
     sys.stdout.flush()
 
 
-for line in sys.stdin:
+def answer(n, result):
+    send({"jsonrpc": "2.0", "id": n, "result": result})
+
+
+def ask(n, method):
+    """A request to the client with the same id as the call it answers, so a
+    client that took it for that call's answer would show; its reply."""
+    send({"jsonrpc": "2.0", "id": n, "method": method})
+    return json.loads(sys.stdin.readline())
+
+
+while line := sys.stdin.readline():
     msg = json.loads(line)
     method, n = msg.get("method"), msg.get("id")
     if method == "initialize":
@@ -38,7 +56,13 @@ for line in sys.stdin:
             },
         )
     elif method == "tools/list":
-        answer(n, {"tools": [TOOL]})
+        answer(n, {"tools": [TOOL, PINGED]})
+    elif method == "tools/call" and msg["params"]["name"] == "pinged":
+        send({"jsonrpc": "2.0", "method": "notifications/message", "params": {}})
+        pong = ask(n, "ping")
+        other = ask(n, "roots/list")
+        said = f"ping {pong.get('result')!r}, roots/list {other['error']['code']}"
+        answer(n, {"content": [{"type": "text", "text": said}], "isError": False})
     elif method == "tools/call":
         text = msg["params"]["arguments"].get("text", "")
         answer(

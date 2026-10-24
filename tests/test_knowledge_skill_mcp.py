@@ -55,7 +55,7 @@ async def test_a_loaded_skills_mcp_tool_is_callable(agents_world):
     said = await turn(s, call("echoer", "echo", {}))
     assert said.startswith("mcp error: not_loaded"), said
     got = ok(await turn(s, mcp("skill_read", name="echoer")))
-    assert [t["name"] for t in got["tools"]] == ["echo"]
+    assert [t["name"] for t in got["tools"]] == ["echo", "pinged"]
     assert got["tools"][0]["input_schema"]["required"] == ["text"]
     got = ok(await turn(s, call("echoer", "echo", {"text": "hi"})))
     assert got == {"is_error": False, "content": [{"type": "text", "text": "echo: hi"}]}
@@ -205,3 +205,12 @@ async def test_a_line_over_the_limit_fails_the_call_and_restarts_the_server(
     got = ok(await turn(s, call("echoer", "echo", {"text": "again"})))
     assert got["content"][0]["text"] == "echo: again"
     assert app.skill_servers._servers[(s.log_id, "echoer")] is not first
+
+
+async def test_a_servers_own_requests_are_answered_not_taken_for_answers(agents_world):
+    app = agents_world.app
+    await save_echoer(app)
+    s = await agents_world.spawn()
+    ok(await turn(s, mcp("skill_read", name="echoer")))
+    got = ok(await turn(s, call("echoer", "pinged", {})))
+    assert got["content"][0]["text"] == "ping {}, roots/list -32601"
