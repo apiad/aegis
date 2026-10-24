@@ -403,8 +403,10 @@ class _knowledge:
         """One item for the view: its file's whole text, the stamp an edit sends back, and a skill's files."""
     async def history(self, *, name: str) -> Any:
         """The commits that changed an item, newest first, a deleted one's included."""
-    async def import_(self, *, items: builtins.list[dict[str, Any]]) -> Any:
-        """Move the skills, memories and procedure docs the person ticked on the /setup page into aegis, approved, one commit each. Reads each source as the session's user; a skill's folder is copied whole, up to 20 MiB. A name aegis already holds is refused, never overwritten. Returns what came in and what was refused, and leaves every source where it is: remove each original with its own ticked row (help_read setup)."""
+    async def import_(
+        self, *, items: builtins.list[dict[str, Any]], log_id: str | None = ...
+    ) -> Any:
+        """Move the skills, memories and procedure docs the person ticked on the /setup page into aegis, one commit each. In the turn the person's submit began, the ticks are their approval and each item is saved approved, with one card that undoes each; in any other turn each is a proposal with its own card. Reads each source as the session's user; a skill's folder is copied whole, up to 20 MiB. A name aegis already holds is refused, never overwritten. Returns what came in and what was refused, and leaves every source where it is: remove each original with its own ticked row (help_read setup)."""
     async def list(
         self,
         *,
@@ -419,7 +421,7 @@ class _knowledge:
     async def restore(self, *, name: str, sha: str) -> Any:
         """Put an item back as it was at one of its commits, as a new commit."""
     async def setting(self, *, native: bool | None = ...) -> Any:
-        """The caller's own knowledge switch, read or set: native starts their sessions without the harness's own skills and memory. A running session keeps how it started until its process restarts."""
+        """The caller's own knowledge switch, read or set: native starts their sessions without the harness's own skills and memory. A session keeps the setting it was started with; the switch reaches the sessions started after it."""
     async def stats(
         self,
         *,
