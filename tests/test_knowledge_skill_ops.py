@@ -103,3 +103,36 @@ async def test_read_permission_sessions_read_skills_but_not_save(agents_world):
     ok(await turn(s, mcp("skill_read", name="release")))
     said = await turn(s, mcp("skill_save", name="x", description="d", body="b"))
     assert said.startswith("mcp error: read_only"), said
+
+
+async def test_reading_a_file_over_a_mebibyte_is_too_large(agents_world):
+    app = agents_world.app
+    await app.knowledge.store.save(
+        app.user,
+        skill("bulky", "Has a big file"),
+        "t",
+        extra={"big.bin": b"x" * (2**20 + 1), "fits.txt": b"y" * 2**20},
+    )
+    s = await agents_world.spawn()
+    said = await turn(s, mcp("skill_read", name="bulky", file="big.bin"))
+    assert said.startswith("mcp error: too_large"), said[:200]
+    got = ok(await turn(s, mcp("skill_read", name="bulky", file="fits.txt")))
+    assert len(got["text"]) == 2**20
+
+
+async def test_a_skills_files_are_capped_at_twenty_mebibytes(agents_world):
+    import pytest
+
+    from aegis.ops import OpError
+
+    app = agents_world.app
+    chunk = base64.b64encode(b"z" * (10 * 2**20)).decode()
+    params = {"name": "huge", "description": "Too big", "body": "x"}
+    with pytest.raises(OpError) as e:
+        await app.registry.call(
+            "skill.save", params | {"files": {"a": chunk, "b": chunk, "c": "eg=="}}
+        )
+    assert e.value.code == "too_large"
+    assert app.knowledge.store.get(app.user, "huge") is None
+    await app.registry.call("skill.save", params | {"files": {"a": chunk, "b": chunk}})
+    assert app.knowledge.store.files(app.user, "huge") == ["SKILL.md", "a", "b"]

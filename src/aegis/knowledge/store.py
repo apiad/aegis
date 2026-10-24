@@ -118,9 +118,12 @@ class Store:
             if p.is_file() and not p.is_symlink()
         )
 
-    def read_file(self, principal: str, name: str, rel: str) -> bytes:
+    def read_file(
+        self, principal: str, name: str, rel: str, max_bytes: int | None = None
+    ) -> bytes:
         """One file of a skill's folder. A path that leaves the folder, by
-        ``..``, an absolute path or a symlink, is ``bad_params``."""
+        ``..``, an absolute path or a symlink, is ``bad_params``; a file over
+        ``max_bytes`` is ``too_large``, refused before it is read."""
         folder = self._skill_dir(principal, name)
         norm = posixpath.normpath(rel) if rel else ""
         p = folder / norm
@@ -134,6 +137,10 @@ class Store:
             raise OpError("bad_params", f"{rel!r} is not a file of the skill")
         if not p.is_file():
             raise OpError("not_found", f"the skill {name!r} has no file {rel!r}")
+        if max_bytes is not None and (size := p.stat().st_size) > max_bytes:
+            raise OpError(
+                "too_large", f"{rel!r} holds {size} bytes; at most {max_bytes} are read"
+            )
         return p.read_bytes()
 
     def version(self, principal: str) -> int:

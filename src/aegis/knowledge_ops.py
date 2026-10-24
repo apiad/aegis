@@ -163,6 +163,9 @@ class RunSkill(_Strict):
 
 
 OUTPUT_CHARS = 20000
+# The largest file skill_read returns, and the most a skill_save's files hold.
+READ_FILE_BYTES = 2**20
+SAVE_FILES_BYTES = 20 * 2**20
 # How long a timed-out run waits for its pipes after the kill, for a child
 # that left the group and still holds them.
 PIPES_AFTER_KILL_S = 5.0
@@ -466,12 +469,13 @@ def register_knowledge_ops(app: App) -> None:
     @r.op("skill.read", ReadSkill, agent=True, read=True)
     async def skill_read(p: ReadSkill, caller):
         """Load a skill: returns its SKILL.md, which you then follow, and the
-        files of its folder. With file, returns that one file instead."""
+        files of its folder. With file, returns that one file instead, up to
+        1 MiB."""
         owner = principal(caller)
         it = skill(owner, p.name)
         files = kn.store.files(owner, p.name)
         if p.file is not None and p.file != "SKILL.md":
-            data = kn.store.read_file(owner, p.name, p.file)
+            data = kn.store.read_file(owner, p.name, p.file, READ_FILE_BYTES)
             try:
                 return {"name": p.name, "file": p.file, "text": data.decode("utf-8")}
             except UnicodeDecodeError:
@@ -507,14 +511,21 @@ def register_knowledge_ops(app: App) -> None:
     @r.op("skill.save", SaveSkill, agent=True)
     async def skill_save(p: SaveSkill, caller):
         """Save a skill: a procedure later sessions should follow for one
-        kind of task, with any files it needs. Saving an existing name
-        replaces it. Set asked: true when the person asked for it."""
+        kind of task, with any files it needs, 20 MiB at most in all.
+        Saving an existing name replaces it. Set asked: true when the person
+        asked for it."""
         owner = principal(caller)
         check_name(p.name)
         try:
             extra = {k: base64.b64decode(v, validate=True) for k, v in p.files.items()}
         except (binascii.Error, ValueError):
             raise OpError("bad_params", "files must hold base64") from None
+        if (total := sum(map(len, extra.values()))) > SAVE_FILES_BYTES:
+            raise OpError(
+                "too_large",
+                f"the files hold {total} bytes; a skill holds at most "
+                f"{SAVE_FILES_BYTES}",
+            )
         meta = {"aegis": p.aegis} if p.aegis else {}
         it = Item("skill", p.name, p.description.strip(), p.body.rstrip() + "\n", meta)
         await kn.store.save(owner, it, author(caller), extra=extra)

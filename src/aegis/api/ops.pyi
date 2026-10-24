@@ -744,7 +744,7 @@ class _setup:
 
 class _skill:
     async def read(self, *, name: str, file: str | None = ...) -> Any:
-        """Load a skill: returns its SKILL.md, which you then follow, and the files of its folder. With file, returns that one file instead."""
+        """Load a skill: returns its SKILL.md, which you then follow, and the files of its folder. With file, returns that one file instead, up to 1 MiB."""
     async def run(
         self,
         *,
@@ -764,7 +764,7 @@ class _skill:
         aegis: dict[str, Any] | None = ...,
         asked: bool = ...,
     ) -> Any:
-        """Save a skill: a procedure later sessions should follow for one kind of task, with any files it needs. Saving an existing name replaces it. Set asked: true when the person asked for it."""
+        """Save a skill: a procedure later sessions should follow for one kind of task, with any files it needs, 20 MiB at most in all. Saving an existing name replaces it. Set asked: true when the person asked for it."""
     async def search(self, *, query: str, limit: int = ...) -> Any:
         """Search your skills (procedures for a kind of task, such as cutting a release) with your own words, before you start a task. Returns the best names with their description, score and status; load one with skill_read."""
     async def tool(

@@ -133,9 +133,9 @@ out of the menu.
 - `memory_delete` deletes one; the history keeps it.
 - `skill_search` ranks your skills against what the agent is about to do.
 - `skill_read` loads a skill: it returns SKILL.md and the folder's file
-  list, and with `file` returns one of those files.
+  list, and with `file` returns one of those files, up to 1 MiB.
 - `skill_save` creates or replaces a skill, with its other files in
-  base64 and its `aegis` block.
+  base64, 20 MiB at most in all, and its `aegis` block.
 - `skill_run` runs one of the scripts a loaded skill declares under
   `aegis.scripts`, with arguments, and returns its exit code, stdout and
   stderr, each cut at 20,000 characters.
