@@ -427,9 +427,10 @@ class _knowledge:
         *,
         unused_days: int | None = ...,
         kind: Literal["skill", "memory"] | None = ...,
-        flag: Literal["expired", "stale"] | None = ...,
+        flag: Literal["expired", "stale", "never_recalled"] | None = ...,
+        duplicates: bool = ...,
     ) -> Any:
-        """How your skills and memories are used: per item, how often it was hinted, read, invoked or run, when it was last used, and its flags (expired, or stale:<path> for a quoted path that is gone). unused_days keeps only the items not used in that many days, flag only the items with that flag."""
+        """How your skills and memories are used: per item, how often it was hinted, read, invoked or run, when it was last used, and its flags (expired, or stale:<path> for a quoted path that is gone). unused_days keeps only the items not used in that many days, flag only the items with that flag. never_recalled marks an item hinted at least 10 times and never read or invoked. duplicates adds the pairs of likely duplicates (checks.duplicates), each pair once."""
 
 class _layout:
     async def dock(self, *, log_id: str, pane: str, where: str) -> Any:
@@ -776,6 +777,8 @@ class _setup:
         """Save what this /setup run applied and declined, for the person whose session this is, so their next run proposes only what is new. Call it once, at the end of a run (help_read setup record)."""
 
 class _skill:
+    async def delete(self, *, name: str) -> Any:
+        """Delete a skill nobody uses any more, its whole folder. The deletion is kept in the store's history: deleting an approved skill puts a card in your transcript that lets the person undo it, and the Knowledge view restores it from its history."""
     async def read(self, *, name: str, file: str | None = ...) -> Any:
         """Load a skill: returns its SKILL.md, which you then follow, and the files of its folder. With file, returns that one file instead, up to 1 MiB."""
     async def run(

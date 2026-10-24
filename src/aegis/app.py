@@ -108,7 +108,13 @@ from .journal.service import Journal
 from .knowledge.service import Knowledge
 from .knowledge.items import NAME_RE, Item
 from .skill_mcp import SkillServers
-from .knowledge_ops import offered, register_knowledge_ops, remember_turn, skill_turn
+from .knowledge_ops import (
+    consolidate_turn,
+    offered,
+    register_knowledge_ops,
+    remember_turn,
+    skill_turn,
+)
 from .repos.service import Repos
 from .layout_ops import register_layout_ops
 from .fs_ops import register_fs_ops
@@ -537,7 +543,10 @@ class App:
             roots.state_root, self.publish, user_of=self._linux_user_of_session
         )
         reg.journal = self.journal
-        self.knowledge = Knowledge(roots.state_root)
+        # knowledge.embeddings is read once, here: a change needs a restart.
+        self.knowledge = Knowledge(
+            roots.state_root, self.config.current().knowledge["embeddings"]
+        )
         reg.knowledge = self.knowledge
         self.skill_servers = SkillServers()
         reg.skill_servers = self.skill_servers
@@ -1615,6 +1624,18 @@ class App:
                     " a memory; use /remember in a session that can write",
                 )
             await s.deliver(*remember_turn(arg, iso_now()), by_person=True)
+            return {"status": "delivered"}
+        if name == "consolidate":
+            # The agent reviews the person's store from the help page
+            # consolidate. The person began the turn, as with /setup, so what
+            # the turn applies after their submit saves approved, with Undo.
+            if s.spec.permission == "read":
+                raise OpError(
+                    "read_only",
+                    "this session has read permission, so its agent cannot apply"
+                    " what you tick; use /consolidate in a session that can write",
+                )
+            await s.deliver(*consolidate_turn(arg, iso_now()), by_person=True)
             return {"status": "delivered"}
         if name in ("workflow", "loop"):
             # A person's line launches a saved workflow: the only path, beside

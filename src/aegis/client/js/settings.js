@@ -266,6 +266,7 @@ export class Settings {
       this.park(),
       this.untested(),
       this.workflows(),
+      this.fieldSection("embeddings"),
       this.fieldSection("network"),
       this.fieldSection("host"),
     );
@@ -1541,7 +1542,7 @@ export class Settings {
       el.addEventListener("input", () => set(el.value ? el.value === "true" : undefined));
     } else {
       const number = (f.kind === "int" || f.kind === "number") && !f.off;
-      el = h("input", { type: number ? "number" : "text", step: "any", value: shown(s[k]), placeholder: shown(f.default), spellcheck: false, className: f.kind === "list" ? "pick set-cmd" : "pick set-num" });
+      el = h("input", { type: number ? "number" : "text", step: "any", value: shown(s[k]), placeholder: shown(f.default), spellcheck: false, className: f.kind === "list" || f.kind === "text" ? "pick set-cmd" : "pick set-num" });
       if (f.off) el.title = "a number, or off";
       el.addEventListener("input", () => {
         const v = el.value.trim();

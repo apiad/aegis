@@ -14,6 +14,15 @@ member's files as the member. They are kept here, in memory, and in the
 usage db's ``flags`` table, which a principal's first check after a restart
 reads back: a flag an item did not have before, across restarts too, writes
 one ``flagged`` usage row.
+
+With ``knowledge.embeddings`` set and the extra installed, an index built in
+a thread also holds each item's vector (embed.py), and search fuses ranks.
+The model loads on the first such build, never on the loop. A send's hint
+never waits for it: it ranks with the query's vector only when that is
+already in memory, else with BM25 alone, and encodes the text in the
+background; the first build for a principal, which a send may do in place,
+holds no vectors and starts a refresh that adds them. Search tools await
+the query's vector.
 """
 
 from __future__ import annotations
@@ -26,8 +35,9 @@ from datetime import date
 from pathlib import Path
 
 from . import checks, hint
+from .embed import Embedder, Loader, Vector, available, fastembed_loader
 from .items import Item
-from .search import Index
+from .search import QUERY_CHARS, Index, text_of
 from .store import Store
 from .usage import Usage
 
@@ -37,8 +47,18 @@ SCAN_EVERY_S = 5.0
 
 
 class Knowledge:
-    def __init__(self, state_root: Path) -> None:
+    def __init__(
+        self, state_root: Path, embeddings: str = "off", load: Loader | None = None
+    ) -> None:
         self.store = Store(state_root / "knowledge")
+        # The optional vectors; None when off or when the extra is missing,
+        # which the doctor warns about. ``load`` is the tests' fake model.
+        self.embedder: Embedder | None = None
+        if embeddings != "off" and (load is not None or available()):
+            self.embedder = Embedder(
+                embeddings, state_root / "knowledge-vectors", load or fastembed_loader
+            )
+        self._encoding: set[str] = set()  # query texts encoding in the background
         self.usage = Usage(state_root / "knowledge-usage.sqlite")
         # principal -> (store version, when scanned, items, index)
         self._indexes: dict[str, tuple[int, float, list[Item], Index]] = {}
@@ -50,19 +70,38 @@ class Knowledge:
         self._flags: dict[str, dict[str, list[str]]] = {}
         self.exists: Callable[[str], bool] = os.path.exists
 
-    def _rebuild(self, principal: str, old) -> tuple[list[Item], Index]:
+    def _wants_vectors(self, ix: Index) -> bool:
+        e = self.embedder
+        return e is not None and not e.broken and ix.vectors is None
+
+    def _rebuild(
+        self, principal: str, old, embed: bool = False
+    ) -> tuple[list[Item], Index]:
+        """Blocks: the scan reads files and, with ``embed``, the model may
+        load and encode. ``embed`` only off the loop."""
         # A change through the store always rebuilds: a delete drops the
         # file's cached parse, so the scan alone cannot tell it went.
         items, changed = self.store.scan(principal)
-        if old is not None and not changed and old[0] == self.store.version(principal):
+        if (
+            old is not None
+            and not changed
+            and old[0] == self.store.version(principal)
+            and not (embed and self._wants_vectors(old[3]))
+        ):
             return old[2], old[3]
-        return items, Index(items)
+        vectors = None
+        if embed and self.embedder is not None:
+            got = self.embedder.vectors([text_of(i) for i in items])
+            if got is not None:
+                vectors = {i.name: v for i, v in zip(items, got)}
+        return items, Index(items, vectors)
 
     def _fresh(self, principal: str, held) -> bool:
         return (
             held is not None
             and held[0] == self.store.version(principal)
             and self._clock() - held[1] < SCAN_EVERY_S
+            and not self._wants_vectors(held[3])
         )
 
     async def refresh(self, principal: str) -> tuple[list[Item], Index]:
@@ -71,7 +110,7 @@ class Knowledge:
         if held is not None and self._fresh(principal, held):
             return held[2], held[3]
         version, now = self.store.version(principal), self._clock()
-        items, ix = await asyncio.to_thread(self._rebuild, principal, held)
+        items, ix = await asyncio.to_thread(self._rebuild, principal, held, True)
         self._indexes[principal] = (version, now, items, ix)
         return items, ix
 
@@ -80,13 +119,15 @@ class Knowledge:
         give the loop a turn before it is recorded, or two sends could be
         recorded out of order. A stale index is used as it is while a
         refresh runs in a thread; only a principal with no index yet is
-        built here, once per server start."""
+        built here, once per server start, and without vectors."""
         held = self._indexes.get(principal)
         if held is None:
             version, now = self.store.version(principal), self._clock()
             items, ix = self._rebuild(principal, None)
-            self._indexes[principal] = (version, now, items, ix)
-            return ix
+            held = self._indexes[principal] = (version, now, items, ix)
+            if not self._wants_vectors(ix):
+                return ix
+            # Built without vectors: a refresh in a thread adds them.
         if not self._fresh(principal, held) and principal not in self._refreshing:
             try:
                 task = asyncio.get_running_loop().create_task(self.refresh(principal))
@@ -111,6 +152,36 @@ class Knowledge:
         """Every item of ``principal``, from the cache the index uses."""
         return (await self._held(principal))[0]
 
+    async def query_vector(self, text: str) -> Vector | None:
+        """The vector of a search's query, encoded in a thread; None without
+        embeddings."""
+        if self.embedder is None:
+            return None
+        got = await asyncio.to_thread(self.embedder.vectors, [text[:QUERY_CHARS]])
+        return got[0] if got else None
+
+    def _query_vector_now(self, text: str) -> Vector | None:
+        """The vector of a send's text if it is in memory, without blocking;
+        otherwise None, and the text is encoded in the background."""
+        e = self.embedder
+        if e is None or e.broken:
+            return None
+        text = text[:QUERY_CHARS]
+        v = e.cached(text)
+        if v is not None:
+            return v
+        key = e.key(text)
+        if key in self._encoding:
+            return None
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:  # no loop: a plain call, as in a unit test
+            return None
+        self._encoding.add(key)
+        task = loop.create_task(asyncio.to_thread(e.vectors, [text]))
+        task.add_done_callback(lambda _t: self._encoding.discard(key))
+        return None
+
     def hint_for(
         self, principal: str, session_id: str, text: str, cwd: str | None
     ) -> str:
@@ -121,8 +192,10 @@ class Knowledge:
             self._pruned = now
             self.usage.prune(now)
         ix = self._now_index(principal)
-        skills = ix.rank(text, "skill", HINT_ITEMS, hintable_only=True, cwd=cwd)
-        memories = ix.rank(text, "memory", HINT_ITEMS, hintable_only=True, cwd=cwd)
+        qv = self._query_vector_now(text) if ix.vectors is not None else None
+        kw = {"hintable_only": True, "cwd": cwd, "query_vector": qv}
+        skills = ix.rank(text, "skill", HINT_ITEMS, **kw)
+        memories = ix.rank(text, "memory", HINT_ITEMS, **kw)
         ranks: dict[str, int] = {}
         for hits in (skills, memories):
             for rank, h in enumerate(hits, 1):

@@ -94,6 +94,11 @@ AEGIS: dict[str, Command] = {
             "Save a memory every later session can find; the agent writes it",
         ),
         Command(
+            "consolidate",
+            "[text]",
+            "Review your skills and memories with the agent: merge, renew, retire",
+        ),
+        Command(
             "workflow",
             "[id] [text]",
             "Run a saved workflow now, its args made from your text; alone, list them",

@@ -55,6 +55,7 @@ host: {hide_mounts: [/srv/scratch], add_mounts: [/tank]}
 workflows: {max_agents: {total: 6, opus: 3}}
 harness_versions: {person: warn, agent: "off", startup: "off", accepted: {opencode: ["2.0.33"]}}
 nudges: {silent_s: false, plan_min: 20}
+knowledge: {embeddings: minishlab/potion-multilingual-128M}
 notices:
   disk: {on: 80, critical: 95, clear: 70}
   memory: {on: 85, critical: 92, clear: 80, psi_full: 10}
@@ -85,6 +86,7 @@ def reader_keys() -> list[str]:
         "harness_versions": list(config.HV_DEFAULTS),
         "context": list(config.CONTEXT_DEFAULTS),
         "nudges": list(config.NUDGES_DEFAULTS),
+        "knowledge": list(config.KNOWLEDGE_DEFAULTS),
         "network": list(NET_KEYS),
         "host": ["hide_mounts", "add_mounts"],
         "notices": notices,

@@ -52,7 +52,7 @@ from pathlib import Path
 
 from . import launch
 from .skill_mcp import SkillToolError, stop_group
-from .knowledge import history, importer
+from .knowledge import checks, history, importer
 from .knowledge.items import Item, check_name, dump, parse_memory, parse_skill
 from .monitors import iso_now
 from .ops import Caller, OpError
@@ -64,6 +64,9 @@ log = logging.getLogger("aegis.knowledge")
 
 # Items one knowledge.import call takes: a library of 70 is two calls.
 MAX_IMPORT_ITEMS = 50
+# knowledge_stats marks an item never_recalled once it was hinted this often
+# with no read or invocation: the hint keeps offering it and nobody takes it.
+NEVER_RECALLED_HINTS = 10
 
 
 class _Strict(BaseModel):
@@ -128,6 +131,10 @@ class SaveMemory(_Strict):
 
 
 class DeleteMemory(_Strict):
+    name: str
+
+
+class DeleteSkill(_Strict):
     name: str
 
 
@@ -347,10 +354,16 @@ class Stats(_Strict):
         description="Only items not read, invoked or run in this many days.",
     )
     kind: Literal["skill", "memory"] | None = None
-    flag: Literal["expired", "stale"] | None = Field(
+    flag: Literal["expired", "stale", "never_recalled"] | None = Field(
         None,
         description="Only items with this flag: expired (a temporary memory "
-        "past its day) or stale (it quotes a path that is gone).",
+        "past its day), stale (it quotes a path that is gone) or "
+        "never_recalled (hinted at least 10 times, never read or invoked).",
+    )
+    duplicates: bool = Field(
+        False,
+        description="Also list pairs of items of one kind that are likely "
+        "duplicates, with their similarity score.",
     )
 
 
@@ -363,6 +376,28 @@ def remember_turn(text: str, now: str) -> tuple[str, str]:
         "short name, a one-line description and the type; make it temporary "
         "with expires when it names a date or an event that will pass. Then "
         "say in one line what you saved.",
+    )
+
+
+def consolidate_turn(text: str, now: str) -> tuple[str, str]:
+    """The turn /consolidate delivers: the agent reviews the person's skills
+    and memories by the help page consolidate."""
+    said = (
+        f"The person typed: /consolidate {text}"
+        if text
+        else "The person typed /consolidate with no text."
+    )
+    return (
+        f"> from consolidate · {now}",
+        f"{said}\n\n"
+        "They want their skills and memories reviewed. Read the help page in "
+        "full first (help_read consolidate) and follow it:\n"
+        "- gather with knowledge_stats (duplicates=true), changing nothing;\n"
+        "- send one artifact with a row per proposal, its evidence and a "
+        "checkbox, keyed merge:<a>+<b>, renew:<name>, drop:<name>, "
+        "fix:<name>, retire:<name> or link:<name>, and wait for their submit;\n"
+        "- apply only the ticked rows, each through its tool as one commit, "
+        "and say what changed.\n",
     )
 
 
@@ -550,7 +585,9 @@ def register_knowledge_ops(app: App) -> None:
         their description, score, status and flags; read one with memory_read.
         Proposed and expired memories are included and marked."""
         owner = principal(caller)
-        hits = (await kn.index(owner)).rank(p.query, "memory", p.limit)
+        ix = await kn.index(owner)
+        qv = await kn.query_vector(p.query) if ix.vectors is not None else None
+        hits = ix.rank(p.query, "memory", p.limit, query_vector=qv)
         return {
             "hits": [
                 {
@@ -670,13 +707,32 @@ def register_knowledge_ops(app: App) -> None:
             raise OpError("not_found", f"no skill named {name!r}")
         return it
 
+    @r.op("skill.delete", DeleteSkill, agent=True)
+    async def skill_delete(p: DeleteSkill, caller):
+        """Delete a skill nobody uses any more, its whole folder. The deletion
+        is kept in the store's history: deleting an approved skill puts a
+        card in your transcript that lets the person undo it, and the
+        Knowledge view restores it from its history."""
+        owner = principal(caller)
+        held = await asyncio.to_thread(skill, owner, p.name)
+        sha = await kn.store.delete(owner, p.name, author(caller))
+        await kn.refresh(owner)
+        kn.usage.add(owner, caller.log_id or "", "skill", p.name, "deleted")
+        out: dict = {"deleted": p.name, "sha": sha}
+        s = agent_session(caller)
+        if s is not None and held.status == "approved" and sha:
+            out["card"] = record_card(s, "deleted", held, sha)
+        return out
+
     @r.op("skill.search", SearchSkills, agent=True, read=True)
     async def skill_search(p: SearchSkills, caller):
         """Search your skills (procedures for a kind of task, such as cutting
         a release) with your own words, before you start a task. Returns the
         best names with their description, score and status; load one with
         skill_read."""
-        hits = (await kn.index(principal(caller))).rank(p.query, "skill", p.limit)
+        ix = await kn.index(principal(caller))
+        qv = await kn.query_vector(p.query) if ix.vectors is not None else None
+        hits = ix.rank(p.query, "skill", p.limit, query_vector=qv)
         return {
             "hits": [
                 {
@@ -1358,12 +1414,15 @@ def register_knowledge_ops(app: App) -> None:
         hinted, read, invoked or run, when it was last used, and its flags
         (expired, or stale:<path> for a quoted path that is gone). unused_days
         keeps only the items not used in that many days, flag only the items
-        with that flag."""
+        with that flag. never_recalled marks an item hinted at least 10 times
+        and never read or invoked. duplicates adds the pairs of likely
+        duplicates (checks.duplicates), each pair once."""
         owner = principal(caller)
         used = await asyncio.to_thread(kn.usage.summary, owner)
         cutoff = time.time() - p.unused_days * 86400 if p.unused_days else None
         out = []
-        for it in await kn.items(owner):
+        items = await kn.items(owner)
+        for it in items:
             if p.kind and it.kind != p.kind:
                 continue
             u = used.get(it.name, {})
@@ -1371,7 +1430,15 @@ def register_knowledge_ops(app: App) -> None:
             if cutoff is not None and last is not None and last >= cutoff:
                 continue
             flags = kn.flags_of(owner, it.name, it.expired())
-            if p.flag and not any(f.split(":", 1)[0] == p.flag for f in flags):
+            never = (
+                u.get("hinted", 0) >= NEVER_RECALLED_HINTS
+                and not u.get("read")
+                and not u.get("invoked")
+            )
+            if p.flag == "never_recalled":
+                if not never:
+                    continue
+            elif p.flag and not any(f.split(":", 1)[0] == p.flag for f in flags):
                 continue
             out.append(
                 {
@@ -1382,9 +1449,17 @@ def register_knowledge_ops(app: App) -> None:
                     "flags": flags,
                     **{k: u.get(k, 0) for k in ("hinted", "read", "invoked", "ran")},
                     "last_used": last,
+                    "never_recalled": never,
                 }
             )
-        return {"items": out}
+        if not p.duplicates:
+            return {"items": out}
+        ix = await kn.index(owner)
+        pairs = await asyncio.to_thread(
+            checks.duplicates, ix, items, checks.DUPLICATE_SCORE
+        )
+        dups = [{"a": a, "b": b, "score": score} for a, b, score in pairs]
+        return {"items": out, "duplicates": dups}
 
     # The Knowledge view's ops: a person's, never an agent's, on the caller's
     # own store, an admin's included.
@@ -1424,6 +1499,8 @@ def register_knowledge_ops(app: App) -> None:
         used = await asyncio.to_thread(kn.usage.summary, owner)
         q = p.query.strip()
         if q:
+            # BM25 alone, even with embeddings: the view's search is a filter,
+            # and a cosine rank would keep every item.
             ix = await kn.index(owner)
             n = max(len(items), 1)
             hits = ix.rank(q, "skill", n) + ix.rank(q, "memory", n)

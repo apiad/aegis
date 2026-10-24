@@ -37,6 +37,9 @@ dependencies = [
 # Browsers the agent and the person share (browsers.py); also run
 # `playwright install chromium` once.
 browser = ["playwright>=1.63.0"]
+# Search fused with a text-embedding model (knowledge/embed.py), when
+# knowledge.embeddings names one in .aegis.yaml; about 1 GB resident.
+embeddings = ["fastembed>=0.4"]
 
 [project.urls]
 Repository    = "https://github.com/apiad/aegis"

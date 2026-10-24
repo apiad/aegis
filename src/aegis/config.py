@@ -61,6 +61,7 @@ TOP_KEYS = (
     "agents", "queues", "default_agent", "recap", "btw", "context",
     "session_memory_max", "terminals", "terminal_memory_max", "park", "network",
     "host", "workflows", "harness_versions", "notices", "nudges", "multi_user",
+    "knowledge",
 )  # fmt: skip
 AGENT_KEYS = (
     "harness", "provider", "model", "models", "effort", "permission", "priming",
@@ -263,6 +264,31 @@ def workflows_from(raw: object) -> dict:
 NUDGES_DEFAULTS: dict = {"silent_s": 2, "plan_min": 15}
 
 
+KNOWLEDGE_DEFAULTS = {"embeddings": "off"}
+
+
+def knowledge_from(raw: object) -> dict:
+    """The ``knowledge:`` block over its defaults: ``embeddings``, off or a
+    fastembed model's name (knowledge/embed.py). A wrong block keeps the
+    defaults and carries ``error`` for aegis doctor."""
+    out = dict(KNOWLEDGE_DEFAULTS)
+    if raw is None:
+        return out
+    if not isinstance(raw, dict):
+        return out | {"error": "knowledge must be a mapping with embeddings"}
+    for k, v in raw.items():
+        if k not in KNOWLEDGE_DEFAULTS:
+            return out | {"error": f"knowledge has no key {k!r}; it takes embeddings"}
+        if v is False:
+            v = "off"
+        if not isinstance(v, str) or not v.strip():
+            return out | {
+                "error": f"knowledge.embeddings {v!r} is not off or a model's name"
+            }
+        out["embeddings"] = v.strip()
+    return out
+
+
 def nudges_from(raw: object) -> dict:
     """The ``nudges:`` block over its defaults. A wrong block keeps the
     defaults and carries ``error`` for aegis doctor."""
@@ -428,6 +454,12 @@ SECTIONS = {
         "What the Net, Exit and Speed readings reach, and how often, in seconds."
         " A speed_interval of 0 turns the speed test off.",
     ),
+    "embeddings": (
+        "Search embeddings",
+        "Embeddings: off, or a fastembed model fused with keyword search, such"
+        " as minishlab/potion-multilingual-128M. It needs the embeddings extra"
+        " and about a gigabyte of memory, and is read when aegis starts.",
+    ),
     "host": (
         "Host",
         "The disks the Host meters list: every block device the host mounts. Mount"
@@ -438,7 +470,7 @@ SECTIONS = {
 
 def fields() -> list[dict]:
     """The keys the Settings page draws from the wire, in order. ``kind`` says
-    which control: agent (a configured generation agent), size, int, number, bool, list
+    which control: agent (a configured generation agent), size, int, number, bool, text, list
     (of strings) or switch (a notice kind, written ``false`` when off);
     ``off`` marks a number the file may set to false."""
     out: list[dict] = []
@@ -474,6 +506,7 @@ def fields() -> list[dict]:
             add("network", "network.anchors", "list", [_anchor(*a) for a in v])
         else:
             add("network", f"network.{k}", "bool" if k == "enabled" else "number", v)
+    add("embeddings", "knowledge.embeddings", "text", KNOWLEDGE_DEFAULTS["embeddings"])
     for k, v in host_from(None)[0].items():
         add("host", f"host.{k}", "list", v)
     return out
@@ -753,6 +786,7 @@ class Snapshot:
     context: dict = field(default_factory=lambda: dict(CONTEXT_DEFAULTS))
     notices: dict = field(default_factory=_notices_defaults)
     nudges: dict = field(default_factory=lambda: dict(NUDGES_DEFAULTS))
+    knowledge: dict = field(default_factory=lambda: dict(KNOWLEDGE_DEFAULTS))
     workflows: dict = field(default_factory=lambda: dict(WORKFLOWS_DEFAULTS))
     park: dict = field(default_factory=dict)
     harness_versions: dict = field(default_factory=_hv_defaults)
@@ -795,6 +829,7 @@ class Snapshot:
             context=context_from(data.get("context")),
             notices=notices_from(data.get("notices")),
             nudges=nudges_from(data.get("nudges")),
+            knowledge=knowledge_from(data.get("knowledge")),
             workflows=workflows_from(data.get("workflows")),
             park=park_from(data.get("park")),
             harness_versions=harness_versions_from(data.get("harness_versions")),
@@ -973,6 +1008,7 @@ def _validate_settings(doc: ConfigDoc, err: Callable[[str, str, str], None]) -> 
         "notices": lambda v: notices_from(v).get("error"),
         "network": lambda v: network_from(v)[1],
         "host": lambda v: host_from(v)[1],
+        "knowledge": lambda v: knowledge_from(v).get("error"),
     }
     for block, error_of in readers.items():
         if block in b and (e := error_of(b[block])):

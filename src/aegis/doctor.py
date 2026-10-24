@@ -43,6 +43,7 @@ from .config import (
 )
 from .harness import harness_for
 from .harness_versions import OUTSIDE, VERSION_TIMEOUT_S, judge
+from .knowledge import embed
 from .ranking import annotate, ranking
 from .recap import load_recap
 from .roots import CONFIG_FILE, Roots, legacy_state
@@ -723,6 +724,7 @@ async def doctor(
     out.append(_session_memory(snap))
     out.append(_state(roots))
     out += _knowledge(roots)
+    out += _embeddings(snap.knowledge)
     if snap.multi_user_error:
         out.append(Finding("error", "multi_user", snap.multi_user_error))
     elif snap.multi_user is not None:
@@ -750,6 +752,26 @@ def _knowledge(roots: Roots) -> list[Finding]:
             " until it is installed",
         )
     ]
+
+
+def _embeddings(block: dict) -> list[Finding]:
+    """The knowledge: block. A model named without the extra installed is a
+    warning, not an error: search goes on with BM25 alone."""
+    if "error" in block:
+        return [Finding("error", "knowledge", block["error"])]
+    model = block["embeddings"]
+    if model == "off":
+        return []
+    if not embed.available():
+        return [
+            Finding(
+                "warn",
+                "knowledge.embeddings",
+                f"{model} is set but fastembed is not installed, so search uses"
+                " keywords alone; install aegis-harness[embeddings]",
+            )
+        ]
+    return [Finding("ok", "knowledge.embeddings", f"{model}, fused with BM25")]
 
 
 def render(findings: Iterable[Finding]) -> str:
