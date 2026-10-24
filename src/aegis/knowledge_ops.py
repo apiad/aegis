@@ -356,6 +356,17 @@ def register_knowledge_ops(app: App) -> None:
         kn.usage.add(owner, caller.log_id or "", "memory", p.name, "deleted")
         return {"deleted": p.name, "sha": sha}
 
+    def need_full(s, what: str) -> None:
+        """A skill's scripts and server run on the server without asking, so
+        only a full-permission session reaches them, as with a workflow's
+        shell steps."""
+        if s is not None and s.spec.permission != "full":
+            raise OpError(
+                "not_allowed",
+                f"{what} runs on the server without asking, so only a session "
+                f"with full permission may; yours has {s.spec.permission}",
+            )
+
     def skill(owner: str, name: str) -> Item:
         check_name(name)
         it = kn.store.get(owner, name)
@@ -434,17 +445,19 @@ def register_knowledge_ops(app: App) -> None:
         if s is not None:
             s.load_skill(it.name)
         out: dict = {"name": it.name, "text": dump(it), "files": files}
-        # Its MCP server's tools, called with skill_tool. A read session may
-        # not call them, so it starts nothing.
-        if (
-            mcp_command(it) is not None
-            and s is not None
-            and s.spec.permission != "read"
-        ):
-            try:
-                out["tools"] = (await server_of(owner, it, s)).tools
-            except OpError as e:
-                out["tools_error"] = e.message
+        # Its MCP server's tools, called with skill_tool. Only a full session
+        # may call them, so any other starts nothing.
+        if mcp_command(it) is not None and s is not None:
+            if s.spec.permission != "full":
+                out["tools_error"] = (
+                    "this skill's MCP tools need a session with full "
+                    f"permission; yours has {s.spec.permission}"
+                )
+            else:
+                try:
+                    out["tools"] = (await server_of(owner, it, s)).tools
+                except OpError as e:
+                    out["tools_error"] = e.message
         return out
 
     @r.op("skill.save", SaveSkill, agent=True)
@@ -469,10 +482,12 @@ def register_knowledge_ops(app: App) -> None:
     async def skill_run(p: RunSkill, caller):
         """Run a script a skill you loaded declares under aegis.scripts, with
         arguments, in a fresh copy of the skill's folder. Returns its exit
-        code, stdout and stderr, each cut at 20,000 characters."""
+        code, stdout and stderr, each cut at 20,000 characters. Needs a
+        session with full permission."""
         owner = principal(caller)
         it = skill(owner, p.skill)
         s = app.sessions.sessions.get(caller.log_id or "")
+        need_full(s, "a skill's script")
         if s is None or it.name not in s.skills:
             raise OpError(
                 "not_loaded", f"load the skill {it.name!r} with skill_read first"
@@ -525,10 +540,12 @@ def register_knowledge_ops(app: App) -> None:
     async def skill_tool(p: CallSkillTool, caller):
         """Call a tool of the MCP server a skill you loaded brings; skill_read
         lists those tools and their arguments. Only this session reaches the
-        server, and it stops when the session closes."""
+        server, and it stops when the session closes. Needs a session with
+        full permission."""
         owner = principal(caller)
         it = skill(owner, p.skill)
         s = app.sessions.sessions.get(caller.log_id or "")
+        need_full(s, "a skill's MCP server")
         if s is None or it.name not in s.skills:
             raise OpError(
                 "not_loaded", f"load the skill {it.name!r} with skill_read first"

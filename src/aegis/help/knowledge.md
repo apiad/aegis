@@ -90,7 +90,8 @@ temporary directory, runs `python3` on the script there with the
 arguments the agent gives, and removes the directory after. On a server
 with several people, it runs as your Linux user, so a script reaches what
 you can reach and nothing more. A run stops after two minutes unless the
-agent asks for longer, up to ten.
+agent asks for longer, up to ten. A script runs on the server without
+asking, so only a session with full permission may run one.
 
 ### An MCP server a skill brings
 
@@ -101,8 +102,9 @@ skill's folder and, on a server with several people, as your Linux user.
 `skill_read` returns the server's tools with their arguments, and the
 agent calls one with `skill_tool`, naming the skill, the tool and the
 arguments. No other session reaches the server, and it stops when the
-session closes. A session with read permission loads the skill but starts
-no server.
+session closes. Only a session with full permission reaches the server:
+any other loads the skill's text but starts no server, and `skill_read`
+says why.
 
 The tools stay behind `skill_tool` instead of joining the agent's own tool
 list, because not every harness picks up tools added mid-session: Codex
@@ -144,7 +146,7 @@ out of the menu.
   ones nobody used in that time.
 
 A session with read permission can search, read and see stats, but not
-save or delete.
+save or delete. `skill_run` and `skill_tool` need full permission.
 
 ## Remember something
 

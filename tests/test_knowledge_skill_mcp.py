@@ -117,3 +117,19 @@ async def test_a_server_that_died_starts_again_on_the_next_call(agents_world):
     got = ok(await turn(s, call("echoer", "echo", {"text": "again"})))
     assert got["content"][0]["text"] == "echo: again"
     assert app.skill_servers._servers[(s.log_id, "echoer")] is not first
+
+
+async def test_a_write_session_reads_the_skill_but_starts_no_server(agents_world):
+    app = agents_world.app
+    await save_echoer(app)
+    r = await app.registry.call(
+        "session.spawn", {"agent": "opus", "permission": "write"}
+    )
+    s = agents_world.session(r["log_id"])
+    got = ok(await turn(s, mcp("skill_read", name="echoer")))
+    assert "Echo text through a tool" in got["text"] and "tools" not in got
+    assert "full permission" in got["tools_error"]
+    assert s.skills == ["echoer"] and app.skill_servers.running(s.log_id) == []
+    said = await turn(s, call("echoer", "echo", {"text": "x"}))
+    assert said.startswith("mcp error: not_allowed"), said
+    assert app.skill_servers.running(s.log_id) == []

@@ -102,3 +102,16 @@ async def test_a_members_run_asks_the_launcher_for_the_member(world, recorded):
     got = ok(await turn(ben, mcp("skill_run", skill="release", script="bump.py")))
     assert got["exit"] == 3
     assert recorded.of("skill-run") == {"ben"}
+
+
+async def test_a_write_session_may_not_run_a_script(agents_world):
+    app = agents_world.app
+    await save_release(app, app.user)
+    r = await app.registry.call(
+        "session.spawn", {"agent": "opus", "permission": "write"}
+    )
+    s = agents_world.session(r["log_id"])
+    ok(await turn(s, mcp("skill_read", name="release")))
+    said = await turn(s, mcp("skill_run", skill="release", script="bump.py"))
+    assert said.startswith("mcp error: not_allowed"), said
+    assert "full permission" in said and s.skill_runs == {}
