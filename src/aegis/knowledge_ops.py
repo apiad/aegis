@@ -49,7 +49,7 @@ from pydantic import BaseModel, Field
 
 from . import launch
 from .skill_mcp import SkillToolError, stop_group
-from .knowledge.items import Item, check_name, dump
+from .knowledge.items import Item, check_name, dump, parse_memory, parse_skill
 from .monitors import iso_now
 from .ops import Caller, OpError
 
@@ -357,6 +357,33 @@ def saved_answer(
     return out
 
 
+class ListItems(_Strict):
+    query: str = ""
+    kind: Literal["all", "skill", "memory", "flagged"] = "all"
+
+
+class ItemRef(_Strict):
+    name: str
+
+
+class PutItem(_Strict):
+    name: str
+    text: str = Field(min_length=1)
+    stamp: str = Field(min_length=1)
+
+
+class RestoreItem(_Strict):
+    name: str
+    sha: str = Field(pattern=r"^[0-9a-f]{7,40}$")
+
+
+def stamp_of(it: Item) -> str:
+    """What the view's edit was opened on: the item's own file, as bytes.
+    Blocking: reads it."""
+    assert it.path is not None
+    return hashlib.sha256(it.path.read_bytes()).hexdigest()
+
+
 def register_knowledge_ops(app: App) -> None:
     r = app.registry
     kn = app.knowledge
@@ -557,8 +584,8 @@ def register_knowledge_ops(app: App) -> None:
     async def memory_delete(p: DeleteMemory, caller):
         """Delete a memory that is no longer true. The deletion is kept in
         the store's history: deleting an approved memory puts a card in your
-        transcript that lets the person undo it, and the Knowledge view, in a
-        later release, will restore it."""
+        transcript that lets the person undo it, and the Knowledge view
+        restores it from its history."""
         owner = principal(caller)
         held = memory(owner, p.name)
         sha = await kn.store.delete(owner, p.name, author(caller))
@@ -1061,3 +1088,150 @@ def register_knowledge_ops(app: App) -> None:
                 }
             )
         return {"items": out}
+
+    # The Knowledge view's ops: a person's, never an agent's, on the caller's
+    # own store, an admin's included.
+
+    def row(owner: str, it: Item, used: dict) -> dict:
+        u = used.get(it.name, {})
+        return {
+            "kind": it.kind,
+            "name": it.name,
+            "description": it.description,
+            "status": it.status,
+            "flags": kn.flags_of(owner, it.name, it.expired()),
+            "last_used": u.get("last_used"),
+            "reads": u.get("read", 0) + u.get("invoked", 0),
+        }
+
+    @r.op("knowledge.list", ListItems)
+    async def knowledge_list(p: ListItems, caller):
+        """The caller's own skills and memories for the Knowledge view:
+        proposals first, then skills and memories by name, or by score for a
+        query."""
+        owner = principal(caller)
+        items = await kn.items(owner)
+        used = await asyncio.to_thread(kn.usage.summary, owner)
+        q = p.query.strip()
+        if q:
+            ix = await kn.index(owner)
+            n = max(len(items), 1)
+            hits = ix.rank(q, "skill", n) + ix.rank(q, "memory", n)
+            score = {h.name: h.score for h in hits}
+            items = sorted(
+                (it for it in items if it.name in score), key=lambda it: -score[it.name]
+            )
+        else:
+            items = sorted(items, key=lambda it: (it.kind != "skill", it.name))
+        rows = [row(owner, it, used) for it in items]
+        if p.kind == "flagged":
+            rows = [x for x in rows if x["flags"] or x["status"] == "proposed"]
+        elif p.kind != "all":
+            rows = [x for x in rows if x["kind"] == p.kind]
+        rows.sort(key=lambda x: x["status"] != "proposed")  # stable
+        return {"items": rows}
+
+    def held_item(owner: str, name: str) -> Item:
+        """Blocking: reads the file."""
+        it = kn.store.get(owner, check_name(name))
+        if it is None:
+            raise OpError("not_found", f"no item named {name!r}")
+        return it
+
+    @r.op("knowledge.get", ItemRef)
+    async def knowledge_get(p: ItemRef, caller):
+        """One item for the view: its file's whole text, the stamp an edit
+        sends back, and a skill's files."""
+        owner = principal(caller)
+
+        def read():
+            it = held_item(owner, p.name)
+            data = it.path.read_bytes() if it.path else b""
+            files = kn.store.files(owner, it.name) if it.kind == "skill" else []
+            return it, data, files
+
+        it, data, files = await asyncio.to_thread(read)
+        used = await asyncio.to_thread(kn.usage.summary, owner)
+        return {
+            **row(owner, it, used),
+            "text": data.decode("utf-8"),
+            "stamp": hashlib.sha256(data).hexdigest(),
+            "files": files,
+        }
+
+    @r.op("knowledge.put", PutItem)
+    async def knowledge_put(p: PutItem, caller):
+        """The person's edit of an item's own file. It is saved approved, as
+        one commit. Refused as stale when the file changed since ``stamp``
+        (knowledge.get's), so an edit never overwrites a change it did not
+        see."""
+        owner = principal(caller)
+        held = await asyncio.to_thread(held_item, owner, p.name)
+        parse = parse_memory if held.kind == "memory" else parse_skill
+        try:
+            got = parse(p.text, p.name)
+        except ValueError as e:
+            raise OpError("bad_params", str(e)) from None
+        new = Item(
+            got.kind,
+            got.name,
+            got.description,
+            got.body,
+            {**got.meta, "status": "approved"},
+        )
+        if new.kind == "memory" and new.lifetime == "temporary" and not new.expires:
+            raise OpError("bad_params", "a temporary memory needs expires")
+
+        def expect(it: Item | None) -> None:
+            if it is None or it.kind != held.kind:
+                raise OpError("not_found", f"no {held.kind} named {p.name!r}")
+            if stamp_of(it) != p.stamp:
+                raise OpError(
+                    "stale",
+                    f"{p.name!r} changed since you opened it; reload it and edit again",
+                )
+
+        who = principal(caller)
+        sha = await kn.store.replace(owner, new, who, "edit", expect=expect)
+        await kn.refresh(owner)
+        kn.usage.add(owner, "", new.kind, new.name, "saved", "by=person")
+        now = await asyncio.to_thread(held_item, owner, p.name)
+        if now.kind == "memory":
+            app.knowledge_check_soon(owner, [now])
+        return {
+            "saved": p.name,
+            "sha": sha,
+            "status": now.status,
+            "stamp": await asyncio.to_thread(stamp_of, now),
+        }
+
+    @r.op("knowledge.history", ItemRef)
+    async def knowledge_history(p: ItemRef, caller):
+        """The commits that changed an item, newest first, a deleted one's
+        included."""
+        owner = principal(caller)
+        return {"history": await asyncio.to_thread(kn.store.history, owner, p.name)}
+
+    @r.op("knowledge.restore", RestoreItem)
+    async def knowledge_restore(p: RestoreItem, caller):
+        """Put an item back as it was at one of its commits, as a new commit."""
+        owner = principal(caller)
+        sha = await kn.store.restore(owner, p.name, p.sha, principal(caller))
+        await kn.refresh(owner)
+        it = await asyncio.to_thread(kn.store.get, owner, p.name)
+        if it is not None:
+            kn.usage.add(owner, "", it.kind, it.name, "saved", "by=person")
+        await reflag(owner, p.name)
+        return {"restored": p.name, "sha": sha}
+
+    @r.op("knowledge.remove", ItemRef)
+    async def knowledge_remove(p: ItemRef, caller):
+        """Delete an item, as a commit: its history keeps it, and Restore
+        brings it back."""
+        owner = principal(caller)
+        held = await asyncio.to_thread(held_item, owner, p.name)
+        sha = await kn.store.delete(owner, p.name, principal(caller))
+        await kn.refresh(owner)
+        kn.usage.add(owner, "", held.kind, p.name, "deleted", "by=person")
+        kn.drop_flags(owner, p.name)
+        return {"removed": p.name, "sha": sha}
