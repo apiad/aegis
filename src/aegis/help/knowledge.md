@@ -5,6 +5,7 @@ when: remembering a fact for later sessions, keeping a procedure as a skill, fin
 hints:
   - Type /remember and a fact; every later session can find it. #remember-something
   - The knowledge block under your message names what may help the agent. #the-hint
+  - A memory an agent saves on its own waits for your Approve on its card. #approving-what-an-agent-saves
 ---
 
 aegis keeps your memories and skills on the server: one Markdown file per
@@ -31,6 +32,60 @@ Every change goes through aegis and is one commit in a git history kept
 with your memories on the server, so a deleted memory is kept there. The
 Knowledge view, in a later release, will restore one.
 
+## Approving what an agent saves
+
+A memory or skill an agent saves on its own initiative is proposed: it is
+kept, and a card in the session's transcript shows it with Approve and
+Discard. Approve makes it a memory like any other. Discard deletes it.
+Until you approve it, a proposal is never named under a message, and a
+proposed skill is not a command in the composer, though an agent that
+knows its name can still load it with `skill_read`. A proposed skill's
+card lists every file of its folder with its size, and a text longer than
+4,000 characters is shown in part, marked so. If the proposal changes
+after its card was drawn, a script included, Approve and Discard do
+nothing and the card says it changed. A proposal you do not
+answer stays proposed. When you asked for it in the message that began
+the agent's turn, with /remember or in your own words, the agent saves it
+approved, and its card says so and offers Undo. A request that reaches the
+agent any other way (from another agent, a queue task or one of aegis's
+wakes) does not count: what it saves then is proposed.
+
+When an agent changes or deletes a memory or skill you already approved,
+the change applies at once, whether or not you asked for it, and its card names the change with an Undo
+button, which reverts that one commit in the history. Undo cannot revert
+a change that a later change to the same lines built on; the card then
+says so and nothing moves. An Undo makes no card of its own, so it cannot
+itself be undone from the transcript; the history on the server keeps it.
+
+The cards are kept in the transcript, so their buttons work after aegis
+restarts. Only the person who owns the session can answer them, even on
+a server where an admin can read every transcript; they act on that
+person's store, and the agent is told the outcome.
+
+## Expired and stale memories
+
+A temporary memory past its day is flagged expired and leaves the block
+under messages that day; a search still finds it.
+
+When a memory is saved, and once a day, aegis looks for each path the
+memory quotes in backticks. A token counts as a path when it starts with
+`/`, `~/`, `./` or `../`, or holds a `/` and ends in a file extension, such
+as `repos/bot/run.py`; a bare file name, `origin/main` or `text/html` is
+never looked for. A relative path is looked for under each of the memory's
+paths, then in the working directory of the session that saved it (kept
+as `cwd` in the memory), then under your Files root and your home. One
+that is found nowhere flags the memory stale, naming the path. A stale memory
+stays in the block, since a moved file does not make the fact false, but
+it is worth a look. On a server with several people the files are looked
+for as your Linux user, so a check sees only what you can see. The check
+after a save runs in the background, so a slow disk never holds the save;
+a check that takes longer than 30 seconds is dropped until the next one,
+and only the first 200 paths of a memory are looked for. The flags
+are computed again when aegis starts.
+
+Search results and `knowledge_stats` carry the flags: `expired` or
+`stale:<path>`.
+
 ## The hint
 
 When a message reaches a session, aegis searches your memories and skills
@@ -50,8 +105,9 @@ It names the three best skills and the three best memories, with no
 threshold, and the tools that read and search them: the agent decides
 whether any matters. A message
 that matches nothing, a slash command, or one of aegis's own wakes (a
-notice, a monitor that ended, a page's answer) gets no block. An expired memory is never
-named, but a search still finds it.
+notice, a monitor that ended, a page's answer, a card's outcome) gets no
+block. An expired memory or a proposal is never named, but a search still
+finds it, marked.
 
 The search is BM25 over the name, the description and the start of the
 body. It folds accents and cuts words to their first five letters, so
@@ -129,13 +185,16 @@ out of the menu.
   words, and marks expired ones.
 - `memory_read` returns one or more memories in full, by name.
 - `memory_save` creates or replaces a memory. An agent passes `asked=true`
-  when you asked it to remember something.
-- `memory_delete` deletes one; the history keeps it.
+  when your message that began its turn asked it to remember something;
+  otherwise a new memory is proposed and waits for your Approve.
+- `memory_delete` deletes one; the history keeps it, and the card of an
+  approved one offers Undo.
 - `skill_search` ranks your skills against what the agent is about to do.
 - `skill_read` loads a skill: it returns SKILL.md and the folder's file
   list, and with `file` returns one of those files, up to 1 MiB.
 - `skill_save` creates or replaces a skill, with its other files in
-  base64, 20 MiB at most in all, and its `aegis` block.
+  base64, 20 MiB at most in all, and its `aegis` block, proposed unless
+  `asked=true`, as a memory is.
 - `skill_run` runs one of the scripts a loaded skill declares under
   `aegis.scripts`, with arguments, and returns its exit code, stdout and
   stderr, each cut at 20,000 characters.
@@ -143,8 +202,9 @@ out of the menu.
   its arguments, and cuts the answer at 20,000 characters; `skill_read`
   lists those tools.
 - `knowledge_stats` lists each item with how often it was hinted, read,
-  invoked or run, and when it was last used; `unused_days=60` keeps the
-  ones nobody used in that time.
+  invoked or run, when it was last used and its flags; `unused_days=60`
+  keeps the ones nobody used in that time, `flag=stale` or
+  `flag=expired` the ones with that flag.
 
 A session with read permission can search, read and see stats, but not
 save or delete. `skill_run` and `skill_tool` need full permission.

@@ -175,6 +175,7 @@ async def test_aegis_wakes_carry_no_hint_and_messages_from_people_do(app):  # no
         ("> from monitor:m1 · ok · deploy the bot finished", False),
         ("> from aegis:notice · disk · warn\ndeploy the bot", False),
         ("> from artifact:a1 · submit\ndeploy the bot", False),
+        ("> from knowledge:kn-1 · approved\ndeploy the bot", False),
         ("> from agent:ana · handoff\ndeploy the bot", True),
         ("> from schedule:nightly · run#3\ndeploy the bot", True),
         ("> from workflow:w1 · step\ndeploy the bot", True),

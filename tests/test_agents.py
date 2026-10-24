@@ -97,14 +97,14 @@ def mcp(tool: str, **args) -> str:
     return f"/mcp {tool} {json.dumps(args)}"
 
 
-async def turn(s, text: str, timeout: float = 8) -> str:
+async def turn(s, text: str, timeout: float = 8, by_person: bool = False) -> str:
     """Send a prompt, wait for the session's next idle, return the reply to it.
 
     The reply is the first prose after the prompt, not the last: a fast queue
     worker's callback can arrive and end a second turn before the idle is
     seen, and its prose would be read as this turn's answer (#375)."""
     before = len([e for e in s.entries() if e["kind"] == "prose"])
-    await s.send(text)
+    await s.send(text, by_person=by_person)
     await until(
         lambda: (
             s.status == "idle"

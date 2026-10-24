@@ -451,7 +451,25 @@ MCP server (`skill_mcp.py`) run as the session's Linux user in a fresh copy of
 its folder, which the server pipes to the launched shell as a tar, since the
 store is out of a member's reach. A skill's MCP tools stay behind the one
 `skill_tool`: the endpoint is stateless and Codex does not re-read a tool list
-mid-session by default, so no tool is added to it per session.
+mid-session by default, so no tool is added to it per session. What an agent
+saves unasked is `status: proposed` in the file itself, so the index, the hint
+and the command menu need no other table to leave it out. `asked` counts only
+when the session's current turn began with a person's message:
+`Session.person_turn`, set by a send that starts a turn from a typed message
+or a person's `/` line and cleared by any other, in memory only. An item saved
+approved because of it gets an Undo card, as every agent change to an
+approved item does. A proposal's card and the Undo cards are transcript records
+like config_suggest's: the record carries what the card shows, the commit Undo
+reverts and a digest of the proposal's files (a skill's whole folder), so the buttons work after a
+restart and Approve never approves a later text the person was not shown.
+The card ops act on the session owner's store and are refused
+(`not_owner`) to anyone but that owner, an admin included. Expiry and staleness flags (`knowledge/checks.py`) are
+computed on a save (in the background, so a hung read never holds or fails
+a committed save) and in a daily pass the App runs from boot, each bounded
+at 30 s per principal, through the
+principal's `as_user` runner, so the paths a memory quotes are looked for as
+the member and never on the event loop; they live in memory in `Knowledge`
+and in the usage db's `flags` table, so a restart logs no flag twice.
 
 **A session's own status is a notice its subsystems push.** Beside the host
 kinds, `Notices.set(log_id, source, items)` takes per-session items from a

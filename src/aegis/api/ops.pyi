@@ -391,13 +391,20 @@ class _journal:
         """Ask what was done on this server: commits, pull requests, finished plan items, turns that changed files, and the decisions, blockers and milestones agents noted. Filter by days, a pattern, a path the entries wrote under, a session, a repo or kinds. Newest first, grouped by day. Each entry names the session's handle when it was made; peer_read reads a session while it is open, under its current handle, which an entry made before a rename names as "(now ...)"."""
 
 class _knowledge:
+    async def card_approve(self, *, log_id: str, id: str) -> Any:
+        """knowledge.card.approve"""
+    async def card_discard(self, *, log_id: str, id: str) -> Any:
+        """knowledge.card.discard"""
+    async def card_undo(self, *, log_id: str, id: str) -> Any:
+        """knowledge.card.undo"""
     async def stats(
         self,
         *,
         unused_days: int | None = ...,
         kind: Literal["skill", "memory"] | None = ...,
+        flag: Literal["expired", "stale"] | None = ...,
     ) -> Any:
-        """How your skills and memories are used: per item, how often it was hinted, read, invoked or run, and when it was last used. unused_days keeps only the items not used in that many days."""
+        """How your skills and memories are used: per item, how often it was hinted, read, invoked or run, when it was last used, and its flags (expired, or stale:<path> for a quoted path that is gone). unused_days keeps only the items not used in that many days, flag only the items with that flag."""
 
 class _layout:
     async def dock(self, *, log_id: str, pane: str, where: str) -> Any:
@@ -434,7 +441,7 @@ class _link:
 
 class _memory:
     async def delete(self, *, name: str) -> Any:
-        """Delete a memory that is no longer true. The deletion is kept in the store's history; the Knowledge view, in a later release, will restore it."""
+        """Delete a memory that is no longer true. The deletion is kept in the store's history: deleting an approved memory puts a card in your transcript that lets the person undo it, and the Knowledge view, in a later release, will restore it."""
     async def read(self, *, names: builtins.list[str]) -> Any:
         """Read one or more memories in full, by name: the ones the hint on your message names, or memory_search's hits."""
     async def save(
@@ -449,7 +456,7 @@ class _memory:
         paths: builtins.list[str] = ...,
         asked: bool = ...,
     ) -> Any:
-        """Save a memory: one fact that later sessions should know, such as who the person is, how they want you to work, or where something runs. Saving an existing name replaces that memory. Set asked: true when the person asked you to remember it."""
+        """Save a memory: one fact that later sessions should know, such as who the person is, how they want you to work, or where something runs. Saving an existing name replaces that memory. Set asked: true when the person's message that began this turn asked you to remember it; it is then saved at once, with a card that lets them undo it. Otherwise a new memory is proposed: a card in your transcript asks the person to approve it, and it is not hinted until then; a change to an approved one applies at once, and its card lets the person undo it."""
     async def search(self, *, query: str, limit: int = ...) -> Any:
         """Search your memories (facts about the person, their projects and how they want you to work) with your own words. Returns the best names with their description, score, status and flags; read one with memory_read. Proposed and expired memories are included and marked."""
 
@@ -764,7 +771,7 @@ class _skill:
         aegis: dict[str, Any] | None = ...,
         asked: bool = ...,
     ) -> Any:
-        """Save a skill: a procedure later sessions should follow for one kind of task, with any files it needs, 20 MiB at most in all. Saving an existing name replaces it. Set asked: true when the person asked for it."""
+        """Save a skill: a procedure later sessions should follow for one kind of task, with any files it needs, 20 MiB at most in all. Saving an existing name replaces it. Set asked: true when the person asked for it. Otherwise a new skill is proposed: a card asks the person to approve it, and until then it is neither hinted nor a slash command, though skill_read loads it."""
     async def search(self, *, query: str, limit: int = ...) -> Any:
         """Search your skills (procedures for a kind of task, such as cutting a release) with your own words, before you start a task. Returns the best names with their description, score and status; load one with skill_read."""
     async def tool(

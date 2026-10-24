@@ -425,6 +425,11 @@ class Session:
         # Inbox messages waiting for this session's turn to end.
         self.held: list[dict] = list(held or [])
         self._flushing = False
+        # Whether a person's message began the current turn (a typed send, or
+        # a / line such as /remember), not an agent's, a queue's or aegis's
+        # delivery: memory_save honours asked only then (knowledge_ops.py).
+        # In memory only; a restart starts with it off.
+        self.person_turn = False
         # One start at a time: an OpenCode start takes seconds, and two sends
         # in that window must not start two children.
         self._starting = asyncio.Lock()
@@ -920,6 +925,7 @@ class Session:
         *,
         through_lock: bool = False,
         urgent: bool = False,
+        by_person: bool = False,
     ) -> Literal["sent", "held", "steered"]:
         """An inbox message. Idle or stopped: sent now (a stopped session is
         resumed to receive it). Mid-turn: held, and sent with any others when
@@ -927,16 +933,19 @@ class Session:
         the next tool boundary instead of waiting; ``urgent`` wants exactly
         that, and gets it from a harness that reads mid-turn input. When the
         owner's quota gate says no turn may start, held with ``held_for:
-        "quota"`` until it opens (app.on_quota). Returns what it did."""
+        "quota"`` until it opens (app.on_quota). ``by_person``: a person's
+        / line delivered it (``person_turn``). Returns what it did."""
         if self.archived:
             raise Archived(self.log_id)
         if not through_lock:
             self.check_lock()
         msg = {"header": header, "body": body, "ts": time.time()}
+        if by_person:
+            msg["by_person"] = True
         if urgent and self.status == "working" and self.harness.steers_mid_turn:
             # Steered in as a person's mid-turn message is: a user message at
             # the next tool boundary (Claude Code) or a turn/steer (Codex).
-            await self._send(_inbox_text([msg]), steered=True)
+            await self._send(_inbox_text([msg]), steered=True, by_person=by_person)
             return "steered"
         if self.status == "working" or self._flushing:
             self._hold(msg)
@@ -944,7 +953,7 @@ class Session:
         if self._host.quota_hold(self) is not None:
             self._hold(msg | {"held_for": "quota"})
             return "held"
-        await self._send(_inbox_text([msg]))
+        await self._send(_inbox_text([msg]), by_person=by_person)
         return "sent"
 
     def _hold(self, msg: dict) -> None:
@@ -960,7 +969,10 @@ class Session:
             if batch:
                 # Before the send gathers notices: the "held" warning ends here.
                 self._host.status_changed(self)
-                await self._send(_inbox_text(batch))
+                await self._send(
+                    _inbox_text(batch),
+                    by_person=any(m.get("by_person") for m in batch),
+                )
         finally:
             self._flushing = False
 
@@ -993,13 +1005,15 @@ class Session:
         attached: list[dict] | None = None,
         *,
         through_lock: bool = False,
+        by_person: bool = False,
     ) -> None:
         """Send ``text`` to the harness. With files ``attached``, ``text`` is
         the typed text plus their paths, and ``typed`` what the person wrote,
-        which their row shows (transcript/entries.py)."""
+        which their row shows (transcript/entries.py). ``by_person``: a
+        person typed it (``person_turn``)."""
         if not through_lock:
             self.check_lock()
-        await self._send(text, typed, attached)
+        await self._send(text, typed, attached, by_person=by_person)
 
     async def _send(
         self,
@@ -1008,6 +1022,7 @@ class Session:
         attached: list[dict] | None = None,
         *,
         steered: bool = False,
+        by_person: bool = False,
     ) -> None:
         await self.ensure_running()
         assert self._proc is not None
@@ -1031,6 +1046,10 @@ class Session:
             record |= {"typed": typed or "", "files": attached}
         if steered:
             record["steered"] = True  # an inbox message sent into a running turn
+        if by_person:
+            self.person_turn = True  # a person's words now steer this turn
+        elif not steered:
+            self.person_turn = False  # a turn someone else began
         self._record(record)
         # Working before the send returns: a harness can answer during it (an
         # OpenCode command refused before it starts a turn).
@@ -1158,6 +1177,10 @@ class Session:
 
     def record_config(self, record: dict) -> None:
         """A config suggestion's card or its outcome (config_suggest.py)."""
+        self._record(record)
+
+    def record_knowledge(self, record: dict) -> None:
+        """A knowledge card or its outcome (knowledge_ops.py)."""
         self._record(record)
 
     def record_card(self, record: dict) -> None:

@@ -106,7 +106,7 @@ from .queues import Queues
 from .journal.ops import register_journal_ops
 from .journal.service import Journal
 from .knowledge.service import Knowledge
-from .knowledge.items import NAME_RE
+from .knowledge.items import NAME_RE, Item
 from .skill_mcp import SkillServers
 from .knowledge_ops import offered, register_knowledge_ops, remember_turn, skill_turn
 from .repos.service import Repos
@@ -147,6 +147,11 @@ from .browsers import Browsers
 from .version import Versions
 
 log = logging.getLogger("aegis.app")
+# How often every principal's memories are checked for expiry and staleness.
+KNOWLEDGE_CHECK_S = 86400
+# The most one principal's staleness check may take: a hung mount must not
+# hold the pass, or the others, forever.
+KNOWLEDGE_CHECK_TIMEOUT_S = 30.0
 # A log id as registry.new_log_id mints it, checked on what a link answers.
 LOG_ID = re.compile(r"^\d{8}-\d{6}-[0-9a-f]{6}$")
 # How many nonced sends the server remembers, across every session.
@@ -495,6 +500,9 @@ class App:
         self.config = Config(roots.config_root, self._on_config)
         self._config_task: asyncio.Task | None = None
         self._versions_task: asyncio.Task | None = None
+        self._knowledge_task: asyncio.Task | None = None
+        # Checks a save started in the background, held so none is collected.
+        self._knowledge_soon: set[asyncio.Task] = set()
         self._background: set[asyncio.Task] = set()
         self.queues = Queues(
             self.sessions, self.monitors, roots.state_root / "tasks.jsonl", self.config
@@ -1062,6 +1070,8 @@ class App:
         # In the background: a harness that hangs on --version must not hold
         # the server's start (harness_versions.py, spec §08).
         self._versions_task = asyncio.create_task(self._startup_versions())
+        # The knowledge flags, at boot and then daily, off the loop.
+        self._knowledge_task = asyncio.create_task(self._knowledge_checks())
         # In the background too, for the new tab's doctor row (doctor_watch.py).
         self.doctor_watch.start()
 
@@ -1104,6 +1114,10 @@ class App:
         self.queues.shutdown()
         if self._versions_task is not None:
             self._versions_task.cancel()
+        if self._knowledge_task is not None:
+            self._knowledge_task.cancel()
+        for task in list(self._knowledge_soon):
+            task.cancel()
         await self.doctor_watch.stop()
         if self._config_task is not None:
             self._config_task.cancel()
@@ -1176,6 +1190,70 @@ class App:
         spec = self.sessions.open(log_id).spec
         member = self.principals.role_of(spec.owner or self.user) != "admin"
         return self._place(self.sessions.user_for(spec), member)
+
+    def knowledge_reader(self, principal: str) -> tuple[as_user.Runner, list[str]]:
+        """What a staleness check of ``principal``'s memories reads with: the
+        runner that opens files as their Linux user (the server's own for
+        the owner, or outside multi-user mode), and the roots a quoted path
+        is looked for under, their Files root then their home. Raises
+        PermissionError for a member with no user."""
+        user = self.principals.acts_for(principal)
+        place = self._place(user, self.principals.role_of(principal) != "admin")
+        home = pwd.getpwnam(user).pw_dir if user else str(Path.home())
+        return place.run, list(dict.fromkeys([str(place.root), home]))
+
+    async def knowledge_check(
+        self, principal: str, items: list[Item] | None = None
+    ) -> None:
+        """Flag ``principal``'s memories (knowledge/checks.py), all of them
+        when ``items`` is None. A principal nothing may read for is skipped
+        and logged."""
+        try:
+            run, roots = self.knowledge_reader(principal)
+        except PermissionError as e:
+            log.warning("aegis: knowledge of %s not checked: %s", principal, e)
+            return
+        whole = items is None
+        some = await self.knowledge.items(principal) if items is None else items
+        await self.knowledge.check(principal, some, run, roots, everything=whole)
+
+    async def bounded_check(self, principal: str, items: list[Item] | None) -> None:
+        """knowledge_check within ``KNOWLEDGE_CHECK_TIMEOUT_S``; a timeout or
+        an error is logged, never raised. A file read already in a thread
+        runs on to its end, but nothing waits for it."""
+        try:
+            await asyncio.wait_for(
+                self.knowledge_check(principal, items), KNOWLEDGE_CHECK_TIMEOUT_S
+            )
+        except TimeoutError:
+            log.warning(
+                "aegis: the knowledge check of %s took over %ss; skipped",
+                principal,
+                KNOWLEDGE_CHECK_TIMEOUT_S,
+            )
+        except Exception:
+            log.exception("aegis: the knowledge check of %s failed", principal)
+
+    def knowledge_check_soon(self, principal: str, items: list[Item]) -> None:
+        """Check ``items`` in the background, as a save does: the save has
+        already committed, so nothing the check does may fail or hold it."""
+        task = asyncio.create_task(self.bounded_check(principal, items))
+        self._knowledge_soon.add(task)
+        task.add_done_callback(self._knowledge_soon.discard)
+
+    async def _knowledge_checks(self) -> None:
+        """The daily pass: every principal's memories flagged once at boot,
+        then every ``KNOWLEDGE_CHECK_S``. Never fails the server, and one
+        principal's failure never skips the others."""
+        while True:
+            try:
+                names = await asyncio.to_thread(self.knowledge.store.principals)
+            except Exception:
+                log.exception("aegis: the knowledge check could not list stores")
+                names = []
+            for name in names:
+                await self.bounded_check(name, None)
+            await asyncio.sleep(KNOWLEDGE_CHECK_S)
 
     def _place(self, user: str | None, member: bool) -> Place:
         root, state = self.roots.config_root, self.roots.state_root
@@ -1419,7 +1497,9 @@ class App:
             not_saved = await self._version_gate(caller, s.spec.harness, untested, s)
             s.launch_by = "agent" if caller.is_agent else "person"
         try:
-            did = await s.deliver(*skill_turn(it.name, it.body, arg, iso_now()))
+            did = await s.deliver(
+                *skill_turn(it.name, it.body, arg, iso_now()), by_person=True
+            )
         finally:
             s.launch_by = "agent"
         s.load_skill(it.name)
@@ -1533,7 +1613,7 @@ class App:
                     "this session has read permission, so its agent cannot save"
                     " a memory; use /remember in a session that can write",
                 )
-            await s.deliver(*remember_turn(arg, iso_now()))
+            await s.deliver(*remember_turn(arg, iso_now()), by_person=True)
             return {"status": "delivered"}
         if name in ("workflow", "loop"):
             # A person's line launches a saved workflow: the only path, beside
@@ -1969,7 +2049,7 @@ class App:
                 ) from e
             if p.prompt:
                 try:
-                    await s.send(p.prompt)
+                    await s.send(p.prompt, by_person=person)
                 except (BrokenPipeError, ConnectionResetError, FileNotFoundError) as e:
                     raise OpError(
                         "send_failed",
@@ -2050,7 +2130,12 @@ class App:
                         )
                     except files.FileError as e:
                         raise OpError(e.code, e.message) from e
-                await s.send(att.message(text, sent), typed=text, attached=sent)
+                await s.send(
+                    att.message(text, sent),
+                    typed=text,
+                    attached=sent,
+                    by_person=not caller.is_agent,
+                )
                 if not_saved:
                     return {"not_saved": not_saved}
             except FileNotFoundError as e:

@@ -467,6 +467,66 @@ function fillConfig(card, e) {
   card.replaceChildren(...kids);
 }
 
+// A memory or skill an agent saved (knowledge_ops.py): a proposal with
+// Approve and Discard, or with Undo a change to an approved item or an item
+// saved approved because the person asked. The card
+// is a transcript record, so its buttons work after a restart; the outcome
+// comes back as the folded entry.
+const KNOWLEDGE_VERB = { new: "proposed", changed: "changed", deleted: "deleted", saved: "saved as you asked" };
+const KNOWLEDGE_DONE = {
+  approved: "Approved. It is hinted from now on; the agent was told.",
+  discarded: "Discarded. It was deleted; the agent was told.",
+  undone: "Undone. The change was reverted; the agent was told.",
+  stale: "It changed since this card was drawn. Nothing was done; the agent was told.",
+  gone: "It no longer exists. Nothing was done; the agent was told.",
+  conflict: "It changed again since, so this change cannot be undone by itself. Nothing was done; the agent was told.",
+};
+
+function fileSize(n) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function fillKnowledge(card, e) {
+  const d = e.detail || {};
+  const pending = e.status === "pending";
+  card.classList.toggle("gone", !pending);
+  const bar = el("div", "fbar");
+  const acts = el("span", "acts");
+  bar.append(entryIcon(e.glyph), el("span", "fn", d.name || ""), el("span", "fs", pending ? KNOWLEDGE_VERB[d.op] || d.op : e.status), acts);
+  const about = [d.op === "saved" ? `${d.item_kind} saved by the agent, as you asked` : `${d.item_kind} ${KNOWLEDGE_VERB[d.op] || d.op} by the agent`, d.type, d.lifetime === "temporary" && d.expires ? `until ${d.expires}` : d.lifetime];
+  const kids = [bar, el("div", "sbody dim", about.filter(Boolean).join(" · ")), el("div", "sbody why", d.description || "")];
+  if (d.body) kids.push(el("pre", "cdiff kbody", d.body));
+  if (d.partial) kids.push(el("div", "sbody dim", "Shown in part: the first 4,000 characters of the text."));
+  // A skill's every file, so a script that changed is not hidden behind its text.
+  if (d.files?.length) kids.push(el("div", "sbody dim", "files: " + d.files.map((f) => `${f.name} (${fileSize(f.size)})`).join(" · ")));
+  if (!pending) {
+    kids.push(el("div", "sbody dim", KNOWLEDGE_DONE[e.status] || e.status));
+  } else {
+    const hint = el("span", "hint");
+    const press = (op, label, primary) => {
+      const b = el("button", primary ? "btn primary" : "btn", label);
+      b.type = "button";
+      b.onclick = async () => {
+        for (const x of acts.querySelectorAll("button")) x.disabled = true;
+        try {
+          await secretCall(op, { id: e.id });
+        } catch (err) {
+          for (const x of acts.querySelectorAll("button")) x.disabled = false;
+          hint.textContent = String(err?.message || err);
+          hint.classList.add("err");
+        }
+      };
+      return b;
+    };
+    if (d.op === "new") acts.append(press("knowledge.card.approve", "Approve", true), press("knowledge.card.discard", "Discard"));
+    else acts.append(press("knowledge.card.undo", "Undo", true));
+    kids.push(hint);
+  }
+  card.replaceChildren(...kids);
+}
+
 // The workflow a schedule fires, as it is now: its steps, who saved it, and
 // what changed since the version a person approved (schedules.py). The
 // approval card and the Schedules view draw the same, so a Resume in either
@@ -1610,6 +1670,16 @@ const RENDERERS = {
     fillConfig(card, e);
     body.append(card);
     return row(e, "config", body);
+  },
+
+  knowledge(e) {
+    // A memory or skill an agent saved, waiting for a person (fillKnowledge).
+    // Never folded.
+    const body = el("div", "body");
+    const card = el("div", "fcard scard ccard kcard");
+    fillKnowledge(card, e);
+    body.append(card);
+    return row(e, "knowledge", body);
   },
 
   secret_request(e) {

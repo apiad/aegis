@@ -5,7 +5,8 @@ an item hinted earlier to the same session keeps that rank in ``detail``. The
 pair is how the engine is judged on real use: the share of reads that came
 from the hint, and at which rank. Stats and the Knowledge view are queries
 over this table. Rows older than a year are dropped by a daily prune, which
-then runs VACUUM.
+then runs VACUUM. The ``flags`` table holds each item's raised flags, so a
+restart's first check logs ``flagged`` only for a flag that is new.
 
 Writes never run on the event loop: as the journal does, the loop only
 enqueues and one writer thread owns the writing connection (WAL,
@@ -44,7 +45,10 @@ CREATE TABLE IF NOT EXISTS usage(
   ts REAL, principal TEXT, session TEXT, item_kind TEXT, item_name TEXT,
   event TEXT, detail TEXT);
 CREATE INDEX IF NOT EXISTS usage_item ON usage(principal, item_name);
-CREATE INDEX IF NOT EXISTS usage_ts ON usage(ts)
+CREATE INDEX IF NOT EXISTS usage_ts ON usage(ts);
+CREATE TABLE IF NOT EXISTS flags(
+  principal TEXT, item_name TEXT, flag TEXT,
+  PRIMARY KEY(principal, item_name, flag))
 """
 
 
@@ -89,7 +93,7 @@ class Usage:
                     con = _connect(self.path)
                 _, sql, args = item
                 cur = con.execute(sql, args)
-                if sql.startswith("DELETE") and cur.rowcount > 0:
+                if sql.startswith("DELETE FROM usage") and cur.rowcount > 0:
                     con.execute("VACUUM")
             except (sqlite3.Error, OSError) as e:
                 cause = f"{type(e).__name__}: {e}"
@@ -183,6 +187,34 @@ class Usage:
         got = self._query(sql + " ORDER BY ts, rowid", args)
         keys = ("ts", "session", "kind", "name", "event", "detail")
         return [dict(zip(keys, r)) for r in got]
+
+    def raised(self, principal: str) -> dict[str, list[str]]:
+        """The flags last kept for each of ``principal``'s items."""
+        out: dict[str, list[str]] = {}
+        for name, flag in self._query(
+            "SELECT item_name, flag FROM flags WHERE principal = ? ORDER BY rowid",
+            (principal,),
+        ):
+            out.setdefault(name, []).append(flag)
+        return out
+
+    def keep_flags(self, principal: str, name: str, flags: list[str]) -> None:
+        """Queue replacing an item's kept flags; returns at once."""
+        self._q.put(
+            (
+                "sql",
+                "DELETE FROM flags WHERE principal = ? AND item_name = ?",
+                (principal, name),
+            )
+        )
+        for f in flags:
+            self._q.put(
+                (
+                    "sql",
+                    "INSERT OR IGNORE INTO flags VALUES (?,?,?)",
+                    (principal, name, f),
+                )
+            )
 
     def prune(self, now: float | None = None) -> None:
         """Queue dropping the rows older than a year, then VACUUM."""

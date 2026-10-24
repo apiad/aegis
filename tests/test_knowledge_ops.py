@@ -34,9 +34,12 @@ async def test_an_agent_saves_searches_reads_and_deletes_a_memory(agents_world):
                 description="The staging host for project quill",
                 body="It is ben-staging-2.",
                 type="project",
+                asked=True,
             ),
+            by_person=True,
         )
     )
+    assert saved.pop("card")
     assert saved == {"saved": "quill-staging", "status": "approved"}
     hits = ok(await turn(s, mcp("memory_search", query="where is quill staged")))
     assert hits["hits"][0]["name"] == "quill-staging"
