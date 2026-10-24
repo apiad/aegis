@@ -258,7 +258,8 @@ whole, scripts and binaries included, each item is saved approved as one
 commit when your submit of the page began the agent's turn (otherwise each
 waits for your Approve on its own card), and a name aegis already holds is refused, never overwritten. One
 card in the transcript lists what came in, with an Undo per item, which
-takes that item out of aegis again. Removing an original from where the
+takes that item out of aegis again; the next `/setup` then proposes it
+again. Removing an original from where the
 harness loaded it is a row of its own, done after the import, and nothing
 outside aegis is deleted unless you ticked its row.
 

@@ -489,3 +489,31 @@ async def test_one_call_imports_at_most_fifty_items(world, tmp_path):
     said = await turn(s, mcp("knowledge_import", items=items), by_person=True)
     assert said.startswith("mcp error: too_many"), said
     assert "split" in said
+
+
+async def test_an_undone_import_is_proposed_again_by_the_next_setup(world, tmp_path):
+    app = world.app
+    s = await world.spawn()
+    src = skill_dir(tmp_path)
+    host = memory_file(tmp_path, "host")
+    got = await bring(s, {"source": str(src), "kind": "skill"}, host)
+    said = await app.registry.call(
+        "knowledge.card.unimport",
+        {"log_id": s.log_id, "id": got["card"], "name": "release"},
+    )
+    assert said == "ok"
+    assert [r["name"] for r in app.setup_records.imported(app.user)] == ["host"]
+    _, body = setup.turn("", "facts", app.setup_records.get(app.user), "now")
+    assert str(src) not in body and f"{host['source']} as memory host" in body
+
+
+async def test_a_discarded_import_proposal_leaves_the_record(world, tmp_path):
+    app = world.app
+    s = await world.spawn()
+    got = await bring(s, memory_file(tmp_path, "host"), by_person=False)
+    (id,) = got["cards"]
+    said = await app.registry.call(
+        "knowledge.card.discard", {"log_id": s.log_id, "id": id}
+    )
+    assert said == "ok"
+    assert app.setup_records.imported(app.user) == []

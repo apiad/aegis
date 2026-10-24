@@ -1110,6 +1110,14 @@ def register_knowledge_ops(app: App) -> None:
         finally:
             answering.discard((s.log_id, id))
 
+    def unrecord(owner: str, kind: str, name: str) -> None:
+        """Take an item out of the setup record's imports; a failed write is
+        logged, never raised into a press that already changed the store."""
+        try:
+            app.setup_records.drop_imported(owner, kind, name)
+        except Exception:
+            log.exception("aegis: the setup record of %s could not be written", owner)
+
     async def reflag(owner: str, name: str) -> None:
         """An answered card's item flagged as it now is: checked again, or
         its flags dropped when it is gone."""
@@ -1226,6 +1234,7 @@ def register_knowledge_ops(app: App) -> None:
             await kn.refresh(owner)
             await reflag(owner, d["name"])
             kn.usage.add(owner, s.log_id, d["item_kind"], d["name"], "discarded")
+            unrecord(owner, d["item_kind"], d["name"])
             await card_done(
                 s,
                 p.id,
@@ -1310,6 +1319,7 @@ def register_knowledge_ops(app: App) -> None:
             await reflag(owner, p.name)
             kn.usage.add(owner, s.log_id, row["kind"], p.name, "deleted", "by=person")
             item_done("undone")
+            unrecord(owner, row["kind"], p.name)
             await s.deliver(
                 card_header(p.id, "undone"),
                 f"The person undid the import of {what}: it is no longer in "

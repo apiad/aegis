@@ -80,6 +80,14 @@ class Records:
         next /setup proposes only what is new."""
         self.merge(principal, {"imported": [*self.imported(principal), *rows]})
 
+    def drop_imported(self, principal: str, kind: str, name: str) -> None:
+        """An import undone or discarded leaves the list, so the next /setup
+        proposes its source again."""
+        held = self.imported(principal)
+        kept = [r for r in held if (r.get("kind"), r.get("name")) != (kind, name)]
+        if len(kept) != len(held):
+            self.merge(principal, {"imported": kept})
+
 
 def facts(version: str, found: list[dict], agents: list[str], queues: list[str]) -> str:
     have = [
