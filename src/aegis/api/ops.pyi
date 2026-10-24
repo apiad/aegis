@@ -745,6 +745,15 @@ class _setup:
 class _skill:
     async def read(self, *, name: str, file: str | None = ...) -> Any:
         """Load a skill: returns its SKILL.md, which you then follow, and the files of its folder. With file, returns that one file instead."""
+    async def run(
+        self,
+        *,
+        skill: str,
+        script: str,
+        args: builtins.list[str] = ...,
+        timeout_s: int = ...,
+    ) -> Any:
+        """Run a script a skill you loaded declares under aegis.scripts, with arguments, in a fresh copy of the skill's folder. Returns its exit code, stdout and stderr, each cut at 20,000 characters."""
     async def save(
         self,
         *,

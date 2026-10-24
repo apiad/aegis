@@ -580,7 +580,7 @@ async def test_a_member_is_never_hinted_another_principals_memory(world):
 <div class="verify"><span class="lbl">verify</span><p><code>uv run pytest tests/test_knowledge_commands.py tests/test_commands.py -q</code></p></div>
 </div></details>
 
-<details class="task" id="task-12" data-state="pending">
+<details class="task" id="task-12" data-state="done">
 <summary><span class="num">12</span><span><span class="ttl">skill_run: scripts a skill declares</span><span class="files">knowledge_ops.py · launch.py · tests/test_knowledge_run.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <p><code>skill.run</code> {skill, script, args: list[str], timeout_s: int = 120}, <code>agent=True</code>, full permission only. It refuses with <code>not_loaded</code> unless the skill is in <code>Session.skills</code>, and with <code>not_declared</code> unless <code>script</code> is in <code>aegis.scripts</code>. It copies the skill folder into a fresh temporary directory owned by the session's Linux user, through the launcher. It runs <code>python3 &lt;script&gt; *args</code> with that directory as cwd, through <code>launch.py</code> as the session's user (the same path monitors' bash conditions take), and returns exit code, stdout and stderr, each cut at 20,000 characters. It writes a <code>ran</code> row.</p>

@@ -10,6 +10,13 @@ memories an agent saves on its own initiative come with the approval card.
 
 Reading a skill's SKILL.md loads it in the calling session: the name joins
 ``Session.skills``, which the card shows and which ``skill_run`` checks.
+
+``skill_run`` runs a script the loaded skill declares under ``aegis.scripts``.
+The store is out of a member's reach, so the server packs the skill's folder
+as a tar and pipes it to one process started through the launcher as the
+session's Linux user: a shell that unpacks it into a fresh ``mktemp -d``
+directory, which is therefore the member's, runs ``python3`` on the script
+there and removes the directory when it ends.
 """
 
 from __future__ import annotations
@@ -17,12 +24,17 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import io
+import os
+import signal
+import tarfile
 import time
 from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field
 
+from . import launch
 from .knowledge.items import Item, check_name, dump
 from .ops import Caller, OpError
 
@@ -137,6 +149,62 @@ class SaveSkill(_Strict):
     asked: bool = Field(
         False, description="true when the person asked you to save this skill."
     )
+
+
+class RunSkill(_Strict):
+    skill: str = Field(description="A skill you loaded with skill_read.")
+    script: str = Field(
+        description="One of the files its aegis.scripts declares, such as 'bump.py'."
+    )
+    args: list[str] = Field(default_factory=list, description="The script's arguments.")
+    timeout_s: int = Field(
+        120, ge=1, le=600, description="Seconds before it is killed."
+    )
+
+
+OUTPUT_CHARS = 20000
+# What a run keeps of each stream: enough for OUTPUT_CHARS of any UTF-8.
+KEEP_BYTES = 4 * OUTPUT_CHARS
+# Unpack the tar on stdin into a fresh directory of the user's, run the
+# script there with its arguments, and remove the directory however it ends.
+RUN_SH = (
+    "d=$(mktemp -d) || exit 125; trap 'rm -rf -- \"$d\"' EXIT; "
+    'tar -x -C "$d" || exit 125; cd -- "$d" && s=$1 && shift && python3 "./$s" "$@"'
+)
+
+
+def _cut(data: bytes | bytearray) -> str:
+    text = bytes(data).decode("utf-8", "replace")
+    if len(text) <= OUTPUT_CHARS and len(data) <= KEEP_BYTES:
+        return text
+    return text[:OUTPUT_CHARS] + f"\n[cut at {OUTPUT_CHARS} characters]"
+
+
+async def _feed(stream, data: bytes) -> None:
+    try:
+        stream.write(data)
+        await stream.drain()
+        stream.close()
+    except (BrokenPipeError, ConnectionResetError):
+        pass  # it stopped reading; what it wrote says why
+
+
+async def _drain(stream, buf: bytearray) -> None:
+    """Read ``stream`` to its end into ``buf``, so a killed run keeps what it
+    printed before."""
+    while chunk := await stream.read(65536):
+        if len(buf) <= KEEP_BYTES:  # beyond, read on and keep nothing
+            buf += chunk[: KEEP_BYTES + 1 - len(buf)]
+
+
+def _tar(files: dict[str, bytes]) -> bytes:
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        for rel, data in files.items():
+            info = tarfile.TarInfo(rel)
+            info.size, info.mode = len(data), 0o700
+            tar.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
 
 
 class Stats(_Strict):
@@ -351,6 +419,66 @@ def register_knowledge_ops(app: App) -> None:
         await kn.refresh(owner)
         kn.usage.add(owner, caller.log_id or "", "skill", p.name, "saved")
         return {"saved": p.name, "status": "approved"}
+
+    @r.op("skill.run", RunSkill, agent=True)
+    async def skill_run(p: RunSkill, caller):
+        """Run a script a skill you loaded declares under aegis.scripts, with
+        arguments, in a fresh copy of the skill's folder. Returns its exit
+        code, stdout and stderr, each cut at 20,000 characters."""
+        owner = principal(caller)
+        it = skill(owner, p.skill)
+        s = app.sessions.sessions.get(caller.log_id or "")
+        if s is None or it.name not in s.skills:
+            raise OpError(
+                "not_loaded", f"load the skill {it.name!r} with skill_read first"
+            )
+        block = it.meta.get("aegis")
+        declared = block.get("scripts") if isinstance(block, dict) else None
+        if not isinstance(declared, list) or p.script not in declared:
+            raise OpError(
+                "not_declared",
+                f"{p.script!r} is not among the scripts {it.name!r} declares",
+            )
+
+        def pack() -> bytes:
+            names = kn.store.files(owner, it.name)
+            if p.script not in names:
+                raise OpError("not_found", f"the skill has no file {p.script!r}")
+            return _tar({n: kn.store.read_file(owner, it.name, n) for n in names})
+
+        tar = await asyncio.to_thread(pack)
+        try:
+            proc = await launch.child(
+                ["bash", "-c", RUN_SH, "skill-run", p.script, *p.args],
+                user=s.spec.linux_user,
+                cwd="/",
+                stdin=launch.PIPE,
+                stdout=launch.PIPE,
+                stderr=launch.PIPE,
+                new_session=True,
+            )
+        except OSError as e:
+            raise OpError("run_failed", f"the script could not start: {e}") from e
+        out, err = bytearray(), bytearray()
+        io_done = asyncio.gather(
+            _feed(proc.stdin, tar), _drain(proc.stdout, out), _drain(proc.stderr, err)
+        )
+        code: int | None = None
+        try:
+            await asyncio.wait_for(asyncio.shield(io_done), p.timeout_s)
+            code = await proc.wait()
+        except TimeoutError:
+            # The whole group: python3 under the shell holds the pipes too.
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            await io_done
+            await proc.wait()
+            err += f"\n[killed after {p.timeout_s}s]".encode()
+        s.ran_skill(it.name)
+        kn.usage.add(owner, s.log_id, "skill", it.name, "ran", p.script)
+        return {"exit": code, "stdout": _cut(out), "stderr": _cut(err)}
 
     @r.op("knowledge.stats", Stats, agent=True, read=True)
     async def knowledge_stats(p: Stats, caller):

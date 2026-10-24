@@ -91,6 +91,7 @@ _NOW = (
     "autoclose",
     "workflow",
     "skills",
+    "skill_runs",
 )
 _SOON = (
     "activity",
@@ -368,6 +369,7 @@ class Session:
         notices_sent: dict[str, str] | None = None,
         items_sent: dict[str, str] | None = None,
         skills: list[str] | None = None,
+        skill_runs: dict[str, int] | None = None,
         tool_calls: int = 0,
         parked_rss: int = 0,
         parked_idle_s: int = 0,
@@ -473,6 +475,8 @@ class Session:
         # The skills it loaded with skill_read or a /<skill> command, in the
         # order loaded (knowledge_ops.py). In the meta, so the card keeps them.
         self.skills: list[str] = list(skills or [])
+        # How many times skill_run ran each loaded skill's scripts.
+        self.skill_runs: dict[str, int] = dict(skill_runs or {})
         # What the cache did (cache.py): tool calls and compactions of the main
         # thread, and the last calls' [cache_read, total_input, at]. In the meta,
         # so the counters survive a restart.
@@ -556,6 +560,7 @@ class Session:
             "notices_sent": self.notices_sent,
             "items_sent": self.items_sent,
             "skills": self.skills,
+            "skill_runs": self.skill_runs,
             "tool_calls": self.tool_calls,
             "parked_rss": self.parked_rss,
             "parked_idle_s": self.parked_idle_s,
@@ -614,6 +619,13 @@ class Session:
         self._set(skills=[*self.skills, name])
         self._metas.write(self.meta())
         return True
+
+    def ran_skill(self, name: str) -> None:
+        """Count one skill_run of ``name``; publishes the card."""
+        self._set(
+            skill_runs={**self.skill_runs, name: self.skill_runs.get(name, 0) + 1}
+        )
+        self._metas.write(self.meta())
 
     @property
     def busy(self) -> bool:

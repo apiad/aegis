@@ -1812,17 +1812,20 @@ function drawPlan(s) {
   tickSidePlan(s);
 }
 
-// The skills the session loaded, one row each in the order read.
+// The skills the session loaded, one row each in the order read, with how
+// many times skill_run ran its scripts.
 function drawSkills(s) {
   const skills = s.skills || [];
+  const runs = s.skill_runs || {};
   $("s-skills-sec").hidden = !skills.length;
-  const key = JSON.stringify(skills);
+  const key = JSON.stringify([skills, runs]);
   if ($("s-skills").dataset.key === key) return;
   $("s-skills").dataset.key = key;
   $("s-skills").replaceChildren(
     ...skills.map((n) => {
       const d = document.createElement("div");
-      d.append(span("", ""), span("", n), span("t", ""));
+      const r = runs[n] || 0;
+      d.append(span("", ""), span("", n), span("t", r ? `${r} run${r > 1 ? "s" : ""}` : ""));
       return d;
     }),
   );

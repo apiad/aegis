@@ -220,3 +220,26 @@ async def test_no_token_in_a_members_harness_argv(mu_server):
     argv = json.dumps(rep["argv"])
     assert "${AEGIS_SESSION_TOKEN}" in argv
     assert not re.search(r'X-Aegis-Session\\?":\s*\\?"[\w-]{20,}', argv)
+
+
+async def test_in_multi_user_mode_the_script_runs_as_the_member(mu_server):
+    s = mu_server
+    folder = s.state / "knowledge" / BEN / "skills" / "who"
+    folder.mkdir(parents=True)
+    (folder / "SKILL.md").write_text(
+        "---\nname: who\ndescription: Say who runs it\n"
+        "aegis:\n  scripts: [who.py]\n---\n1. run who.py\n"
+    )
+    (folder / "who.py").write_text(
+        "import os, pwd, sys\n"
+        "me = pwd.getpwuid(os.getuid()).pw_name\n"
+        "open(os.path.join(sys.argv[1], 'skill'), 'w').write(me + ' ' + os.getcwd())\n"
+    )
+    log_id, _ = await spawn(s)
+    await send(s, BEN, log_id, f"/mcp skill_read {json.dumps({'name': 'who'})}")
+    run = {"skill": "who", "script": "who.py", "args": [str(s.out)]}
+    await send(s, BEN, log_id, f"/mcp skill_run {json.dumps(run)}")
+    f = s.out / "skill"
+    said = await until(lambda: f.exists() and f.read_text().strip(), what="the run")
+    user, cwd = said.split(" ", 1)
+    assert user == BEN and cwd != "/" and "knowledge" not in cwd

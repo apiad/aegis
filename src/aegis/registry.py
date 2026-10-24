@@ -668,6 +668,7 @@ class Registry(Host):
             notices_sent=meta.get("notices_sent"),
             items_sent=meta.get("items_sent"),
             skills=meta.get("skills"),
+            skill_runs=meta.get("skill_runs"),
             tool_calls=meta.get("tool_calls") or 0,
             cache_recent=meta.get("cache_recent"),
             compactions=meta.get("compactions") or 0,

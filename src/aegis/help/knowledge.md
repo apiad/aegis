@@ -75,8 +75,20 @@ aegis:
 An agent finds a skill mid-task with `skill_search`, in its own words,
 and loads it with `skill_read`. A loaded skill shows on the session's card
 in the Fleet, as a skills line under the plan, and in its sidebar under
-Skills loaded, in the order the agent read them, so you can tell which
-session follows which procedure.
+Skills loaded, in the order the agent read them, with how many times it
+ran each one's scripts, so you can tell which session follows which
+procedure.
+
+### Scripts a skill brings
+
+A skill that lists files under `aegis.scripts` lets an agent run them with
+`skill_run`, once the skill is loaded in its session; any other file of the
+folder never runs. Each run copies the skill's folder into a fresh
+temporary directory, runs `python3` on the script there with the
+arguments the agent gives, and removes the directory after. On a server
+with several people, it runs as your Linux user, so a script reaches what
+you can reach and nothing more. A run stops after two minutes unless the
+agent asks for longer, up to ten.
 
 ### Skills as commands
 
@@ -104,6 +116,9 @@ out of the menu.
   list, and with `file` returns one of those files.
 - `skill_save` creates or replaces a skill, with its other files in
   base64 and its `aegis` block.
+- `skill_run` runs one of the scripts a loaded skill declares under
+  `aegis.scripts`, with arguments, and returns its exit code, stdout and
+  stderr, each cut at 20,000 characters.
 - `knowledge_stats` lists each item with how often it was hinted, read,
   invoked or run, and when it was last used; `unused_days=60` keeps the
   ones nobody used in that time.
