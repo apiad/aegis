@@ -38,6 +38,7 @@ import binascii
 import hashlib
 import io
 import json
+import logging
 import secrets
 import tarfile
 import time
@@ -58,6 +59,11 @@ from .ops import Caller, OpError
 
 if TYPE_CHECKING:
     from .app import App
+
+log = logging.getLogger("aegis.knowledge")
+
+# Items one knowledge.import call takes: a library of 70 is two calls.
+MAX_IMPORT_ITEMS = 50
 
 
 class _Strict(BaseModel):
@@ -304,7 +310,9 @@ class Setting(_Strict):
 
 
 class ImportItems(_Strict):
-    items: list[ImportItem] = Field(min_length=1, max_length=200)
+    items: list[ImportItem] = Field(
+        min_length=1, description=f"At most {MAX_IMPORT_ITEMS}; split a longer list."
+    )
     log_id: str | None = Field(
         None,
         description="A person's call only: the session of theirs whose "
@@ -947,6 +955,12 @@ def register_knowledge_ops(app: App) -> None:
             s = app.sessions.open(p.log_id)
             if (s.spec.owner or app.user) != owner:
                 raise OpError("not_owner", f"{p.log_id} is not one of your sessions")
+        if len(p.items) > MAX_IMPORT_ITEMS:
+            raise OpError(
+                "too_many",
+                f"{len(p.items)} items; one call imports at most "
+                f"{MAX_IMPORT_ITEMS}: split them over several calls",
+            )
         approved = honoured(caller, True)
         run = reader(caller)
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -979,6 +993,17 @@ def register_knowledge_ops(app: App) -> None:
                     {"source": x.source, "error": "unreadable", "message": str(e)}
                 )
                 continue
+            except Exception as e:
+                # One item's fault never strands the ones already committed.
+                log.exception("aegis: importing %s failed", x.source)
+                refused.append(
+                    {
+                        "source": x.source,
+                        "error": "failed",
+                        "message": f"{type(e).__name__}: {e}",
+                    }
+                )
+                continue
             done.append(
                 {"source": x.source, "kind": it.kind, "name": it.name, "sha": sha}
             )
@@ -991,24 +1016,18 @@ def register_knowledge_ops(app: App) -> None:
         }
         if not done:
             return out
-        await kn.refresh(owner)
-        for d in done:
-            kn.usage.add(
-                owner, caller.log_id or "", d["kind"], d["name"], "saved", "import"
-            )
-        app.setup_records.add_imported(
-            owner,
-            [{k: d[k] for k in ("source", "kind", "name")} | {"at": now} for d in done],
-        )
-        if memories:
-            app.knowledge_check_soon(owner, memories)
+        # The card first: whatever fails after, each committed item has one.
         if s is not None and not approved:
             # Not the person's turn: each item waits for its own Approve.
+            out["cards"] = []
             for d in done:
-                it = kn.store.get(owner, d["name"])
-                if it is not None:
-                    files = await asyncio.to_thread(folder, owner, it)
-                    record_card(s, "new", it, d["sha"], files)
+                try:
+                    it = kn.store.get(owner, d["name"])
+                    if it is not None:
+                        files = await asyncio.to_thread(folder, owner, it)
+                        out["cards"].append(record_card(s, "new", it, d["sha"], files))
+                except Exception:
+                    log.exception("aegis: the card of %s failed", d["name"])
         elif s is not None:
             id = "kn-" + secrets.token_hex(4)
             s.record_knowledge(
@@ -1022,6 +1041,41 @@ def register_knowledge_ops(app: App) -> None:
                 }
             )
             out["card"] = id
+        errors: list[str] = []
+
+        async def step(what: str, fn, *a) -> None:
+            try:
+                got = fn(*a)
+                if asyncio.iscoroutine(got):
+                    await got
+            except Exception as e:
+                log.exception("aegis: after an import, %s failed", what)
+                errors.append(f"{what}: {e}")
+
+        await step("refreshing the index", kn.refresh, owner)
+        await step(
+            "the usage log",
+            lambda: [
+                kn.usage.add(
+                    owner, caller.log_id or "", d["kind"], d["name"], "saved", "import"
+                )
+                for d in done
+            ],
+        )
+        await step(
+            "writing the setup record",
+            app.setup_records.add_imported,
+            owner,
+            [{k: d[k] for k in ("source", "kind", "name")} | {"at": now} for d in done],
+        )
+        if memories:
+            await step(
+                "checking the memories", app.knowledge_check_soon, owner, memories
+            )
+        if errors:
+            out["error"] = (
+                "the items listed under imported are in aegis, but " + "; ".join(errors)
+            )
         return out
 
     # Cards being answered now: a second press while the first is at work is

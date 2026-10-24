@@ -431,3 +431,61 @@ async def test_a_memory_takes_its_frontmatter_name_so_links_still_resolve(
     for it in (store.get(app.user, n) for n in ("merge-after-green", "deploy-hosts")):
         (link,) = __import__("re").findall(r"\[\[([^\]]+)\]\]", it.body)
         assert store.get(app.user, link) is not None, link
+
+
+def memory_file(root, name: str):
+    f = root / f"{name}.md"
+    f.write_text(f"---\ndescription: The fact {name}\n---\n{name}.\n")
+    return {"source": str(f), "kind": "memory"}
+
+
+async def test_a_failure_after_the_first_item_keeps_its_card(
+    world, tmp_path, monkeypatch
+):
+    app = world.app
+    s = await world.spawn()
+    real = importer.load
+    calls = []
+
+    def load(*a):
+        calls.append(a)
+        if len(calls) > 1:
+            raise RuntimeError("the disk went away")
+        return real(*a)
+
+    monkeypatch.setattr(importer, "load", load)
+    got = await bring(s, memory_file(tmp_path, "one"), memory_file(tmp_path, "two"))
+    assert [i["name"] for i in got["imported"]] == ["one"]
+    (r,) = got["refused"]
+    assert r["error"] == "failed" and "the disk went away" in r["message"]
+    assert app.knowledge.store.get(app.user, "two") is None
+    (e,) = cards(s)
+    assert e["id"] == got["card"] and [x["name"] for x in e["detail"]["items"]] == [
+        "one"
+    ]
+
+
+async def test_a_failing_record_write_still_cards_what_came_in(
+    world, tmp_path, monkeypatch
+):
+    app = world.app
+    s = await world.spawn()
+
+    def broken(*a):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(app.setup_records, "add_imported", broken)
+    got = await bring(s, memory_file(tmp_path, "one"))
+    assert [i["name"] for i in got["imported"]] == ["one"]
+    assert "No space left" in got["error"]
+    assert app.knowledge.store.get(app.user, "one") is not None
+    (e,) = cards(s)
+    assert e["id"] == got["card"]
+
+
+async def test_one_call_imports_at_most_fifty_items(world, tmp_path):
+    s = await world.spawn()
+    items = [memory_file(tmp_path, f"m{i}") for i in range(51)]
+    said = await turn(s, mcp("knowledge_import", items=items), by_person=True)
+    assert said.startswith("mcp error: too_many"), said
+    assert "split" in said
