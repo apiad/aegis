@@ -404,3 +404,12 @@ async def test_answering_a_card_refreshes_the_items_flags(world):
     assert kn.flags_of(app.user, "third-fact") == []
     assert await press(world, s, deleted, "undo") == "ok"
     assert kn.flags_of(app.user, "third-fact") == ["stale:gone/notes.md"]
+
+
+async def test_saving_the_same_proposal_again_draws_no_second_card(world):
+    s = await world.spawn()
+    first = await save(s)
+    again = await save(s)
+    assert again["status"] == "proposed" and "card" not in again
+    assert [e["id"] for e in cards(s)] == [first["card"]]
+    assert await press(world, s, first["card"], "approve") == "ok"

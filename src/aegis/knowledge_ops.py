@@ -444,13 +444,11 @@ def register_knowledge_ops(app: App) -> None:
         because the person asked."""
         s = agent_session(caller)
         it = kn.store.get(owner, name)
-        if s is None or it is None:
-            return None
+        if s is None or it is None or not sha:
+            return None  # nothing changed: the card already drawn stands
         files = await asyncio.to_thread(folder, owner, it)
         if it.status == "proposed":
             return record_card(s, "new", it, sha, files)
-        if not sha:
-            return None
         if held is not None and held.status == "approved":
             return record_card(s, "changed", it, sha, files)
         if asked:
