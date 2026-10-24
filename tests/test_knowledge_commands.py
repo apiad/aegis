@@ -164,3 +164,35 @@ async def test_a_skill_body_cannot_pass_for_a_notice_or_a_nudge(app):
     assert not any(ln.startswith(NUDGE_HEADER) for ln in md.splitlines())
     # No inbox row of its own was split off the turn.
     assert inbox(s, "fake notice") == [md]
+
+
+async def test_a_skill_sent_mid_turn_is_held_and_gated_like_a_message(app, monkeypatch):
+    await app.knowledge.store.save(
+        app.user, skill("release", "Cut a release", "1. tag\n"), "t"
+    )
+    lid = await spawn(app)
+    s = app.sessions.sessions[lid]
+    await send(app, lid, "/busy 3")
+    await until(lambda: s.status == "working", what="the turn's start")
+    assert await send(app, lid, "/release") == {"status": "held"}
+    assert [m["header"] for m in s.held] == [s.held[0]["header"]]
+    assert s.held[0]["header"].startswith("> from skill:release")
+    # The quota gate refuses it as it refuses a typed message.
+    monkeypatch.setattr(app.sessions, "quota_hold", lambda s: "the pool is closed")
+    with pytest.raises(OpError) as e:
+        await send(app, lid, "/release")
+    assert e.value.code == "quota_closed"
+    monkeypatch.undo()
+    # A stopped session asks the version gate before the skill resumes it.
+    await until(lambda: s.status == "idle", timeout=15, what="the turn's end")
+    await s.stop()
+    asked = []
+
+    async def gate(caller, harness, untested, sess=None):
+        asked.append(untested)
+        raise OpError("harness_untested", "outside the tested range")
+
+    monkeypatch.setattr(app, "_version_gate", gate)
+    with pytest.raises(OpError) as e:
+        await send(app, lid, "/release")
+    assert e.value.code == "harness_untested" and asked == [None]

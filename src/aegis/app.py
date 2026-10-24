@@ -1405,15 +1405,29 @@ class App:
                 return None
         return it
 
-    async def _run_skill(self, s, it, arg: str) -> dict:
+    async def _run_skill(
+        self, s, it, arg: str, caller: Caller, untested: str | None
+    ) -> dict:
         """Deliver a skill's text as one turn, mark it loaded and write an
-        ``invoked`` row. aegis delivers it, so every harness runs it alike."""
-        await s.deliver(*skill_turn(it.name, it.body, arg, iso_now()))
+        ``invoked`` row. aegis delivers it, so every harness runs it alike.
+        Gated as a typed message is: refused behind a closed quota gate, and
+        a resume asks the version gate; mid-turn it is held, and says so."""
+        if (why := self.sessions.quota_hold(s)) is not None:
+            raise OpError("quota_closed", _held(s.spec.owner or self.user, why))
+        not_saved = None
+        if not s.running and s.asleep_why != "idle":
+            not_saved = await self._version_gate(caller, s.spec.harness, untested, s)
+            s.launch_by = "agent" if caller.is_agent else "person"
+        try:
+            did = await s.deliver(*skill_turn(it.name, it.body, arg, iso_now()))
+        finally:
+            s.launch_by = "agent"
         s.load_skill(it.name)
         self.knowledge.usage.add(
             s.spec.owner or self.user, s.log_id, "skill", it.name, "invoked"
         )
-        return {"status": "delivered"}
+        out = {"status": "held" if did == "held" else "delivered"}
+        return out | {"not_saved": not_saved} if not_saved else out
 
     async def _command(
         self,
@@ -1992,7 +2006,7 @@ class App:
                 if name in commands.AEGIS:
                     return await self._command(s, name, arg, caller, p.untested)
                 if (sk := await self._skill_command(s, name)) is not None:
-                    return await self._run_skill(s, sk, arg)
+                    return await self._run_skill(s, sk, arg, caller, p.untested)
                 if name.startswith("skill:"):
                     raise OpError(
                         "unknown_command", f"no skill {name[6:]!r} to run as /{name}"
