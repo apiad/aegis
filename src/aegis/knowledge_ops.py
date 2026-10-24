@@ -263,13 +263,22 @@ def remember_turn(text: str, now: str) -> tuple[str, str]:
     )
 
 
+def escape_headers(body: str) -> str:
+    """A stored body with a backslash before every line that starts like a
+    message header (``> from ``), so the transcript's fold never reads part
+    of it as a notice or a nudge aegis sent."""
+    return "\n".join(
+        "\\" + ln if ln.startswith("> from ") else ln for ln in body.split("\n")
+    )
+
+
 def skill_turn(name: str, body: str, args: str, now: str) -> tuple[str, str]:
     """The turn ``/<skill> args`` delivers: the skill's text and the
     person's arguments."""
     said = f"the person's arguments: {args}" if args else "no arguments were given"
     return (
         f"> from skill:{name} · {now}",
-        f'Run the skill "{name}". Its text follows; {said}.\n\n{body}',
+        f'Run the skill "{name}". Its text follows; {said}.\n\n' + escape_headers(body),
     )
 
 
