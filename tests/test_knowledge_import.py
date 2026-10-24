@@ -49,7 +49,11 @@ async def test_a_skill_folder_with_a_binary_imports_whole(world, tmp_path):
     assert got["imported"] == [{"source": str(src), "kind": "skill", "name": "release"}]
     assert got["refused"] == []
     store = app.knowledge.store
-    assert store.files(app.user, "release") == ["SKILL.md", "logo.png", "scripts/bump.py"]
+    assert store.files(app.user, "release") == [
+        "SKILL.md",
+        "logo.png",
+        "scripts/bump.py",
+    ]
     assert store.read_file(app.user, "release", "logo.png") == BINARY
     it = store.get(app.user, "release")
     assert it.status == "approved" and it.description == "Use when cutting a release"
@@ -57,7 +61,9 @@ async def test_a_skill_folder_with_a_binary_imports_whole(world, tmp_path):
     root = app.roots.state_root / "knowledge" / app.user
     assert history.log(root, "skills/release")[0]["message"] == "import skill release"
     assert src.is_dir()  # the original stays until its own row removes it
-    assert "release" in app.knowledge.hint_for(app.user, s.log_id, "cut a release", None)
+    assert "release" in app.knowledge.hint_for(
+        app.user, s.log_id, "cut a release", None
+    )
 
 
 async def test_an_auto_memory_file_imports_with_its_type(world, tmp_path):
@@ -69,7 +75,9 @@ async def test_an_auto_memory_file_imports_with_its_type(world, tmp_path):
         "metadata:\n  type: feedback\n---\nThe author merges.\n"
     )
     old = tmp_path / "deploy_gap.md"
-    old.write_text("---\nname: x\ndescription: A deploy gap\ntype: project\n---\nIt is open.\n")
+    old.write_text(
+        "---\nname: x\ndescription: A deploy gap\ntype: project\n---\nIt is open.\n"
+    )
     got = await bring(
         s,
         {"source": str(f), "kind": "memory", "name": "merge-after-green"},
@@ -89,7 +97,9 @@ async def test_a_doc_becomes_a_skill_with_when_as_description(world, tmp_path):
     app = world.app
     s = await world.spawn()
     doc = tmp_path / "canary.md"
-    doc.write_text("---\nwhen: a harness released a version\n---\n# The canary\n\nRun it.\n")
+    doc.write_text(
+        "---\nwhen: a harness released a version\n---\n# The canary\n\nRun it.\n"
+    )
     bare = tmp_path / "notes.md"
     bare.write_text("# Notes\n\nNo when line.\n")
     got = await bring(
@@ -132,7 +142,9 @@ async def test_a_link_that_leaves_the_folder_is_refused(world, tmp_path):
     inner = skill_dir(tmp_path / "h", "inner")
     (inner / "again.py").symlink_to(inner / "scripts" / "bump.py")
     got = await bring(
-        s, {"source": str(src), "kind": "skill"}, {"source": str(inner), "kind": "skill"}
+        s,
+        {"source": str(src), "kind": "skill"},
+        {"source": str(inner), "kind": "skill"},
     )
     assert [r["error"] for r in got["refused"]] == ["bad_source"]
     assert "leaves" in got["refused"][0]["message"]
@@ -224,7 +236,8 @@ async def test_the_card_undoes_one_item_and_keeps_the_rest(world, tmp_path):
     assert e["kind"] == "knowledge" and e["detail"]["op"] == "imported"
     assert [x["name"] for x in e["detail"]["items"]] == ["release", "host"]
     said = await app.registry.call(
-        "knowledge.card.unimport", {"log_id": s.log_id, "id": got["card"], "name": "host"}
+        "knowledge.card.unimport",
+        {"log_id": s.log_id, "id": got["card"], "name": "host"},
     )
     assert said == "ok"
     assert app.knowledge.store.get(app.user, "host") is None
@@ -232,4 +245,6 @@ async def test_the_card_undoes_one_item_and_keeps_the_rest(world, tmp_path):
     e = next(x for x in s.entries() if x["id"] == got["card"])
     assert [x.get("outcome") for x in e["detail"]["items"]] == [None, "undone"]
     assert e["status"] == "pending"  # the other row can still be undone
-    await until(lambda: "undid the import" in json.dumps(inbox(s)), timeout=8, what="wake")
+    await until(
+        lambda: "undid the import" in json.dumps(inbox(s)), timeout=8, what="wake"
+    )
