@@ -2012,7 +2012,7 @@ body{background:#000}
 .a2 .set-browser-row{display:flex;align-items:center;gap:12px;margin:10px 0 8px}
 .a2 .set-knowledge{margin:0 0 26px}
 .a2 .set-native{cursor:pointer;font-size:14px;color:var(--ink)}
-.a2 .set-native input{width:16px;height:16px;flex:none;margin:0}
+.a2 .set-native input{width:16px;height:16px;flex:none;margin:0;accent-color:var(--accent)}
 .a2 #set-native-note.err{color:var(--err)}
 .a2 .set-browser-k{font-family:var(--font-chrome);font-size:12px;color:var(--muted);min-width:64px}
 .a2 .set-speak-line{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 8px}
