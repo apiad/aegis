@@ -777,6 +777,8 @@ class _setup:
         """Save what this /setup run applied and declined, for the person whose session this is, so their next run proposes only what is new. Call it once, at the end of a run (help_read setup record)."""
 
 class _skill:
+    async def delete(self, *, name: str) -> Any:
+        """Delete a skill nobody uses any more, its whole folder. The deletion is kept in the store's history: deleting an approved skill puts a card in your transcript that lets the person undo it, and the Knowledge view restores it from its history."""
     async def read(self, *, name: str, file: str | None = ...) -> Any:
         """Load a skill: returns its SKILL.md, which you then follow, and the files of its folder. With file, returns that one file instead, up to 1 MiB."""
     async def run(

@@ -134,6 +134,10 @@ class DeleteMemory(_Strict):
     name: str
 
 
+class DeleteSkill(_Strict):
+    name: str
+
+
 class SearchSkills(_Strict):
     query: str = Field(
         min_length=1,
@@ -372,6 +376,28 @@ def remember_turn(text: str, now: str) -> tuple[str, str]:
         "short name, a one-line description and the type; make it temporary "
         "with expires when it names a date or an event that will pass. Then "
         "say in one line what you saved.",
+    )
+
+
+def consolidate_turn(text: str, now: str) -> tuple[str, str]:
+    """The turn /consolidate delivers: the agent reviews the person's skills
+    and memories by the help page consolidate."""
+    said = (
+        f"The person typed: /consolidate {text}"
+        if text
+        else "The person typed /consolidate with no text."
+    )
+    return (
+        f"> from consolidate · {now}",
+        f"{said}\n\n"
+        "They want their skills and memories reviewed. Read the help page in "
+        "full first (help_read consolidate) and follow it:\n"
+        "- gather with knowledge_stats (duplicates=true), changing nothing;\n"
+        "- send one artifact with a row per proposal, its evidence and a "
+        "checkbox, keyed merge:<a>+<b>, renew:<name>, drop:<name>, "
+        "fix:<name>, retire:<name> or link:<name>, and wait for their submit;\n"
+        "- apply only the ticked rows, each through its tool as one commit, "
+        "and say what changed.\n",
     )
 
 
@@ -678,6 +704,23 @@ def register_knowledge_ops(app: App) -> None:
         if it is None or it.kind != "skill":
             raise OpError("not_found", f"no skill named {name!r}")
         return it
+
+    @r.op("skill.delete", DeleteSkill, agent=True)
+    async def skill_delete(p: DeleteSkill, caller):
+        """Delete a skill nobody uses any more, its whole folder. The deletion
+        is kept in the store's history: deleting an approved skill puts a
+        card in your transcript that lets the person undo it, and the
+        Knowledge view restores it from its history."""
+        owner = principal(caller)
+        held = await asyncio.to_thread(skill, owner, p.name)
+        sha = await kn.store.delete(owner, p.name, author(caller))
+        await kn.refresh(owner)
+        kn.usage.add(owner, caller.log_id or "", "skill", p.name, "deleted")
+        out: dict = {"deleted": p.name, "sha": sha}
+        s = agent_session(caller)
+        if s is not None and held.status == "approved" and sha:
+            out["card"] = record_card(s, "deleted", held, sha)
+        return out
 
     @r.op("skill.search", SearchSkills, agent=True, read=True)
     async def skill_search(p: SearchSkills, caller):

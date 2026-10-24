@@ -221,6 +221,8 @@ out of the menu.
 - `skill_save` creates or replaces a skill, with its other files in
   base64, 20 MiB at most in all, and its `aegis` block, proposed unless
   `asked=true`, as a memory is.
+- `skill_delete` deletes a skill, its whole folder; the history keeps
+  it, and the card of an approved one offers Undo.
 - `skill_run` runs one of the scripts a loaded skill declares under
   `aegis.scripts`, with arguments, and returns its exit code, stdout and
   stderr, each cut at 20,000 characters.
@@ -235,7 +237,8 @@ out of the menu.
   `flag=never_recalled` lists only those. `duplicates=true` adds the
   pairs of items of one kind that are likely duplicates: each one is the
   other's best match by name and description, both ways, with a high
-  score.
+  score. `/consolidate` reads all of this and proposes what to merge,
+  renew, drop, fix or retire (help_read consolidate).
 
 - `knowledge_import` moves skill folders, memory files and procedure
   docs the person ticked on the `/setup` page into aegis (help_read setup
