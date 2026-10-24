@@ -277,3 +277,27 @@ async def test_a_start_racing_the_sessions_close_leaves_no_server(agents_world):
         await task
     assert servers.running("L1") == [] and ("L1", "echoer") not in servers._servers
     await until(lambda: not alive(made[0].proc.pid), what="the late server's end")
+
+
+async def test_a_running_server_is_called_without_reading_the_store(
+    agents_world, monkeypatch
+):
+    app = agents_world.app
+    store = app.knowledge.store
+    await save_echoer(app)
+    reads = []
+    real = store.read_file
+    monkeypatch.setattr(
+        store, "read_file", lambda *a, **k: (reads.append(a[2]), real(*a, **k))[1]
+    )
+    a = await agents_world.spawn()
+    ok(await turn(a, mcp("skill_read", name="echoer")))
+    assert sorted(reads) == ["SKILL.md", "server.py"]
+    reads.clear()
+    parses = store.parses
+    ok(await turn(a, call("echoer", "echo", {"text": "x"})))
+    assert reads == [] and store.parses == parses
+    # Another session's start takes the tar packed for this version.
+    b = await agents_world.spawn()
+    ok(await turn(b, mcp("skill_read", name="echoer")))
+    assert reads == [] and app.skill_servers.running(b.log_id) == ["echoer"]

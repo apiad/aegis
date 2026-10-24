@@ -241,6 +241,13 @@ class SkillServers:
             k[1] for k, s in self._servers.items() if k[0] == log_id and s.alive
         )
 
+    def current(self, log_id: str, skill: str, version: int) -> Server | None:
+        """The session's server for ``skill`` when it runs on ``version``."""
+        held = self._servers.get((log_id, skill))
+        if held is not None and held.alive and held.version == version:
+            return held
+        return None
+
     async def ensure(
         self,
         log_id: str,

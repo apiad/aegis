@@ -441,18 +441,28 @@ def register_knowledge_ops(app: App) -> None:
             return cmd
         return None
 
+    # (principal, skill) -> (store version, its folder as a tar): what a
+    # server's start sends, packed once per version of the skill.
+    tars: dict[tuple[str, str], tuple[int, bytes]] = {}
+
     async def server_of(owner: str, it: Item, s):
         """The session's running server for the skill, started if need be."""
         cmd = mcp_command(it)
         if cmd is None:
             raise OpError("no_mcp", f"the skill {it.name!r} brings no MCP server")
+        version = kn.store.item_version(owner, it.name)
 
         def pack() -> bytes:
             names = kn.store.files(owner, it.name)
             return _tar({n: kn.store.read_file(owner, it.name, n) for n in names})
 
         async def tar() -> bytes:
-            return await asyncio.to_thread(pack)
+            held = tars.get((owner, it.name))
+            if held is not None and held[0] == version:
+                return held[1]
+            data = await asyncio.to_thread(pack)
+            tars[(owner, it.name)] = (version, data)
+            return data
 
         try:
             return await app.skill_servers.ensure(
@@ -461,7 +471,7 @@ def register_knowledge_ops(app: App) -> None:
                 cmd,
                 tar,
                 s.spec.linux_user,
-                kn.store.item_version(owner, it.name),
+                version,
             )
         except SkillToolError as e:
             raise OpError("mcp_failed", f"the skill's server: {e}") from e
@@ -613,28 +623,35 @@ def register_knowledge_ops(app: App) -> None:
         server, and it stops when the session closes. The answer is cut at
         20,000 characters. Needs a session with full permission."""
         owner = principal(caller)
-        it = skill(owner, p.skill)
+        check_name(p.skill)
         s = app.sessions.sessions.get(caller.log_id or "")
         need_full(s, "a skill's MCP server")
-        if s is None or it.name not in s.skills:
+        # A server running on the skill as it is now is called without
+        # reading the store; any other goes through the store and starts.
+        name = p.skill
+        if s is None or name not in s.skills:
+            skill(owner, name)  # not_found first, for a name nobody has
             raise OpError(
-                "not_loaded", f"load the skill {it.name!r} with skill_read first"
+                "not_loaded", f"load the skill {name!r} with skill_read first"
             )
-        server = await server_of(owner, it, s)
+        version = kn.store.item_version(owner, name)
+        server = app.skill_servers.current(s.log_id, name, version)
+        if server is None:
+            server = await server_of(owner, skill(owner, name), s)
         if p.tool not in {t["name"] for t in server.tools}:
             raise OpError(
                 "no_such_tool",
-                f"{it.name!r} has no tool {p.tool!r}; it has "
+                f"{name!r} has no tool {p.tool!r}; it has "
                 + ", ".join(t["name"] for t in server.tools),
             )
         try:
             got = await app.skill_servers.call(
-                s.log_id, it.name, p.tool, p.args, p.timeout_s
+                s.log_id, name, p.tool, p.args, p.timeout_s
             )
         except SkillToolError as e:
-            raise OpError("mcp_failed", f"{it.name}/{p.tool}: {e}") from e
-        s.ran_skill(it.name)
-        kn.usage.add(owner, s.log_id, "skill", it.name, "ran", f"tool={p.tool}")
+            raise OpError("mcp_failed", f"{name}/{p.tool}: {e}") from e
+        s.ran_skill(name)
+        kn.usage.add(owner, s.log_id, "skill", name, "ran", f"tool={p.tool}")
         return {
             "is_error": bool(got.get("isError")),
             "content": _cut_content(got.get("content") or []),
