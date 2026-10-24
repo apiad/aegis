@@ -1380,14 +1380,30 @@ class App:
             return []
         return [(it.name, it.description) for it in items if offered(it)]
 
-    def _skill_command(self, s, name: str):
+    def knowledge_native(self, principal: str) -> bool:
+        """Whether ``principal``'s knowledge setting is native, under which a
+        store skill takes the name of a harness command. The setting comes
+        with the switch that turns the harness's own skills off; until then
+        it is off for everyone."""
+        return False
+
+    async def _skill_command(self, s, name: str):
         """The store skill ``/name`` runs in ``s``, or None. ``skill:<name>``
-        reaches one named like an aegis command."""
-        name = name.removeprefix("skill:")
-        if not NAME_RE.match(name):
+        reaches one named like an aegis command, or like a harness command
+        the skill does not shadow because its owner's knowledge is not
+        native."""
+        bare = name.removeprefix("skill:")
+        if not NAME_RE.match(bare):
             return None
-        it = self.knowledge.store.get(s.spec.owner or self.user, name)
-        return it if it is not None and offered(it) else None
+        owner = s.spec.owner or self.user
+        it = self.knowledge.store.get(owner, bare)
+        if it is None or not offered(it):
+            return None
+        if bare == name and not self.knowledge_native(owner):
+            cat = await self.catalogs.get(s)
+            if cat is not None and cat.has(name):
+                return None
+        return it
 
     async def _run_skill(self, s, it, arg: str) -> dict:
         """Deliver a skill's text as one turn, mark it loaded and write an
@@ -1975,7 +1991,7 @@ class App:
                 name, arg = cmd
                 if name in commands.AEGIS:
                     return await self._command(s, name, arg, caller, p.untested)
-                if (sk := self._skill_command(s, name)) is not None:
+                if (sk := await self._skill_command(s, name)) is not None:
                     return await self._run_skill(s, sk, arg)
                 if name.startswith("skill:"):
                     raise OpError(
@@ -2219,22 +2235,25 @@ class App:
         async def commands_list(p: LogParams, caller):
             """What the composer's menu offers this session."""
             s = reg.open(p.log_id)
-            skills = await self._offered_skills(s.spec.owner or self.user)
-            return listing(await self.catalogs.get(s), caller, skills)
+            owner = s.spec.owner or self.user
+            skills = await self._offered_skills(owner)
+            return listing(await self.catalogs.get(s), caller, skills, owner)
 
         @r.op("commands.preview", PreviewParams)
         async def commands_preview(p: PreviewParams, caller):
             """What the new tab's menu offers before its session exists (#632):
             aegis's commands, and the harness's when a session in that
             directory has already listed them."""
-            skills = await self._offered_skills(self.who(caller).name)
+            owner = self.who(caller).name
+            skills = await self._offered_skills(owner)
             try:
                 cwd = self._resolve_cwd(p.cwd)
             except OpError:
-                return listing(None, caller, skills)
-            return listing(self.catalogs.cached(p.harness, cwd), caller, skills)
+                return listing(None, caller, skills, owner)
+            cat = self.catalogs.cached(p.harness, cwd)
+            return listing(cat, caller, skills, owner)
 
-        def listing(cat, caller, skills: list[tuple[str, str]]) -> dict:
+        def listing(cat, caller, skills: list[tuple[str, str]], owner: str) -> dict:
             try:
                 saved = self.saved.listing(self.workflows._agents())
             except Exception:
@@ -2243,14 +2262,21 @@ class App:
                 saved = []
             # /doctor only for an admin while the doctor finds a problem.
             doctor = bool(self.doctor_watch.problems()) and self.who(caller).is_admin
+            # A harness command keeps its name beside a skill of that name
+            # unless the owner's knowledge is native.
+            taken = (
+                {c["name"] for c in cat.commands}.difference(commands.AEGIS)
+                if cat and not self.knowledge_native(owner)
+                else set()
+            )
             return {
                 "commands": [
                     c for c in commands.aegis_wire() if doctor or c["name"] != "doctor"
                 ]
-                + commands.skills_wire(skills)
+                + commands.skills_wire(skills, taken)
                 + (
                     cat.wire_commands(
-                        shadowed={*commands.AEGIS, *(n for n, _ in skills)}
+                        shadowed={*commands.AEGIS, *(n for n, _ in skills)} - taken
                     )
                     if cat
                     else []

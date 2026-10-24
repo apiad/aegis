@@ -118,9 +118,9 @@ sends the session one turn holding the skill's text and your arguments,
 marks the skill loaded and counts the run. aegis sends it
 itself, so a skill works the same in Claude Code, Codex and OpenCode
 sessions. The menu lists your skills after aegis's own commands, marked
-aegis skill. A skill named like an aegis command is offered as
-`/skill:<name>`, and a harness command with a skill's name is hidden
-behind it. Set `command: false` in a skill's `aegis:` block to keep it
+aegis skill. A skill named like an aegis command or like one of the
+harness's own commands is offered as `/skill:<name>`, and the other
+command keeps its name. Set `command: false` in a skill's `aegis:` block to keep it
 out of the menu.
 
 ## Tools for agents

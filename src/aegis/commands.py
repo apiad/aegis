@@ -21,6 +21,7 @@ to disk, so an upgraded CLI never meets a stale list.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -234,18 +235,20 @@ def aegis_wire() -> list[dict]:
     ]
 
 
-def skill_command(name: str) -> str:
+def skill_command(name: str, taken: Iterable[str] = ()) -> str:
     """The name a store skill is offered under: its own, or ``skill:<name>``
-    when an aegis command already holds it."""
-    return f"skill:{name}" if name in AEGIS else name
+    when an aegis command or one of ``taken`` already holds it."""
+    return f"skill:{name}" if name in AEGIS or name in taken else name
 
 
-def skills_wire(skills: list[tuple[str, str]]) -> list[dict]:
+def skills_wire(skills: list[tuple[str, str]], taken: Iterable[str] = ()) -> list[dict]:
     """The menu's rows for the store skills offered as commands, given as
-    (name, description), after aegis's own."""
+    (name, description), after aegis's own. ``taken`` are the harness's
+    names a skill does not shadow."""
+    taken = set(taken)
     return [
         {
-            "name": skill_command(name),
+            "name": skill_command(name, taken),
             "hint": "[args]",
             "doc": description,
             # Apart from "skill", a harness's own (claude/control.py).

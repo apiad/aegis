@@ -32,8 +32,6 @@ async def test_the_catalog_lists_store_skills_after_aegis_commands(app):
     await store.save(
         app.user, skill("quiet-one", "Hidden", aegis={"command": False}), "t"
     )
-    # The fake claude lists a skill "busy" of its own: the store's hides it.
-    await store.save(app.user, skill("busy", "The store's busy"), "t")
     lid = await spawn(app)
     rows = await names(app, lid)
     src = [c["source"] for c in rows]
@@ -41,12 +39,10 @@ async def test_the_catalog_lists_store_skills_after_aegis_commands(app):
     assert all(x == "aegis" for x in src[:first])
     mine = [c for c in rows if c["source"] == "aegis skill"]
     assert [(c["name"], c["doc"]) for c in mine] == [
-        ("busy", "The store's busy"),
         ("release", "Use when cutting a release"),
     ]
-    assert [c["name"] for c in rows].count("busy") == 1
     assert {"draft", "quiet-one"}.isdisjoint(c["name"] for c in rows)
-    assert all(c["source"] not in ("aegis", "aegis skill") for c in rows[first + 2 :])
+    assert all(c["source"] not in ("aegis", "aegis skill") for c in rows[first + 1 :])
     preview = await app.registry.call("commands.preview", {"harness": "claude-code"})
     assert "release" in {c["name"] for c in preview["commands"]}
 
@@ -64,6 +60,38 @@ async def test_a_skill_named_like_an_aegis_command_is_offered_as_skill_colon(app
     with pytest.raises(OpError) as e:
         await send(app, lid, "/skill:nothing")
     assert e.value.code == "unknown_command"
+
+
+async def test_a_harness_command_keeps_its_name_beside_a_skill_of_that_name(app):
+    """The fake claude lists a command "busy" of its own. While the owner's
+    knowledge setting is not native, the harness's keeps /busy and the
+    store's skill is /skill:busy."""
+    await app.knowledge.store.save(app.user, skill("busy", "The store's busy"), "t")
+    lid = await spawn(app)
+    s = app.sessions.sessions[lid]
+    rows = await names(app, lid)
+    assert [c["name"] for c in rows if c["source"] == "aegis skill"] == ["skill:busy"]
+    assert [c["name"] for c in rows].count("busy") == 1
+    assert await send(app, lid, "/skill:busy") == {"status": "delivered"}
+    await until(lambda: inbox(s, "> from skill:busy"), what="the skill's turn")
+    await until(lambda: s.status == "idle", what="the skill's turn to end")
+    assert (await send(app, lid, "/busy 0")) != {"status": "delivered"}
+    assert len(inbox(s, "> from skill:busy")) == 1
+
+
+async def test_with_knowledge_native_a_skill_shadows_the_harness_command(
+    app, monkeypatch
+):
+    monkeypatch.setattr(app, "knowledge_native", lambda principal: True)
+    await app.knowledge.store.save(app.user, skill("busy", "The store's busy"), "t")
+    lid = await spawn(app)
+    s = app.sessions.sessions[lid]
+    rows = await names(app, lid)
+    busy = [c for c in rows if c["name"] == "busy"]
+    assert [c["source"] for c in busy] == ["aegis skill"]
+    assert "skill:busy" not in {c["name"] for c in rows}
+    assert await send(app, lid, "/busy") == {"status": "delivered"}
+    await until(lambda: inbox(s, "> from skill:busy"), what="the skill's turn")
 
 
 async def test_running_a_skill_delivers_its_body_and_args(app):
