@@ -1080,6 +1080,10 @@ body{background:#000}
 #a2 .row.inbox .from{font-family:var(--font-mono);font-size:11.5px;color:var(--comms);margin-bottom:4px}
 #a2 .row.inbox .from .steered{display:inline-block;margin-left:8px;font-size:10.5px;color:var(--accent);border:1px solid var(--rule);border-radius:999px;padding:0 7px}
 #a2 .row.inbox .md{font-size:14px;color:var(--ink)}
+#a2 .row.inbox.err .g,#a2 .row.inbox.err .from{color:var(--err)}
+#a2 .row.inbox.err .body{border-left-color:var(--err)}
+#a2 .row.inbox details>summary{cursor:pointer;font-family:var(--font-mono);font-size:11.5px;color:var(--faint);margin-top:4px}
+#a2 .row.inbox .outfile{font-family:var(--font-mono);font-size:11.5px;color:var(--faint);margin-top:4px;overflow-wrap:anywhere}
 #a2 .mon .kv>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* a monitor's row: ETA on the right, a broken check in red; its card opens on hover (js/monitors.js) */
 #a2 .mon{margin:0 -8px 4px;padding:4px 8px 6px;border-radius:var(--r);cursor:default;outline:none}
