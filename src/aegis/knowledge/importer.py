@@ -4,7 +4,12 @@ memory file, or a procedure doc with a ``when:`` line.
 Everything here blocks and reads only the source: the op runs it on the
 session user's runner (as_user.py), so in multi-user mode the kernel checks
 each read against the member, never the server. A skill folder is read whole,
-scripts and binaries included, up to ``MAX_FOLDER_BYTES``. A symlink that
+scripts and binaries included, up to ``MAX_FOLDER_BYTES`` in at most
+``MAX_FOLDER_FILES`` files. A subfolder it cannot read, or a file that is not
+a regular file (a fifo, a socket, a device), refuses the whole item: a skill
+copied without part of its folder would not be the one the person ticked.
+Each file is read through the descriptor it was checked on, never past the
+size it had then. A symlink that
 leaves the folder is refused, since following it would copy a file the
 person never ticked; one that stays inside is read as the file it names.
 ``.git`` and ``__pycache__`` are left behind: they are a checkout's and an
@@ -17,6 +22,7 @@ which the agent applies after the import.
 from __future__ import annotations
 
 import os
+import stat
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -25,6 +31,7 @@ from .items import FRONT, Item, check_name, parse_memory, parse_skill, _split
 from ..ops import OpError
 
 MAX_FOLDER_BYTES = 20 * 2**20
+MAX_FOLDER_FILES = 2000
 SKIP_DIRS = {".git", "__pycache__"}
 
 
@@ -46,6 +53,28 @@ def _inside(path: Path, top: Path) -> bool:
         return False
 
 
+def _unreadable(e: OSError) -> None:
+    raise _refuse(Path(e.filename or "?"), f"cannot be read ({e.strerror})")
+
+
+def regular_bytes(path: Path) -> bytes:
+    """A regular file's bytes, read through the descriptor its type was
+    checked on and never past the size it had then; anything else is
+    refused. O_NONBLOCK, so opening a fifo does not wait for a writer."""
+    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            raise _refuse(path, "is not a regular file (a fifo, a socket or a device)")
+        with os.fdopen(os.dup(fd), "rb") as f:
+            data = f.read(st.st_size + 1)
+    finally:
+        os.close(fd)
+    if len(data) > st.st_size:
+        raise _refuse(path, "grew while it was read")
+    return data
+
+
 def skill_folder(source: Path) -> tuple[str, dict[str, bytes]]:
     """A skill folder's SKILL.md text and its other files by relative path."""
     if not source.is_dir():
@@ -53,7 +82,7 @@ def skill_folder(source: Path) -> tuple[str, dict[str, bytes]]:
     top = Path(os.path.realpath(source))
     files: dict[str, bytes] = {}
     total = 0
-    for root, dirs, names in os.walk(source):
+    for root, dirs, names in os.walk(source, onerror=_unreadable):
         here = Path(root)
         keep = []
         for d in sorted(dirs):
@@ -69,16 +98,23 @@ def skill_folder(source: Path) -> tuple[str, dict[str, bytes]]:
             p = here / n
             if p.is_symlink() and not _inside(p, top):
                 raise _refuse(p, "is a link that leaves the skill's folder")
-            if not p.is_file():
-                continue  # a socket, a fifo, a dangling link
-            total += p.stat().st_size
+            if not p.exists():
+                continue  # a dangling link
+            if len(files) >= MAX_FOLDER_FILES:
+                raise OpError(
+                    "too_large",
+                    f"{source} holds more than {MAX_FOLDER_FILES} files; a skill "
+                    "holds at most that",
+                )
+            data = regular_bytes(p)
+            total += len(data)
             if total > MAX_FOLDER_BYTES:
                 raise OpError(
                     "too_large",
                     f"{source} holds more than {MAX_FOLDER_BYTES} bytes; a skill "
                     "holds at most that",
                 )
-            files[p.relative_to(source).as_posix()] = p.read_bytes()
+            files[p.relative_to(source).as_posix()] = data
     if "SKILL.md" not in files:
         raise _refuse(source, "has no SKILL.md")
     try:

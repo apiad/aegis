@@ -346,3 +346,45 @@ async def test_a_person_imports_into_a_session_they_name(world, tmp_path):
     assert app.knowledge.store.get(app.user, "host").status == "approved"
     (e,) = cards(s)
     assert e["id"] == got["card"] and e["detail"]["op"] == "imported"
+
+
+async def test_an_unreadable_subfolder_refuses_the_whole_skill(world, tmp_path):
+    app = world.app
+    s = await world.spawn()
+    src = skill_dir(tmp_path)
+    locked = src / "private"
+    locked.mkdir()
+    (locked / "notes.md").write_text("hidden")
+    locked.chmod(0)
+    try:
+        got = await bring(s, {"source": str(src), "kind": "skill"})
+    finally:
+        locked.chmod(0o755)
+    assert got["imported"] == []
+    (r,) = got["refused"]
+    assert r["error"] == "bad_source" and "private" in r["message"]
+    assert "cannot be read" in r["message"]
+    assert app.knowledge.store.get(app.user, "release") is None
+
+
+async def test_a_folder_with_too_many_files_is_refused(world, tmp_path, monkeypatch):
+    s = await world.spawn()
+    assert importer.MAX_FOLDER_FILES == 2000
+    monkeypatch.setattr(importer, "MAX_FOLDER_FILES", 5)
+    src = skill_dir(tmp_path)
+    for i in range(5):
+        (src / f"f{i}.txt").write_text("x")
+    got = await bring(s, {"source": str(src), "kind": "skill"})
+    (r,) = got["refused"]
+    assert r["error"] == "too_large" and "5 files" in r["message"]
+
+
+async def test_a_fifo_in_the_folder_refuses_the_skill(world, tmp_path):
+    import os
+
+    s = await world.spawn()
+    src = skill_dir(tmp_path)
+    os.mkfifo(src / "pipe")
+    got = await bring(s, {"source": str(src), "kind": "skill"})
+    (r,) = got["refused"]
+    assert r["error"] == "bad_source" and "not a regular file" in r["message"]
