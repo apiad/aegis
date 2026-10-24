@@ -753,7 +753,7 @@ class _skill:
         args: builtins.list[str] = ...,
         timeout_s: int = ...,
     ) -> Any:
-        """Run a script a skill you loaded declares under aegis.scripts, with arguments, in a fresh copy of the skill's folder. Returns its exit code, stdout and stderr, each cut at 20,000 characters. Needs a session with full permission."""
+        """Run a script a skill you loaded declares under aegis.scripts, with arguments, in a fresh copy of the skill's folder. Returns its exit code, stdout and stderr, each cut at 20,000 characters, and whether it timed out. Needs a session with full permission."""
     async def save(
         self,
         *,

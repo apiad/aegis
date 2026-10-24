@@ -163,6 +163,9 @@ class RunSkill(_Strict):
 
 
 OUTPUT_CHARS = 20000
+# How long a timed-out run waits for its pipes after the kill, for a child
+# that left the group and still holds them.
+PIPES_AFTER_KILL_S = 5.0
 # What a run keeps of each stream: enough for OUTPUT_CHARS of any UTF-8.
 KEEP_BYTES = 4 * OUTPUT_CHARS
 # Unpack the tar on stdin into a fresh directory of the user's, run the
@@ -503,8 +506,8 @@ def register_knowledge_ops(app: App) -> None:
     async def skill_run(p: RunSkill, caller):
         """Run a script a skill you loaded declares under aegis.scripts, with
         arguments, in a fresh copy of the skill's folder. Returns its exit
-        code, stdout and stderr, each cut at 20,000 characters. Needs a
-        session with full permission."""
+        code, stdout and stderr, each cut at 20,000 characters, and whether
+        it timed out. Needs a session with full permission."""
         owner = principal(caller)
         it = skill(owner, p.skill)
         s = app.sessions.sessions.get(caller.log_id or "")
@@ -545,17 +548,30 @@ def register_knowledge_ops(app: App) -> None:
             _feed(proc.stdin, tar), _drain(proc.stdout, out), _drain(proc.stderr, err)
         )
         code: int | None = None
+        timed_out = False
         try:
             await asyncio.wait_for(asyncio.shield(io_done), p.timeout_s)
             code = await proc.wait()
         except TimeoutError:
+            timed_out = True
             # The whole group: python3 under the shell holds the pipes too.
             await stop_group(proc, s.spec.linux_user)
-            await io_done
+            try:
+                # A child that left the group may still hold them.
+                await asyncio.wait_for(io_done, PIPES_AFTER_KILL_S)
+            except TimeoutError:
+                transport = getattr(proc, "_transport", None)
+                if transport is not None:
+                    transport.close()
             err += f"\n[killed after {p.timeout_s}s]".encode()
         s.ran_skill(it.name)
         kn.usage.add(owner, s.log_id, "skill", it.name, "ran", p.script)
-        return {"exit": code, "stdout": _cut(out), "stderr": _cut(err)}
+        return {
+            "exit": code,
+            "stdout": _cut(out),
+            "stderr": _cut(err),
+            "timed_out": timed_out,
+        }
 
     @r.op("skill.tool", CallSkillTool, agent=True)
     async def skill_tool(p: CallSkillTool, caller):
