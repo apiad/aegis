@@ -868,6 +868,41 @@ def test_text_past_one_line_takes_the_whole_width_and_the_buttons_drop_under_it(
         assert not page.evaluate(stacked, text)
 
 
+def test_on_a_phone_the_focused_box_opens_two_lines_wide(server, browser):
+    """#707: on a phone the empty box was one row beside five buttons, about
+    130 px wide; its placeholder wrapped under the edge, a scroll bar showed,
+    and a tap into it changed nothing."""
+    errors: list = []
+    page = phone(browser, errors)
+    page.goto(server.url)
+    spawn(page, "first")
+    turns_done(page, 1)
+    stacked = (
+        "document.querySelector('#input').closest('.box').classList.contains('stacked')"
+    )
+    box = "document.querySelector('#input')"
+    rect = lambda sel: page.locator(sel).bounding_box()  # noqa: E731
+    assert page.get_attribute("#input", "placeholder") == ""
+    assert not page.evaluate(stacked)
+    page.tap("#input")
+    page.wait_for_function(stacked)
+    t, b = rect("#input"), rect("#send")
+    assert t["height"] >= 64, t
+    assert b["y"] >= t["y"] + t["height"] - 1, (t, b)
+    assert page.evaluate(f"getComputedStyle({box}).overflowY") == "hidden"
+    # A tap on a button keeps the focus, so the box stays open under the finger.
+    page.tap("#send")
+    assert page.evaluate(f"document.activeElement === {box}")
+    assert page.evaluate(stacked)
+    # Away from the box, an empty one closes back to a row.
+    page.evaluate(f"{box}.blur()")
+    page.wait_for_function(f"!{stacked}")
+    # Only text taller than its room scrolls.
+    page.fill("#input", "\n".join(f"line {i}" for i in range(80)))
+    assert page.evaluate(f"getComputedStyle({box}).overflowY") == "auto"
+    assert errors == []
+
+
 def test_a_failed_spawn_keeps_the_text_and_says_why(server, page):
     page.goto(server.url)
     page.click("#tab-add")
