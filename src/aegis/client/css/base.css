@@ -930,7 +930,7 @@ body{background:#000}
 #a2 .ccard .cdiff .at,#a2 .ccard .cdiff .h{color:var(--faint)}
 #a2 .ccard .sbody.why{color:var(--ink)}
 #a2 .kcard .kbody{color:var(--ink);max-height:240px}
-#a2 .kcard .krow{display:flex;align-items:center;gap:8px;padding:4px 0;border-top:1px solid var(--rule)}
+#a2 .kcard .krow{display:flex;align-items:center;gap:8px;padding:6px 12px;border-top:1px solid var(--rule);background:var(--bg);font-size:13px}
 #a2 .kcard .krow .kwhat{flex:1;min-width:0;overflow-wrap:anywhere}
 @media (pointer:coarse){#a2 .scard .btn,#a2 .scard .sform input{min-height:44px}}
 #a2 .fcard .stage{border-top:1px solid var(--rule);background:var(--bg)}
