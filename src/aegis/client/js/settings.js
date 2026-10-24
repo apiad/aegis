@@ -266,6 +266,7 @@ export class Settings {
       this.park(),
       this.untested(),
       this.workflows(),
+      this.fieldSection("knowledge"),
       this.fieldSection("network"),
       this.fieldSection("host"),
     );

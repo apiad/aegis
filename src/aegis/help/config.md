@@ -1,7 +1,7 @@
 ---
 title: Configuration
 kind: concept
-when: adding or changing agents, the default agent, queues, recaps, side notes, the per-session memory cap, notices about disk, memory, CPU and quota, an agent's status and stalled monitors, when aegis nudges a silent agent, parking idle sessions, untested harness versions, the disks the Host rows list or the network readings in .aegis.yaml, or picking a theme
+when: adding or changing agents, the default agent, queues, recaps, side notes, the per-session memory cap, notices about disk, memory, CPU and quota, an agent's status and stalled monitors, when aegis nudges a silent agent, parking idle sessions, untested harness versions, search embeddings for skills and memories, the disks the Host rows list or the network readings in .aegis.yaml, or picking a theme
 hints:
   - Add an agent with its own harness, model and effort in .aegis.yaml. #add-an-agent
   - A cascade starts on a cheap model and moves up when the task needs it. #cascades
@@ -437,6 +437,28 @@ an agent included.
 Settings → Workflows edits it: a row for the total and one per agent; blank
 keeps the default.
 
+## Search embeddings
+
+`knowledge:` turns on the optional embeddings for searching skills and
+memories (help_read knowledge). Off, the default, ranks by keywords alone
+(BM25). With a fastembed model named, search ranks by fusing the keyword
+rank with the model's rank, so a Spanish message can find an English skill
+that shares no word with it.
+
+```yaml
+knowledge:
+  embeddings: minishlab/potion-multilingual-128M   # or off, or another fastembed model
+```
+
+It needs the extra: `uv tool install 'aegis-harness[embeddings]'`. The
+model downloads on first use and stays in memory, about 1.2 GB for this one;
+`sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` is the other
+model worth it, about 1.1 GB and slower. Keep it off on a small host. The key
+is read when aegis starts, so a change needs a restart. Without the extra,
+`aegis doctor` warns and search goes on by keywords alone.
+
+Settings → Knowledge edits it.
+
 ## Terminals
 
 `terminals:` maps a profile's name to `cmd:` and `cwd:`, with `restart:` and
@@ -460,7 +482,7 @@ The Settings page edits the same file as a form, every key on this page
 included: agents with their chips, models, priming and kept tools, which one
 is the default, the queues, recaps and side notes, terminals, the memory
 caps, the context thresholds, nudges, notices, parking, untested versions,
-workflows and the network readings. A field left blank is left out of the
+workflows, the search embeddings and the network readings. A field left blank is left out of the
 file, so its default holds; the field shows the default. It keeps the file's
 comments and key order, and keys it does not read, and refuses to save over a
 change made on disk since you opened it. Only an admin can save.

@@ -543,7 +543,10 @@ class App:
             roots.state_root, self.publish, user_of=self._linux_user_of_session
         )
         reg.journal = self.journal
-        self.knowledge = Knowledge(roots.state_root)
+        # knowledge.embeddings is read once, here: a change needs a restart.
+        self.knowledge = Knowledge(
+            roots.state_root, self.config.current().knowledge["embeddings"]
+        )
         reg.knowledge = self.knowledge
         self.skill_servers = SkillServers()
         reg.skill_servers = self.skill_servers

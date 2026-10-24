@@ -140,6 +140,14 @@ body. It folds accents and cuts words to their first five letters, so
 "configuración" finds "configuration", but different words in two
 languages, such as "despliegue" and "deploy", do not meet.
 
+An admin can add an embedding model for that (`knowledge.embeddings`,
+help_read config search embeddings). Search then fuses the BM25 rank
+with the model's rank, never the model alone. `memory_search` and
+`skill_search` wait for the model; the block under a message never does,
+so it uses the model only for text the model already read, and BM25
+alone otherwise, while the model loads and on a message it has not seen.
+The Knowledge view's search stays BM25, since it filters the list.
+
 ## Skills
 
 A skill is a procedure for one kind of task, in the SKILL.md format other

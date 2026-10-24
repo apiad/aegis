@@ -585,7 +585,9 @@ def register_knowledge_ops(app: App) -> None:
         their description, score, status and flags; read one with memory_read.
         Proposed and expired memories are included and marked."""
         owner = principal(caller)
-        hits = (await kn.index(owner)).rank(p.query, "memory", p.limit)
+        ix = await kn.index(owner)
+        qv = await kn.query_vector(p.query) if ix.vectors is not None else None
+        hits = ix.rank(p.query, "memory", p.limit, query_vector=qv)
         return {
             "hits": [
                 {
@@ -728,7 +730,9 @@ def register_knowledge_ops(app: App) -> None:
         a release) with your own words, before you start a task. Returns the
         best names with their description, score and status; load one with
         skill_read."""
-        hits = (await kn.index(principal(caller))).rank(p.query, "skill", p.limit)
+        ix = await kn.index(principal(caller))
+        qv = await kn.query_vector(p.query) if ix.vectors is not None else None
+        hits = ix.rank(p.query, "skill", p.limit, query_vector=qv)
         return {
             "hits": [
                 {
@@ -1495,6 +1499,8 @@ def register_knowledge_ops(app: App) -> None:
         used = await asyncio.to_thread(kn.usage.summary, owner)
         q = p.query.strip()
         if q:
+            # BM25 alone, even with embeddings: the view's search is a filter,
+            # and a cosine rank would keep every item.
             ix = await kn.index(owner)
             n = max(len(items), 1)
             hits = ix.rank(q, "skill", n) + ix.rank(q, "memory", n)

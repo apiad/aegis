@@ -1,0 +1,2 @@
+- **Optional embeddings for searching skills and memories.** With the `aegis-harness[embeddings]` extra installed and `knowledge.embeddings` naming a fastembed model in `.aegis.yaml` (or in Settings → Knowledge), `memory_search` and `skill_search` fuse the keyword rank with the model's, so a message in one language finds an item written in another. Off by default; the vectors are cached on disk, the block under a message never waits for the model, and `aegis doctor` warns when the key is set without the extra.
+help: config#search-embeddings

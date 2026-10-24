@@ -494,6 +494,15 @@ an Undo that reverts its own import commit; in any other turn each item is
 a proposal with its own card. A person calling the op names the session
 for its card (`log_id`). The setup record (`setup.Records`) keeps what was imported
 and is merged, never replaced, by each write.
+The optional embeddings (`knowledge.embeddings`, `knowledge/embed.py`) only
+ever add to BM25: an index built in a thread holds each item's vector, and a
+rank given the query's vector fuses the two ranks (k = 60). The model loads
+and encodes only in threads, its vectors cached on disk by content hash under
+`<state>/knowledge-vectors/`. The hint on a send never waits for it: the
+first index built in place on a send has no vectors, and a send uses the
+query's vector only when it is already in memory, else BM25 alone while the
+text is encoded in the background. Search tools await the vector. The
+default path imports nothing outside the standard library.
 
 **A session's own status is a notice its subsystems push.** Beside the host
 kinds, `Notices.set(log_id, source, items)` takes per-session items from a
