@@ -64,14 +64,15 @@ def test_the_card_undoes(server, page):
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page, "hello")
     mcp(page, 2, "memory_save", {**MEMORY, "asked": True})
-    assert page.locator(CARD).count() == 0  # asked for: no card
+    # Typed by the person, so saved at once, with Undo all the same.
+    last_says(page, "memory saved by the agent, as you asked")
+    assert "status: approved" in stored(server, "merge-after-green")
     changed = {**MEMORY, "body": "Only the required checks."}
     mcp(page, 3, "memory_save", changed)
-    page.wait_for_selector(f"{CARD} button:has-text('Undo')")
-    assert "memory changed by the agent" in page.inner_text(CARD)
+    last_says(page, "memory changed by the agent")
     assert "required checks" in stored(server, "merge-after-green")
     fits(page)
-    page.click(f"{CARD} button:has-text('Undo')")
+    page.locator(CARD).last.locator("button:has-text('Undo')").click()
     last_says(page, "Undone")
     assert "without being asked" in stored(server, "merge-after-green")
     turns_done(page, 4)

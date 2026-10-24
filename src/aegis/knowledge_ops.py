@@ -10,8 +10,11 @@ and deletes are not. A save is one commit in the principal's store
 An item an agent saves on its own initiative (``asked`` false) is written
 ``status: proposed`` and a card goes in the session's transcript; a proposal
 is never hinted, and a proposed skill is not offered as a command, but
-skill_read loads it by name. An agent's update or delete of an approved item
-applies at once and its card offers Undo, which reverts that commit. Approve,
+skill_read loads it by name. ``asked`` counts only in a turn a person's
+message began (Session.person_turn); an item it saves approved still gets a
+card that offers Undo. An agent's update or delete of an approved item
+applies at once, asked or not, and its card offers Undo, which reverts that
+commit. Approve,
 Discard and Undo are the session owner's ops on the owner's store. The card
 is a transcript record, so it works after a restart.
 
@@ -109,7 +112,8 @@ class SaveMemory(_Strict):
     asked: bool = Field(
         False,
         description="true when the person asked you to remember this "
-        "(/remember, 'remember that ...').",
+        "(/remember, 'remember that ...'). It counts only in a turn that began "
+        "with the person's own message.",
     )
 
 
@@ -328,13 +332,19 @@ def offered(it: Item) -> bool:
     return it.kind == "skill" and it.status == "approved" and command is not False
 
 
-def saved_answer(name: str, status: str, card: str | None) -> dict:
+def saved_answer(
+    name: str, status: str, card: str | None, unheard: bool = False
+) -> dict:
     out: dict = {"saved": name, "status": status}
     if status == "proposed":
         out["note"] = (
             "proposed: a card in your transcript asks the person to approve it;"
             " until then it is not hinted"
         )
+        if unheard:
+            out["note"] += (
+                ". asked counts only in a turn that began with the person's own message"
+            )
     if card:
         out["card"] = card
     return out
@@ -357,6 +367,15 @@ def register_knowledge_ops(app: App) -> None:
         return (
             app.sessions.sessions.get(caller.log_id or "") if caller.is_agent else None
         )
+
+    def honoured(caller: Caller, asked: bool) -> bool:
+        """``asked`` counts only in a turn a person's message began
+        (Session.person_turn): an agent woken by a handoff, a queue task or
+        a monitor cannot speak for the person."""
+        if not asked or not caller.is_agent:
+            return asked
+        s = agent_session(caller)
+        return s is not None and s.person_turn
 
     def status_for(caller: Caller, asked: bool, held: Item | None) -> str:
         """approved when the person asked, or for a change to an approved
@@ -391,16 +410,21 @@ def register_knowledge_ops(app: App) -> None:
     async def after_save(
         caller: Caller, owner: str, asked: bool, held, name: str, sha: str
     ):
-        """The card a save by an agent leaves: a proposal's, or Undo for a
-        change to an approved item. A save the person asked for has none."""
+        """The card a save by an agent leaves: a proposal's; Undo for a change
+        to an approved item, asked or not; Undo for an item saved approved
+        because the person asked."""
         s = agent_session(caller)
         it = kn.store.get(owner, name)
-        if s is None or asked or it is None:
+        if s is None or it is None:
             return None
         if it.status == "proposed":
             return record_card(s, "new", it, sha)
-        if held is not None and held.status == "approved" and sha:
+        if not sha:
+            return None
+        if held is not None and held.status == "approved":
             return record_card(s, "changed", it, sha)
+        if asked:
+            return record_card(s, "saved", it, sha)
         return None
 
     def memory(owner: str, name: str) -> Item:
@@ -455,7 +479,9 @@ def register_knowledge_ops(app: App) -> None:
         """Save a memory: one fact that later sessions should know, such as
         who the person is, how they want you to work, or where something
         runs. Saving an existing name replaces that memory. Set asked: true
-        when the person asked you to remember it. Otherwise a new memory is
+        when the person's message that began this turn asked you to remember
+        it; it is then saved at once, with a card that lets them undo it.
+        Otherwise a new memory is
         proposed: a card in your transcript asks the person to approve it,
         and it is not hinted until then; a change to an approved one applies
         at once, and its card lets the person undo it."""
@@ -469,7 +495,8 @@ def register_knowledge_ops(app: App) -> None:
         created = (held.meta.get("created") if held is not None else None) or (
             datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         )
-        status = status_for(caller, p.asked, held)
+        asked = honoured(caller, p.asked)
+        status = status_for(caller, asked, held)
         meta = {
             "type": p.type,
             "lifetime": p.lifetime,
@@ -484,8 +511,8 @@ def register_knowledge_ops(app: App) -> None:
         sha = await kn.store.save(owner, it, author(caller))
         await kn.refresh(owner)  # the next send's hint sees it
         kn.usage.add(owner, caller.log_id or "", "memory", p.name, "saved")
-        card = await after_save(caller, owner, p.asked, held, p.name, sha)
-        out = saved_answer(p.name, status, card)
+        card = await after_save(caller, owner, asked, held, p.name, sha)
+        out = saved_answer(p.name, status, card, p.asked and not asked)
         if (now := kn.store.get(owner, p.name)) is not None:
             await app.knowledge_check(owner, [now])
             if flags := kn.flags_of(owner, p.name, now.expired()):
@@ -655,7 +682,8 @@ def register_knowledge_ops(app: App) -> None:
         held = kn.store.get(owner, p.name)
         if held is not None and held.kind != "skill":
             held = None  # the store refuses it as name_taken
-        status = status_for(caller, p.asked, held)
+        asked = honoured(caller, p.asked)
+        status = status_for(caller, asked, held)
         meta: dict = {"aegis": p.aegis} if p.aegis else {}
         if status == "proposed":
             meta["status"] = status
@@ -663,8 +691,8 @@ def register_knowledge_ops(app: App) -> None:
         sha = await kn.store.save(owner, it, author(caller), extra=extra)
         await kn.refresh(owner)
         kn.usage.add(owner, caller.log_id or "", "skill", p.name, "saved")
-        card = await after_save(caller, owner, p.asked, held, p.name, sha)
-        return saved_answer(p.name, status, card)
+        card = await after_save(caller, owner, asked, held, p.name, sha)
+        return saved_answer(p.name, status, card, p.asked and not asked)
 
     @r.op("skill.run", RunSkill, agent=True)
     async def skill_run(p: RunSkill, caller):
@@ -916,7 +944,7 @@ def register_knowledge_ops(app: App) -> None:
 
     @r.op("knowledge.card.undo", CardRef, owned="log_id")
     async def card_undo(p: CardRef, caller):
-        s, e, owner = pending_card(p, ("changed", "deleted"))
+        s, e, owner = pending_card(p, ("changed", "deleted", "saved"))
         d = e["detail"]
         what = f"the {d['item_kind']} {d['name']}"
         with answer(s, p.id):
@@ -928,11 +956,10 @@ def register_knowledge_ops(app: App) -> None:
                 await refused(s, p.id, err, caller, d)
                 raise
             await kn.refresh(owner)
-            done = (
-                "restored"
-                if d["op"] == "deleted"
-                else "back as it was before your change"
-            )
+            done = {
+                "deleted": "restored",
+                "saved": "as it was before you saved it",
+            }.get(d["op"], "back as it was before your change")
             await card_done(
                 s,
                 p.id,

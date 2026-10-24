@@ -59,6 +59,7 @@ async def save(s, name="merge-after-green", asked=False, **kw) -> dict:
                 asked=asked,
                 **kw,
             ),
+            by_person=asked,
         )
     )
 
@@ -81,13 +82,85 @@ async def test_an_agents_own_memory_is_proposed_and_not_hinted(world):
     assert hits[0]["name"] == "merge-after-green" and hits[0]["status"] == "proposed"
 
 
-async def test_asked_true_saves_approved_without_a_card(world):
+async def test_asked_in_a_persons_turn_saves_approved_with_an_undo_card(world):
     app = world.app
     s = await world.spawn()
     got = await save(s, asked=True)
-    assert got == {"saved": "merge-after-green", "status": "approved"}
-    assert cards(s) == []
+    assert got["status"] == "approved" and set(got) == {"saved", "status", "card"}
+    e = card(s, got["card"])
+    assert e["detail"]["op"] == "saved" and len(e["detail"]["sha"]) == 40
     assert "merge-after-green" in hinted(app, s, "merge the PR after the checks")
+    assert await press(world, s, got["card"], "undo") == "ok"
+    assert app.knowledge.store.get(app.user, "merge-after-green") is None
+
+
+async def test_asked_never_skips_the_undo_card_of_a_change(world):
+    app = world.app
+    s = await world.spawn()
+    await save(s, asked=True)
+    got = await save(s, asked=True, body="Only the required checks.")
+    assert got["status"] == "approved" and card(s, got["card"])["detail"]["op"] == (
+        "changed"
+    )
+    assert await press(world, s, got["card"], "undo") == "ok"
+    it = app.knowledge.store.get(app.user, "merge-after-green")
+    assert "without being asked" in it.body
+
+
+async def test_asked_outside_a_persons_turn_is_a_proposal(world):
+    app = world.app
+    s = await world.spawn()
+    said = await turn(
+        s,
+        mcp(
+            "memory_save",
+            name="merge-after-green",
+            description="Merge a PR only after every check",
+            body="The author merges without being asked.",
+            asked=True,
+        ),
+    )
+    got = ok(said)
+    assert got["status"] == "proposed" and "person's own message" in got["note"]
+    assert card(s, got["card"])["detail"]["op"] == "new"
+    assert app.knowledge.store.get(app.user, "merge-after-green").status == "proposed"
+
+
+async def test_asked_in_a_queue_task_is_a_proposal(world):
+    app = world.app
+    s = await world.spawn()
+    payload = mcp(
+        "memory_save",
+        name="from-a-worker",
+        description="A worker says it was asked",
+        body="It was not.",
+        asked=True,
+    )
+    said = await turn(
+        s, mcp("queue_enqueue", queue="general", payload=payload), by_person=True
+    )
+    t = app.queues.tasks[ok(said)["task_id"]]
+    await until(
+        lambda: t.worker and cards(world.session(t.worker)),
+        timeout=10,
+        what="the worker's card",
+    )
+    assert app.knowledge.store.get(app.user, "from-a-worker").status == "proposed"
+    assert [e["detail"]["op"] for e in cards(world.session(t.worker))] == ["new"]
+
+
+async def test_the_turn_knows_whether_a_person_began_it(world):
+    app = world.app
+    s = await world.spawn()
+    send = app.registry.call
+    await send("session.send", {"log_id": s.log_id, "text": "hello"})
+    assert s.person_turn
+    await until(lambda: s.status == "idle", timeout=8, what="idle")
+    await s.deliver(f"> from agent:{s.handle} · now", "a handoff")
+    assert not s.person_turn
+    await until(lambda: s.status == "idle", timeout=8, what="idle")
+    await send("session.send", {"log_id": s.log_id, "text": "/remember the sky"})
+    assert s.person_turn
 
 
 async def test_approve_makes_it_hintable(world):
@@ -175,7 +248,7 @@ async def test_cards_survive_a_restart(world):
     lid = s.log_id
     await world.restart()
     s = world.session(lid)
-    assert {e["id"] for e in cards(s)} == {new, gone}
+    assert {new, gone} <= {e["id"] for e in cards(s)}
     assert await press(world, s, new, "approve") == "ok"
     assert await press(world, s, gone, "undo") == "ok"
     assert world.app.knowledge.store.get(app.user, "other-fact") is not None

@@ -99,6 +99,7 @@ async def test_a_missing_backticked_path_flags_stale_but_stays_hinted(world):
                 body="Start the bot with `repos/bot/run.py`.",
                 asked=True,
             ),
+            by_person=True,
         )
     )
     assert got["flags"] == ["stale:repos/bot/run.py"]
@@ -127,6 +128,7 @@ async def test_a_present_path_raises_no_flag(world):
                 body="Read `deploy.md` first.",
                 asked=True,
             ),
+            by_person=True,
         )
     )
     assert "flags" not in got
@@ -175,6 +177,7 @@ async def test_a_members_paths_are_checked_as_the_member_in_their_home(members, 
                 body="It is `plan.md`; the old one was `old/plan.md`.",
                 asked=True,
             ),
+            by_person=True,
         )
     )
     assert got["flags"] == ["stale:old/plan.md"]

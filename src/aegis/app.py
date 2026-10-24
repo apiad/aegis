@@ -1464,7 +1464,9 @@ class App:
             not_saved = await self._version_gate(caller, s.spec.harness, untested, s)
             s.launch_by = "agent" if caller.is_agent else "person"
         try:
-            did = await s.deliver(*skill_turn(it.name, it.body, arg, iso_now()))
+            did = await s.deliver(
+                *skill_turn(it.name, it.body, arg, iso_now()), by_person=True
+            )
         finally:
             s.launch_by = "agent"
         s.load_skill(it.name)
@@ -1578,7 +1580,7 @@ class App:
                     "this session has read permission, so its agent cannot save"
                     " a memory; use /remember in a session that can write",
                 )
-            await s.deliver(*remember_turn(arg, iso_now()))
+            await s.deliver(*remember_turn(arg, iso_now()), by_person=True)
             return {"status": "delivered"}
         if name in ("workflow", "loop"):
             # A person's line launches a saved workflow: the only path, beside
@@ -2014,7 +2016,7 @@ class App:
                 ) from e
             if p.prompt:
                 try:
-                    await s.send(p.prompt)
+                    await s.send(p.prompt, by_person=person)
                 except (BrokenPipeError, ConnectionResetError, FileNotFoundError) as e:
                     raise OpError(
                         "send_failed",
@@ -2095,7 +2097,12 @@ class App:
                         )
                     except files.FileError as e:
                         raise OpError(e.code, e.message) from e
-                await s.send(att.message(text, sent), typed=text, attached=sent)
+                await s.send(
+                    att.message(text, sent),
+                    typed=text,
+                    attached=sent,
+                    by_person=not caller.is_agent,
+                )
                 if not_saved:
                     return {"not_saved": not_saved}
             except FileNotFoundError as e:

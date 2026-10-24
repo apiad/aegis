@@ -468,10 +468,11 @@ function fillConfig(card, e) {
 }
 
 // A memory or skill an agent saved (knowledge_ops.py): a proposal with
-// Approve and Discard, or a change to an approved item with Undo. The card
+// Approve and Discard, or with Undo a change to an approved item or an item
+// saved approved because the person asked. The card
 // is a transcript record, so its buttons work after a restart; the outcome
 // comes back as the folded entry.
-const KNOWLEDGE_VERB = { new: "proposed", changed: "changed", deleted: "deleted" };
+const KNOWLEDGE_VERB = { new: "proposed", changed: "changed", deleted: "deleted", saved: "saved as you asked" };
 const KNOWLEDGE_DONE = {
   approved: "Approved. It is hinted from now on; the agent was told.",
   discarded: "Discarded. It was deleted; the agent was told.",
@@ -488,7 +489,7 @@ function fillKnowledge(card, e) {
   const bar = el("div", "fbar");
   const acts = el("span", "acts");
   bar.append(entryIcon(e.glyph), el("span", "fn", d.name || ""), el("span", "fs", pending ? KNOWLEDGE_VERB[d.op] || d.op : e.status), acts);
-  const about = [`${d.item_kind} ${KNOWLEDGE_VERB[d.op] || d.op} by the agent`, d.type, d.lifetime === "temporary" && d.expires ? `until ${d.expires}` : d.lifetime];
+  const about = [d.op === "saved" ? `${d.item_kind} saved by the agent, as you asked` : `${d.item_kind} ${KNOWLEDGE_VERB[d.op] || d.op} by the agent`, d.type, d.lifetime === "temporary" && d.expires ? `until ${d.expires}` : d.lifetime];
   const kids = [bar, el("div", "sbody dim", about.filter(Boolean).join(" · ")), el("div", "sbody why", d.description || "")];
   if (d.body) kids.push(el("pre", "cdiff kbody", d.body));
   if (!pending) {

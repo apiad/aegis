@@ -453,8 +453,12 @@ store is out of a member's reach. A skill's MCP tools stay behind the one
 `skill_tool`: the endpoint is stateless and Codex does not re-read a tool list
 mid-session by default, so no tool is added to it per session. What an agent
 saves unasked is `status: proposed` in the file itself, so the index, the hint
-and the command menu need no other table to leave it out. Its card, and the
-Undo card of an agent's change to an approved item, are transcript records
+and the command menu need no other table to leave it out. `asked` counts only
+when the session's current turn began with a person's message:
+`Session.person_turn`, set by a send that starts a turn from a typed message
+or a person's `/` line and cleared by any other, in memory only. An item saved
+approved because of it gets an Undo card, as every agent change to an
+approved item does. A proposal's card and the Undo cards are transcript records
 like config_suggest's: the record carries what the card shows, the commit Undo
 reverts and a digest of the proposal's text, so the buttons work after a
 restart and Approve never approves a later text the person was not shown.

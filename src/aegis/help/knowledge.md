@@ -40,11 +40,14 @@ Discard. Approve makes it a memory like any other. Discard deletes it.
 Until you approve it, a proposal is never named under a message, and a
 proposed skill is not a command in the composer, though an agent that
 knows its name can still load it with `skill_read`. A proposal you do not
-answer stays proposed. When you asked for it, with /remember or in your
-own words, the agent saves it approved and no card is shown.
+answer stays proposed. When you asked for it in the message that began
+the agent's turn, with /remember or in your own words, the agent saves it
+approved, and its card says so and offers Undo. A request that reaches the
+agent any other way (from another agent, a queue task or one of aegis's
+wakes) does not count: what it saves then is proposed.
 
 When an agent changes or deletes a memory or skill you already approved,
-the change applies at once, and its card names the change with an Undo
+the change applies at once, whether or not you asked for it, and its card names the change with an Undo
 button, which reverts that one commit in the history. Undo cannot revert
 a change that a later change to the same lines built on; the card then
 says so and nothing moves.
@@ -169,8 +172,8 @@ out of the menu.
   words, and marks expired ones.
 - `memory_read` returns one or more memories in full, by name.
 - `memory_save` creates or replaces a memory. An agent passes `asked=true`
-  when you asked it to remember something; otherwise a new memory is
-  proposed and waits for your Approve.
+  when your message that began its turn asked it to remember something;
+  otherwise a new memory is proposed and waits for your Approve.
 - `memory_delete` deletes one; the history keeps it, and the card of an
   approved one offers Undo.
 - `skill_search` ranks your skills against what the agent is about to do.

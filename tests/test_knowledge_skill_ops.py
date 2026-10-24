@@ -68,9 +68,10 @@ async def test_an_agent_saves_a_skill_with_files(agents_world):
                 aegis={"scripts": ["bump.py"]},
                 asked=True,
             ),
+            by_person=True,
         )
     )
-    assert saved == {"saved": "release", "status": "approved"}
+    assert saved.pop("card") and saved == {"saved": "release", "status": "approved"}
     it = app.knowledge.store.get(app.user, "release")
     assert it.kind == "skill" and it.meta["aegis"] == {"scripts": ["bump.py"]}
     assert (
