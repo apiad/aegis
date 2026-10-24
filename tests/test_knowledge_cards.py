@@ -5,6 +5,7 @@ agent's change to an approved item applies at once with an Undo card."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import pytest
@@ -211,3 +212,47 @@ async def test_the_card_acts_on_the_session_owners_store(members):
     await app.registry.call("knowledge.card.approve", {"log_id": ben.log_id, "id": id})
     assert app.knowledge.store.get("ben", "ben-fact").status == "approved"
     assert app.knowledge.store.get(app.user, "ben-fact") is None
+
+
+def records(s, kind: str) -> list[dict]:
+    rows = [json.loads(ln) for ln in s.store.path.read_text().splitlines() if ln]
+    return [r for r in rows if r.get("kind") == kind]
+
+
+async def outcomes(*presses) -> list:
+    got = await asyncio.gather(*presses, return_exceptions=True)
+    return [g if isinstance(g, str) else g.code for g in got]
+
+
+async def test_two_presses_at_once_act_once(world):
+    app = world.app
+    s = await world.spawn()
+    id = (await save(s))["card"]
+    got = await outcomes(press(world, s, id, "approve"), press(world, s, id, "approve"))
+    assert sorted(got) == ["gone", "ok"]
+    assert len(records(s, "knowledge_card_done")) == 1
+    await until(lambda: woken(s, f"knowledge:{id} · approved"), timeout=8, what="wake")
+    await until(lambda: s.status == "idle", timeout=8, what="idle")
+    other = (await save(s, name="second-fact"))["card"]
+    got = await outcomes(
+        press(world, s, other, "approve"), press(world, s, other, "discard")
+    )
+    assert sorted(got) == ["gone", "ok"]
+    assert card(s, other)["status"] in ("approved", "discarded")
+    assert app.knowledge.store.get(app.user, "merge-after-green").status == "approved"
+
+
+async def test_a_resave_racing_an_approve_never_approves_unseen_text(world):
+    app = world.app
+    s = await world.spawn()
+    id = (await save(s))["card"]
+    store = app.knowledge.store
+    path = store.dir(app.user) / "memories" / "merge-after-green.md"
+    async with store._lock(app.user):
+        pressing = asyncio.create_task(press(world, s, id, "approve"))
+        await asyncio.sleep(0.2)  # the press waits on the store's lock
+        path.write_text(path.read_text().replace("without being asked", "never"))
+    got = await outcomes(pressing)
+    assert got == ["stale"] and card(s, id)["status"] == "stale"
+    it = store.get(app.user, "merge-after-green")
+    assert it.status == "proposed" and "never" in it.body

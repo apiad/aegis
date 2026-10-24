@@ -18,6 +18,7 @@ import logging
 import posixpath
 import shutil
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
 from . import history
@@ -25,6 +26,9 @@ from .items import Item, Kind, check_name, dump, parse_memory, parse_skill
 from ..ops import OpError
 
 log = logging.getLogger("aegis.knowledge")
+
+# A check of the item as it is, run under the lock before a change.
+Expect = Callable[[Item | None], None]
 
 
 class Store:
@@ -259,14 +263,25 @@ class Store:
             raise _history_failed(e) from None
 
     async def set_status(
-        self, principal: str, name: str, status: str, author: str, verb: str
+        self,
+        principal: str,
+        name: str,
+        status: str,
+        author: str,
+        verb: str,
+        expect: Expect | None = None,
     ) -> str:
         """Set an item's ``status`` and commit, rewriting only its own file,
-        so a skill keeps the other files of its folder; the commit's sha."""
+        so a skill keeps the other files of its folder; the commit's sha.
+        ``expect`` runs in a thread under the lock with the item as it is
+        (None when it is gone) and raises to stop the change, so nothing
+        lands between its check and the write."""
         base = self.dir(principal)
         check_name(name)
         async with self._lock(principal):
             item = self.get(principal, name)
+            if expect is not None:
+                await asyncio.to_thread(expect, item)
             if item is None:
                 raise OpError("not_found", f"no item named {name!r}")
             new = Item(
@@ -295,14 +310,21 @@ class Store:
             raise _history_failed(e) from None
 
     async def delete(
-        self, principal: str, name: str, author: str, verb: str = "delete"
+        self,
+        principal: str,
+        name: str,
+        author: str,
+        verb: str = "delete",
+        expect: Expect | None = None,
     ) -> str:
         """Delete an item and commit; the commit's sha, "" when git never
-        tracked it."""
+        tracked it. ``expect`` as for set_status."""
         base = self.dir(principal)
         check_name(name)
         async with self._lock(principal):
             item = self.get(principal, name)
+            if expect is not None:
+                await asyncio.to_thread(expect, item)
             if item is None:
                 raise OpError("not_found", f"no item named {name!r}")
             sha = await asyncio.to_thread(self._remove, base, item, author, verb)

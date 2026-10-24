@@ -37,6 +37,7 @@ import json
 import secrets
 import tarfile
 import time
+from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING, Literal
 
@@ -779,6 +780,10 @@ def register_knowledge_ops(app: App) -> None:
             "content": _cut_content(got.get("content") or []),
         }
 
+    # Cards being answered now: a second press while the first is at work is
+    # refused, so a card is answered once whatever the timing.
+    answering: set[tuple[str, str]] = set()
+
     def pending_card(p: CardRef, ops: tuple[str, ...]):
         s = app.sessions.open(p.log_id)
         e = s.fold().entry(p.id)
@@ -786,10 +791,19 @@ def register_knowledge_ops(app: App) -> None:
             raise OpError(
                 "not_found", f"no such knowledge card {p.id!r} in this session"
             )
-        if e["status"] != "pending":
-            raise OpError("gone", f"the card {p.id} is {e['status']}")
+        if e["status"] != "pending" or (s.log_id, p.id) in answering:
+            raise OpError("gone", f"the card {p.id} was already answered")
         # The session owner's store: the card is about the agent's items.
         return s, e, s.spec.owner or app.user
+
+    @contextmanager
+    def answer(s, id: str):
+        """Hold the card while one press acts on it and records its outcome."""
+        answering.add((s.log_id, id))
+        try:
+            yield
+        finally:
+            answering.discard((s.log_id, id))
 
     async def card_done(s, id: str, outcome: str, caller: Caller, body: str) -> None:
         s.record_knowledge(
@@ -802,18 +816,28 @@ def register_knowledge_ops(app: App) -> None:
         )
         await s.deliver(card_header(id, outcome), body)
 
-    async def unchanged(s, e: dict, owner: str, caller: Caller) -> Item:
-        """The proposal as its card showed it; else the card ends stale or
-        gone, the agent is told, and the op answers that."""
-        d, id = e["detail"], e["id"]
-        it = kn.store.get(owner, d["name"])
+    def as_shown(d: dict):
+        """The store's check, under its lock, that the proposal is still the
+        text its card showed: else ``gone`` or ``stale``, and nothing moves."""
         what = f"the {d['item_kind']} {d['name']}"
-        if it is None or it.kind != d["item_kind"]:
+
+        def expect(it: Item | None) -> None:
+            if it is None or it.kind != d["item_kind"]:
+                raise OpError("gone", f"{what} no longer exists")
+            if it.status != "proposed" or digest(it) != d.get("digest"):
+                raise OpError("stale", f"{what} changed since this card was shown")
+
+        return expect
+
+    async def refused(s, id: str, err: OpError, caller: Caller, d: dict) -> None:
+        """Tell the agent why a press did nothing, for the outcomes that end
+        the card."""
+        what = f"the {d['item_kind']} {d['name']}"
+        if err.code == "gone":
             await card_done(
                 s, id, "gone", caller, f"{what} no longer exists; nothing was done."
             )
-            raise OpError("gone", f"{what} no longer exists")
-        if it.status != "proposed" or digest(it) != d.get("digest"):
+        elif err.code == "stale":
             await card_done(
                 s,
                 id,
@@ -821,49 +845,73 @@ def register_knowledge_ops(app: App) -> None:
                 caller,
                 f"{what} changed since its card was shown; nothing was done.",
             )
-            raise OpError("stale", f"{what} changed since this card was shown")
-        return it
+        elif err.code == "conflict":
+            await card_done(
+                s,
+                id,
+                "conflict",
+                caller,
+                f"The person tried to undo your change to {what}, but it changed "
+                "again since; nothing was undone.",
+            )
 
     @r.op("knowledge.card.approve", CardRef, owned="log_id")
     async def card_approve(p: CardRef, caller):
         s, e, owner = pending_card(p, ("new",))
-        it = await unchanged(s, e, owner, caller)
-        await kn.store.set_status(
-            owner, it.name, "approved", principal(caller), "approve"
-        )
-        await kn.refresh(owner)
-        kn.usage.add(owner, s.log_id, it.kind, it.name, "approved")
-        offered_as = (
-            f", and offered as /{it.name}"
-            if offered(
-                Item(it.kind, it.name, "", "", {**it.meta, "status": "approved"})
+        d = e["detail"]
+        with answer(s, p.id):
+            try:
+                await kn.store.set_status(
+                    owner,
+                    d["name"],
+                    "approved",
+                    principal(caller),
+                    "approve",
+                    expect=as_shown(d),
+                )
+            except OpError as err:
+                await refused(s, p.id, err, caller, d)
+                raise
+            await kn.refresh(owner)
+            it = kn.store.get(owner, d["name"])
+            kn.usage.add(owner, s.log_id, d["item_kind"], d["name"], "approved")
+            offered_as = (
+                f", and offered as /{d['name']}"
+                if it is not None and offered(it)
+                else ""
             )
-            else ""
-        )
-        await card_done(
-            s,
-            p.id,
-            "approved",
-            caller,
-            f"The person approved the {it.kind} {it.name}; it is hinted from now on"
-            f"{offered_as}.",
-        )
+            await card_done(
+                s,
+                p.id,
+                "approved",
+                caller,
+                f"The person approved the {d['item_kind']} {d['name']}; it is hinted "
+                f"from now on{offered_as}.",
+            )
         return "ok"
 
     @r.op("knowledge.card.discard", CardRef, owned="log_id")
     async def card_discard(p: CardRef, caller):
         s, e, owner = pending_card(p, ("new",))
-        it = await unchanged(s, e, owner, caller)
-        await kn.store.delete(owner, it.name, principal(caller), "discard")
-        await kn.refresh(owner)
-        kn.usage.add(owner, s.log_id, it.kind, it.name, "discarded")
-        await card_done(
-            s,
-            p.id,
-            "discarded",
-            caller,
-            f"The person discarded the proposed {it.kind} {it.name}; it was deleted.",
-        )
+        d = e["detail"]
+        with answer(s, p.id):
+            try:
+                await kn.store.delete(
+                    owner, d["name"], principal(caller), "discard", expect=as_shown(d)
+                )
+            except OpError as err:
+                await refused(s, p.id, err, caller, d)
+                raise
+            await kn.refresh(owner)
+            kn.usage.add(owner, s.log_id, d["item_kind"], d["name"], "discarded")
+            await card_done(
+                s,
+                p.id,
+                "discarded",
+                caller,
+                f"The person discarded the proposed {d['item_kind']} {d['name']}; "
+                "it was deleted.",
+            )
         return "ok"
 
     @r.op("knowledge.card.undo", CardRef, owned="log_id")
@@ -871,32 +919,27 @@ def register_knowledge_ops(app: App) -> None:
         s, e, owner = pending_card(p, ("changed", "deleted"))
         d = e["detail"]
         what = f"the {d['item_kind']} {d['name']}"
-        try:
-            await kn.store.revert(
-                owner, d["sha"], d["item_kind"], d["name"], principal(caller)
-            )
-        except OpError as err:
-            if err.code == "conflict":
-                await card_done(
-                    s,
-                    p.id,
-                    "conflict",
-                    caller,
-                    f"The person tried to undo your change to {what}, but it changed "
-                    "again since; nothing was undone.",
+        with answer(s, p.id):
+            try:
+                await kn.store.revert(
+                    owner, d["sha"], d["item_kind"], d["name"], principal(caller)
                 )
-            raise
-        await kn.refresh(owner)
-        done = (
-            "restored" if d["op"] == "deleted" else "back as it was before your change"
-        )
-        await card_done(
-            s,
-            p.id,
-            "undone",
-            caller,
-            f"The person undid your change: {what} is {done}.",
-        )
+            except OpError as err:
+                await refused(s, p.id, err, caller, d)
+                raise
+            await kn.refresh(owner)
+            done = (
+                "restored"
+                if d["op"] == "deleted"
+                else "back as it was before your change"
+            )
+            await card_done(
+                s,
+                p.id,
+                "undone",
+                caller,
+                f"The person undid your change: {what} is {done}.",
+            )
         return "ok"
 
     @r.op("knowledge.stats", Stats, agent=True, read=True)
