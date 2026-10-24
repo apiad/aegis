@@ -167,7 +167,8 @@ class RecordParams(BaseModel):
         None,
         description="native when the person ticked knowledge:native: their "
         "sessions then start without the harness's own skills and memory. "
-        "Omit it otherwise; the person changes it back in Settings.",
+        "Only in the turn their submit began (else not_person_turn). Omit it "
+        "otherwise; the person changes it back in Settings.",
     )
 
 
@@ -180,6 +181,17 @@ def register_setup(app: App) -> Records:
         """Save what this /setup run applied and declined, for the person
         whose session this is, so their next run proposes only what is new.
         Call it once, at the end of a run (help_read setup record)."""
+        if p.knowledge is not None and caller.is_agent:
+            # The switch changes how every later session of theirs starts: only
+            # the person's own turn speaks for them (Session.person_turn).
+            s = app.sessions.sessions.get(caller.log_id or "")
+            if s is None or not s.person_turn:
+                raise OpError(
+                    "not_person_turn",
+                    "knowledge is set only in a turn the person's own message "
+                    "began, such as the submit of the /setup page; they can "
+                    "set it in Settings",
+                )
         records.merge(app.who(caller).name, p.model_dump(exclude_none=True))
         return "ok"
 

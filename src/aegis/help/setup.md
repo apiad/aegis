@@ -140,7 +140,9 @@ Apply in this order, after the rest of the page's rows:
    ordinary file operations as the person's user, or as a commit in its
    repository for a file git tracks.
 3. For a ticked `knowledge:native`, call `setup_record` with
-   `knowledge="native"` (below).
+   `knowledge="native"` (below), in that same turn: in a turn the person
+   did not begin it is refused with `not_person_turn`, and the person sets
+   it in Settings instead.
 
 `knowledge_import` writes what it imported into the setup record itself.
 

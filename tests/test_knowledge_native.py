@@ -117,13 +117,34 @@ async def test_setup_record_turns_it_on_and_keeps_it_on_a_later_run(world):
     run = dict(
         applied=["knowledge:native"], declined=[], sources_until="2026-10-24T00:00:00Z"
     )
-    said = await turn(s, mcp("setup_record", knowledge="native", **run))
+    said = await turn(s, mcp("setup_record", knowledge="native", **run), by_person=True)
     assert said.startswith("mcp ok"), said
     assert app.knowledge_native(app.user)
     # A later run that does not name it leaves the switch as it was.
     said = await turn(s, mcp("setup_record", **run))
     assert said.startswith("mcp ok"), said
     assert app.knowledge_native(app.user)
+
+
+async def test_setup_record_switches_only_in_a_person_turn(world):
+    """A queue task, a handoff or a wake cannot flip the person's switch:
+    Settings stays their direct path."""
+    app = world.app
+    s = await world.spawn()
+    run = dict(applied=[], declined=[], sources_until="2026-10-24T00:00:00Z")
+    said = await turn(s, mcp("setup_record", knowledge="native", **run))
+    assert said.startswith("mcp error: not_person_turn"), said
+    assert "knowledge" not in (app.setup_records.get(app.user) or {})
+    assert not app.knowledge_native(app.user)
+    await setting(app, native=True)
+    said = await turn(s, mcp("setup_record", knowledge="side-by-side", **run))
+    assert said.startswith("mcp error: not_person_turn"), said
+    assert app.knowledge_native(app.user)
+    said = await turn(
+        s, mcp("setup_record", knowledge="side-by-side", **run), by_person=True
+    )
+    assert said.startswith("mcp ok"), said
+    assert not app.knowledge_native(app.user)
 
 
 async def test_with_the_setting_a_store_skill_takes_a_harness_command_name(app):
