@@ -107,6 +107,7 @@ from .journal.ops import register_journal_ops
 from .journal.service import Journal
 from .knowledge.service import Knowledge
 from .knowledge.items import NAME_RE
+from .skill_mcp import SkillServers
 from .knowledge_ops import offered, register_knowledge_ops, remember_turn, skill_turn
 from .repos.service import Repos
 from .layout_ops import register_layout_ops
@@ -530,6 +531,8 @@ class App:
         reg.journal = self.journal
         self.knowledge = Knowledge(roots.state_root)
         reg.knowledge = self.knowledge
+        self.skill_servers = SkillServers()
+        reg.skill_servers = self.skill_servers
         reg.principal_of = lambda s: s.spec.owner or self.user
         self.repos = Repos(
             self.journal.path,
@@ -1119,6 +1122,7 @@ class App:
         await self.browsers.shutdown()
         await self.side_notes.shutdown()
         await self.sessions.shutdown()
+        await self.skill_servers.shutdown()
         await self.repos.stop()
         await asyncio.to_thread(self.journal.stop)
         await asyncio.to_thread(self.knowledge.usage.stop)

@@ -25,8 +25,6 @@ import asyncio
 import base64
 import binascii
 import io
-import os
-import signal
 import tarfile
 import time
 from datetime import date, datetime, timezone
@@ -35,6 +33,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from . import launch
+from .skill_mcp import SkillToolError, stop_group
 from .knowledge.items import Item, check_name, dump
 from .ops import Caller, OpError
 
@@ -169,6 +168,7 @@ KEEP_BYTES = 4 * OUTPUT_CHARS
 # script there with its arguments, and remove the directory however it ends.
 RUN_SH = (
     "d=$(mktemp -d) || exit 125; trap 'rm -rf -- \"$d\"' EXIT; "
+    "trap 'exit 143' TERM; "
     'tar -x -C "$d" || exit 125; cd -- "$d" && s=$1 && shift && python3 "./$s" "$@"'
 )
 
@@ -205,6 +205,13 @@ def _tar(files: dict[str, bytes]) -> bytes:
             info.size, info.mode = len(data), 0o700
             tar.addfile(info, io.BytesIO(data))
     return buf.getvalue()
+
+
+class CallSkillTool(_Strict):
+    skill: str = Field(description="A skill you loaded whose server skill_read listed.")
+    tool: str = Field(description="One of the tools skill_read listed for it.")
+    args: dict = Field(default_factory=dict, description="The tool's arguments.")
+    timeout_s: int = Field(120, ge=1, le=600, description="Seconds to wait for it.")
 
 
 class Stats(_Strict):
@@ -375,6 +382,32 @@ def register_knowledge_ops(app: App) -> None:
             ]
         }
 
+    def mcp_command(it: Item) -> list[str] | None:
+        block = it.meta.get("aegis")
+        mcp = block.get("mcp") if isinstance(block, dict) else None
+        cmd = mcp.get("command") if isinstance(mcp, dict) else None
+        if isinstance(cmd, list) and cmd and all(isinstance(c, str) for c in cmd):
+            return cmd
+        return None
+
+    async def server_of(owner: str, it: Item, s):
+        """The session's running server for the skill, started if need be."""
+        cmd = mcp_command(it)
+        if cmd is None:
+            raise OpError("no_mcp", f"the skill {it.name!r} brings no MCP server")
+
+        def pack() -> bytes:
+            names = kn.store.files(owner, it.name)
+            return _tar({n: kn.store.read_file(owner, it.name, n) for n in names})
+
+        tar = await asyncio.to_thread(pack)
+        try:
+            return await app.skill_servers.ensure(
+                s.log_id, it.name, cmd, tar, s.spec.linux_user
+            )
+        except SkillToolError as e:
+            raise OpError("mcp_failed", f"the skill's server: {e}") from e
+
     @r.op("skill.read", ReadSkill, agent=True, read=True)
     async def skill_read(p: ReadSkill, caller):
         """Load a skill: returns its SKILL.md, which you then follow, and the
@@ -400,7 +433,19 @@ def register_knowledge_ops(app: App) -> None:
         s = app.sessions.sessions.get(session)
         if s is not None:
             s.load_skill(it.name)
-        return {"name": it.name, "text": dump(it), "files": files}
+        out: dict = {"name": it.name, "text": dump(it), "files": files}
+        # Its MCP server's tools, called with skill_tool. A read session may
+        # not call them, so it starts nothing.
+        if (
+            mcp_command(it) is not None
+            and s is not None
+            and s.spec.permission != "read"
+        ):
+            try:
+                out["tools"] = (await server_of(owner, it, s)).tools
+            except OpError as e:
+                out["tools_error"] = e.message
+        return out
 
     @r.op("skill.save", SaveSkill, agent=True)
     async def skill_save(p: SaveSkill, caller):
@@ -469,16 +514,44 @@ def register_knowledge_ops(app: App) -> None:
             code = await proc.wait()
         except TimeoutError:
             # The whole group: python3 under the shell holds the pipes too.
-            try:
-                os.killpg(proc.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+            await stop_group(proc)
             await io_done
-            await proc.wait()
             err += f"\n[killed after {p.timeout_s}s]".encode()
         s.ran_skill(it.name)
         kn.usage.add(owner, s.log_id, "skill", it.name, "ran", p.script)
         return {"exit": code, "stdout": _cut(out), "stderr": _cut(err)}
+
+    @r.op("skill.tool", CallSkillTool, agent=True)
+    async def skill_tool(p: CallSkillTool, caller):
+        """Call a tool of the MCP server a skill you loaded brings; skill_read
+        lists those tools and their arguments. Only this session reaches the
+        server, and it stops when the session closes."""
+        owner = principal(caller)
+        it = skill(owner, p.skill)
+        s = app.sessions.sessions.get(caller.log_id or "")
+        if s is None or it.name not in s.skills:
+            raise OpError(
+                "not_loaded", f"load the skill {it.name!r} with skill_read first"
+            )
+        server = await server_of(owner, it, s)
+        if p.tool not in {t["name"] for t in server.tools}:
+            raise OpError(
+                "no_such_tool",
+                f"{it.name!r} has no tool {p.tool!r}; it has "
+                + ", ".join(t["name"] for t in server.tools),
+            )
+        try:
+            got = await app.skill_servers.call(
+                s.log_id, it.name, p.tool, p.args, p.timeout_s
+            )
+        except SkillToolError as e:
+            raise OpError("mcp_failed", f"{it.name}/{p.tool}: {e}") from e
+        s.ran_skill(it.name)
+        kn.usage.add(owner, s.log_id, "skill", it.name, "ran", f"tool={p.tool}")
+        return {
+            "is_error": bool(got.get("isError")),
+            "content": got.get("content") or [],
+        }
 
     @r.op("knowledge.stats", Stats, agent=True, read=True)
     async def knowledge_stats(p: Stats, caller):

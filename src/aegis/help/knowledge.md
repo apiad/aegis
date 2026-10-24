@@ -70,6 +70,8 @@ aegis only, so a skill copied out still works elsewhere:
 aegis:
   command: true        # offer it as /release in the composer
   scripts: [bump.py]   # files skill_run may run
+  mcp:                 # an MCP server whose tools skill_tool calls
+    command: [python3, server.py]
 ```
 
 An agent finds a skill mid-task with `skill_search`, in its own words,
@@ -89,6 +91,22 @@ arguments the agent gives, and removes the directory after. On a server
 with several people, it runs as your Linux user, so a script reaches what
 you can reach and nothing more. A run stops after two minutes unless the
 agent asks for longer, up to ten.
+
+### An MCP server a skill brings
+
+A skill whose `aegis:` block names `mcp.command` brings an MCP server that
+speaks over standard input and output. When a session loads the skill,
+aegis starts the server for that session alone, in a fresh copy of the
+skill's folder and, on a server with several people, as your Linux user.
+`skill_read` returns the server's tools with their arguments, and the
+agent calls one with `skill_tool`, naming the skill, the tool and the
+arguments. No other session reaches the server, and it stops when the
+session closes. A session with read permission loads the skill but starts
+no server.
+
+The tools stay behind `skill_tool` instead of joining the agent's own tool
+list, because not every harness picks up tools added mid-session: Codex
+does not yet by default. One tool works the same in every harness.
 
 ### Skills as commands
 
@@ -119,6 +137,8 @@ out of the menu.
 - `skill_run` runs one of the scripts a loaded skill declares under
   `aegis.scripts`, with arguments, and returns its exit code, stdout and
   stderr, each cut at 20,000 characters.
+- `skill_tool` calls a tool of the MCP server a loaded skill brings, with
+  its arguments; `skill_read` lists those tools.
 - `knowledge_stats` lists each item with how often it was hinted, read,
   invoked or run, and when it was last used; `unused_days=60` keeps the
   ones nobody used in that time.

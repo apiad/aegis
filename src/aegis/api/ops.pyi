@@ -767,6 +767,10 @@ class _skill:
         """Save a skill: a procedure later sessions should follow for one kind of task, with any files it needs. Saving an existing name replaces it. Set asked: true when the person asked for it."""
     async def search(self, *, query: str, limit: int = ...) -> Any:
         """Search your skills (procedures for a kind of task, such as cutting a release) with your own words, before you start a task. Returns the best names with their description, score and status; load one with skill_read."""
+    async def tool(
+        self, *, skill: str, tool: str, args: dict[str, Any] = ..., timeout_s: int = ...
+    ) -> Any:
+        """Call a tool of the MCP server a skill you loaded brings; skill_read lists those tools and their arguments. Only this session reaches the server, and it stops when the session closes."""
 
 class _speech:
     async def prepare(self) -> Any:
