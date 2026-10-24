@@ -454,8 +454,8 @@ SECTIONS = {
         "What the Net, Exit and Speed readings reach, and how often, in seconds."
         " A speed_interval of 0 turns the speed test off.",
     ),
-    "knowledge": (
-        "Knowledge",
+    "embeddings": (
+        "Search embeddings",
         "Embeddings: off, or a fastembed model fused with keyword search, such"
         " as minishlab/potion-multilingual-128M. It needs the embeddings extra"
         " and about a gigabyte of memory, and is read when aegis starts.",
@@ -506,7 +506,7 @@ def fields() -> list[dict]:
             add("network", "network.anchors", "list", [_anchor(*a) for a in v])
         else:
             add("network", f"network.{k}", "bool" if k == "enabled" else "number", v)
-    add("knowledge", "knowledge.embeddings", "text", KNOWLEDGE_DEFAULTS["embeddings"])
+    add("embeddings", "knowledge.embeddings", "text", KNOWLEDGE_DEFAULTS["embeddings"])
     for k, v in host_from(None)[0].items():
         add("host", f"host.{k}", "list", v)
     return out

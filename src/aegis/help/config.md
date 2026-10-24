@@ -457,7 +457,7 @@ model worth it, about 1.1 GB and slower. Keep it off on a small host. The key
 is read when aegis starts, so a change needs a restart. Without the extra,
 `aegis doctor` warns and search goes on by keywords alone.
 
-Settings → Knowledge edits it.
+Settings → Search embeddings edits it.
 
 ## Terminals
 
