@@ -397,7 +397,7 @@ class _knowledge:
         """knowledge.card.discard"""
     async def card_undo(self, *, log_id: str, id: str) -> Any:
         """knowledge.card.undo"""
-    async def card_undo_item(self, *, log_id: str, id: str, name: str) -> Any:
+    async def card_unimport(self, *, log_id: str, id: str, name: str) -> Any:
         """Undo one item of an import card: its import commit is reverted, so it leaves aegis. Its original is wherever it then was."""
     async def get(self, *, name: str) -> Any:
         """One item for the view: its file's whole text, the stamp an edit sends back, and a skill's files."""

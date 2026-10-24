@@ -511,7 +511,7 @@ function fillImported(card, e) {
       b.onclick = async () => {
         b.disabled = true;
         try {
-          await secretCall("knowledge.card.undo_item", { id: e.id, name: x.name });
+          await secretCall("knowledge.card.unimport", { id: e.id, name: x.name });
         } catch (err) {
           b.disabled = false;
           hint.textContent = String(err?.message || err);

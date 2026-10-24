@@ -1062,7 +1062,7 @@ class Fold:
             )
         if kind == "knowledge_card_item_done":
             # One item of an import card undone: the card stays, its row
-            # says so (knowledge_ops.py, card_undo_item).
+            # says so (knowledge_ops.py, card_unimport).
             e = self._entries.get(str(rec.get("card_id")))
             if e is None:
                 return []

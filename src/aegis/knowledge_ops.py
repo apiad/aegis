@@ -1171,8 +1171,8 @@ def register_knowledge_ops(app: App) -> None:
             )
         return "ok"
 
-    @r.op("knowledge.card.undo_item", CardItem, owned="log_id")
-    async def card_undo_item(p: CardItem, caller):
+    @r.op("knowledge.card.unimport", CardItem, owned="log_id")
+    async def card_unimport(p: CardItem, caller):
         """Undo one item of an import card: its import commit is reverted,
         so it leaves aegis. Its original is wherever it then was."""
         s, e, owner = pending_card(

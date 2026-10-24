@@ -224,7 +224,7 @@ async def test_the_card_undoes_one_item_and_keeps_the_rest(world, tmp_path):
     assert e["kind"] == "knowledge" and e["detail"]["op"] == "imported"
     assert [x["name"] for x in e["detail"]["items"]] == ["release", "host"]
     said = await app.registry.call(
-        "knowledge.card.undo_item", {"log_id": s.log_id, "id": got["card"], "name": "host"}
+        "knowledge.card.unimport", {"log_id": s.log_id, "id": got["card"], "name": "host"}
     )
     assert said == "ok"
     assert app.knowledge.store.get(app.user, "host") is None
