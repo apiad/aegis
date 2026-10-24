@@ -498,6 +498,9 @@ body{background:#000}
 #a2 :is(.composer,.spawn) .box.stacked{flex-wrap:wrap}
 #a2 :is(.composer,.spawn) .box.stacked textarea{flex:1 0 100%;padding-bottom:0}
 #a2 :is(.composer,.spawn) .box.stacked .acts{margin-left:auto;padding-top:4px}
+/* A touch screen opens the focused box two lines tall at once (#707): 16 px
+   of top padding over two 24 px lines. */
+@media (pointer:coarse){#a2 .composer .box.stacked textarea{min-height:64px}}
 #a2 .composer .acts .send{font-size:15px;line-height:1;padding:6px 12px;font-weight:600}
 #a2 .composer.sending .acts .send{position:relative;opacity:1;cursor:progress}#a2 .composer.sending .acts .send .ic{visibility:hidden}
 #a2 .composer.sending .acts .send::after{content:"";position:absolute;inset:0;margin:auto;width:13px;height:13px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:a2spin .8s linear infinite}

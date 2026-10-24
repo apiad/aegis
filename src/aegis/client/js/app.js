@@ -2283,7 +2283,7 @@ function drawComposerHint(s) {
       : s.state === "asleep"
       ? "Asleep; your next message wakes it."
       : touch.matches
-        ? "Message the agent"
+        ? ""
         : "Message the agent. Enter sends, Shift+Enter adds a line, / for commands, Esc interrupts.";
   if (input.placeholder !== placeholder) {
     input.placeholder = placeholder;
@@ -3620,9 +3620,10 @@ if (touch.matches) $("sp-text").placeholder = "What should the agent do?";
 // The buttons sit beside one line of text and drop under a longer one, so its
 // lines get the box's whole width (#575). It measures at the narrow width every
 // time: measured wide, a text that fits there would flip back and forth. A
-// placeholder never stacks: an empty box keeps its height. The measure is a
-// hidden copy: resizing the box itself to measure lays out the whole transcript
-// again, seconds for a long message.
+// placeholder never stacks: an empty box keeps its height. On a touch screen a
+// focused box stacks at once, so the first line typed has the whole width
+// (#707). The measure is a hidden copy: resizing the box itself to measure lays
+// out the whole transcript again, seconds for a long message.
 const ruler = document.createElement("textarea");
 ruler.ariaHidden = "true";
 ruler.tabIndex = -1;
@@ -3630,7 +3631,9 @@ ruler.style.cssText = "position:absolute;left:-9999px;top:0;visibility:hidden;he
 document.body.append(ruler);
 function stackActs(t) {
   const box = t.closest(".box");
-  if (!t.value || !box.clientWidth) return box.classList.remove("stacked");
+  if (!box.clientWidth) return box.classList.remove("stacked");
+  if (touch.matches && document.activeElement === t) return box.classList.add("stacked");
+  if (!t.value) return box.classList.remove("stacked");
   const css = getComputedStyle(t);
   for (const k of ["fontFamily", "fontSize", "fontWeight", "lineHeight", "letterSpacing", "paddingLeft", "paddingRight"]) ruler.style[k] = css[k];
   ruler.style.width = `${box.clientWidth - box.querySelector(".acts").offsetWidth}px`;
@@ -3641,16 +3644,25 @@ function stackActs(t) {
 function autosize() {
   stackActs(input);
   input.style.height = "auto";
-  input.style.height = `${Math.min(input.scrollHeight, window.innerHeight * 0.4)}px`;
+  const room = window.innerHeight * 0.4;
+  input.style.height = `${Math.min(input.scrollHeight, room)}px`;
+  // A scroll bar only once the text outgrows the room (#707).
+  input.style.overflowY = input.scrollHeight > room ? "auto" : "hidden";
 }
-// A pane docked beside the transcript narrows the message box: its lines
-// wrap again, so it measures again. Width only, so its own height is no loop.
+input.addEventListener("focus", autosize);
+input.addEventListener("blur", autosize);
+// A tap on the box's buttons leaves the focus in the text: a blur would unstack
+// the box and move the button out from under the finger (#707).
+$("composer").querySelector(".acts").addEventListener("mousedown", (ev) => touch.matches && ev.preventDefault());
+// A pane docked beside the transcript, or a button appearing beside the text,
+// narrows the message box: its lines wrap again, so it measures again. Width
+// only, so its own height is no loop.
 let composerWidth = 0;
 new ResizeObserver(([e]) => {
   if (Math.round(e.contentRect.width) === composerWidth) return;
   composerWidth = Math.round(e.contentRect.width);
   autosize();
-}).observe($("tr-pane"));
+}).observe(input);
 
 function focused() {
   const r = route();
