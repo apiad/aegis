@@ -51,8 +51,10 @@ class Knowledge:
         self.exists: Callable[[str], bool] = os.path.exists
 
     def _rebuild(self, principal: str, old) -> tuple[list[Item], Index]:
+        # A change through the store always rebuilds: a delete drops the
+        # file's cached parse, so the scan alone cannot tell it went.
         items, changed = self.store.scan(principal)
-        if old is not None and not changed:
+        if old is not None and not changed and old[0] == self.store.version(principal):
             return old[2], old[3]
         return items, Index(items)
 

@@ -259,3 +259,11 @@ async def test_an_edit_and_a_remove_work_in_a_store_filled_by_hand(world):
     assert text_of(world, "deploy-host").endswith("B\n")
     await call(world, "knowledge.remove", name="other-fact")
     assert app.knowledge.store.get(app.user, "other-fact") is None
+
+
+async def test_the_list_drops_an_item_removed_after_it_was_listed(world):
+    await seed(world, mem("deploy-host"), mem("other-fact"))
+    names = lambda got: [r["name"] for r in got["items"]]  # noqa: E731
+    assert names(await call(world, "knowledge.list")) == ["deploy-host", "other-fact"]
+    await call(world, "knowledge.remove", name="other-fact")
+    assert names(await call(world, "knowledge.list")) == ["deploy-host"]
