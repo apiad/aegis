@@ -4,12 +4,16 @@
 leaves it out of the hint the day it passes; the flag says why.
 
 ``stale:<path>``: a path the memory quotes in backticks that is not there.
-A token counts as a path when it holds a ``/`` or ends in a known file
-extension, and holds no space, no URL scheme and no placeholder (``<x>``,
-``{x}``, ``$X``, a glob). It is looked for relative to each of the memory's
-``paths:`` (a glob cut at its first wild part) and then to each of the
-``roots`` the caller gives (the principal's Files root and home), so
-``repos/bot/run.py`` is found under the workspace it was written in. A stale
+A token counts as a path only when it starts with ``./``, ``../`` or ``~/``,
+or with ``/`` and has a second part or an extension, or holds a ``/`` and
+its last part has a file extension; and it holds no space, no URL scheme
+and no placeholder (``<x>``, ``{x}``, ``$X``, a glob). So a bare file name,
+``origin/main``, ``text/html``, ``and/or`` and a slash command such as
+``/remember`` are never looked for: each would flag memories that are fine.
+A relative path is looked for under each of the memory's ``paths:`` (a glob
+cut at its first wild part), then under its ``cwd:``, the working directory
+of the session that saved it, and then under each of the ``roots`` the
+caller gives (the principal's Files root and home). A stale
 memory stays in the hint: a missing file is not proof the fact is false.
 Only the first ``MAX_PATHS`` paths of a memory are looked for.
 
@@ -29,12 +33,8 @@ from .items import Item
 
 TICKED = re.compile(r"`([^`\n]+)`")
 FENCED = re.compile(r"^(```|~~~).*?^\1", re.S | re.M)
-EXTENSIONS = frozenset(
-    """
-    c cfg conf cpp css csv go h html ini java js json jsx lock log md mjs py rb
-    rs sh sql sqlite toml ts tsx txt xml yaml yml
-    """.split()
-)
+# A last part with a file extension: a name, a dot, letters or digits.
+EXTENSION = re.compile(r"[^./]\.[A-Za-z0-9]{1,10}$")
 # The most paths one memory has checked: a pasted listing must not turn one
 # check into thousands of file reads.
 MAX_PATHS = 200
@@ -47,14 +47,21 @@ def quoted_paths(body: str) -> list[str]:
     seen: list[str] = []
     for token in TICKED.findall(FENCED.sub("", body)):
         token = token.strip().rstrip(".:")
-        if not token or NOT_A_PATH.search(token) or token.startswith("-"):
-            continue
-        ext = token.rsplit(".", 1)[-1].lower() if "." in token else ""
-        if "/" not in token and ext not in EXTENSIONS:
+        if not token or NOT_A_PATH.search(token) or not looks_like_path(token):
             continue
         if token.strip("/.~") and token not in seen:
             seen.append(token)
     return seen
+
+
+def looks_like_path(token: str) -> bool:
+    if token.startswith(("./", "../", "~/")):
+        return True
+    last = token.rstrip("/").rsplit("/", 1)[-1]
+    if token.startswith("/"):
+        # ``/remember`` is a command more often than a top-level directory.
+        return "/" in token.strip("/") or bool(EXTENSION.search(last))
+    return "/" in token and bool(EXTENSION.search(last))
 
 
 def _base(glob: str) -> str:
@@ -68,7 +75,9 @@ def _base(glob: str) -> str:
     return "/".join(parts) or ("/" if glob.startswith("/") else "")
 
 
-def candidates(token: str, paths: Iterable[str], roots: list[str]) -> list[str]:
+def candidates(
+    token: str, paths: Iterable[str], roots: list[str], cwd: str | None = None
+) -> list[str]:
     """Where ``token`` may be, in the order they are tried."""
     if token.startswith("/"):
         return [token]
@@ -85,8 +94,10 @@ def candidates(token: str, paths: Iterable[str], roots: list[str]) -> list[str]:
             out.append(os.path.join(base, token))
         else:
             out += [os.path.join(r, base, token) for r in roots]
+    if cwd and os.path.isabs(cwd):
+        out.append(os.path.join(cwd, token))
     out += [os.path.join(r, token) for r in roots]
-    return list(dict.fromkeys(out))
+    return list(dict.fromkeys(os.path.normpath(p) for p in out))
 
 
 def flags(
@@ -96,12 +107,15 @@ def flags(
     roots: list[str] | None = None,
 ) -> list[str]:
     """``expired`` and one ``stale:<path>`` per quoted path found nowhere.
-    ``roots`` are tried after the memory's own ``paths:``, the home last,
-    which a ``~/`` path is relative to. A skill has no flags."""
+    ``roots`` are tried after the memory's own ``paths:`` and ``cwd:``, the
+    home last, which a ``~/`` path is relative to. A skill has no flags."""
     if item.kind != "memory":
         return []
     out = ["expired"] if item.expired(today) else []
+    cwd = item.meta.get("cwd")
+    cwd = cwd if isinstance(cwd, str) else None
     for token in quoted_paths(item.body)[:MAX_PATHS]:
-        if not any(exists(c) for c in candidates(token, item.paths, roots or [])):
+        where = candidates(token, item.paths, roots or [], cwd)
+        if not any(exists(c) for c in where):
             out.append(f"stale:{token}")
     return out

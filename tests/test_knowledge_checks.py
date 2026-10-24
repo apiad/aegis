@@ -26,9 +26,10 @@ def ok(said: str) -> dict:
     return json.loads(said.removeprefix("mcp ok: "))
 
 
-def body_item(body: str, **kw):
+def body_item(body: str, cwd: str | None = None, **kw):
     it = mem("m", "d", **kw)
-    return type(it)(it.kind, it.name, it.description, body, it.meta, None)
+    meta = {**it.meta, "cwd": cwd} if cwd else it.meta
+    return type(it)(it.kind, it.name, it.description, body, meta, None)
 
 
 def test_quoted_paths_are_paths_only():
@@ -37,20 +38,48 @@ def test_quoted_paths_are_paths_only():
         " `https://a.b/c`, `make test` or `True`.\n"
         "```bash\ncat `repos/in/fence.py`\n```\n"
     )
-    assert checks.quoted_paths(body) == ["repos/bot/run.py", "AGENTS.md"]
+    assert checks.quoted_paths(body) == ["repos/bot/run.py"]
 
 
-def test_paths_resolve_against_paths_then_the_roots():
-    got = checks.candidates("src/x.py", ["repos/bot/*", "/abs/dir"], ["/w", "/h"])
+def test_only_tokens_shaped_like_paths_are_checked():
+    looks = ["/etc/hosts", "~/notes.md", "./run.sh", "../up", "repos/bot/run.py"]
+    never = [
+        "README.md",
+        "origin/main",
+        "text/html",
+        "and/or",
+        "src/aegis",
+        "/remember",
+    ]
+    body = " ".join(f"`{t}`" for t in looks + never)
+    assert checks.quoted_paths(body) == looks
+
+
+def test_paths_resolve_against_paths_then_the_cwd_then_the_roots():
+    got = checks.candidates(
+        "src/x.py", ["repos/bot/*", "/abs/dir"], ["/w", "/h"], "/work/repo"
+    )
     assert got == [
         "/w/repos/bot/src/x.py",
         "/h/repos/bot/src/x.py",
         "/abs/dir/src/x.py",
+        "/work/repo/src/x.py",
         "/w/src/x.py",
         "/h/src/x.py",
     ]
+    assert checks.candidates("./x.py", [], ["/h"], "/c") == ["/c/x.py", "/h/x.py"]
     assert checks.candidates("~/notes.md", [], ["/w", "/h"]) == ["/h/notes.md"]
     assert checks.candidates("/etc/hosts", ["x"], ["/w"]) == ["/etc/hosts"]
+
+
+def test_a_relative_path_is_found_under_the_cwd_it_was_saved_in():
+    it = body_item("Run `bin/deploy.sh`.", cwd="/work/repo")
+    assert it.meta["cwd"] == "/work/repo"
+    here = {"/work/repo/bin/deploy.sh"}
+    assert checks.flags(it, TODAY, here.__contains__, ["/w", "/h"]) == []
+    assert checks.flags(it, TODAY, set().__contains__, ["/w", "/h"]) == [
+        "stale:bin/deploy.sh"
+    ]
 
 
 def test_a_temporary_memory_past_its_date_is_expired():
@@ -315,3 +344,11 @@ async def test_a_restart_logs_no_flag_it_had_already_logged(world):
     await kn.store.save(world.app.user, body_item("`gone/x.py` `gone/y.py`"), "t")
     await world.app.knowledge_check(world.app.user)
     assert flagged() == ["stale:gone/x.py", "stale:gone/y.py"]
+
+
+async def test_a_save_records_the_sessions_cwd(world):
+    app = world.app
+    s = await world.spawn()
+    ok(await save_bot_runner(s))
+    it = app.knowledge.store.get(app.user, "bot-runner")
+    assert it.meta["cwd"] == str(s.spec.cwd)

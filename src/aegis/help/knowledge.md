@@ -67,9 +67,13 @@ A temporary memory past its day is flagged expired and leaves the block
 under messages that day; a search still finds it.
 
 When a memory is saved, and once a day, aegis looks for each path the
-memory quotes in backticks, such as `repos/bot/run.py`: under each of the
-memory's paths, then under your Files root and your home. One that is
-found nowhere flags the memory stale, naming the path. A stale memory
+memory quotes in backticks. A token counts as a path when it starts with
+`/`, `~/`, `./` or `../`, or holds a `/` and ends in a file extension, such
+as `repos/bot/run.py`; a bare file name, `origin/main` or `text/html` is
+never looked for. A relative path is looked for under each of the memory's
+paths, then in the working directory of the session that saved it (kept
+as `cwd` in the memory), then under your Files root and your home. One
+that is found nowhere flags the memory stale, naming the path. A stale memory
 stays in the block, since a moved file does not make the fact false, but
 it is worth a look. On a server with several people the files are looked
 for as your Linux user, so a check sees only what you can see. The check

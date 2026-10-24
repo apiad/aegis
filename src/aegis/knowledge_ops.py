@@ -533,6 +533,10 @@ def register_knowledge_ops(app: App) -> None:
             "expires": p.expires if p.lifetime == "temporary" else None,
             "status": status,
             "paths": p.paths,
+            # Where its relative paths were written (knowledge/checks.py).
+            "cwd": str(s.spec.cwd)
+            if (s := agent_session(caller)) and s.spec.cwd
+            else None,
             "created": created,
             "source": author(caller),
         }
