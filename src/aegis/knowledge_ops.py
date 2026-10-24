@@ -5,8 +5,15 @@ session's owner, so a member's agent never reaches another member's items, and
 a name that belongs to someone else answers ``not_found`` as a name that does
 not exist. Reads are open to read-permission sessions, as help_read is; saves
 and deletes are not. A save is one commit in the principal's store
-(knowledge/store.py). In this slice every save is approved; proposals for
-memories an agent saves on its own initiative come with the approval card.
+(knowledge/store.py).
+
+An item an agent saves on its own initiative (``asked`` false) is written
+``status: proposed`` and a card goes in the session's transcript; a proposal
+is never hinted, and a proposed skill is not offered as a command, but
+skill_read loads it by name. An agent's update or delete of an approved item
+applies at once and its card offers Undo, which reverts that commit. Approve,
+Discard and Undo are the session owner's ops on the owner's store. The card
+is a transcript record, so it works after a restart.
 
 Reading a skill's SKILL.md loads it in the calling session: the name joins
 ``Session.skills``, which the card shows and which ``skill_run`` checks.
@@ -24,8 +31,10 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import hashlib
 import io
 import json
+import secrets
 import tarfile
 import time
 from datetime import date, datetime, timezone
@@ -36,6 +45,7 @@ from pydantic import BaseModel, Field
 from . import launch
 from .skill_mcp import SkillToolError, stop_group
 from .knowledge.items import Item, check_name, dump
+from .monitors import iso_now
 from .ops import Caller, OpError
 
 if TYPE_CHECKING:
@@ -245,6 +255,25 @@ class CallSkillTool(_Strict):
     timeout_s: int = Field(120, ge=1, le=600, description="Seconds to wait for it.")
 
 
+class CardRef(_Strict):
+    log_id: str
+    id: str
+
+
+# What a card keeps of a body: enough to read, not a whole skill.
+CARD_BODY_CHARS = 4000
+
+
+def card_header(id: str, outcome: str) -> str:
+    return f"> from knowledge:{id} · {outcome} · {iso_now()}"
+
+
+def digest(it: Item) -> str:
+    """What a proposal's card was drawn from, so Approve never approves a
+    later text the person was not shown."""
+    return hashlib.sha256(dump(it).encode()).hexdigest()
+
+
 class Stats(_Strict):
     unused_days: int | None = Field(
         None,
@@ -293,6 +322,18 @@ def offered(it: Item) -> bool:
     return it.kind == "skill" and it.status == "approved" and command is not False
 
 
+def saved_answer(name: str, status: str, card: str | None) -> dict:
+    out: dict = {"saved": name, "status": status}
+    if status == "proposed":
+        out["note"] = (
+            "proposed: a card in your transcript asks the person to approve it;"
+            " until then it is not hinted"
+        )
+    if card:
+        out["card"] = card
+    return out
+
+
 def register_knowledge_ops(app: App) -> None:
     r = app.registry
     kn = app.knowledge
@@ -305,6 +346,56 @@ def register_knowledge_ops(app: App) -> None:
             s = app.sessions.sessions.get(caller.log_id or "")
             return f"session {s.handle if s else caller.log_id}"
         return principal(caller)
+
+    def agent_session(caller: Caller):
+        return (
+            app.sessions.sessions.get(caller.log_id or "") if caller.is_agent else None
+        )
+
+    def status_for(caller: Caller, asked: bool, held: Item | None) -> str:
+        """approved when the person asked, or for a change to an approved
+        item; else proposed."""
+        if not caller.is_agent or asked:
+            return "approved"
+        return (
+            "approved" if held is not None and held.status == "approved" else "proposed"
+        )
+
+    def record_card(s, op: str, it: Item, sha: str) -> str:
+        id = "kn-" + secrets.token_hex(4)
+        expires = it.expires
+        s.record_knowledge(
+            {
+                "kind": "knowledge_card",
+                "card_id": id,
+                "op": op,
+                "item_kind": it.kind,
+                "name": it.name,
+                "description": it.description,
+                "body": it.body[:CARD_BODY_CHARS],
+                "type": it.meta.get("type"),
+                "lifetime": it.lifetime if it.kind == "memory" else None,
+                "expires": expires.isoformat() if expires else None,
+                "sha": sha,
+                "digest": digest(it),
+            }
+        )
+        return id
+
+    async def after_save(
+        caller: Caller, owner: str, asked: bool, held, name: str, sha: str
+    ):
+        """The card a save by an agent leaves: a proposal's, or Undo for a
+        change to an approved item. A save the person asked for has none."""
+        s = agent_session(caller)
+        it = kn.store.get(owner, name)
+        if s is None or asked or it is None:
+            return None
+        if it.status == "proposed":
+            return record_card(s, "new", it, sha)
+        if held is not None and held.status == "approved" and sha:
+            return record_card(s, "changed", it, sha)
+        return None
 
     def memory(owner: str, name: str) -> Item:
         check_name(name)
@@ -357,44 +448,54 @@ def register_knowledge_ops(app: App) -> None:
         """Save a memory: one fact that later sessions should know, such as
         who the person is, how they want you to work, or where something
         runs. Saving an existing name replaces that memory. Set asked: true
-        when the person asked you to remember it."""
+        when the person asked you to remember it. Otherwise a new memory is
+        proposed: a card in your transcript asks the person to approve it,
+        and it is not hinted until then; a change to an approved one applies
+        at once, and its card lets the person undo it."""
         owner = principal(caller)
         check_name(p.name)
         if p.lifetime == "temporary" and p.expires is None:
             raise OpError("bad_params", "a temporary memory needs expires")
         held = kn.store.get(owner, p.name)
-        created = (
-            held.meta.get("created")
-            if held is not None and held.kind == "memory"
-            else None
-        ) or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        if held is not None and held.kind != "memory":
+            held = None  # the store refuses it as name_taken
+        created = (held.meta.get("created") if held is not None else None) or (
+            datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        )
+        status = status_for(caller, p.asked, held)
         meta = {
             "type": p.type,
             "lifetime": p.lifetime,
             "expires": p.expires if p.lifetime == "temporary" else None,
-            "status": "approved",
+            "status": status,
             "paths": p.paths,
             "created": created,
             "source": author(caller),
         }
         meta = {k: v for k, v in meta.items() if v is not None}
         it = Item("memory", p.name, p.description.strip(), p.body.rstrip() + "\n", meta)
-        await kn.store.save(owner, it, author(caller))
+        sha = await kn.store.save(owner, it, author(caller))
         await kn.refresh(owner)  # the next send's hint sees it
         kn.usage.add(owner, caller.log_id or "", "memory", p.name, "saved")
-        return {"saved": p.name, "status": "approved"}
+        card = await after_save(caller, owner, p.asked, held, p.name, sha)
+        return saved_answer(p.name, status, card)
 
     @r.op("memory.delete", DeleteMemory, agent=True)
     async def memory_delete(p: DeleteMemory, caller):
         """Delete a memory that is no longer true. The deletion is kept in
-        the store's history; the Knowledge view, in a later release, will
-        restore it."""
+        the store's history: deleting an approved memory puts a card in your
+        transcript that lets the person undo it, and the Knowledge view, in a
+        later release, will restore it."""
         owner = principal(caller)
-        memory(owner, p.name)
+        held = memory(owner, p.name)
         sha = await kn.store.delete(owner, p.name, author(caller))
         await kn.refresh(owner)
         kn.usage.add(owner, caller.log_id or "", "memory", p.name, "deleted")
-        return {"deleted": p.name, "sha": sha}
+        out: dict = {"deleted": p.name, "sha": sha}
+        s = agent_session(caller)
+        if s is not None and held.status == "approved" and sha:
+            out["card"] = record_card(s, "deleted", held, sha)
+        return out
 
     def need_full(s, what: str) -> None:
         """A skill's scripts and server run on the server without asking, so
@@ -523,7 +624,9 @@ def register_knowledge_ops(app: App) -> None:
         """Save a skill: a procedure later sessions should follow for one
         kind of task, with any files it needs, 20 MiB at most in all.
         Saving an existing name replaces it. Set asked: true when the person
-        asked for it."""
+        asked for it. Otherwise a new skill is proposed: a card asks the
+        person to approve it, and until then it is neither hinted nor a
+        slash command, though skill_read loads it."""
         owner = principal(caller)
         check_name(p.name)
         try:
@@ -536,12 +639,19 @@ def register_knowledge_ops(app: App) -> None:
                 f"the files hold {total} bytes; a skill holds at most "
                 f"{SAVE_FILES_BYTES}",
             )
-        meta = {"aegis": p.aegis} if p.aegis else {}
+        held = kn.store.get(owner, p.name)
+        if held is not None and held.kind != "skill":
+            held = None  # the store refuses it as name_taken
+        status = status_for(caller, p.asked, held)
+        meta: dict = {"aegis": p.aegis} if p.aegis else {}
+        if status == "proposed":
+            meta["status"] = status
         it = Item("skill", p.name, p.description.strip(), p.body.rstrip() + "\n", meta)
-        await kn.store.save(owner, it, author(caller), extra=extra)
+        sha = await kn.store.save(owner, it, author(caller), extra=extra)
         await kn.refresh(owner)
         kn.usage.add(owner, caller.log_id or "", "skill", p.name, "saved")
-        return {"saved": p.name, "status": "approved"}
+        card = await after_save(caller, owner, p.asked, held, p.name, sha)
+        return saved_answer(p.name, status, card)
 
     @r.op("skill.run", RunSkill, agent=True)
     async def skill_run(p: RunSkill, caller):
@@ -656,6 +766,126 @@ def register_knowledge_ops(app: App) -> None:
             "is_error": bool(got.get("isError")),
             "content": _cut_content(got.get("content") or []),
         }
+
+    def pending_card(p: CardRef, ops: tuple[str, ...]):
+        s = app.sessions.open(p.log_id)
+        e = s.fold().entry(p.id)
+        if e is None or e["kind"] != "knowledge" or e["detail"].get("op") not in ops:
+            raise OpError(
+                "not_found", f"no such knowledge card {p.id!r} in this session"
+            )
+        if e["status"] != "pending":
+            raise OpError("gone", f"the card {p.id} is {e['status']}")
+        # The session owner's store: the card is about the agent's items.
+        return s, e, s.spec.owner or app.user
+
+    async def card_done(s, id: str, outcome: str, caller: Caller, body: str) -> None:
+        s.record_knowledge(
+            {
+                "kind": "knowledge_card_done",
+                "card_id": id,
+                "outcome": outcome,
+                "by": principal(caller),
+            }
+        )
+        await s.deliver(card_header(id, outcome), body)
+
+    async def unchanged(s, e: dict, owner: str, caller: Caller) -> Item:
+        """The proposal as its card showed it; else the card ends stale or
+        gone, the agent is told, and the op answers that."""
+        d, id = e["detail"], e["id"]
+        it = kn.store.get(owner, d["name"])
+        what = f"the {d['item_kind']} {d['name']}"
+        if it is None or it.kind != d["item_kind"]:
+            await card_done(
+                s, id, "gone", caller, f"{what} no longer exists; nothing was done."
+            )
+            raise OpError("gone", f"{what} no longer exists")
+        if it.status != "proposed" or digest(it) != d.get("digest"):
+            await card_done(
+                s,
+                id,
+                "stale",
+                caller,
+                f"{what} changed since its card was shown; nothing was done.",
+            )
+            raise OpError("stale", f"{what} changed since this card was shown")
+        return it
+
+    @r.op("knowledge.card.approve", CardRef, owned="log_id")
+    async def card_approve(p: CardRef, caller):
+        s, e, owner = pending_card(p, ("new",))
+        it = await unchanged(s, e, owner, caller)
+        await kn.store.set_status(
+            owner, it.name, "approved", principal(caller), "approve"
+        )
+        await kn.refresh(owner)
+        kn.usage.add(owner, s.log_id, it.kind, it.name, "approved")
+        offered_as = (
+            f", and offered as /{it.name}"
+            if offered(
+                Item(it.kind, it.name, "", "", {**it.meta, "status": "approved"})
+            )
+            else ""
+        )
+        await card_done(
+            s,
+            p.id,
+            "approved",
+            caller,
+            f"The person approved the {it.kind} {it.name}; it is hinted from now on"
+            f"{offered_as}.",
+        )
+        return "ok"
+
+    @r.op("knowledge.card.discard", CardRef, owned="log_id")
+    async def card_discard(p: CardRef, caller):
+        s, e, owner = pending_card(p, ("new",))
+        it = await unchanged(s, e, owner, caller)
+        await kn.store.delete(owner, it.name, principal(caller), "discard")
+        await kn.refresh(owner)
+        kn.usage.add(owner, s.log_id, it.kind, it.name, "discarded")
+        await card_done(
+            s,
+            p.id,
+            "discarded",
+            caller,
+            f"The person discarded the proposed {it.kind} {it.name}; it was deleted.",
+        )
+        return "ok"
+
+    @r.op("knowledge.card.undo", CardRef, owned="log_id")
+    async def card_undo(p: CardRef, caller):
+        s, e, owner = pending_card(p, ("changed", "deleted"))
+        d = e["detail"]
+        what = f"the {d['item_kind']} {d['name']}"
+        try:
+            await kn.store.revert(
+                owner, d["sha"], d["item_kind"], d["name"], principal(caller)
+            )
+        except OpError as err:
+            if err.code == "conflict":
+                await card_done(
+                    s,
+                    p.id,
+                    "conflict",
+                    caller,
+                    f"The person tried to undo your change to {what}, but it changed "
+                    "again since; nothing was undone.",
+                )
+            raise
+        await kn.refresh(owner)
+        done = (
+            "restored" if d["op"] == "deleted" else "back as it was before your change"
+        )
+        await card_done(
+            s,
+            p.id,
+            "undone",
+            caller,
+            f"The person undid your change: {what} is {done}.",
+        )
+        return "ok"
 
     @r.op("knowledge.stats", Stats, agent=True, read=True)
     async def knowledge_stats(p: Stats, caller):

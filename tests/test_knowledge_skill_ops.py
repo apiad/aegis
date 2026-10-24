@@ -66,6 +66,7 @@ async def test_an_agent_saves_a_skill_with_files(agents_world):
                 body="1. run bump.py\n",
                 files={"bump.py": base64.b64encode(b"print(1)\n").decode()},
                 aegis={"scripts": ["bump.py"]},
+                asked=True,
             ),
         )
     )

@@ -5,6 +5,7 @@ when: remembering a fact for later sessions, keeping a procedure as a skill, fin
 hints:
   - Type /remember and a fact; every later session can find it. #remember-something
   - The knowledge block under your message names what may help the agent. #the-hint
+  - A memory an agent saves on its own waits for your Approve on its card. #approving-what-an-agent-saves
 ---
 
 aegis keeps your memories and skills on the server: one Markdown file per
@@ -31,6 +32,27 @@ Every change goes through aegis and is one commit in a git history kept
 with your memories on the server, so a deleted memory is kept there. The
 Knowledge view, in a later release, will restore one.
 
+## Approving what an agent saves
+
+A memory or skill an agent saves on its own initiative is proposed: it is
+kept, and a card in the session's transcript shows it with Approve and
+Discard. Approve makes it a memory like any other. Discard deletes it.
+Until you approve it, a proposal is never named under a message, and a
+proposed skill is not a command in the composer, though an agent that
+knows its name can still load it with `skill_read`. A proposal you do not
+answer stays proposed. When you asked for it, with /remember or in your
+own words, the agent saves it approved and no card is shown.
+
+When an agent changes or deletes a memory or skill you already approved,
+the change applies at once, and its card names the change with an Undo
+button, which reverts that one commit in the history. Undo cannot revert
+a change that a later change to the same lines built on; the card then
+says so and nothing moves.
+
+The cards are kept in the transcript, so their buttons work after aegis
+restarts. Whoever presses them, they act on the store of the person who
+owns the session, and the agent is told the outcome.
+
 ## The hint
 
 When a message reaches a session, aegis searches your memories and skills
@@ -50,8 +72,9 @@ It names the three best skills and the three best memories, with no
 threshold, and the tools that read and search them: the agent decides
 whether any matters. A message
 that matches nothing, a slash command, or one of aegis's own wakes (a
-notice, a monitor that ended, a page's answer) gets no block. An expired memory is never
-named, but a search still finds it.
+notice, a monitor that ended, a page's answer, a card's outcome) gets no
+block. An expired memory or a proposal is never named, but a search still
+finds it, marked.
 
 The search is BM25 over the name, the description and the start of the
 body. It folds accents and cuts words to their first five letters, so
@@ -129,13 +152,16 @@ out of the menu.
   words, and marks expired ones.
 - `memory_read` returns one or more memories in full, by name.
 - `memory_save` creates or replaces a memory. An agent passes `asked=true`
-  when you asked it to remember something.
-- `memory_delete` deletes one; the history keeps it.
+  when you asked it to remember something; otherwise a new memory is
+  proposed and waits for your Approve.
+- `memory_delete` deletes one; the history keeps it, and the card of an
+  approved one offers Undo.
 - `skill_search` ranks your skills against what the agent is about to do.
 - `skill_read` loads a skill: it returns SKILL.md and the folder's file
   list, and with `file` returns one of those files, up to 1 MiB.
 - `skill_save` creates or replaces a skill, with its other files in
-  base64, 20 MiB at most in all, and its `aegis` block.
+  base64, 20 MiB at most in all, and its `aegis` block, proposed unless
+  `asked=true`, as a memory is.
 - `skill_run` runs one of the scripts a loaded skill declares under
   `aegis.scripts`, with arguments, and returns its exit code, stdout and
   stderr, each cut at 20,000 characters.

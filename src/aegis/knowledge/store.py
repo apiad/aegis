@@ -21,7 +21,7 @@ import subprocess
 from pathlib import Path
 
 from . import history
-from .items import Item, check_name, dump, parse_memory, parse_skill
+from .items import Item, Kind, check_name, dump, parse_memory, parse_skill
 from ..ops import OpError
 
 log = logging.getLogger("aegis.knowledge")
@@ -182,10 +182,13 @@ class Store:
         item: Item,
         author: str,
         extra: dict[str, bytes] | None = None,
-    ) -> Item:
+        verb: str | None = None,
+    ) -> str:
         """Write ``item`` (and, for a skill, ``extra`` files in its folder) and
-        commit. Refused with ``name_taken`` when the other kind holds the
-        name; an item of the same kind is replaced."""
+        commit; the commit's sha, "" when nothing changed. Refused with
+        ``name_taken`` when the other kind holds the name; an item of the
+        same kind is replaced. ``verb`` names the change in the commit
+        message (``approve``), else ``save`` or ``update``."""
         base = self.dir(principal)
         check_name(item.name)
         files = {}
@@ -204,10 +207,10 @@ class Store:
             if self._path(base, other, item.name).exists():
                 raise OpError("name_taken", f"{item.name!r} already names another item")
             held = self._path(base, item.kind, item.name).exists()
-            verb = "update" if held else "save"
-            await asyncio.to_thread(self._write, base, item, files, verb, author)
+            verb = verb or ("update" if held else "save")
+            sha = await asyncio.to_thread(self._write, base, item, files, verb, author)
             self._changed(principal, item)
-        return self.get(principal, item.name) or item
+        return sha
 
     def _write(
         self, base: Path, item: Item, files: dict, verb: str, author: str
@@ -245,7 +248,45 @@ class Store:
             _restore(base, before, [self._rel(item)])
             raise _history_failed(e) from None
 
-    async def delete(self, principal: str, name: str, author: str) -> str:
+    async def set_status(
+        self, principal: str, name: str, status: str, author: str, verb: str
+    ) -> str:
+        """Set an item's ``status`` and commit, rewriting only its own file,
+        so a skill keeps the other files of its folder; the commit's sha."""
+        base = self.dir(principal)
+        check_name(name)
+        async with self._lock(principal):
+            item = self.get(principal, name)
+            if item is None:
+                raise OpError("not_found", f"no item named {name!r}")
+            new = Item(
+                item.kind,
+                item.name,
+                item.description,
+                item.body,
+                {**item.meta, "status": status},
+            )
+            sha = await asyncio.to_thread(self._rewrite, base, new, verb, author)
+            self._changed(principal, new)
+        return sha
+
+    def _rewrite(self, base: Path, item: Item, verb: str, author: str) -> str:
+        path = self._path(base, item.kind, item.name)
+        if item.kind == "skill":
+            path = path / "SKILL.md"
+        before = _snapshot([path])
+        try:
+            path.write_text(dump(item), encoding="utf-8")
+            return history.commit(
+                base, [self._rel(item)], f"{verb} {item.kind} {item.name}", author
+            )
+        except (OSError, subprocess.CalledProcessError) as e:
+            _restore(base, before, [self._rel(item)])
+            raise _history_failed(e) from None
+
+    async def delete(
+        self, principal: str, name: str, author: str, verb: str = "delete"
+    ) -> str:
         """Delete an item and commit; the commit's sha, "" when git never
         tracked it."""
         base = self.dir(principal)
@@ -254,11 +295,33 @@ class Store:
             item = self.get(principal, name)
             if item is None:
                 raise OpError("not_found", f"no item named {name!r}")
-            sha = await asyncio.to_thread(self._remove, base, item, author)
+            sha = await asyncio.to_thread(self._remove, base, item, author, verb)
             self._changed(principal, item)
         return sha
 
-    def _remove(self, base: Path, item: Item, author: str) -> str:
+    async def revert(
+        self, principal: str, sha: str, kind: Kind, name: str, author: str
+    ) -> str:
+        """Undo the commit ``sha``, which changed the item ``kind``/``name``,
+        with a new commit; its sha. A revert git refuses (a later change to
+        the same lines) leaves the store as it was and is ``conflict``."""
+        base = self.dir(principal)
+        check_name(name)
+        async with self._lock(principal):
+            try:
+                new = await asyncio.to_thread(history.revert, base, sha, author)
+            except subprocess.CalledProcessError as e:
+                raise OpError(
+                    "conflict",
+                    f"{name!r} changed again since; the change cannot be undone"
+                    f" by itself ({(e.stderr or '').strip() or e})",
+                ) from None
+            except OSError as e:
+                raise _history_failed(e) from None
+            self._changed(principal, Item(kind, name, "", ""))
+        return new
+
+    def _remove(self, base: Path, item: Item, author: str, verb: str) -> str:
         target = self._path(base, item.kind, item.name)
         held = [target] if item.kind == "memory" else sorted(target.rglob("*"))
         before = _snapshot([p for p in held if p.is_file()])
@@ -268,7 +331,7 @@ class Store:
             else:
                 shutil.rmtree(target)
             return history.commit(
-                base, [self._rel(item)], f"delete {item.kind} {item.name}", author
+                base, [self._rel(item)], f"{verb} {item.kind} {item.name}", author
             )
         except (OSError, subprocess.CalledProcessError) as e:
             _restore(base, before, [self._rel(item)])

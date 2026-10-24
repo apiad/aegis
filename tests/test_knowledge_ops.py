@@ -34,6 +34,7 @@ async def test_an_agent_saves_searches_reads_and_deletes_a_memory(agents_world):
                 description="The staging host for project quill",
                 body="It is ben-staging-2.",
                 type="project",
+                asked=True,
             ),
         )
     )

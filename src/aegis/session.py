@@ -1160,6 +1160,10 @@ class Session:
         """A config suggestion's card or its outcome (config_suggest.py)."""
         self._record(record)
 
+    def record_knowledge(self, record: dict) -> None:
+        """A knowledge card or its outcome (knowledge_ops.py)."""
+        self._record(record)
+
     def record_card(self, record: dict) -> None:
         """A card asking a person to approve what this session's agent made:
         a schedule now, a workflow next (schedule_ops, workflow_ops)."""

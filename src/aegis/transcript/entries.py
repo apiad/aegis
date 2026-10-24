@@ -1022,6 +1022,48 @@ class Fold:
             return self._upsert(
                 {**e, "status": status, "summary": status, "detail": det}
             )
+        if kind == "knowledge_card":
+            # A memory or skill an agent proposed, or an approved one it
+            # changed or deleted (knowledge_ops.py). What the card shows and
+            # the commit Undo reverts live here, so it works after a restart.
+            det = {
+                k: rec.get(k)
+                for k in (
+                    "op",
+                    "item_kind",
+                    "name",
+                    "description",
+                    "body",
+                    "type",
+                    "lifetime",
+                    "expires",
+                    "sha",
+                    "digest",
+                )
+            }
+            det["by"] = None
+            op = str(rec.get("op"))
+            return self._upsert(
+                _entry(
+                    str(rec.get("card_id")),
+                    "knowledge",
+                    "pending",
+                    ts,
+                    d.KNOWLEDGE_GLYPH,
+                    title=f"{rec.get('item_kind')} {rec.get('name')}",
+                    summary="proposed" if op == "new" else op,
+                    detail=det,
+                )
+            )
+        if kind == "knowledge_card_done":
+            e = self._entries.get(str(rec.get("card_id")))
+            if e is None:
+                return []
+            status = str(rec.get("outcome"))
+            det = {**e["detail"], "by": rec.get("by")}
+            return self._upsert(
+                {**e, "status": status, "summary": status, "detail": det}
+            )
         if kind == "peek":
             # A file tool's file, copied because the person asked to see it:
             # it opens inside that tool's row, the latest copy replacing any.

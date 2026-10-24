@@ -14,10 +14,11 @@ from ..transcript.entries import NOTICE_HEADER
 
 HEADER = f"{NOTICE_HEADER}knowledge · may be relevant"
 DESCRIPTION_CHARS = 120
-# aegis's own wakes: a notice, a monitor that ended, a page's answer. They
-# carry no new request, so they get no hint; a message from the person,
-# another agent, a queue task, a schedule or a workflow does.
-WAKES = ("> from aegis:", "> from monitor:", "> from artifact:")
+# aegis's own wakes: a notice, a monitor that ended, a page's answer, a
+# knowledge card's outcome. They carry no new request, so they get no hint;
+# a message from the person, another agent, a queue task, a schedule or a
+# workflow does.
+WAKES = ("> from aegis:", "> from monitor:", "> from artifact:", "> from knowledge:")
 # A skill the person ran as /<name>: a slash command, which carries its own
 # text and gets no hint.
 COMMANDS = ("> from skill:",)

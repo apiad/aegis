@@ -1,0 +1,2 @@
+- **Approve what an agent remembers.** A memory or skill an agent saves without being asked is now a proposal: a card in the transcript shows it with Approve and Discard, and it is not named under messages, nor offered as a command, until you approve it. When an agent changes or deletes one you already approved, the change applies at once and its card offers Undo, which reverts that commit. The cards keep working after a restart.
+help: knowledge#approving-what-an-agent-saves
