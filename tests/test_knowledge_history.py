@@ -98,3 +98,22 @@ def test_a_failed_revert_is_aborted_and_raises(tmp_path):
         text=True,
     ).stdout
     assert status == ""
+
+
+def test_revert_commits_only_what_the_reverted_commit_touched(tmp_path):
+    history.ensure_repo(tmp_path)
+    _write(tmp_path, "memories/a.md", "one\n")
+    _write(tmp_path, "memories/b.md", "bee\n")
+    history.commit(tmp_path, ["memories/a.md", "memories/b.md"], "save", "s1")
+    _write(tmp_path, "memories/a.md", "two\n")
+    sha = history.commit(tmp_path, ["memories/a.md"], "update a", "s1")
+    _write(tmp_path, "memories/b.md", "a hand edit\n")  # not through aegis
+    assert history.revert(tmp_path, sha, "ana")
+    assert (tmp_path / "memories" / "a.md").read_text() == "one\n"
+    dirty = subprocess.run(
+        ["git", "-C", str(tmp_path), "status", "--porcelain"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert dirty.split() == ["M", "memories/b.md"]
