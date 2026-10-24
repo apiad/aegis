@@ -111,7 +111,20 @@ outside aegis is deleted unless its row is ticked. Say on the row:
 - for a file git tracks (`git -C <repo> ls-files --error-unmatch <path>`),
   such as a repository's `CLAUDE.md`, `AGENTS.md` or `.claude/skills/`: the
   change is a commit in that repository, made the way its own `AGENTS.md`
-  says (a branch and a pull request, or straight to its main branch).
+  says (a branch and a pull request, or straight to its main branch);
+- for a skill folder that is a symlink, such as `~/.claude/skills/<name>`
+  linking to a folder in a repository: `knowledge_import` refuses the link,
+  so the import row names the folder it links to, and the removal row is
+  `remove:<link>`, which deletes the link only (`rm` on the link, no
+  trailing slash), never its target: the target may be a repository's,
+  shared with others.
+
+When auto-memory files move, Claude Code's `MEMORY.md` in that folder still
+lists them, and it loads that index into every session. Propose one row
+for it, `edit:<dir>/MEMORY.md`: it removes the lines of the files that
+moved, or removes the index itself when every file in the folder moved.
+Apply it after the files' own removal rows, and only for files that were
+imported.
 
 Leave out every source the turn says was already moved into aegis.
 

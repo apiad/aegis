@@ -129,6 +129,9 @@ def test_the_setup_page_names_knowledge_import_and_the_keys():
         "when:",
         "commit",
         "stops being shared",
+        "never its target",
+        "remove:<link>",
+        "edit:<dir>/MEMORY.md",
     ):
         assert needle in text, needle
     # The old advice to leave skills where they are is gone.
