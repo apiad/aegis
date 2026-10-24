@@ -1,4 +1,4 @@
-"""The knowledge operations: memory tools for agents, and stats.
+"""The knowledge operations: memory and skill tools for agents, and stats.
 
 Every op works on the caller's own principal (``App.who``): an agent's is its
 session's owner, so a member's agent never reaches another member's items, and
@@ -7,11 +7,16 @@ not exist. Reads are open to read-permission sessions, as help_read is; saves
 and deletes are not. A save is one commit in the principal's store
 (knowledge/store.py). In this slice every save is approved; proposals for
 memories an agent saves on its own initiative come with the approval card.
+
+Reading a skill's SKILL.md loads it in the calling session: the name joins
+``Session.skills``, which the card shows and which ``skill_run`` checks.
 """
 
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import time
 from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING, Literal
@@ -87,6 +92,51 @@ class SaveMemory(_Strict):
 
 class DeleteMemory(_Strict):
     name: str
+
+
+class SearchSkills(_Strict):
+    query: str = Field(
+        min_length=1,
+        description="What you are about to do, in your own words, such as "
+        "'cut a release' or 'rotate the bot token'.",
+    )
+    limit: int = Field(5, ge=1, le=20, description="How many skills to return.")
+
+
+class ReadSkill(_Strict):
+    name: str = Field(description="A skill's name, from the hint or skill_search.")
+    file: str | None = Field(
+        None,
+        description="One file of the skill's folder, as skill_read lists it; "
+        "omit it for SKILL.md, which loads the skill.",
+    )
+
+
+class SaveSkill(_Strict):
+    name: str = Field(
+        description="Lowercase letters, digits, - and _, such as 'release'. "
+        "Saving an existing skill's name replaces it, files included."
+    )
+    description: str = Field(
+        min_length=1,
+        max_length=300,
+        description="When to use it, in one line, such as 'Use when cutting a "
+        "release'; the hint and search show it.",
+    )
+    body: str = Field(min_length=1, description="The procedure in Markdown.")
+    files: dict[str, str] = Field(
+        default_factory=dict,
+        description="Other files of the skill's folder: relative path to the "
+        "file's bytes in base64.",
+    )
+    aegis: dict | None = Field(
+        None,
+        description="The SKILL.md's aegis block: command (offer it as "
+        "/<name>, default true), scripts (files skill_run may run).",
+    )
+    asked: bool = Field(
+        False, description="true when the person asked you to save this skill."
+    )
 
 
 class Stats(_Strict):
@@ -212,6 +262,77 @@ def register_knowledge_ops(app: App) -> None:
         await kn.refresh(owner)
         kn.usage.add(owner, caller.log_id or "", "memory", p.name, "deleted")
         return {"deleted": p.name, "sha": sha}
+
+    def skill(owner: str, name: str) -> Item:
+        check_name(name)
+        it = kn.store.get(owner, name)
+        if it is None or it.kind != "skill":
+            raise OpError("not_found", f"no skill named {name!r}")
+        return it
+
+    @r.op("skill.search", SearchSkills, agent=True, read=True)
+    async def skill_search(p: SearchSkills, caller):
+        """Search your skills (procedures for a kind of task, such as cutting
+        a release) with your own words, before you start a task. Returns the
+        best names with their description, score and status; load one with
+        skill_read."""
+        hits = (await kn.index(principal(caller))).rank(p.query, "skill", p.limit)
+        return {
+            "hits": [
+                {
+                    "name": h.name,
+                    "description": h.description,
+                    "score": round(h.score, 3),
+                    "status": h.status,
+                }
+                for h in hits
+            ]
+        }
+
+    @r.op("skill.read", ReadSkill, agent=True, read=True)
+    async def skill_read(p: ReadSkill, caller):
+        """Load a skill: returns its SKILL.md, which you then follow, and the
+        files of its folder. With file, returns that one file instead."""
+        owner = principal(caller)
+        it = skill(owner, p.name)
+        files = kn.store.files(owner, p.name)
+        if p.file is not None and p.file != "SKILL.md":
+            data = kn.store.read_file(owner, p.name, p.file)
+            try:
+                return {"name": p.name, "file": p.file, "text": data.decode("utf-8")}
+            except UnicodeDecodeError:
+                return {
+                    "name": p.name,
+                    "file": p.file,
+                    "base64": base64.b64encode(data).decode("ascii"),
+                }
+        session = caller.log_id or ""
+        rank = kn.read_rank(session, it.name)
+        kn.usage.add(
+            owner, session, "skill", it.name, "read", f"rank={rank}" if rank else None
+        )
+        s = app.sessions.sessions.get(session)
+        if s is not None:
+            s.load_skill(it.name)
+        return {"name": it.name, "text": dump(it), "files": files}
+
+    @r.op("skill.save", SaveSkill, agent=True)
+    async def skill_save(p: SaveSkill, caller):
+        """Save a skill: a procedure later sessions should follow for one
+        kind of task, with any files it needs. Saving an existing name
+        replaces it. Set asked: true when the person asked for it."""
+        owner = principal(caller)
+        check_name(p.name)
+        try:
+            extra = {k: base64.b64decode(v, validate=True) for k, v in p.files.items()}
+        except (binascii.Error, ValueError):
+            raise OpError("bad_params", "files must hold base64") from None
+        meta = {"aegis": p.aegis} if p.aegis else {}
+        it = Item("skill", p.name, p.description.strip(), p.body.rstrip() + "\n", meta)
+        await kn.store.save(owner, it, author(caller), extra=extra)
+        await kn.refresh(owner)
+        kn.usage.add(owner, caller.log_id or "", "skill", p.name, "saved")
+        return {"saved": p.name, "status": "approved"}
 
     @r.op("knowledge.stats", Stats, agent=True, read=True)
     async def knowledge_stats(p: Stats, caller):

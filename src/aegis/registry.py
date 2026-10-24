@@ -667,6 +667,7 @@ class Registry(Host):
             quota_paused=meta.get("quota_paused"),
             notices_sent=meta.get("notices_sent"),
             items_sent=meta.get("items_sent"),
+            skills=meta.get("skills"),
             tool_calls=meta.get("tool_calls") or 0,
             cache_recent=meta.get("cache_recent"),
             compactions=meta.get("compactions") or 0,

@@ -558,7 +558,7 @@ async def test_a_member_is_never_hinted_another_principals_memory(world):
 <div class="verify"><span class="lbl">verify</span><p><code>uv run pytest tests/test_knowledge_skills.py -q</code></p></div>
 </div></details>
 
-<details class="task" id="task-10" data-state="pending">
+<details class="task" id="task-10" data-state="done">
 <summary><span class="num">10</span><span><span class="ttl">Skill tools and loaded skills on the card</span><span class="files">knowledge_ops.py · session.py · client sidebar and card · tests/test_knowledge_skill_ops.py</span></span><span class="state">pending</span></summary>
 <div class="body">
 <p>Ops: <code>skill.search</code> {query, limit=5} (read), <code>skill.read</code> {name, file: str | None} (read), and <code>skill.save</code> {name, description, body, files: dict[str, str] (base64), asked: bool=False}. <code>skill.read</code> of SKILL.md appends the name to <code>Session.skills</code>, a new list persisted in the session meta beside <code>notices_sent</code>, writes a <code>read</code> usage row, and publishes the session so the card updates. The card and sidebar show the loaded skills as a line under the plan, using the same element the plan line uses (find it with <code>aegis map callers plan_now</code>).</p>

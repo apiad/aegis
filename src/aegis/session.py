@@ -90,6 +90,7 @@ _NOW = (
     "quiet",
     "autoclose",
     "workflow",
+    "skills",
 )
 _SOON = (
     "activity",
@@ -366,6 +367,7 @@ class Session:
         quota_paused: str | None = None,
         notices_sent: dict[str, str] | None = None,
         items_sent: dict[str, str] | None = None,
+        skills: list[str] | None = None,
         tool_calls: int = 0,
         parked_rss: int = 0,
         parked_idle_s: int = 0,
@@ -468,6 +470,9 @@ class Session:
         # What per-session notice sources told it, apart from the host kinds
         # (notices.py): their restore reads every key in notices_sent.
         self.items_sent: dict[str, str] = dict(items_sent or {})
+        # The skills it loaded with skill_read or a /<skill> command, in the
+        # order loaded (knowledge_ops.py). In the meta, so the card keeps them.
+        self.skills: list[str] = list(skills or [])
         # What the cache did (cache.py): tool calls and compactions of the main
         # thread, and the last calls' [cache_read, total_input, at]. In the meta,
         # so the counters survive a restart.
@@ -550,6 +555,7 @@ class Session:
             "quota_paused": self.quota_paused,
             "notices_sent": self.notices_sent,
             "items_sent": self.items_sent,
+            "skills": self.skills,
             "tool_calls": self.tool_calls,
             "parked_rss": self.parked_rss,
             "parked_idle_s": self.parked_idle_s,
@@ -599,6 +605,15 @@ class Session:
         m["cache_alarm"] = cache.alarm(self.cache_recent, self.spec.harness)
         m.update(self._host.card(self))
         return m
+
+    def load_skill(self, name: str) -> bool:
+        """Mark a skill loaded, once; publishes the card and writes the meta.
+        False when it was loaded already."""
+        if name in self.skills:
+            return False
+        self._set(skills=[*self.skills, name])
+        self._metas.write(self.meta())
+        return True
 
     @property
     def busy(self) -> bool:

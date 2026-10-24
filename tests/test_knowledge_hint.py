@@ -154,7 +154,7 @@ def test_the_docs_promise_only_what_this_release_has():
 
     page = (Path(aegis.__file__).parent / "help" / "knowledge.md").read_text()
     assert "can be restored" not in page and "one line" not in page
-    assert "skills" not in page.split("## The hint", 1)[1].split("##", 1)[0]
+    assert "skill_read" in page.split("## The hint", 1)[1].split("##", 1)[0]
     stub = (Path(aegis.__file__).parent / "api" / "ops.pyi").read_text()
     delete = (
         stub.split("class _memory:", 1)[1]
