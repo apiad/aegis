@@ -297,6 +297,12 @@ class ImportItem(_Strict):
     )
 
 
+class Setting(_Strict):
+    native: bool | None = Field(
+        None, description="Set the switch; omit it to read the setting."
+    )
+
+
 class ImportItems(_Strict):
     items: list[ImportItem] = Field(min_length=1, max_length=200)
 
@@ -1273,6 +1279,18 @@ def register_knowledge_ops(app: App) -> None:
             "last_used": u.get("last_used"),
             "reads": u.get("read", 0) + u.get("invoked", 0),
         }
+
+    @r.op("knowledge.setting", Setting)
+    async def knowledge_setting(p: Setting, caller):
+        """The caller's own knowledge switch, read or set: native starts
+        their sessions without the harness's own skills and memory. A
+        running session keeps how it started until its process restarts."""
+        owner = principal(caller)
+        if p.native is not None:
+            app.setup_records.merge(
+                owner, {"knowledge": "native" if p.native else "side-by-side"}
+            )
+        return {"native": app.knowledge_native(owner)}
 
     @r.op("knowledge.list", ListItems)
     async def knowledge_list(p: ListItems, caller):

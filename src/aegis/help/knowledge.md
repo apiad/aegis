@@ -260,3 +260,24 @@ card in the transcript lists what came in, with an Undo per item, which
 takes that item out of aegis again. Removing an original from where the
 harness loaded it is a row of its own, done after the import, and nothing
 outside aegis is deleted unless you ticked its row.
+
+## Turning the harness's own off
+
+Moving items in does not stop a harness from loading what is left. That is
+a separate switch, off by default: Settings, under Skills and memory, "Only
+aegis's skills and memory in my sessions". It is yours alone; in multi-user
+mode another member's sessions are not touched. `/setup` offers it as the
+`knowledge:native` row. With it on, your sessions start:
+
+- in Claude Code, without its `Skill` tool (aegis's `skill_read` and
+  `skill_search` replace it) and with its auto-memory off, through the
+  `CLAUDE_CODE_DISABLE_AUTO_MEMORY` variable;
+- in Codex, without its skills catalog, its bundled skills and its
+  memories;
+- in OpenCode, with every skill denied, so none is listed or loaded.
+
+A skill in your store then also takes the name of a harness command, so
+`/<name>` runs yours. A session already running keeps how it started until
+its process restarts. Turn the switch off in Settings to go back: until it
+is on, what aegis holds and what the harness still holds both run, and the
+hint names only aegis's.

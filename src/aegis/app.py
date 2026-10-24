@@ -542,6 +542,7 @@ class App:
         self.skill_servers = SkillServers()
         reg.skill_servers = self.skill_servers
         reg.principal_of = lambda s: s.spec.owner or self.user
+        reg.native_of = lambda s: self.knowledge_native(s.spec.owner or self.user)
         self.repos = Repos(
             self.journal.path,
             self.publish,
@@ -1459,11 +1460,11 @@ class App:
         return [(it.name, it.description) for it in items if offered(it)]
 
     def knowledge_native(self, principal: str) -> bool:
-        """Whether ``principal``'s knowledge setting is native, under which a
-        store skill takes the name of a harness command. The setting comes
-        with the switch that turns the harness's own skills off; until then
-        it is off for everyone."""
-        return False
+        """Whether ``principal``'s knowledge setting is native: their
+        sessions start without the harness's own skills and memory, and a
+        store skill takes the name of a harness command. Set from Settings
+        (``knowledge.setting``) or by /setup (``setup_record``)."""
+        return self.setup_records.native(principal)
 
     async def _skill_command(self, s, name: str):
         """The store skill ``/name`` runs in ``s``, or None. ``skill:<name>``

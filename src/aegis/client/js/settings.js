@@ -227,6 +227,7 @@ export class Settings {
           { className: "set-page" },
           h("p", { className: "notice", id: "set-member", textContent: "Server settings (agents, queues, parking, workflows, servers, tokens) are edited by an admin." }),
           this.browser(),
+          this.knowledge(),
           this.checks(),
           this.modelsView(),
         ),
@@ -238,7 +239,7 @@ export class Settings {
     const w = this.wire;
     // The title first, then what this browser keeps, then the servers; the
     // loading and no-config pages keep the same width and order.
-    const page = (...kids) => h("div", { className: "set-page" }, ...kids, this.browser(), this.servers(), this.tokens());
+    const page = (...kids) => h("div", { className: "set-page" }, ...kids, this.browser(), this.knowledge(), this.servers(), this.tokens());
     if (!w || !this.doc) return this.box.replaceChildren(page(h("p", { className: "notice", textContent: "Loading…" })));
     if (!w.exists && !this.dirty) return this.box.replaceChildren(page(this.empty()));
     const full = h(
@@ -246,6 +247,7 @@ export class Settings {
       { className: "set-page" },
       this.head(),
       this.browser(),
+      this.knowledge(),
       this.servers(),
       this.tokens(),
       w.error && h("p", { className: "set-alert err", id: "set-error", textContent: `The file on disk does not parse, so aegis is still using the last version that did. ${w.error}` }),
@@ -320,6 +322,51 @@ export class Settings {
     this.themeChip.value = document.documentElement.dataset.theme;
     this.drawApp();
     return this.browserNode;
+  }
+
+  // The person's own knowledge switch (knowledge.setting): off, the harness
+  // loads its own skills and memory beside aegis's; on, their sessions start
+  // without them. Always this server's and the caller's own, whichever
+  // server the form below edits; built once, like browser().
+  knowledge() {
+    if (!this.knowledgeNode) {
+      this.nativeBox = h("input", { type: "checkbox", id: "set-native" });
+      this.nativeNote = h("p", { className: "set-none", id: "set-native-note" });
+      this.nativeBox.disabled = true;
+      this.nativeBox.addEventListener("change", async () => {
+        const want = this.nativeBox.checked;
+        this.nativeBox.disabled = true;
+        try {
+          const r = await this.conn.call("knowledge.setting", { native: want });
+          this.drawNative(r.native, "Saved. A session already running keeps how it started until its process restarts.");
+        } catch (e) {
+          this.nativeBox.checked = !want;
+          this.drawNative(!want, String(e?.message || e), true);
+        }
+      });
+      this.knowledgeNode = h(
+        "section",
+        { className: "set-knowledge", id: "set-knowledge" },
+        h("h3", { textContent: "Skills and memory" }),
+        h("label", { className: "set-browser-row set-native" }, this.nativeBox, h("span", { textContent: "Only aegis's skills and memory in my sessions" })),
+        this.nativeNote,
+      );
+      this.conn
+        .call("knowledge.setting", {})
+        .then((r) => this.drawNative(r.native))
+        .catch(() => {}); // offline: the box stays off until the next draw
+    }
+    return this.knowledgeNode;
+  }
+
+  drawNative(on, said = "", err = false) {
+    this.nativeBox.checked = on;
+    this.nativeBox.disabled = false;
+    const what = on
+      ? "On: Claude Code starts without its Skill tool and its auto-memory, Codex without its skills and memories, OpenCode without its skills. Your aegis skills and memories replace them."
+      : "Off: each harness also loads its own skills and memory, beside aegis's. /setup moves them into aegis first.";
+    this.nativeNote.textContent = said ? `${said} ${what}` : what;
+    this.nativeNote.classList.toggle("err", err);
   }
 
   // Whether aegis is installed here, and what the service worker keeps.

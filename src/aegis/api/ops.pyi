@@ -418,6 +418,8 @@ class _knowledge:
         """Delete an item, as a commit: its history keeps it, and Restore brings it back."""
     async def restore(self, *, name: str, sha: str) -> Any:
         """Put an item back as it was at one of its commits, as a new commit."""
+    async def setting(self, *, native: bool | None = ...) -> Any:
+        """The caller's own knowledge switch, read or set: native starts their sessions without the harness's own skills and memory. A running session keeps how it started until its process restarts."""
     async def stats(
         self,
         *,
@@ -767,6 +769,7 @@ class _setup:
         applied: builtins.list[str],
         declined: builtins.list[dict[str, Any]],
         sources_until: str,
+        knowledge: Literal["native", "side-by-side"] | None = ...,
     ) -> Any:
         """Save what this /setup run applied and declined, for the person whose session this is, so their next run proposes only what is new. Call it once, at the end of a run (help_read setup record)."""
 

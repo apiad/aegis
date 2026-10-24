@@ -199,6 +199,11 @@ class Host:
         (knowledge/hint.py), or ""."""
         return ""
 
+    def knowledge_native(self, session: "Session") -> bool:
+        """Whether a new process starts without the harness's own skills and
+        memory: its owner's knowledge setting is native."""
+        return False
+
     def compacted(self, session: "Session") -> None:
         """The harness compacted the session's context."""
 
@@ -781,6 +786,7 @@ class Session:
                 log_id=self.log_id,
                 user=user,
                 keep_harness_tools=self.spec.keep_harness_tools,
+                knowledge_native=self._host.knowledge_native(self),
             )
         )
         # Before the start: a harness can speak while it starts (OpenCode's

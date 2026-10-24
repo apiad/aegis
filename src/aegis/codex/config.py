@@ -19,6 +19,12 @@ Measured on codex-cli 0.162.1 (spec ``2026-10-09-aegis-2-codex-harness-design.md
 - aegis has no approval prompt, so nothing asks: the four permissions are
   sandbox policies, each allowing strictly more than the one before, so a
   session an agent spawns still has at most the agent's power.
+- Under the owner's ``knowledge: native`` (setup.py) Codex starts without
+  its own skills and memories (``NATIVE``): read from the config schema of
+  0.163.0 and 0.164.0, ``skills.include_instructions`` drops the skills
+  catalog from every turn, ``skills.bundled.enabled`` the skills Codex
+  ships, and the ``memories`` feature (off by default) both reading and
+  writing memories.
 """
 
 from __future__ import annotations
@@ -45,6 +51,13 @@ SANDBOX_POLICY: dict[str, dict[str, Any]] = {
     "auto": {"type": "workspaceWrite", "networkAccess": True},
     "full": {"type": "dangerFullAccess"},
 }
+NATIVE_DISABLED = ("memories",)
+NATIVE = (
+    "skills.include_instructions=false",
+    "skills.bundled.enabled=false",
+    "memories.use_memories=false",
+    "memories.generate_memories=false",
+)
 BUILTIN = (
     ("compact", "Summarize the conversation to free context."),
     ("review", "Review the uncommitted changes, or what the arguments ask."),
@@ -57,11 +70,17 @@ def split_model(model: str) -> tuple[str, str]:
     return provider, model_id
 
 
-def argv(bin: str, mcp_url: str | None, exclude: Sequence[str] = ()) -> list[str]:
-    """``exclude`` is the person's own shell exclude list, kept."""
+def argv(
+    bin: str, mcp_url: str | None, exclude: Sequence[str] = (), native: bool = False
+) -> list[str]:
+    """``exclude`` is the person's own shell exclude list, kept. ``native``
+    turns Codex's own skills and memories off."""
     out = [bin, "app-server"]
-    for feature in DISABLED:
+    for feature in (*DISABLED, *(NATIVE_DISABLED if native else ())):
         out += ["--disable", feature]
+    if native:
+        for kv in NATIVE:
+            out += ["-c", kv]
     if mcp_url is not None:
         from ..mcp import HEADER
 

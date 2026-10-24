@@ -355,7 +355,13 @@ for it anyway works around the transcript and the inbox. An agent keeps one
 with `keep_harness_tools`, fixed at spawn like its priming. A session without
 aegis's tools keeps them all, since nothing would replace them. The primer is
 not trimmed to match: OpenCode and Codex share it and still have their own
-twins.
+twins. The harness's own skills and memory are a person's choice, not the
+server's: under the owner's `knowledge: native` (their setup record), the
+host sets `Launch.knowledge_native` at each spawn, and each harness turns
+its own off its own way: Claude Code adds `Skill` to the disallowed tools
+and runs with `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, Codex gets `-c` keys and
+`--disable memories` (`codex/config.py` `NATIVE`), OpenCode a rule denying
+the `skill` action (`opencode/config.py` `NATIVE`).
 
 **A `/` line is resolved on the server, and a typo costs nothing.** `session.send`
 runs an aegis command (`commands.py`) as the operation it stands for, passes a name

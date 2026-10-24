@@ -192,7 +192,12 @@ class OpenCodeProcess:
         env = {
             **os.environ,
             "OPENCODE_CONFIG_CONTENT": json.dumps(
-                child_config(self._launch.mcp, self.permission, self._launch.read_dirs)
+                child_config(
+                    self._launch.mcp,
+                    self.permission,
+                    self._launch.read_dirs,
+                    self._launch.knowledge_native,
+                )
             ),
             "OPENCODE_SERVER_PASSWORD": password,
             OWNER: owner_tag(),

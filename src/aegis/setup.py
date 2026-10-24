@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field
 
@@ -66,7 +66,10 @@ class Records:
         self.put(principal, {**(self.get(principal) or {}), **part})
 
     def native(self, principal: str) -> bool:
-        return (self.get(principal) or {}).get("knowledge") == "native"
+        try:
+            return (self.get(principal) or {}).get("knowledge") == "native"
+        except OpError:
+            return False  # no such principal: nobody's setting
 
     def imported(self, principal: str) -> list[dict]:
         got = (self.get(principal) or {}).get("imported")
@@ -160,6 +163,12 @@ class RecordParams(BaseModel):
     sources_until: str = Field(
         min_length=1, description="The newest transcript time you read, ISO 8601."
     )
+    knowledge: Literal["native", "side-by-side"] | None = Field(
+        None,
+        description="native when the person ticked knowledge:native: their "
+        "sessions then start without the harness's own skills and memory. "
+        "Omit it otherwise; the person changes it back in Settings.",
+    )
 
 
 def register_setup(app: App) -> Records:
@@ -171,7 +180,7 @@ def register_setup(app: App) -> Records:
         """Save what this /setup run applied and declined, for the person
         whose session this is, so their next run proposes only what is new.
         Call it once, at the end of a run (help_read setup record)."""
-        records.merge(app.who(caller).name, p.model_dump())
+        records.merge(app.who(caller).name, p.model_dump(exclude_none=True))
         return "ok"
 
     return records
