@@ -1212,14 +1212,19 @@ class App:
 
     async def _knowledge_checks(self) -> None:
         """The daily pass: every principal's memories flagged once at boot,
-        then every ``KNOWLEDGE_CHECK_S``. Never fails the server."""
+        then every ``KNOWLEDGE_CHECK_S``. Never fails the server, and one
+        principal's failure never skips the others."""
         while True:
             try:
                 names = await asyncio.to_thread(self.knowledge.store.principals)
-                for name in names:
-                    await self.knowledge_check(name)
             except Exception:
-                log.exception("aegis: the knowledge check failed")
+                log.exception("aegis: the knowledge check could not list stores")
+                names = []
+            for name in names:
+                try:
+                    await self.knowledge_check(name)
+                except Exception:
+                    log.exception("aegis: the knowledge check of %s failed", name)
             await asyncio.sleep(KNOWLEDGE_CHECK_S)
 
     def _place(self, user: str | None, member: bool) -> Place:

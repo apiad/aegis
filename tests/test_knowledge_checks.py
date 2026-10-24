@@ -4,6 +4,7 @@ the daily pass, read as the member, carried by search and knowledge_stats."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 import threading
 from datetime import date
@@ -206,3 +207,22 @@ async def test_the_boot_pass_flags_what_a_restart_forgot(world):
     await world.restart()
     kn = world.app.knowledge
     await until(lambda: kn.flags_of(world.app.user, "m") == ["stale:gone/x.py"])
+
+
+async def test_one_principal_failing_does_not_stop_the_pass(world, monkeypatch):
+    app = world.app
+    seen = []
+
+    async def check(name, items=None):
+        seen.append(name)
+        if name == "ana":
+            raise RuntimeError("a broken store")
+
+    monkeypatch.setattr(app.knowledge.store, "principals", lambda: ["ana", "ben"])
+    monkeypatch.setattr(app, "knowledge_check", check)
+    task = asyncio.create_task(app._knowledge_checks())
+    try:
+        await until(lambda: "ben" in seen, timeout=5, what="ben checked")
+    finally:
+        task.cancel()
+    assert seen[:2] == ["ana", "ben"]
