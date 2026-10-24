@@ -397,6 +397,23 @@ class _knowledge:
         """knowledge.card.discard"""
     async def card_undo(self, *, log_id: str, id: str) -> Any:
         """knowledge.card.undo"""
+    async def get(self, *, name: str) -> Any:
+        """One item for the view: its file's whole text, the stamp an edit sends back, and a skill's files."""
+    async def history(self, *, name: str) -> Any:
+        """The commits that changed an item, newest first, a deleted one's included."""
+    async def list(
+        self,
+        *,
+        query: str = ...,
+        kind: Literal["all", "skill", "memory", "flagged"] = ...,
+    ) -> Any:
+        """The caller's own skills and memories for the Knowledge view: proposals first, then skills and memories by name, or by score for a query."""
+    async def put(self, *, name: str, text: str, stamp: str) -> Any:
+        """The person's edit of an item's own file. It is saved approved, as one commit. Refused as stale when the file changed since ``stamp`` (knowledge.get's), so an edit never overwrites a change it did not see."""
+    async def remove(self, *, name: str) -> Any:
+        """Delete an item, as a commit: its history keeps it, and Restore brings it back."""
+    async def restore(self, *, name: str, sha: str) -> Any:
+        """Put an item back as it was at one of its commits, as a new commit."""
     async def stats(
         self,
         *,
@@ -441,7 +458,7 @@ class _link:
 
 class _memory:
     async def delete(self, *, name: str) -> Any:
-        """Delete a memory that is no longer true. The deletion is kept in the store's history: deleting an approved memory puts a card in your transcript that lets the person undo it, and the Knowledge view, in a later release, will restore it."""
+        """Delete a memory that is no longer true. The deletion is kept in the store's history: deleting an approved memory puts a card in your transcript that lets the person undo it, and the Knowledge view restores it from its history."""
     async def read(self, *, names: builtins.list[str]) -> Any:
         """Read one or more memories in full, by name: the ones the hint on your message names, or memory_search's hits."""
     async def save(

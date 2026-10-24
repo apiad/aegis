@@ -31,6 +31,7 @@ import { clampToRow, insertIntoComposer, quoted, rangeText } from "./quote.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
 import { entry, Journal, opens } from "./journal.js";
+import { Knowledge } from "./knowledge.js";
 import { FilePicker, Files, filesHash, parseTarget } from "./files.js";
 import { Schedules } from "./schedules.js";
 import { Help } from "./help.js";
@@ -270,6 +271,7 @@ $("jump").append(icon("latest"));
 $("bell").append(icon("bell"));
 $("settings-btn").prepend(icon("gear"));
 $("journal-btn").append(icon("book"));
+$("knowledge-btn").append(icon("knowledge"));
 $("files-btn").append(icon("folder"));
 $("schedules-btn").prepend(icon("clock"));
 $("send").append(icon("send"));
@@ -424,7 +426,7 @@ for (const b of document.querySelectorAll("#fleet-order button"))
     render();
   });
 
-// -- routing: #fleet, #new, #settings, #journal, #files[=<path>[:line]], #schedules, #help[=<page>], #s=<key>, #t=<key>, #read=<key>, #w=<n>:<key> --
+// -- routing: #fleet, #new, #settings, #journal, #knowledge[=<name>], #files[=<path>[:line]], #schedules, #help[=<page>], #s=<key>, #t=<key>, #read=<key>, #w=<n>:<key> --
 // A help ref is URI-encoded; a hand-typed malformed one is a page name nobody has.
 const unhash = (s) => {
   try {
@@ -449,6 +451,7 @@ function route(hash = location.hash) {
   if (h === "new") return { view: "spawn" };
   if (h === "settings") return { view: "settings" };
   if (h === "journal") return { view: "journal" };
+  if (h === "knowledge" || h.startsWith("knowledge=")) return { view: "knowledge", id: unhash(h.slice(10)) };
   if (h === "files" || h.startsWith("files=")) return { view: "files", id: unhash(h.slice(6)) };
   if (h === "schedules") return { view: "schedules" };
   if (h === "help" || h.startsWith("help=")) return { view: "help", id: unhash(h.slice(5)) };
@@ -633,6 +636,12 @@ const journal = new Journal(conn, $("journal"), {
     landEntry = r.source ? { key: r.log_id, id: r.source } : null;
     go(r.open ? `#s=${r.log_id}` : `#read=${r.log_id}`);
   },
+});
+// The Knowledge view routes its rows and Back through the URL, so the
+// browser's Back closes an open item.
+const knowledgeView = new Knowledge(conn, $("knowledge"), {
+  onOpen: (name) => go(`#knowledge=${encodeURIComponent(name)}`),
+  onBack: () => go("#knowledge"),
 });
 // Alt+O's picker opens a file in the Files view; Shift+Enter in a new browser tab.
 filePicker = new FilePicker($("fpick"), conn, (path, line, newTab) => {
@@ -1242,6 +1251,7 @@ function render() {
   $("tab-add").classList.toggle("on", r.view === "spawn");
   $("settings-btn").classList.toggle("on", r.view === "settings");
   $("journal-btn").classList.toggle("on", r.view === "journal");
+  $("knowledge-btn").classList.toggle("on", r.view === "knowledge");
   $("files-btn").classList.toggle("on", r.view === "files");
   $("schedules-btn").classList.toggle("on", r.view === "schedules");
   if (r.view !== "schedules") schedules.close();
@@ -1283,6 +1293,12 @@ function render() {
     show("journal");
     if (newView) journal.open();
     setTitle("Journal · aegis");
+  } else if (r.view === "knowledge") {
+    watchHost(null);
+    follow(null);
+    show("knowledge");
+    if (newView) knowledgeView.show(r.id);
+    setTitle(`${r.id || "Knowledge"} · aegis`);
   } else if (r.view === "files") {
     watchHost(null);
     follow(null);
@@ -3309,6 +3325,7 @@ const help = (open = keymap.hidden) => (keymap.hidden = !open);
 $("help-btn").addEventListener("click", () => go("#help"));
 $("settings-btn").addEventListener("click", () => go("#settings"));
 $("journal-btn").addEventListener("click", () => go("#journal"));
+$("knowledge-btn").addEventListener("click", () => go("#knowledge"));
 $("files-btn").addEventListener("click", () => go(filesView.path ? filesHash(filesView.path) : "#files"));
 $("schedules-btn").addEventListener("click", () => go("#schedules"));
 keymap.addEventListener("click", (ev) => ev.target === keymap && help(false));
@@ -3398,6 +3415,7 @@ installKeys(
     },
     settings: () => go("#settings"),
     journal: () => go("#journal"),
+    knowledge: () => go("#knowledge"),
     files: () => filePicker.open(),
     save: () => route().view === "files" && filesView.save(),
     schedules: () => go("#schedules"),

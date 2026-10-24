@@ -520,7 +520,9 @@ function fillKnowledge(card, e) {
       };
       return b;
     };
-    if (d.op === "new") acts.append(press("knowledge.card.approve", "Approve", true), press("knowledge.card.discard", "Discard"));
+    // Edit opens the item in the Knowledge view, where a saved edit approves it.
+    const edit = Object.assign(el("a", "btn", "Edit"), { href: `#knowledge=${encodeURIComponent(d.name || "")}` });
+    if (d.op === "new") acts.append(press("knowledge.card.approve", "Approve", true), edit, press("knowledge.card.discard", "Discard"));
     else acts.append(press("knowledge.card.undo", "Undo", true));
     kids.push(hint);
   }

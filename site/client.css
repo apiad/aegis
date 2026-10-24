@@ -1483,7 +1483,7 @@ body{background:#000}
 .a2 .set-empty{width:min(520px,100%);margin:12vh auto 0;padding:0 24px;display:grid;gap:14px;justify-items:start;font-size:14px;line-height:1.55;color:var(--ink)}
 .a2 .set-empty p{margin:0}
 .a2 .set-empty code{font-family:var(--font-mono);font-size:12.5px;color:var(--strong)}
-.a2 #settings-btn.on,.a2 #journal-btn.on,.a2 #files-btn.on,.a2 #schedules-btn.on,.a2 #help-btn.on{color:var(--accent)}
+.a2 #settings-btn.on,.a2 #journal-btn.on,.a2 #knowledge-btn.on,.a2 #files-btn.on,.a2 #schedules-btn.on,.a2 #help-btn.on{color:var(--accent)}
 @media (max-width:640px){.a2 .set-agent{grid-template-columns:1fr}.a2 .set-card-foot,.a2 .set-agent > .set-why{grid-column:1}.a2 .set-findings li{grid-template-columns:1fr;gap:2px}}
 
 /* the Files view (js/files.js): a bar with the path and Save, the folder tree
@@ -1584,6 +1584,61 @@ body{background:#000}
 .a2 .jcount:empty{display:none}
 .a2 .journal .empty{padding:36px 2px;text-align:center}
 .a2 .journal .jmore{display:block;margin:16px auto 0}
+/* The Knowledge view (js/knowledge.js): the Journal's box and chips, rows as
+   in the spec's mockup, and beside them the open item: its text in the
+   editor, Save and Delete, and its history. Below 640 px the rows drop the
+   usage column and the open item takes the list's place. */
+.a2[data-view=knowledge] .v-knowledge{display:flex;flex-direction:column;overflow:auto}
+.a2 .knowledge{max-width:1180px;width:100%;margin:0 auto;padding:22px 28px 32px;font-size:13px}
+.a2 .knowledge .kpanes{display:flex;gap:18px;align-items:flex-start;margin-top:14px}
+.a2 .knowledge .klist{flex:1 1 0;min-width:0;border:1px solid var(--rule);border-radius:var(--r-lg);overflow:hidden;background:var(--bg)}
+.a2 .knowledge .klist .empty{padding:24px 14px;color:var(--muted);text-align:center}
+.a2 .krow{display:grid;grid-template-columns:22px minmax(0,1fr) auto auto;gap:3px 12px;padding:9px 12px;border-bottom:1px solid var(--rule);align-items:baseline;cursor:pointer}
+.a2 .krow:last-child{border-bottom:0}
+.a2 .krow:hover,.a2 .krow:focus-visible{background:color-mix(in srgb,var(--ink) 5%,transparent);outline:none}
+.a2 .krow.on{background:var(--accent-soft)}
+.a2 .krow .ic{align-self:center;color:var(--faint);display:grid;place-items:center}
+.a2 .krow .ic .ic,.a2 .krow .ic svg{width:14px;height:14px}
+.a2 .krow .nm{font-family:var(--font-mono);color:var(--strong);overflow-wrap:anywhere}
+.a2 .krow .ds{grid-column:2 / -1;color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+.a2 .krow .use{font-family:var(--font-mono);font-size:11px;color:var(--muted);text-align:right;white-space:nowrap}
+.a2 .knowledge .fl{font-family:var(--font-mono);font-size:10.5px;text-align:right;white-space:nowrap}
+.a2 .knowledge .fl.ok{color:var(--ok)}
+.a2 .knowledge .fl.prop{color:var(--comms)}
+.a2 .knowledge .fl.stale{color:var(--warn)}
+.a2 .knowledge .fl.exp{color:var(--err)}
+.a2 .knowledge .kdetail{flex:1.4 1 0;min-width:0;display:flex;flex-direction:column;gap:8px;border:1px solid var(--rule);border-radius:var(--r-lg);background:var(--surface);padding:12px 14px}
+.a2 .knowledge .khead{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.a2 .knowledge .kback{display:none}
+.a2 .knowledge .kback .ic{width:14px;height:14px;margin-right:4px}
+.a2 .knowledge .ktitle{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;min-width:0}
+.a2 .knowledge .kname{font-family:var(--font-mono);font-size:14px;color:var(--strong);overflow-wrap:anywhere}
+.a2 .knowledge .kkind{font-family:var(--font-mono);font-size:11px;color:var(--faint)}
+.a2 .knowledge .kdesc{color:var(--ink)}
+.a2 .knowledge .kmeta{font-family:var(--font-mono);font-size:11px;color:var(--muted);overflow-wrap:anywhere}
+.a2 .knowledge .err{color:var(--err)}
+.a2 .knowledge .ked{height:340px;border:1px solid var(--rule);border-radius:var(--r);overflow:hidden}
+.a2 .knowledge .kacts{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.a2 .knowledge .kdel .ic{width:13px;height:13px;margin-right:4px}
+.a2 .knowledge .knote{font-size:12px;color:var(--muted)}
+.a2 .knowledge .knote.err{color:var(--err)}
+.a2 .knowledge .khist h4{margin:8px 0 4px;font-size:11px;font-family:var(--font-mono);font-weight:500;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+.a2 .knowledge .kver{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--rule)}
+.a2 .knowledge .kvw{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.a2 .knowledge .kvm{font-family:var(--font-mono);font-size:12px;color:var(--ink);overflow-wrap:anywhere}
+.a2 .knowledge .kvt{font-family:var(--font-mono);font-size:10.5px;color:var(--faint)}
+.a2 .knowledge .kvnow{font-family:var(--font-mono);font-size:10.5px;color:var(--ok)}
+@media (max-width:640px){
+  .a2 .knowledge{padding:12px 12px 24px}
+  .a2 .krow{grid-template-columns:18px minmax(0,1fr) auto}
+  .a2 .krow .use{display:none}
+  .a2 .knowledge[data-open="1"] .ktop,.a2 .knowledge[data-open="1"] .klist{display:none}
+  .a2 .knowledge[data-open="1"] .kpanes{margin-top:0}
+  .a2 .knowledge .kback{display:inline-flex;align-items:center}
+  .a2 .knowledge .kdetail{padding:10px}
+  .a2 .knowledge .ked{height:52vh}
+}
+@media (pointer:coarse){.a2 .krow{min-height:44px;align-content:center}.a2 .knowledge :is(.jkind,.btn){min-height:44px}.a2 .knowledge .jsearch .jq{min-height:32px}}
 /* The Schedules view (js/schedules.js): the list, a schedule's four layers and
    its runs, and the editor laid out as the same layers. */
 .a2[data-view=schedules] .v-schedules{display:flex;flex-direction:column;overflow:auto}

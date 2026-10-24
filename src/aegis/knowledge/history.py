@@ -76,14 +76,18 @@ def unstage(root: Path, paths: list[str]) -> None:
 
 def log(root: Path, relpath: str, limit: int = 50) -> list[dict]:
     """The commits that touched ``relpath``, newest first: sha, at (epoch
-    seconds) and the subject."""
-    out = _git(
-        root, "log", f"-{limit}", "--format=%H%x00%ct%x00%s", "--", relpath, check=False
+    seconds), the subject and ``by``, the commit's ``Session:`` trailer."""
+    fmt = (
+        "--format=%H%x00%ct%x00%s%x00"
+        "%(trailers:key=Session,valueonly,separator=%x2C)%x1e"
     )
+    out = _git(root, "log", f"-{limit}", fmt, "--", relpath, check=False)
     rows = []
-    for line in out.stdout.splitlines():
-        sha, at, message = line.split("\0", 2)
-        rows.append({"sha": sha, "at": int(at), "message": message})
+    for record in out.stdout.split("\x1e"):
+        if not record.strip():
+            continue
+        sha, at, message, by = record.strip("\n").split("\0", 3)
+        rows.append({"sha": sha, "at": int(at), "message": message, "by": by.strip()})
     return rows
 
 
@@ -91,6 +95,15 @@ def show(root: Path, relpath: str, sha: str) -> str | None:
     """``relpath`` as it was at ``sha``; None when it did not exist then."""
     r = _git(root, "show", f"{sha}:{relpath}", check=False)
     return r.stdout if r.returncode == 0 else None
+
+
+def restore(root: Path, relpath: str, sha: str, message: str, author: str) -> str:
+    """Put ``relpath`` (a file or a folder) back as it was at ``sha`` and
+    commit; the new sha, "" when it already was. A folder loses the tracked
+    files ``sha`` did not have."""
+    _git(root, "rm", "-r", "-f", "-q", "--ignore-unmatch", "--", relpath)
+    _git(root, "checkout", sha, "--", relpath)
+    return commit(root, [relpath], message, author)
 
 
 def revert(root: Path, sha: str, author: str) -> str:
