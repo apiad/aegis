@@ -49,3 +49,45 @@ def test_the_switch_fits_a_phone(settings_server, page):
     b = page.locator("#set-knowledge").bounding_box()
     assert b["x"] >= 0 and b["x"] + b["width"] <= 390
     assert page.errors == []
+
+
+# The first knowledge.setting the page sends is renamed to an op the server
+# does not have, so that read fails as an offline one would.
+FAIL_FIRST = """() => {
+  const send = WebSocket.prototype.send;
+  let n = 0;
+  WebSocket.prototype.send = function (data) {
+    if (typeof data === "string" && data.includes('"op":"knowledge.setting"') && n++ === 0)
+      data = data.replace('"op":"knowledge.setting"', '"op":"knowledge.nosuch"');
+    send.call(this, data);
+  };
+}"""
+
+
+def test_a_failed_first_read_leaves_the_switch_usable_with_a_retry(
+    settings_server, page, browser
+):
+    page.add_init_script(f"({FAIL_FIRST})()")
+    open_settings(page, settings_server.url)
+    page.wait_for_selector("#set-native-retry")
+    assert not page.locator("#set-native").is_disabled()
+    assert "could not be read" in page.inner_text("#set-native-note")
+    page.click("#set-native-retry")
+    page.wait_for_function(
+        "document.querySelector('#set-native-note').textContent.startsWith('Off:')"
+    )
+    assert page.locator("#set-native-retry").is_hidden()
+    # Each open of Settings reads it again: a change made in another tab shows.
+    other = browser.new_page()
+    open_settings(other, settings_server.url)
+    other.wait_for_function("!document.querySelector('#set-native').disabled")
+    other.locator("#set-native").check()
+    other.wait_for_function(
+        "document.querySelector('#set-native-note').textContent.startsWith('Saved.')"
+    )
+    other.close()
+    page.keyboard.press("Alt+Digit0")  # the Fleet, then Settings again
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.keyboard.press("Alt+KeyS")
+    page.wait_for_function("document.querySelector('#set-native').checked")
+    assert record(settings_server)["knowledge"] == "native"

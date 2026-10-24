@@ -186,6 +186,7 @@ export class Settings {
   // sessions patch never redraws the form under the person's cursor.
   async open() {
     this.draw();
+    this.loadNative();
     this.loadModels();
     if (this.found.length) return;
     try {
@@ -327,7 +328,8 @@ export class Settings {
   // The person's own knowledge switch (knowledge.setting): off, the harness
   // loads its own skills and memory beside aegis's; on, their sessions start
   // without them. Always this server's and the caller's own, whichever
-  // server the form below edits; built once, like browser().
+  // server the form below edits; built once, like browser(), and read on
+  // each open of Settings (loadNative).
   knowledge() {
     if (!this.knowledgeNode) {
       this.nativeBox = h("input", { type: "checkbox", id: "set-native" });
@@ -344,24 +346,37 @@ export class Settings {
           this.drawNative(!want, String(e?.message || e), true);
         }
       });
+      this.nativeRetry = button("Retry", "set-native-retry", () => this.loadNative());
+      this.nativeRetry.hidden = true;
       this.knowledgeNode = h(
         "section",
         { className: "set-knowledge", id: "set-knowledge" },
         h("h3", { textContent: "Skills and memory" }),
         h("label", { className: "set-browser-row set-native" }, this.nativeBox, h("span", { textContent: "Only aegis's skills and memory in my sessions" })),
         this.nativeNote,
+        this.nativeRetry,
       );
-      this.conn
-        .call("knowledge.setting", {})
-        .then((r) => this.drawNative(r.native))
-        .catch(() => {}); // offline: the box stays off until the next draw
     }
     return this.knowledgeNode;
   }
 
-  drawNative(on, said = "", err = false) {
+  // The switch as the server has it now. A failed read leaves the box usable,
+  // as it last was, with a Retry: never stuck disabled.
+  loadNative() {
+    this.knowledge();
+    if (this.nativeLoading) return;
+    this.nativeLoading = true;
+    this.conn
+      .call("knowledge.setting", {})
+      .then((r) => this.drawNative(r.native))
+      .catch((e) => this.drawNative(this.nativeBox.checked, `The setting could not be read (${e?.message || e}).`, true, true))
+      .finally(() => (this.nativeLoading = false));
+  }
+
+  drawNative(on, said = "", err = false, retry = false) {
     this.nativeBox.checked = on;
     this.nativeBox.disabled = false;
+    this.nativeRetry.hidden = !retry;
     const what = on
       ? "On: Claude Code starts without its Skill tool and its auto-memory, Codex without its skills and memories, OpenCode without its skills. Your aegis skills and memories replace them."
       : "Off: each harness also loads its own skills and memory, beside aegis's. /setup moves them into aegis first.";
