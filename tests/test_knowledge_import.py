@@ -388,3 +388,15 @@ async def test_a_fifo_in_the_folder_refuses_the_skill(world, tmp_path):
     got = await bring(s, {"source": str(src), "kind": "skill"})
     (r,) = got["refused"]
     assert r["error"] == "bad_source" and "not a regular file" in r["message"]
+
+
+async def test_a_memory_or_doc_over_a_mebibyte_is_refused_unread(world, tmp_path):
+    s = await world.spawn()
+    assert importer.MAX_FILE_BYTES == 2**20
+    big = tmp_path / "big.md"
+    big.write_text("---\ndescription: Big\nwhen: always\n---\n" + "x" * 2**20)
+    got = await bring(
+        s, {"source": str(big), "kind": "memory"}, {"source": str(big), "kind": "doc"}
+    )
+    assert [r["error"] for r in got["refused"]] == ["too_large", "too_large"]
+    assert "1048576" in got["refused"][0]["message"]

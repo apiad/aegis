@@ -135,7 +135,7 @@ Apply in this order, after the rest of the page's rows:
    handoff, a monitor's wake) each item is only proposed, with its own
    card for the person to approve. Read the answer: a
    refused row (a name aegis already holds, a link that leaves the folder,
-   a folder over 20 MiB) is not imported, so do not remove its original.
+   a folder over 20 MiB, a memory or doc over 1 MiB) is not imported, so do not remove its original.
 2. Remove each ticked `remove:<path>` original that was imported, with
    ordinary file operations as the person's user, or as a commit in its
    repository for a file git tracks.

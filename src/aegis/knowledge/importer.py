@@ -32,6 +32,7 @@ from ..ops import OpError
 
 MAX_FOLDER_BYTES = 20 * 2**20
 MAX_FOLDER_FILES = 2000
+MAX_FILE_BYTES = 2**20  # a memory or a procedure doc
 SKIP_DIRS = {".git", "__pycache__"}
 
 
@@ -40,8 +41,9 @@ def _refuse(source: Path, why: str) -> OpError:
 
 
 def _text(path: Path) -> str:
+    """A memory's or a doc's text, its size checked before a byte is read."""
     try:
-        return path.read_text(encoding="utf-8")
+        return regular_bytes(path, MAX_FILE_BYTES).decode("utf-8")
     except UnicodeDecodeError:
         raise _refuse(path, "is not UTF-8 text") from None
 
@@ -57,15 +59,22 @@ def _unreadable(e: OSError) -> None:
     raise _refuse(Path(e.filename or "?"), f"cannot be read ({e.strerror})")
 
 
-def regular_bytes(path: Path) -> bytes:
+def regular_bytes(path: Path, max_bytes: int | None = None) -> bytes:
     """A regular file's bytes, read through the descriptor its type was
     checked on and never past the size it had then; anything else is
-    refused. O_NONBLOCK, so opening a fifo does not wait for a writer."""
+    refused, and so is one over ``max_bytes``, before it is read.
+    O_NONBLOCK, so opening a fifo does not wait for a writer."""
     fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
     try:
         st = os.fstat(fd)
         if not stat.S_ISREG(st.st_mode):
             raise _refuse(path, "is not a regular file (a fifo, a socket or a device)")
+        if max_bytes is not None and st.st_size > max_bytes:
+            raise OpError(
+                "too_large",
+                f"{path} holds {st.st_size} bytes; a memory or a doc holds at "
+                f"most {max_bytes}",
+            )
         with os.fdopen(os.dup(fd), "rb") as f:
             data = f.read(st.st_size + 1)
     finally:
