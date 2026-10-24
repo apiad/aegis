@@ -54,7 +54,8 @@ When an agent changes or deletes a memory or skill you already approved,
 the change applies at once, whether or not you asked for it, and its card names the change with an Undo
 button, which reverts that one commit in the history. Undo cannot revert
 a change that a later change to the same lines built on; the card then
-says so and nothing moves.
+says so and nothing moves. An Undo makes no card of its own, so it cannot
+itself be undone from the transcript; the history on the server keeps it.
 
 The cards are kept in the transcript, so their buttons work after aegis
 restarts. Only the person who owns the session can answer them, even on
