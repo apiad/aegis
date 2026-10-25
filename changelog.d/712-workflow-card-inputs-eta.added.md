@@ -1,0 +1,2 @@
+- **A workflow card folds its inputs and shows time and cost.** Each arg folds to its name and a preview until opened, and a list or an object opens as coloured JSON instead of one wrapped line, so the progress is no longer a long scroll away on a phone. Under the progress bar the card says how long the run has gone and what its steps cost, and while it runs, an estimate of the time left and of the total cost.
+help: workflows#what-the-person-sees

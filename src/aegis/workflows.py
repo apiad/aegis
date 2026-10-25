@@ -728,9 +728,17 @@ class Workflows:
                 row["say"] = render(row["say"], self._scope(st, wf, prefix))
         if n is not None:
             h = self._reg.sessions.get(n.log_id or "")
+            # What the step's session has cost so far, open or archived, for
+            # the card's spent and estimated total (#712).
+            cost = (
+                h.cost_usd
+                if h
+                else (self._reg.archived.get(n.log_id or "") or {}).get("cost_usd")
+            )
             row |= {
                 "log_id": n.log_id,
                 "handle": h.handle if h else None,
+                "cost": cost,
                 "started": n.started,
                 "ended": n.ended,
                 "summary": n.summary,

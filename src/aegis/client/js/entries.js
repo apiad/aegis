@@ -631,6 +631,8 @@ export function tickWorkflows() {
     const host = hostOf(c, `wf-${w.run}`);
     const fs = (host?.querySelector(".pbar, .vbar") || c).querySelector(".fs");
     if (fs) fs.textContent = workflowStatus(w);
+    const eta = c.querySelector(".wfhead .eta");
+    if (eta) eta.textContent = etaLine(w);
     for (const r of w.tree) {
       if (r.state !== "running") continue;
       // The tree's row and its Now line.
@@ -767,6 +769,8 @@ function headLine(w) {
   fill.style.width = `${t.total ? Math.round((100 * t.done) / t.total) : 0}%`;
   bar.append(fill);
   box.append(bar);
+  const eta = etaLine(w);
+  if (eta) box.append(el("span", "eta", eta));
   return box;
 }
 
@@ -918,6 +922,78 @@ function hostOf(card, id) {
   return card.closest(`.pane[data-pane="${id}"]`) || card.closest("#viewer");
 }
 
+// A run's input (#712): a short scalar on one line; anything longer folded to
+// its name and a preview until a person opens it, then a list or an object
+// (or a string holding one) as coloured JSON, and other text with its line
+// breaks. A person's choice is kept per run and input.
+const openArgs = new Set(); // "run/name" a person unfolded
+const ARG_INLINE = 60;
+function argRow(run, k, v) {
+  let data = v !== null && typeof v === "object" ? v : null;
+  if (typeof v === "string" && /^\s*[[{]/.test(v)) {
+    try {
+      data = JSON.parse(v);
+    } catch {
+      data = null;
+    }
+  }
+  const text = typeof v === "string" ? v : JSON.stringify(v);
+  if (data === null && (text.length <= ARG_INLINE && !text.includes("\n"))) {
+    const row = el("div", "wfarg inline");
+    row.append(el("span", "k", k), el("span", "v", text));
+    return row;
+  }
+  const preview = Array.isArray(data)
+    ? `${data.length} item${data.length === 1 ? "" : "s"}`
+    : data
+      ? `{ ${Object.keys(data).join(", ")} }`
+      : text.replace(/\s+/g, " ").trim();
+  const key = `${run}/${k}`;
+  const row = el("details", "wfarg");
+  row.open = openArgs.has(key);
+  const sum = el("summary");
+  const caret = () => icon(CARET_ICON[row.open ? "open" : "shut"]);
+  sum.append(caret(), el("span", "k", k), el("span", "v", preview));
+  row.append(sum);
+  let body;
+  if (data !== null) {
+    body = el("div", "md"); // the transcript's fence styles
+    body.innerHTML = fenceHtml(JSON.stringify(data, null, 2), "json");
+  } else body = el("div", "text", text);
+  row.append(body);
+  const fence = body.querySelector(".fence");
+  const show = () => fence && paint(fence);
+  if (row.open) show();
+  row.addEventListener("toggle", () => {
+    row.open ? openArgs.add(key) : openArgs.delete(key);
+    sum.firstElementChild.replaceWith(caret());
+    if (row.open) show();
+  });
+  return row;
+}
+
+// The run's clock and cost (#712), under its progress bar: time elapsed, then
+// while running an estimate of what is left from the pace so far (finished
+// steps over wall time, so parallel steps count), and what its steps' sessions
+// have cost, with an estimated total from the cost of each finished step.
+function etaLine(w) {
+  if (!w.started) return "";
+  const t = tally(w);
+  const end = w.ended || Date.now() / 1000;
+  const took = end - w.started;
+  const parts = [`${since(w.started, end)} elapsed`];
+  const live = w.status === "running" && t.done > 0 && t.done < t.total;
+  if (live) parts.push(`~${fmtSecs(Math.round(((took / t.done) * (t.total - t.done)) / 60) * 60 || 60)} left`);
+  const rows = w.tree.filter((r) => !r.each && LEAF_KINDS.has(r.kind));
+  const spent = rows.reduce((a, r) => a + (r.cost || 0), 0);
+  if (rows.some((r) => r.cost != null)) {
+    parts.push(`${money(spent)} spent`);
+    const doneCost = rows.filter((r) => r.state === "done").reduce((a, r) => a + (r.cost || 0), 0);
+    if (live) parts.push(`~${money(Math.max(spent, (doneCost / t.done) * t.total))} total`);
+  }
+  return parts.join(" · ");
+}
+
 export function fillWorkflow(card) {
   const w = workflows.get(card.dataset.run);
   const id = `wf-${card.dataset.run}`;
@@ -966,9 +1042,9 @@ export function fillWorkflow(card) {
   }
   const args = Object.entries(w.args || {});
   if (args.length) {
-    const kv = el("dl", "apkv wfargs");
-    for (const [k, v] of args) kv.append(el("dt", null, k), el("dd", null, typeof v === "string" ? v : JSON.stringify(v)));
-    kids.push(kv);
+    const box = el("div", "wfargs");
+    for (const [k, v] of args) box.append(argRow(w.run, k, v));
+    kids.push(box);
   }
   kids.push(headLine(w), el("div", "wflede", w.say));
   const waits = w.status === "running" ? openLine(w) : null;
