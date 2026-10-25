@@ -33,6 +33,19 @@ def cards(s) -> list[dict]:
     return [e for e in s.entries() if e["kind"] == "knowledge"]
 
 
+async def worker_cards(world, t) -> list[dict]:
+    """A queue task's knowledge cards, read from its archived worker. A done
+    worker is archived at once, so its live session can be gone before a
+    poll sees the card (#710)."""
+    await until(
+        lambda: t.worker in world.app.sessions.archived,
+        timeout=10,
+        what="the worker archived",
+    )
+    entries = world.app.sessions.archived_entries(t.worker)
+    return [e for e in entries if e["kind"] == "knowledge"]
+
+
 def woken(s, needle: str) -> bool:
     return needle in json.dumps(inbox(s), ensure_ascii=False)
 
@@ -141,13 +154,9 @@ async def test_asked_in_a_queue_task_is_a_proposal(world):
         s, mcp("queue_enqueue", queue="general", payload=payload), by_person=True
     )
     t = app.queues.tasks[ok(said)["task_id"]]
-    await until(
-        lambda: t.worker and cards(world.session(t.worker)),
-        timeout=10,
-        what="the worker's card",
-    )
+    got = await worker_cards(world, t)
     assert app.knowledge.store.get(app.user, "from-a-worker").status == "proposed"
-    assert [e["detail"]["op"] for e in cards(world.session(t.worker))] == ["new"]
+    assert [e["detail"]["op"] for e in got] == ["new"]
 
 
 async def test_the_turn_knows_whether_a_person_began_it(world):
