@@ -201,7 +201,7 @@ body{background:#000}
 #a2 .login input{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:10px 12px;font-size:15px;color:var(--strong)}
 
 /* the new-tab composer */
-#a2 .spawn{width:min(640px,100%);display:grid;gap:10px;justify-items:center}
+#a2 .spawn{width:min(640px,100%);display:grid;grid-template-columns:minmax(0,1fr);gap:10px;justify-items:center}
 /* The brand, the same in every theme: the Gorgoneion in the accent, and ægis
    in Source Serif 4 whatever the theme's heading font. */
 #a2 .spawn .mark{display:flex;align-items:center;gap:12px;font-family:'SS4',serif;font-weight:600;font-size:30px;line-height:1;color:var(--strong)}
