@@ -15,6 +15,7 @@ from aegis.ops import Caller, OpError
 
 from .conftest import until
 from .test_artifacts_e2e import landed
+from .test_knowledge_cards import worker_cards
 from .knowledge_samples import mem
 from .test_acts_for import BEN, recorded  # noqa: F401
 from .test_agents import inbox, mcp, turn, world  # noqa: F401  (fixture)
@@ -298,13 +299,8 @@ async def test_a_worker_turn_imports_proposed_with_proposal_cards(world, tmp_pat
         s, mcp("queue_enqueue", queue="general", payload=payload), by_person=True
     )
     t = app.queues.tasks[ok(said)["task_id"]]
-    await until(
-        lambda: t.worker and cards(world.session(t.worker)),
-        timeout=10,
-        what="the worker's card",
-    )
+    (e,) = await worker_cards(world, t)
     assert app.knowledge.store.get(app.user, "host").status == "proposed"
-    (e,) = cards(world.session(t.worker))
     assert e["detail"]["op"] == "new" and e["detail"]["name"] == "host"
     assert app.setup_records.imported(app.user)[0]["name"] == "host"
 
