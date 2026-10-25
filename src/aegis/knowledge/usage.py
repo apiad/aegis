@@ -56,11 +56,26 @@ def _connect(path: Path) -> sqlite3.Connection:
     con = sqlite3.connect(
         path, timeout=BUSY_MS / 1000, isolation_level=None, check_same_thread=False
     )
-    con.execute(f"PRAGMA busy_timeout={BUSY_MS}")
-    con.execute("PRAGMA journal_mode=WAL")
-    con.execute("PRAGMA synchronous=NORMAL")
-    con.executescript(SCHEMA)
-    return con
+    try:
+        con.execute(f"PRAGMA busy_timeout={BUSY_MS}")
+        deadline = time.monotonic() + BUSY_MS / 1000
+        while True:
+            try:
+                con.execute("PRAGMA journal_mode=WAL")
+                break
+            except sqlite3.OperationalError as e:
+                if "locked" not in str(e).lower():
+                    raise
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise
+                time.sleep(min(0.05, remaining))
+        con.execute("PRAGMA synchronous=NORMAL")
+        con.executescript(SCHEMA)
+        return con
+    except BaseException:
+        con.close()
+        raise
 
 
 class Usage:

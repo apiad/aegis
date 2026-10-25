@@ -1,6 +1,8 @@
 import sqlite3
+import threading
 import time
 
+from aegis.knowledge import usage as usage_module
 from aegis.knowledge.service import Knowledge
 from aegis.knowledge.usage import Usage
 
@@ -57,6 +59,58 @@ def test_principals_do_not_mix(tmp_path):
     u.add("ben", "s2", "memory", "y", "read")
     assert set(u.summary("ana")) == {"x"} and set(u.summary("ben")) == {"y"}
     assert [r["name"] for r in u.rows("ben")] == ["y"]
+
+
+def test_usage_connection_retries_a_locked_wal_switch(tmp_path, monkeypatch):
+    path = tmp_path / "usage.sqlite"
+    held = sqlite3.connect(path, isolation_level=None)
+    held.execute("CREATE TABLE lock_holder(value)")
+    held.execute("BEGIN IMMEDIATE")
+
+    locked_attempt = threading.Event()
+    real_connect = sqlite3.connect
+    connections = []
+    failures = []
+
+    class ConnectionProbe:
+        def __init__(self, connection):
+            self.connection = connection
+
+        def execute(self, sql, *args):
+            try:
+                return self.connection.execute(sql, *args)
+            except sqlite3.OperationalError as e:
+                if sql == "PRAGMA journal_mode=WAL" and "locked" in str(e).lower():
+                    locked_attempt.set()
+                raise
+
+        def __getattr__(self, name):
+            return getattr(self.connection, name)
+
+    def observed_connect(*args, **kwargs):
+        return ConnectionProbe(real_connect(*args, **kwargs))
+
+    monkeypatch.setattr(usage_module.sqlite3, "connect", observed_connect)
+
+    def connect_usage():
+        try:
+            connections.append(usage_module._connect(path))
+        except BaseException as e:
+            failures.append(e)
+
+    worker = threading.Thread(target=connect_usage, daemon=True)
+    worker.start()
+    try:
+        assert locked_attempt.wait(timeout=2)
+    finally:
+        held.execute("ROLLBACK")
+        held.close()
+    worker.join(timeout=2)
+
+    assert not worker.is_alive()
+    assert not failures
+    assert len(connections) == 1
+    connections[0].close()
 
 
 async def test_a_locked_usage_log_never_holds_a_hint(tmp_path):

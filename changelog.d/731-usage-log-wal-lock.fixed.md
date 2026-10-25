@@ -1,0 +1,1 @@
+- **The first usage write waits for a held SQLite lock.** Opening a new usage database retries its WAL switch for the configured busy timeout, so a short concurrent write lock no longer drops the initial row.
