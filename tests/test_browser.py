@@ -6425,6 +6425,26 @@ def test_a_phone_reaches_tabs_the_drawer_and_the_chips(server, browser):
     assert errors == []
 
 
+def test_a_long_tip_does_not_widen_the_new_tab_on_a_phone(server, browser):
+    """#711: the tip is one nowrap line, and the spawn grid's auto column took
+    its full width, pushing the composer, chips and hints past a 390 px screen."""
+    errs: list = []
+    page = phone(browser, errs)
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.tap("#tab-add")
+    page.wait_for_function("document.querySelector('#sp-agent').value !== ''")
+    page.evaluate(
+        """(() => { const t = document.getElementById('hint-tip'); t.hidden = false;
+        document.getElementById('hint-tip-go').textContent =
+          'Coordinate several agents with a workflow you approve as a plan, and the server runs it'; })()"""
+    )
+    assert page.evaluate(WIDER) == []
+    go = page.locator("#hint-tip-go")
+    assert go.evaluate("e => e.scrollWidth > e.clientWidth")
+    assert errs == []
+
+
 def test_the_new_tab_on_a_phone_adds_a_line_on_enter_like_a_session(server, browser):
     """#315: Enter spawned here, while in a session's composer it adds a line."""
     errs: list = []
