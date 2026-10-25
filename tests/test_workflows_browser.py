@@ -900,3 +900,43 @@ def test_the_card_draws_a_steps_progress_command_and_its_bar(server, page, tmp_p
     page.wait_for_selector(".wfcard[data-status=done]", timeout=20000)
     page.wait_for_selector(".wfcard .wfrow[data-node=ci] .out >> text=100%")
     assert not page.errors
+
+
+def test_inputs_fold_and_the_header_shows_time_and_cost(server, page):  # noqa: F811
+    # #712: a long input folds to its name and a preview, a list opens as
+    # coloured JSON, and the header says how long the run took and what its
+    # steps cost.
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    definition = flow(report(7, 0), RESULT) + (
+        "args: {type: object, properties: {xs: {type: array}, rules: {type: string},"
+        " n: {type: integer}}}\n"
+    )
+    args = {
+        "xs": [{"issue": 111, "bench": "frame"}, {"issue": 112, "bench": "ecs"}],
+        "rules": "How to work: " + "read the issue, then fix it. " * 10,
+        "n": 3,
+    }
+    spawn(
+        page,
+        "/mcp workflow_arm " + json.dumps({"definition": definition, "args": args}),
+    )
+    card = "#entries .wfcard"
+    page.click(f"{card} button >> text=Approve and run")
+    page.wait_for_selector(
+        f"{card}[data-status=done] .wfhead >> text=2 of 2 done", timeout=20000
+    )
+    eta = page.inner_text(f"{card} .wfhead .eta")
+    assert re.search(r"\d+m\d\d elapsed · \$\d+\.\d+ spent", eta), eta
+    # Folded by default: one line each, the short one inline.
+    xs = f"{card} details.wfarg:has(.k:text-is('xs'))"
+    assert page.inner_text(f"{xs} > summary .v") == "2 items"
+    assert not page.locator(xs).evaluate("d => d.open")
+    assert page.locator(f"{card} details.wfarg:has(.k:text-is('rules'))").count() == 1
+    assert page.inner_text(f"{card} .wfarg.inline:has(.k:text-is('n')) .v") == "3"
+    page.click(f"{xs} > summary")
+    page.wait_for_selector(f"{xs} .fence[data-lang=json] code.hljs")
+    assert '"issue": 111' in page.inner_text(f"{xs} .fence pre")
+    page.set_viewport_size({"width": 390, "height": 800})
+    assert page.evaluate("document.documentElement.scrollWidth") <= 390
+    assert not page.errors

@@ -826,10 +826,20 @@ body{background:#000}
 #a2 .apcard .apcmds,#a2 .sch-wf .apcmds{margin:2px 12px 8px;font-size:12.5px;white-space:pre-wrap;overflow-wrap:anywhere}
 #a2 .apcard>.runs,#a2 .sch-wf>.runs{display:block;padding:2px 12px;font-size:12.5px;color:var(--muted)}
 #a2 .wfcard .wfwho{padding:6px 12px;color:var(--muted);font-size:12.5px;overflow-wrap:anywhere;border-bottom:1px solid var(--rule)}
-#a2 .wfcard .wfargs{display:grid;grid-template-columns:72px minmax(0,1fr);gap:4px 12px;margin:0;padding:8px 12px;font-size:12.5px;border-bottom:1px solid var(--rule)}
-#a2 .wfcard .wfargs dt{color:var(--muted);font-family:var(--font-mono);font-size:11.5px;overflow-wrap:anywhere}
-#a2 .wfcard .wfargs dd{margin:0;min-width:0;overflow-wrap:anywhere}
-@media (max-width:640px){#a2 .wfcard .wfargs{grid-template-columns:1fr}#a2 .wfcard .wfargs dt{margin-top:4px}}
+#a2 .wfcard .wfargs{margin:0;padding:6px 12px;font-size:12.5px;border-bottom:1px solid var(--rule)}
+#a2 .wfcard .wfarg{min-width:0}
+#a2 .wfcard .wfarg.inline,#a2 .wfcard .wfarg>summary{display:flex;gap:10px;align-items:baseline;padding:2px 0;min-width:0}
+#a2 .wfcard .wfarg>summary{cursor:pointer;list-style:none}
+#a2 .wfcard .wfarg>summary::-webkit-details-marker{display:none}
+#a2 .wfcard .wfarg>summary::before{content:"▸";color:var(--muted);font-size:10px;width:8px;flex:none}
+#a2 .wfcard .wfarg[open]>summary::before{content:"▾"}
+#a2 .wfcard .wfarg.inline::before{content:"";width:8px;flex:none}
+#a2 .wfcard .wfarg .k{color:var(--muted);font-family:var(--font-mono);font-size:11.5px;flex:none;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#a2 .wfcard .wfarg .v{min-width:0;overflow-wrap:anywhere}
+#a2 .wfcard .wfarg>summary .v{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+#a2 .wfcard .wfarg>.text{white-space:pre-wrap;overflow-wrap:anywhere;margin:2px 0 8px 18px;max-height:24em;overflow:auto}
+#a2 .wfcard .wfarg>.md .fence{margin:2px 0 8px 18px}
+#a2 .wfcard .wfarg>.md .fence pre{max-height:24em;overflow:auto}
 #a2 .wfcard[data-status=armed]{border-color:var(--warn)}
 #a2 .wfcard .wflede{padding:8px 12px;font-family:var(--font-prose);font-size:14.5px;border-bottom:1px solid var(--rule)}
 #a2 .wfcard .story{padding:8px 12px;border-bottom:1px solid var(--rule);font-size:13px}
@@ -873,6 +883,7 @@ body{background:#000}
 #a2 .wfcard .wfhead{padding:6px 12px 8px;border-bottom:1px solid var(--rule);font-family:var(--font-mono);font-size:11.5px;color:var(--muted)}
 #a2 .wfcard .wfhead .bar{height:4px;background:var(--raised);border-radius:2px;margin-top:5px;overflow:hidden}
 #a2 .wfcard .wfhead .bar i{display:block;height:100%;background:var(--ok)}
+#a2 .wfcard .wfhead .eta{display:block;margin-top:5px}
 #a2 .wfcard .wfnow{padding:6px 12px;border-bottom:1px solid var(--rule)}
 #a2 .wfcard .wfnow h5{margin:0 0 4px;font:500 10.5px var(--font-mono);color:var(--faint)}
 #a2 .wfcard .nowline{display:flex;gap:8px;align-items:baseline;padding:2px 0;font-size:12.5px;min-width:0}
