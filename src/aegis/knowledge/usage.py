@@ -57,7 +57,16 @@ def _connect(path: Path) -> sqlite3.Connection:
         path, timeout=BUSY_MS / 1000, isolation_level=None, check_same_thread=False
     )
     con.execute(f"PRAGMA busy_timeout={BUSY_MS}")
-    con.execute("PRAGMA journal_mode=WAL")
+    # The switch to WAL answers "locked" at once, past the busy timeout, so a
+    # first connect that meets a held lock waits for it here (#731).
+    end = time.monotonic() + BUSY_MS / 1000
+    while con.execute("PRAGMA journal_mode").fetchone()[0] != "wal":
+        try:
+            con.execute("PRAGMA journal_mode=WAL")
+        except sqlite3.OperationalError as e:
+            if "locked" not in str(e).lower() or time.monotonic() > end:
+                raise
+            time.sleep(0.01)
     con.execute("PRAGMA synchronous=NORMAL")
     con.executescript(SCHEMA)
     return con

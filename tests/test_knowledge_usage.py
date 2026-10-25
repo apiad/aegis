@@ -78,6 +78,22 @@ async def test_a_locked_usage_log_never_holds_a_hint(tmp_path):
     kn.usage.stop()
 
 
+def test_the_first_connect_waits_out_a_held_lock(tmp_path):
+    # SQLite answers the switch to WAL "locked" at once, past any busy
+    # timeout, so a writer's first connect has to wait for the lock itself.
+    path = tmp_path / "u.sqlite"
+    other = sqlite3.connect(path, isolation_level=None)
+    other.execute("CREATE TABLE IF NOT EXISTS x(a)")
+    other.execute("BEGIN IMMEDIATE")
+    u = Usage(path)
+    u.add("ana", "s1", "memory", "bot-host", "hinted")
+    time.sleep(0.2)  # the writer meets the lock on its first connect
+    other.execute("ROLLBACK")
+    other.close()
+    assert [r["event"] for r in u.rows("ana")] == ["hinted"]
+    u.stop()
+
+
 def test_a_sqlite_error_is_logged_and_dropped(tmp_path, caplog):
     u = Usage(tmp_path / "u.sqlite")
     u.add("ana", "s1", "memory", "x", "read")
