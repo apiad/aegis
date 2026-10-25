@@ -162,3 +162,12 @@ def test_end_group_signals_as_the_recorded_member(monkeypatch):
         (4321, signal.SIGTERM, "ben", True),
         (4321, signal.SIGKILL, "ben", True),
     ]
+
+
+def test_group_alive_treats_a_permission_error_as_alive(monkeypatch):
+    def denied(pgid, sig):
+        raise PermissionError("the server cannot inspect the member group")
+
+    monkeypatch.setattr(restarts.os, "killpg", denied)
+
+    assert restarts.group_alive(4321)
