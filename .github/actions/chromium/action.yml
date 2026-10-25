@@ -1,0 +1,23 @@
+name: chromium for browser tests
+description: >
+  Chromium and the system packages Playwright wants for it, both cached.
+  The packages come from the runner's Ubuntu mirror, which at times serves
+  them at 25 kB/s: 21 MB of fonts then took 14 min and timed shards out (#656).
+  apt reuses a cached .deb whose name and version match and downloads the rest.
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/ms-playwright
+          ~/apt-archives
+        key: chromium-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+    - shell: bash
+      run: |
+        mkdir -p ~/apt-archives/partial
+        echo "Dir::Cache::Archives \"$HOME/apt-archives\";" | sudo tee /etc/apt/apt.conf.d/99archives
+        uv run playwright install --with-deps chromium
+        # apt leaves root-owned files the cache step could not read back.
+        sudo chown -R "$(id -u):$(id -g)" ~/apt-archives
+        echo "$(find ~/apt-archives -name '*.deb' | wc -l) .deb files for the cache"
