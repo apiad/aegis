@@ -92,12 +92,8 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('uv.lock') }}
       - name: chromium for browser tests
-        run: uv run playwright install --with-deps chromium
+        uses: ./.github/actions/chromium
       - run: uv run pytest -q -n 2 -m "slow and not live and not multiuser" --splits 4 --group ${{ matrix.group }} --splitting-algorithm least_duration
 
 
@@ -116,12 +112,8 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('uv.lock') }}
       - name: chromium for the Settings test
-        run: uv run playwright install --with-deps chromium
+        uses: ./.github/actions/chromium
       - run: make test-multiuser
 
   # aegis's bench, on the PR's base and head on one runner so the machine
@@ -142,7 +134,7 @@ jobs:
           python-version: "3.13"
       - run: pip install uv
       - run: uv sync --locked
-      - run: uv run playwright install --with-deps chromium
+      - uses: ./.github/actions/chromium
       # Base, head, head, base: whichever tree runs second read up to 6 MB
       # and tens of percent slower (#282), so each pays for it once.
       - name: bench base and head, alternating
