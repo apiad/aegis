@@ -41,6 +41,7 @@ import json
 import os
 import re
 import secrets
+import signal
 from collections import deque
 from pathlib import Path
 from typing import Any
@@ -284,7 +285,9 @@ class OpenCodeProcess:
         self._quiet = True
         proc = self._proc
         if proc is not None and proc.returncode is None:
-            proc.terminate()  # before any await, which a cancellation can cut
+            await launch.signal_process_async(
+                proc.pid, signal.SIGTERM, user=self._launch.user
+            )  # direct signal before the fallback can yield
         else:
             proc = None
         await self._close()
@@ -292,7 +295,9 @@ class OpenCodeProcess:
             try:
                 await asyncio.wait_for(proc.wait(), TERM_GRACE_S)
             except TimeoutError:
-                proc.kill()
+                await launch.signal_process_async(
+                    proc.pid, signal.SIGKILL, user=self._launch.user
+                )
                 await proc.wait()
         if self._wait_task is not None:
             self._wait_task.cancel()
@@ -322,7 +327,9 @@ class OpenCodeProcess:
         if not self._quiet and self.running:
             self._note("the event stream closed")
             assert self._proc is not None
-            self._proc.terminate()  # _wait reports the exit
+            await launch.signal_process_async(
+                self._proc.pid, signal.SIGTERM, user=self._launch.user
+            )  # _wait reports the exit
 
     def _deliver(self, raw: str) -> None:
         try:

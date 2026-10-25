@@ -219,7 +219,7 @@ class Registry(Host):
 
     def released(self, session: Session) -> None:
         if self.cgroups is not None:
-            self.cgroups.release(session.log_id)
+            self.cgroups.release(session.log_id, user=session.spec.linux_user)
 
     def cgroup_dir(self, session: Session) -> Path | None:
         """The session's cgroup, or None when the unit is not delegated."""
@@ -726,7 +726,7 @@ class Registry(Host):
             self.archived[meta["log_id"]] = meta
             return
         if not self._prev.clean and restarts.end_leftover(
-            meta.get("pid"), meta.get("pid_started")
+            meta.get("pid"), meta.get("pid_started"), user=meta.get("linux_user")
         ):
             log.warning(
                 "aegis: ended the harness a crash left behind for %s", meta["handle"]

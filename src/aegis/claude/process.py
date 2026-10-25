@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import signal
 import time
 from collections import deque
 from collections.abc import Callable
@@ -302,11 +303,13 @@ class ClaudeProcess:
         if proc is None:
             return
         if proc.returncode is None:
-            proc.terminate()
+            await launch.signal_process_async(proc.pid, signal.SIGTERM, user=self.user)
             try:
                 await asyncio.wait_for(proc.wait(), TERM_GRACE_S)
             except TimeoutError:
-                proc.kill()
+                await launch.signal_process_async(
+                    proc.pid, signal.SIGKILL, user=self.user
+                )
                 await proc.wait()
         for t in self._tasks:
             if not t.done():

@@ -166,17 +166,28 @@ async def run_sh(
         )
         await proc.wait()
     except asyncio.CancelledError:
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(proc.pid, signal.SIGTERM)
+        await _signal_group(proc.pid, signal.SIGTERM, user)
         end = time.monotonic() + 2
         while time.monotonic() < end and restarts.group_alive(proc.pid):
             await asyncio.sleep(0.05)
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(proc.pid, signal.SIGKILL)
+        await _signal_group(proc.pid, signal.SIGKILL, user)
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(asyncio.shield(proc.wait()), 2)
         raise
     return proc.returncode or 0, out, err
+
+
+async def _signal_group(pgid: int, sig: signal.Signals, user: str | None) -> None:
+    try:
+        await launch.signal_process_async(pgid, sig, user=user, group=True)
+    except OSError as e:
+        log.warning(
+            "workflow: could not send %s to group %s as %s: %s",
+            sig.name,
+            pgid,
+            user,
+            e,
+        )
 
 
 def _news(o: dict) -> bool:
@@ -365,7 +376,7 @@ class Workflows:
                 # any pass, so a cut sh is never still running (spec §05).
                 for n in st.nodes.values():
                     if n.status == "running" and n.pid:
-                        restarts.end_group(n.pid, n.pstart)
+                        restarts.end_group(n.pid, n.pstart, user=self.linux_user(st))
                 try:
                     wf, errors = parse(st.text, self._agents())
                 except Exception as e:  # one run's text never stops the boot
@@ -523,6 +534,22 @@ class Workflows:
                 nxt = (self._reg.archived.get(lid) or {}).get("continued_by")
             lid = nxt if nxt != "starting" else None
         return last
+
+    def linux_user(self, st: RunState) -> str | None:
+        """The Linux user whose process group a persisted run may still own."""
+        lid, user, seen = st.owner, None, set()
+        while lid and lid not in seen:
+            seen.add(lid)
+            s = self._reg.sessions.get(lid)
+            if s is not None:
+                user, nxt = s.spec.linux_user, s.continued_by
+            else:
+                meta = self._reg.archived.get(lid)
+                if meta is None:
+                    break
+                user, nxt = meta.get("linux_user"), meta.get("continued_by")
+            lid = nxt if nxt != "starting" else None
+        return user
 
     def owns(self, log_id: str | None, st: RunState) -> bool:
         o = self.owner(st)

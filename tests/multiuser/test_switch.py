@@ -10,7 +10,7 @@ import subprocess
 
 import pytest
 
-from aegis import users
+from aegis import restarts, users
 
 from .conftest import CAPS, MEMBERS, until
 
@@ -36,6 +36,15 @@ async def send(s, who: str, log_id: str, text: str) -> None:
 async def test_a_members_harness_runs_as_the_member_in_its_home(mu_server):
     _, rep = await spawn(mu_server)
     assert rep["user"] == BEN and rep["home"] == f"/home/{BEN}"
+
+
+async def test_a_member_can_close_their_session(mu_server):
+    log_id, rep = await spawn(mu_server)
+    await mu_server.call(BEN, "session.close", {"log_id": log_id})
+    await until(
+        lambda: restarts.started_at(rep["pid"]) is None,
+        what="the member's harness to stop",
+    )
 
 
 async def test_a_members_harness_holds_no_capabilities(mu_server):

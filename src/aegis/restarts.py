@@ -26,6 +26,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import launch
+
 log = logging.getLogger("aegis.restarts")
 
 RECORD = "server.json"
@@ -144,20 +146,26 @@ def started_at(pid: int) -> int | None:
     return None if st is None or st[0] in ("Z", "X") else st[1]
 
 
-def end_leftover(pid: int | None, started: int | None, wait_s: float = 3.0) -> bool:
+def end_leftover(
+    pid: int | None,
+    started: int | None,
+    wait_s: float = 3.0,
+    *,
+    user: str | None = None,
+) -> bool:
     """End a harness a crashed server left running, so two processes never
     resume one session. Only the same process: same pid, same start time.
     True when one was ended."""
     if not pid or started is None or started_at(pid) != started:
         return False
     group = _leads_group(pid)
-    _signal(pid, group, signal.SIGTERM)
+    _signal(pid, group, signal.SIGTERM, user)
     end = time.monotonic() + wait_s
     while time.monotonic() < end:
         if started_at(pid) != started:
             return True
         time.sleep(0.05)
-    _signal(pid, group, signal.SIGKILL)
+    _signal(pid, group, signal.SIGKILL, user)
     log.warning(
         "aegis: a leftover harness (pid %s) ignored SIGTERM and was killed", pid
     )
@@ -175,7 +183,13 @@ def group_alive(pgid: int) -> bool:
     return True
 
 
-def end_group(pid: int | None, started: int | None, wait_s: float = 3.0) -> bool:
+def end_group(
+    pid: int | None,
+    started: int | None,
+    wait_s: float = 3.0,
+    *,
+    user: str | None = None,
+) -> bool:
     """End the process group a crashed server's command led, its members
     too, even when the leader has exited: a member may ignore SIGTERM or
     outlive bash. A leader still alive must be the same process (same
@@ -190,11 +204,11 @@ def end_group(pid: int | None, started: int | None, wait_s: float = 3.0) -> bool
         return False
     if not group_alive(pid):
         return False
-    _signal(pid, True, signal.SIGTERM)
+    _signal(pid, True, signal.SIGTERM, user)
     end = time.monotonic() + wait_s
     while time.monotonic() < end and group_alive(pid):
         time.sleep(0.05)
-    _signal(pid, True, signal.SIGKILL)
+    _signal(pid, True, signal.SIGKILL, user)
     return True
 
 
@@ -205,8 +219,5 @@ def _leads_group(pid: int) -> bool:
         return False
 
 
-def _signal(pid: int, group: bool, sig: int) -> None:
-    try:
-        (os.killpg if group else os.kill)(pid, sig)
-    except ProcessLookupError:
-        pass
+def _signal(pid: int, group: bool, sig: int, user: str | None) -> None:
+    launch.signal_process(pid, sig, user=user, group=group)

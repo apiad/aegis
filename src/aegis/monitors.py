@@ -32,6 +32,7 @@ import json
 import logging
 import os
 import secrets
+import signal
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -89,7 +90,7 @@ async def run_bash(
     try:
         out, err = await asyncio.wait_for(proc.communicate(), timeout)
     except TimeoutError:
-        proc.kill()
+        await launch.signal_process_async(proc.pid, signal.SIGKILL, user=user)
         await proc.wait()
         return None, "", f"took over {timeout:g}s"
     return (

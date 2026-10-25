@@ -13,6 +13,7 @@ import asyncio
 import json
 import os
 import pwd
+import signal
 from pathlib import Path
 from typing import TypeVar
 
@@ -239,12 +240,12 @@ async def run(
     try:
         out, _ = await asyncio.wait_for(proc.communicate(prompt.encode()), timeout)
     except asyncio.TimeoutError:
-        proc.kill()
+        await launch.signal_process_async(proc.pid, signal.SIGKILL, user=user)
         await proc.wait()
         raise OneshotError(f"no answer in {timeout:g}s") from None
     except BaseException:
         if proc.returncode is None:
-            proc.kill()
+            await launch.signal_process_async(proc.pid, signal.SIGKILL, user=user)
             await proc.wait()
         raise
     if proc.returncode != 0:

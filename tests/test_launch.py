@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -128,6 +129,52 @@ def test_run_captures_and_feeds_input():
 def test_run_timeout_raises_timeout_expired():
     with pytest.raises(subprocess.TimeoutExpired):
         launch.run(["sleep", "5"], timeout=0.2, user=None)
+
+
+def test_signal_process_retries_a_group_signal_as_its_owner(monkeypatch):
+    seen = []
+
+    def denied(pgid, sig):
+        raise PermissionError("the server cannot signal the member")
+
+    def run(argv, *, user, timeout, text):
+        seen.append((argv, user, timeout, text))
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(launch.os, "killpg", denied)
+    monkeypatch.setattr(launch, "run", run)
+
+    launch.signal_process(4321, signal.SIGTERM, user="ben", group=True)
+
+    assert seen == [(["kill", "-s", "TERM", "--", "-4321"], "ben", 5, True)]
+
+
+def test_signal_process_does_not_run_kill_when_the_process_is_gone(monkeypatch):
+    def gone(pid, sig):
+        raise ProcessLookupError
+
+    monkeypatch.setattr(launch.os, "kill", gone)
+    monkeypatch.setattr(
+        launch,
+        "run",
+        lambda *a, **kw: pytest.fail("a missing process needs no fallback"),
+    )
+
+    launch.signal_process(4321, signal.SIGTERM, user="ben")
+
+
+def test_signal_process_reports_a_failed_owner_fallback(monkeypatch):
+    def denied(pid, sig):
+        raise PermissionError("the server cannot signal the member")
+
+    def run(argv, **kwargs):
+        return subprocess.CompletedProcess(argv, 1, "", "kill: Operation not permitted")
+
+    monkeypatch.setattr(launch.os, "kill", denied)
+    monkeypatch.setattr(launch, "run", run)
+
+    with pytest.raises(PermissionError, match="Operation not permitted"):
+        launch.signal_process(4321, signal.SIGTERM, user="ben")
 
 
 def test_detach_starts_a_new_session_and_does_not_wait():
