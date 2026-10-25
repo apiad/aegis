@@ -952,7 +952,8 @@ function argRow(run, k, v) {
   const row = el("details", "wfarg");
   row.open = openArgs.has(key);
   const sum = el("summary");
-  sum.append(el("span", "k", k), el("span", "v", preview));
+  const caret = () => icon(CARET_ICON[row.open ? "open" : "shut"]);
+  sum.append(caret(), el("span", "k", k), el("span", "v", preview));
   row.append(sum);
   let body;
   if (data !== null) {
@@ -965,6 +966,7 @@ function argRow(run, k, v) {
   if (row.open) show();
   row.addEventListener("toggle", () => {
     row.open ? openArgs.add(key) : openArgs.delete(key);
+    sum.firstElementChild.replaceWith(caret());
     if (row.open) show();
   });
   return row;

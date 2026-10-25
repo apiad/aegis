@@ -294,15 +294,15 @@ waits for your answer.
 ## What the person sees
 
 The run's args sit at the top of the card, each folded to its name and a
-short preview (`3 items`, an object's keys, a string's first words) until
+short preview (`3 items`, an object's keys, a string's opening words) until
 the person opens it; a list or an object opens as coloured JSON. A short
 value shows whole on its line.
 
 The card's header counts the steps done, failed and the questions open over
 a progress bar; before approval it says how many steps there are. Under the
 bar it says how long the run has gone and what its steps' sessions have cost.
-While it runs it adds an estimate of the time left, from the pace so far, and
-of the total cost, from what each finished step cost. While the
+While it runs it adds an estimate of how long is left, from the pace so far,
+and of the total cost, from what each finished step cost. While the
 run goes on, Now lists each working step, with its session or its command
 and how long it has run, then up to three steps that come next. Under it the
 story tells what happened, and under that the plan, one row per step. A map
