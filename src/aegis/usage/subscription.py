@@ -73,7 +73,11 @@ def split(
     apportioned = Decimal(0)
     if before and week is not None:
         since = span[0] if span else min(h for h, _ in before)
-        until = min(first, span[1]) if span else min(first, max(h for h, _ in before) + HOUR)
+        until = (
+            min(first, span[1])
+            if span
+            else min(first, max(h for h, _ in before) + HOUR)
+        )
         apportioned = week * Decimal(str(max(until - since, 0))) / WEEK
         _apportion(before, apportioned, dollars)
     if not readings:

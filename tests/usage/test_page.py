@@ -150,8 +150,12 @@ CONTEXT = {
 
 def with_subs_and_context():
     s = server()
-    s["subs"] = ans([row(billing="claude:a1b2", owner="acme-co", sub=40.0, limit=40.0),
-                     row(billing="claude:a1b2", owner="ana", sub=20.0, limit=20.0)])
+    s["subs"] = ans(
+        [
+            row(billing="claude:a1b2", owner="acme-co", sub=40.0, limit=40.0),
+            row(billing="claude:a1b2", owner="ana", sub=20.0, limit=20.0),
+        ]
+    )
     s["subs"]["subs"] = {"claude:a1b2": SUB}
     s["context"] = ans([row(context=0, cost=10.0)])
     s["context"]["context"] = CONTEXT

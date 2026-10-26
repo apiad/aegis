@@ -132,7 +132,12 @@ def test_sub_and_limit_share_the_weekly_rise_by_cost(con):
     assert round(by["acme-co"]["sub"], 6) == round(week * 3 / 100, 6)
     assert round(a.totals["sub"], 6) == round(week * 4 / 100, 6)
     s = a.subs["claude:a1b2"]
-    assert (s["name"], s["kind"], s["elsewhere"], s["unused"]) == ("claude-max", "metered", 0, 0)
+    assert (s["name"], s["kind"], s["elsewhere"], s["unused"]) == (
+        "claude-max",
+        "metered",
+        0,
+        0,
+    )
     assert s["value"] == 0.4  # API-priced cost on the subscription
     assert sum(c for _, _, c in a.sub_hours["claude:a1b2"]) == 0.4
     assert run(con, q(split=("owner",))).totals["sub"] == 0  # no fee, no dollars

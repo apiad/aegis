@@ -283,7 +283,9 @@ def run(
         estimated=round(priced / cost, 6) if cost else 0.0,
         unpriced_tokens=int(unpriced),
         subs=subs,
-        context=summary(con, q.since, q.until, q.people) if "context" in q.split else None,
+        context=summary(con, q.since, q.until, q.people)
+        if "context" in q.split
+        else None,
         sub_hours={
             b: [[h, list(k), round(float(c), 9)] for (h, k), c in v.items()]
             for b, v in hours.items()
@@ -300,7 +302,9 @@ def _whatif(con, q: UsageQuery, cte: str, cte_args: list, offsets: str, rows) ->
     if q.by:
         keys.append(_bucket(q.by, "p.ts", offsets))
     select = "".join(f"{k}, " for k in keys)
-    group = f" GROUP BY {', '.join(str(n + 1) for n in range(len(keys)))}" if keys else ""
+    group = (
+        f" GROUP BY {', '.join(str(n + 1) for n in range(len(keys)))}" if keys else ""
+    )
     reread = float(reread_cost(con))
     sql = (
         f"WITH {cte} SELECT {select}SUM((w.saved - w.rewrite - w.handoffs * ?)"

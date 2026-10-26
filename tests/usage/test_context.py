@@ -26,7 +26,9 @@ def test_a_replay_matches_a_hand_computed_saving():
     assert p.cache_read == Decimal("0.20")  # per million
     r = Replay(start=29_000)
     out = [r.call(c, p) for c in (90_000, 120_000, 150_000)]
-    h, saved, rewrite = sum_at(out, 100_000)  # one handoff at 120k: offset 91k on 2 calls
+    h, saved, rewrite = sum_at(
+        out, 100_000
+    )  # one handoff at 120k: offset 91k on 2 calls
     assert h == 1 and saved == Decimal(2 * 91_000) * p.cache_read / 1_000_000
     assert rewrite == Decimal(29_000) * p.cache_write_5m / 1_000_000
     assert sum_at(out, 150_000) == (0, 0, 0)  # 150k is not passed: 150k is not above it
@@ -100,8 +102,12 @@ def test_the_whatif_measure_is_net_of_rereading_and_shared_by_part_cost(tmp_path
 
     con, _ = db.connect(tmp_path / "journal.db")
     tables.ensure(con)
+
     def part(n, repo, cost, activity="editing"):
-        return PartRow(1, n, 1001.0, repo, "build", activity, True, Decimal(cost), 1, 1.0)
+        return PartRow(
+            1, n, 1001.0, repo, "build", activity, True, Decimal(cost), 1, 1.0
+        )
+
     tables.insert(con, "s1", Derived(
         turns=[_turn(1)], parts=[part(0, "/w/atlas", "0.75"), part(1, "/w/notes", "0.25")],
         whatifs=[WhatIfRow(1, 100_000, 1, Decimal("0.5"), Decimal("0.1"))]))  # fmt: skip
@@ -111,4 +117,6 @@ def test_the_whatif_measure_is_net_of_rereading_and_shared_by_part_cost(tmp_path
     by = {r["repo"]: r["whatif"] for r in a.rows}
     assert by == {"/w/atlas": 0.15, "/w/notes": 0.05, None: 0.0}
     assert round(a.totals["whatif"], 9) == 0.2
-    assert run(con, UsageQuery(since=0, until=2000, whatif=400_000)).totals["whatif"] == 0
+    assert (
+        run(con, UsageQuery(since=0, until=2000, whatif=400_000)).totals["whatif"] == 0
+    )

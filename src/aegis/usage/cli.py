@@ -325,7 +325,9 @@ def usage(
     names = _handles(con)
     if dims or by:
         lines = table_lines(a, dims, by, measure, names)
-        r = next((r for r in (a.context or {}).get("replay", []) if r["at"] == at), None)
+        r = next(
+            (r for r in (a.context or {}).get("replay", []) if r["at"] == at), None
+        )
         if r is not None:
             net = r["saved"] - r["rewrite"] - r["handoffs"] * r["reread"]
             lines.append(

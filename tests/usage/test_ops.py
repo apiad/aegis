@@ -42,8 +42,11 @@ def stand_in(tmp_path, multi_user=None):
     app = SimpleNamespace(
         registry=Registry(),
         journal=SimpleNamespace(path=tmp_path / "journal.db", usage_progress=dict),
-        config=SimpleNamespace(current=lambda: SimpleNamespace(
-            usage={"owners": {}}, context={"handoff_at": 300_000})),
+        config=SimpleNamespace(
+            current=lambda: SimpleNamespace(
+                usage={"owners": {}}, context={"handoff_at": 300_000}
+            )
+        ),
         server_name="here",
         multi_user=multi_user,
         user="ana",

@@ -428,7 +428,9 @@ def _info(harness):
     return SessionInfo(harness=harness, account=ACCOUNTS.get)
 
 
-@pytest.mark.parametrize("source, want", [("none", "claude:a1b2"), ("ANTHROPIC_API_KEY", "api")])
+@pytest.mark.parametrize(
+    "source, want", [("none", "claude:a1b2"), ("ANTHROPIC_API_KEY", "api")]
+)
 def test_a_claude_session_bills_its_login_unless_it_ran_on_a_key(source, want):
     r = UseRec()
     r.spawn()

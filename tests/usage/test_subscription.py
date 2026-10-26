@@ -14,7 +14,9 @@ def close(a, b) -> bool:
 
 def test_a_rise_goes_to_the_groups_that_ran_in_its_interval_by_cost():
     r = [Reading(0, 10, W), Reading(3600, 14, W)]  # +4 points in hour 0
-    s = split(r, {(0, ("atlas",)): Decimal(3), (0, ("notes",)): Decimal(1)}, Decimal(200))
+    s = split(
+        r, {(0, ("atlas",)): Decimal(3), (0, ("notes",)): Decimal(1)}, Decimal(200)
+    )
     assert s.limit == {("atlas",): 3.0, ("notes",): 1.0}
     assert s.kind == "metered" and s.elsewhere == 0 and s.unused == 0
 
@@ -28,7 +30,9 @@ def test_a_rise_over_several_hours_is_shared_by_their_costs():
 def test_a_rise_with_no_turn_is_elsewhere_and_the_rest_at_reset_is_unused():
     r = [Reading(0, 10, W), Reading(3600, 14, W), Reading(7200, 20, W),
          Reading(W + 60, 2, 2 * W)]  # fmt: skip
-    s = split(r, {(0, ("atlas",)): Decimal(1), (W, ("atlas",)): Decimal(1)}, Decimal(200))
+    s = split(
+        r, {(0, ("atlas",)): Decimal(1), (W, ("atlas",)): Decimal(1)}, Decimal(200)
+    )
     assert s.limit == {("atlas",): 6.0}  # 4 before the reset, 2 after
     assert s.elsewhere == 6.0 and s.unused == 80.0
 
