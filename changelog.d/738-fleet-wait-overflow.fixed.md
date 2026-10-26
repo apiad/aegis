@@ -1,0 +1,1 @@
+- **The Fleet no longer scrolls sideways on a phone.** A card waiting on several sessions listed them all in one unbreakable label, which pushed the whole Fleet wider than the screen; the label now ends in an ellipsis.
