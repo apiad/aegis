@@ -108,6 +108,9 @@ class PartRow:
     cost: Decimal
     tokens: int
     secs: float
+    calls: int = 0
+    errors: int = 0
+    exits: int = 0
 
 
 @dataclass
@@ -698,9 +701,14 @@ class UsageDeriver:
             ]
         shares = self._shares(t, msgs, prices)
         groups: dict[tuple, Fraction] = {}
+        counts: dict[tuple, list[int]] = {}
         for c in t.calls.values():
             key = (c.repo, c.purpose, c.activity, c.kind is None)
             groups[key] = groups.get(key, Fraction(0)) + shares.get(c.id, Fraction(0))
+            n = counts.setdefault(key, [0, 0, 0])
+            n[0] += 1
+            n[1] += c.is_error
+            n[2] += is_shell_exit(c.tool, c.output, c.is_error)
         keys = list(groups)
         # Integer tokens by largest remainder, so the parts sum to the turn.
         exact = [groups[k] * tokens for k in keys]
@@ -727,6 +735,7 @@ class UsageDeriver:
                     c,
                     toks[n],
                     secs * float(share),
+                    *counts[key],
                 )
             )
         return parts

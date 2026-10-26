@@ -7,6 +7,11 @@ A row is keyed by the store record that produced it, as the journal's are, and
 inserted with ON CONFLICT DO NOTHING, so live and backfill write the same rows.
 A ``Settle`` fixes the purpose of a part written before its purpose was known.
 Money is REAL dollars rounded to 1e-9: SQLite has no decimal.
+
+A part carries its turn's dimensions (person, kind, harness, model, mode,
+billing, cost_kind) and its own calls, errors and exits, so a query reads one
+table: the join to the turns doubled a four-week query's time. ``turn`` is
+its turn's rowid, so a query counts distinct turns by an integer.
 """
 
 from __future__ import annotations
@@ -34,7 +39,10 @@ CREATE TABLE usage_parts(
   log_id TEXT NOT NULL, rec INTEGER NOT NULL, n INTEGER NOT NULL, ts REAL NOT NULL,
   repo TEXT, purpose TEXT NOT NULL, activity TEXT NOT NULL, settled INTEGER NOT NULL,
   cost REAL NOT NULL, tokens INTEGER NOT NULL, secs REAL NOT NULL,
-  PRIMARY KEY(log_id, rec, n));
+  calls INTEGER NOT NULL, errors INTEGER NOT NULL, exits INTEGER NOT NULL,
+  person TEXT NOT NULL, kind TEXT NOT NULL, harness TEXT NOT NULL, model TEXT NOT NULL,
+  mode TEXT NOT NULL, billing TEXT NOT NULL, cost_kind TEXT NOT NULL,
+  turn INTEGER NOT NULL, PRIMARY KEY(log_id, rec, n));
 CREATE INDEX usage_parts_ts ON usage_parts(ts);
 CREATE INDEX usage_parts_repo ON usage_parts(repo, ts);
 CREATE TABLE usage_waits(
@@ -154,8 +162,17 @@ def insert(con: sqlite3.Connection, log_id: str, d: Derived) -> int:
                 for t in d.turns
             ],
         )
+        turn = {t.rec: t for t in d.turns}  # a part comes with its turn
+        rowid = {
+            rec: con.execute(
+                "SELECT rowid FROM usage_turns WHERE log_id = ? AND rec = ?",
+                (log_id, rec),
+            ).fetchone()[0]
+            for rec in turn
+        }
         con.executemany(
-            "INSERT INTO usage_parts VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING",
+            "INSERT INTO usage_parts VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            " ON CONFLICT DO NOTHING",
             [
                 (
                     log_id,
@@ -169,7 +186,18 @@ def insert(con: sqlite3.Connection, log_id: str, d: Derived) -> int:
                     _money(p.cost),
                     p.tokens,
                     p.secs,
-                )  # fmt: skip
+                    p.calls,
+                    p.errors,
+                    p.exits,
+                    turn[p.rec].person,
+                    turn[p.rec].kind,
+                    turn[p.rec].harness,
+                    turn[p.rec].model,
+                    turn[p.rec].mode,
+                    turn[p.rec].billing,
+                    turn[p.rec].cost_kind,
+                    rowid[p.rec],
+                )
                 for p in d.parts
             ],
         )
