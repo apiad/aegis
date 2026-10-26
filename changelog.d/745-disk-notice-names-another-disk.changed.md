@@ -1,0 +1,2 @@
+- **The disk notice points to another disk with room.** When the disk holding aegis fills and the host has another disk below the disk's `clear:` level, writable by aegis's user and with more free space, the notice names it and asks agents to put new clones, build output, caches and downloads there, instead of telling them to start no large download or build. The disks are the ones the host meters list, so `host: hide_mounts` keeps one out.
+help: sessions#notices
