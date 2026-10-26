@@ -417,7 +417,7 @@ function context(c) {
   box.append(el("div", "h", `Session peaks, handed off · not: ${c.peaks.sessions} session${c.peaks.sessions === 1 ? "" : "s"}; handoff_at ${c.peaks.handoff_at} marked`));
   for (const r of c.peaks.rows) {
     if (!r.handed && !r.other && !r.mark) continue;
-    box.append(hbar(r.mark ? `${r.label} ◂` : r.label,
+    box.append(hbar(r.mark ? `${r.label} · handoff` : r.label,
       [["c1", r.handed_frac, `${r.handed} handed off`], ["urest", r.other_frac, `${r.other} did not`]],
       `${r.handed} · ${r.other}`, r.mark ? "mark" : ""));
   }

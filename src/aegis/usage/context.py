@@ -103,7 +103,8 @@ def summary(
     """The context panel's facts for turns ending in the window: calls, cost
     and cache reads per band; each session's peak and whether a successor
     continued it; the replay's sums per threshold and the rereading cost."""
-    where, args = "t.ts >= ? AND t.ts < ?", [since, until]
+    where = "t.ts >= ? AND t.ts < ?"
+    args: list = [since, until]
     if people is not None:
         where += f" AND t.person IN ({','.join('?' * len(people))})"
         args += sorted(people)

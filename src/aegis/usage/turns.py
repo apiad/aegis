@@ -198,7 +198,9 @@ class _Call:
     repo: str | None
     output: str = ""
     is_error: bool = False
-    commits: list[tuple[str, str]] = field(default_factory=list)  # (repo, purpose)
+    commits: list[tuple[str | None, str]] = field(
+        default_factory=list
+    )  # (repo, purpose)
     purpose: str | None = None
     kind: str | None = None  # "code" or "support" while unsettled
 

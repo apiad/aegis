@@ -291,7 +291,7 @@ def usage(
             subscriptions=subs,
         )
         if hour_of_day:  # the hour of the day, as the old --by hour showed it
-            hours: dict[str, dict] = {}
+            hours: dict[tuple, dict] = {}
             for r in a.rows:
                 h = r["bucket"][-2:]
                 key = (*(r[d] for d in dims), h)
@@ -331,7 +331,7 @@ def usage(
         if r is not None:
             net = r["saved"] - r["rewrite"] - r["handoffs"] * r["reread"]
             lines.append(
-                f"Handing off at {at // 1000}k: {r['handoffs']} handoffs,"
+                f"Handing off at {r['at'] // 1000}k: {r['handoffs']} handoffs,"
                 f" {value('cost', r['saved'])} saved, {value('cost', net)} net of"
                 " rewriting and rereading"
             )

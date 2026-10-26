@@ -148,7 +148,7 @@ def _owners_cte(con: sqlite3.Connection, owners: dict | None) -> tuple[str, list
         if owners
         else []
     )
-    pairs = [(r, owners[r.rstrip("/").rsplit("/", 1)[-1]]) for r in repos
+    pairs = [(r, (owners or {})[r.rstrip("/").rsplit("/", 1)[-1]]) for r in repos
              if r.rstrip("/").rsplit("/", 1)[-1] in (owners or {})]  # fmt: skip
     if not pairs:
         return "ow(repo, owner) AS (SELECT NULL, NULL WHERE 0)", []
@@ -218,7 +218,8 @@ def _distinct(con, q: UsageQuery, cte: str, cte_args: list) -> tuple[int, int]:
     """Turns and sessions in the whole window: from the turns alone when no
     part-level dimension filters it."""
     if set(q.where) <= TURN_DIMS:
-        where, args = ["ts >= ?", "ts < ?"], [q.since, q.until]
+        where = ["ts >= ?", "ts < ?"]
+        args: list = [q.since, q.until]
         for d, v in q.where.items():
             where.append(f"{d} = ?")
             args.append(v)
@@ -434,7 +435,8 @@ def _subscriptions(con, q: UsageQuery, hours: dict, by_key: dict, conf: dict) ->
 def _waits(con: sqlite3.Connection, q: UsageQuery, offsets: str) -> dict[tuple, float]:
     """Seconds waited, by what woke the session and bucket."""
     bucket = _bucket(q.by, "w.ts", offsets) if q.by else "NULL"
-    where, args = ["w.ts >= ?", "w.ts < ?"], [q.since, q.until]
+    where = ["w.ts >= ?", "w.ts < ?"]
+    args: list = [q.since, q.until]
     if q.people is not None:
         where.append(
             "w.log_id IN (SELECT log_id FROM usage_turns WHERE person IN"
@@ -475,13 +477,8 @@ def _outcomes(
     if q.by:
         keys.append(_bucket(q.by, "e.ts", offsets))
         names.append("bucket")
-    where, args = (
-        ["e.ts >= ?", "e.ts < ?", "e.kind IN ('commit', 'pr', 'issue')"],
-        [
-            q.since,
-            q.until,
-        ],
-    )
+    where = ["e.ts >= ?", "e.ts < ?", "e.kind IN ('commit', 'pr', 'issue')"]
+    args: list = [q.since, q.until]
     for d, v in q.where.items():
         if d in ("repo", "owner"):
             where.append(f"{DIMS[d].replace('p.repo', 'e.repo')} = ?")

@@ -132,7 +132,7 @@ def usage_from(raw: object) -> dict:
             return _usage_defaults(f"usage.{k} must be a mapping")
         for name, value in v.items():
             if k == "subscriptions":
-                fee = value.get("fee", 0) if isinstance(value, dict) else None
+                fee = dict(value).get("fee", 0) if isinstance(value, dict) else None
                 if (
                     not isinstance(value, dict)
                     or isinstance(fee, bool)
