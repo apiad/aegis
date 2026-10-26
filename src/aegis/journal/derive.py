@@ -37,7 +37,7 @@ WRITE_TOOLS = {
     "Delete": "write",
 }
 TURN_ENDS = ("exit", "stop", "restart", "server_stopped", "reset")
-REPO_FLAG = re.compile(r"\bgh\s+pr\b.*\s(?:--repo|-R)(?:\s|=)")
+REPO_FLAG = re.compile(r"\bgh\s+pr\b.*\s(?:--repo|-R)(?:\s+|=)(['\"]?)([^\s'\"]+)\1")
 PUSH = re.compile(r"\bgit\b[^|;&\n]*\bpush\b")
 
 
@@ -57,12 +57,16 @@ class Row:
     near: tuple[str, ...] = ()
     # Where a pr row's gh ran: names its repo and worktree.
     workdir: str = ""
+    # The owner/name a pr row's gh named with --repo, when it named one: the
+    # writer thread finds its checkout by the remote.
+    slug: str = ""
 
 
-def _pr_dir(cmd: str, cwd: str) -> str:
-    """Where a gh pr call's repo is checked out: nowhere this can know when
-    --repo names it."""
-    return "" if REPO_FLAG.search(cmd) else shell.workdir(cmd, cwd)
+def _pr_dir(cmd: str, cwd: str) -> tuple[str, str]:
+    """(where a gh pr call's repo is checked out, the owner/name its --repo
+    names): no directory this can know when --repo names it."""
+    m = REPO_FLAG.search(cmd)
+    return ("", m[2]) if m else (shell.workdir(cmd, cwd), "")
 
 
 class Deriver:
@@ -199,8 +203,9 @@ class Deriver:
             )
         ]
         if pr := shell.pull_request(cmd, text, out.is_error):
+            workdir, slug = _pr_dir(cmd, cwd)
             rows.append(
-                self._row(i, ts, "pr", pr, source=source, workdir=_pr_dir(cmd, cwd))
+                self._row(i, ts, "pr", pr, source=source, workdir=workdir, slug=slug)
             )
         if not out.is_error:
             self._turn += [("bash-write", p) for p in shell.writes(cmd, cwd)]

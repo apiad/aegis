@@ -419,3 +419,25 @@ def test_a_restart_ends_the_turn_it_cut():
         ("write", [("write", "/w/n.md")]),
         ("next", [("write", "/w/m.md")]),
     ]
+
+
+def test_a_pr_merged_with_repo_carries_its_slug():
+    r = Rec()
+    spawned(r)
+    r.call("t1", "Bash", {"command": "gh pr merge 12 --repo acme-co/atlas --squash"})
+    r.output("t1", "✓ Squashed and merged pull request acme-co/atlas#12")
+    r.result()
+    pr = [x for x in derive(r) if x.kind == "pr"][0]
+    assert pr.text == "merged #12" and pr.slug == "acme-co/atlas" and pr.workdir == ""
+
+
+def test_a_pr_named_with_r_equals_carries_its_slug_and_one_without_none():
+    r = Rec()
+    spawned(r)
+    r.call("t1", "Bash", {"command": "gh pr merge 3 -R=Acme-Co/Atlas"})
+    r.output("t1", "✓ Merged pull request #3")
+    r.call("t2", "Bash", {"command": "gh pr merge 4"})
+    r.output("t2", "✓ Merged pull request #4")
+    r.result()
+    prs = [x for x in derive(r) if x.kind == "pr"]
+    assert [(x.slug, x.workdir) for x in prs] == [("Acme-Co/Atlas", ""), ("", "/w")]

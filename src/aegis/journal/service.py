@@ -85,6 +85,8 @@ class Journal:
         self.path = db_path or state_root / "journal.db"
         self._publish = publish
         self._derivers: dict[str, Deriver] = {}
+        # A --repo slug's checkout, found once per process (writer thread).
+        self._slugs: dict[str, str] = {}
         self._q: queue.Queue = queue.Queue()
         self._thread: threading.Thread | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -242,10 +244,11 @@ class Journal:
 
     def _insert(self, con, log_id: str, rows: list[Row]) -> int:
         return sum(
-            db.insert(con, self._entry(log_id, n, row)) for n, row in enumerate(rows)
+            db.insert(con, self._entry(log_id, n, row, con))
+            for n, row in enumerate(rows)
         )
 
-    def _entry(self, log_id: str, n: int, row: Row) -> db.Entry:
+    def _entry(self, log_id: str, n: int, row: Row, con=None) -> db.Entry:
         user = self.user_of(log_id)
         touches = []
         for op, p in row.touches:
@@ -273,8 +276,11 @@ class Journal:
             touches += [
                 ("commit", repo, f, paths.full(repo, f), top) for f in files or []
             ]
-        if row.workdir:
-            repo, _, top = paths.place(row.workdir, user)
+        workdir = row.workdir
+        if row.slug and not workdir and con is not None:
+            workdir = self._checkout_of(con, row.slug, user) or ""
+        if workdir:
+            repo, _, top = paths.place(workdir, user)
         return db.Entry(
             log_id,
             row.rec,
@@ -291,6 +297,23 @@ class Journal:
             top,
             sha,
         )
+
+    def _checkout_of(self, con, slug: str, user: str | None) -> str | None:
+        """The checkout of a --repo owner/name among the repos the journal
+        has seen. Only a hit is kept: a repo first seen later may still match."""
+        key = slug.lower()
+        if key not in self._slugs:
+            repos = [
+                r
+                for (r,) in con.execute(
+                    "SELECT DISTINCT repo FROM entries WHERE repo IS NOT NULL"
+                )
+            ]
+            hit = paths.checkout_of(slug, repos, user)
+            if hit is None:
+                return None
+            self._slugs[key] = hit
+        return self._slugs[key]
 
     def _changed(self) -> None:
         self._at = time.time()
