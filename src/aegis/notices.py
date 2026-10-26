@@ -135,7 +135,31 @@ def _disk(paths: list[Path]) -> dict | None:
             continue
         free = round(st.f_bavail * st.f_frsize / host.GB, 1)
         if best is None or d["pct"] > best["pct"]:
-            best = {"pct": d["pct"], "free_gb": free, "total_gb": d["total_gb"]}
+            best = {
+                "pct": d["pct"],
+                "free_gb": free,
+                "total_gb": d["total_gb"],
+                "mount": host.mount_of(p),
+            }
+    return best
+
+
+def elsewhere(full: dict, disks: list[dict], clear: int) -> dict | None:
+    """Another of the host's disks a session can put new work on while
+    ``full`` fills: below the disk's clear level, writable by aegis's user,
+    and with more free space than ``full``. The freest such one (#745)."""
+    best: dict | None = None
+    for d in disks:
+        m = d["mount"]
+        if m == full.get("mount") or d["pct"] >= clear or not os.access(m, os.W_OK):
+            continue
+        try:
+            st = os.statvfs(m)
+        except OSError:
+            continue
+        free = round(st.f_bavail * st.f_frsize / host.GB, 1)
+        if free > full["free_gb"] and (best is None or free > best["free_gb"]):
+            best = {"mount": m, "free_gb": free}
     return best
 
 
@@ -183,6 +207,7 @@ ACT = {
     "cpu": "Run tests with fewer workers. Re-run a timing failure or a make bench number before you trust it, and say the host was loaded when you report one.",
     "quota": "Use the cheapest queue for workers, spawn no new session, and finish what you started before you start more.",
 }
+DISK_OTHER = "Free what this session created and no longer needs (your merged worktrees, build output, temporary files), re-measuring with df before you delete. Do not touch shared caches, another session's work or anything tracked by git. {mount} has {free_gb} GB free: as far as you can, put new large files there (clones, build output, caches, downloads) instead of on this disk, and move nothing another session or git owns."
 QUOTA_CRITICAL = " Tell the person before you enqueue anything."
 MEMORY_OWN = " Your session's processes hold {rss_gb} GB."
 TAIL = {
@@ -236,6 +261,8 @@ def body(kind: str, level: str, reading: dict, role: Role) -> str:
     if kind == "memory" and reading.get("rss_gb") is not None:
         lead += MEMORY_OWN.format(**r)
     act = ACT[kind]
+    if kind == "disk" and reading.get("other"):
+        act = DISK_OTHER.format(**_shown(reading["other"]))
     if level == "critical":
         lead += CRITICAL
         if kind == "quota":
@@ -569,7 +596,13 @@ class Notices:
         now = self._clock()
         if self._cached is None or now - self._cached[0] >= CACHE_S:
             paths = [self._app.roots.config_root, Path(tempfile.gettempdir())]
-            self._cached = (now, self._read(paths))
+            r = self._read(paths)
+            d = r.get("disk")
+            cfg = self._app.config.current().notices.get("disk")
+            if d and d.get("mount") and cfg:
+                other = elsewhere(d, self._app.host.disks(), cfg["clear"])
+                r = r | {"disk": d | {"other": other}}
+            self._cached = (now, r)
         return self._cached[1]
 
     def _restore(self) -> None:

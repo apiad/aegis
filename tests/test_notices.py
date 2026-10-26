@@ -11,7 +11,15 @@ from aegis import notice_sources
 from aegis.commands import parse_announce
 from aegis.config import NOTICES_DEFAULTS, notices_from
 from aegis.notice_ops import until_ts
-from aegis.notices import Announcements, Notices, cpu_pct, next_level, psi, read_signals
+from aegis.notices import (
+    Announcements,
+    Notices,
+    cpu_pct,
+    elsewhere,
+    next_level,
+    psi,
+    read_signals,
+)
 from aegis.ops import Caller, OpError, Principal
 from aegis.transcript.entries import NOTICE_HEADER, split_notices
 from aegis.transcript.store import read_store
@@ -770,3 +778,44 @@ async def test_an_urgent_message_is_steered_into_the_running_turn(world):  # noq
     assert said.startswith("done: > from agent:peer") and "stop now" in said
     (row,) = [e for e in a.entries() if e["kind"] == "inbox"]
     assert row["detail"] == {"steered": True}
+
+
+def test_elsewhere_names_the_freest_writable_disk_below_clear(tmp_path):
+    full = {"pct": 94, "free_gb": 0.01, "total_gb": 75, "mount": "/"}
+    disks = [
+        {"mount": "/", "pct": 94},
+        {"mount": str(tmp_path / "gone"), "pct": 10},  # not there: not writable
+        {"mount": str(tmp_path), "pct": 30},
+    ]
+    got = elsewhere(full, disks, clear=85)
+    assert got["mount"] == str(tmp_path) and got["free_gb"] > full["free_gb"]
+    assert elsewhere(full, [{"mount": str(tmp_path), "pct": 85}], clear=85) is None
+    assert elsewhere(full | {"free_gb": 1e9}, disks, clear=85) is None
+
+
+def test_a_disk_notice_points_to_another_disk_with_room(stub):
+    n = stub.notices
+    stub.reading = stub.reading | {
+        "disk": {
+            "pct": 94,
+            "free_gb": 4.8,
+            "total_gb": 75,
+            "other": {"mount": "/mnt/data", "free_gb": 65},
+        }
+    }
+    got = n.pending(stub.a)
+    assert "/mnt/data has 65.0 GB free" in got
+    assert "Start no large download or build." not in got
+    stub.disk(98)  # the plain reading keeps the plain advice
+    assert "Start no large download or build." in n.pending(stub.a)
+
+
+def test_the_reading_asks_the_host_for_another_disk(stub, tmp_path):
+    stub.host = SimpleNamespace(
+        disks=lambda: [{"mount": "/", "pct": 94}, {"mount": str(tmp_path), "pct": 30}]
+    )
+    stub.reading = stub.reading | {
+        "disk": {"pct": 94, "free_gb": 0.01, "total_gb": 75, "mount": "/"}
+    }
+    got = stub.notices.pending(stub.a)
+    assert f"{tmp_path} has " in got and " GB free" in got
