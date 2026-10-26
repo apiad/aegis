@@ -117,6 +117,19 @@ ending anywhere on the server. The footer says how much of the cost is
 estimated from tokens, how many tokens have no price, and whether the
 background count of older sessions is still running.
 
+## Across linked servers
+
+With linked servers (see Links), the page counts every server at once: each
+panel adds up their rows, and a **servers** chip per server takes it out of
+the panels or puts it back. A subscription that two servers run on counts its
+fee once: its weekly limit is split over both servers' costs with this
+server's quota readings. The footer says when each linked server last
+answered ("beta answered 40 s ago"); the page asks them again every minute,
+so their numbers are at most a minute old. A server that stops answering
+keeps its last numbers, and one never reached, or running an aegis without
+the usage page, is named as not reached. A session list behind a cell lists
+this server's sessions. A member's page counts only this server.
+
 ## Ask from an agent: usage_read
 
 An agent asks the same question with one call to `usage_read`. It takes the
@@ -142,7 +155,11 @@ or `agent`. For one mode alone:
 ```
 
 A member's call counts only the sessions it owns; an admin's counts all.
-`server` names this server only for now.
+A person's call counts every linked server and merges their rows, each
+naming its `server`, with `servers` saying when each answered and whether it
+is `live`, `cached` (its last answer) or `missing`. An agent's call, and one
+with `server` naming this server, counts this server only; `server: "all"`
+asks every linked server from an agent too.
 
 ## What the numbers mean
 

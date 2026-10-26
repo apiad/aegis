@@ -9,6 +9,7 @@ from .test_browser import (  # noqa: F401
     WIDER,
     Server,
     browser,
+    linked,
     new_page,
     page,
     phone,
@@ -82,3 +83,29 @@ def test_the_gauge_label_opens_it_and_a_phone_fits(server, browser):  # noqa: F8
     pg.evaluate("document.getElementById('band-quota-link').click()")
     pg.wait_for_selector("#a2[data-view=usage]")
     assert errors == []
+
+
+def test_two_linked_servers_show_in_one_page(linked, page):  # noqa: F811
+    for srv, cost in ((linked.beta, "0.5"), (linked.alpha, "0.25")):
+        page.goto(srv.url)
+        page.wait_for_selector("#a2[data-view=fleet]")
+        spawn(page, f"spend {cost}")
+    page.goto(linked.alpha.url + "#usage")
+    page.wait_for_function(
+        "sel => document.querySelector(sel)?.firstChild.textContent === '$0.75'",
+        arg=TILE,
+        timeout=5000,
+    )
+    chips = ".usage .uchip"
+    assert page.eval_on_selector_all(chips, "cs => cs.map(c => c.textContent)") == [
+        "alpha",
+        "beta",
+    ]
+    assert "beta answered" in page.text_content(".usage .ufoot")
+    page.click(".usage .uchip[data-server=beta]")
+    page.wait_for_function(
+        "sel => document.querySelector(sel).firstChild.textContent === '$0.25'",
+        arg=TILE,
+        timeout=5000,
+    )
+    assert not page.errors

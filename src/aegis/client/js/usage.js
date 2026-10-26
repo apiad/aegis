@@ -2,9 +2,11 @@
 // the usage channel asks again, at most once every 2 s. The server decides
 // every label, number, width and shade (src/aegis/usage/page.py); this module
 // draws and asks, nothing more. A cell, bar or row lists the sessions behind
-// it through usage.read, and a session opens its transcript.
+// it through usage.read, and a session opens its transcript. With a linked
+// server, the page asks again every minute: linked servers do not signal.
 
 const REFRESH_MS = 2000;
+const LINKED_MS = 60_000;
 
 function el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -28,6 +30,7 @@ export class Usage {
     this.shown = false;
     this.last = 0;
     this.timer = null;
+    this.poll = null;
     this.seq = 0;
     this.page = null;
   }
@@ -40,6 +43,7 @@ export class Usage {
   close() {
     this.shown = false;
     clearTimeout(this.timer);
+    clearTimeout(this.poll);
   }
 
   // A turn ended somewhere: ask again, no sooner than 2 s after the last ask.
@@ -65,6 +69,10 @@ export class Usage {
     if (seq !== this.seq) return;
     this.page = p;
     this.draw(p);
+    clearTimeout(this.poll);
+    if (this.shown && p.controls.servers.length > 1) {
+      this.poll = setTimeout(() => this.shown && this.load(), LINKED_MS);
+    }
   }
 
   set(key, value) {
@@ -94,7 +102,7 @@ export class Usage {
       pane("Outcomes", "From the journal; cost is the measure of the same slice", this.outcomes(p.outcomes), true, "uout"),
       grid(pane("Subscriptions", "Each fee split by owner, elsewhere and unused", subscriptions(p.subscriptions)),
            pane("Context length", "Every call rereads its context: cost by band, peaks and an earlier handoff", context(p.context))),
-      foot(p.foot),
+      foot(p.foot, p.servers),
     );
   }
 
@@ -121,7 +129,16 @@ export class Usage {
     );
     const servers = el("label", null, "servers");
     const chips = el("span", "uchips");
-    for (const s of c.servers) chips.append(el("span", `uchip${s.on ? " on" : ""}`, s.name));
+    for (const s of c.servers) {
+      const b = el("button", `uchip${s.on ? " on" : ""}`, s.name);
+      b.type = "button";
+      b.dataset.server = s.name;
+      b.addEventListener("click", () => {
+        const on = c.servers.filter((x) => x.on !== (x.name === s.name)).map((x) => x.name);
+        if (on.length) this.set("servers", on.length === c.servers.length ? null : on);
+      });
+      chips.append(b);
+    }
     servers.append(chips);
     row.append(servers);
     return row;
@@ -286,6 +303,7 @@ export class Usage {
     try {
       a = await this.conn.call("usage.read", {
         since: this.page.since,
+        server: this.page.controls.servers[0].name,
         split: ["session"],
         where,
         measure: this.page.measure === "hours" ? "secs" : this.page.measure,
@@ -418,8 +436,16 @@ function context(c) {
   return box;
 }
 
-function foot(f) {
+function ago(s) {
+  return s < 60 ? `${s} s` : s < 7200 ? `${Math.round(s / 60)} min` : `${Math.round(s / 3600)} h`;
+}
+
+function foot(f, servers) {
   const n = el("div", "ufoot");
   for (const line of f.lines) n.append(el("div", null, line));
+  for (const [name, s] of Object.entries(servers).slice(1)) {
+    const line = s.state === "missing" ? `${name} not reached` : `${name} answered ${ago(s.age_s)} ago`;
+    n.append(el("div", null, line));
+  }
   return n;
 }
