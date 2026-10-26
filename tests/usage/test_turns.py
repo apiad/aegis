@@ -1,10 +1,12 @@
 """The usage deriver: a turn's cost, split over what it did (spec 06)."""
 
+import json
 from decimal import Decimal
 
 import pytest
 
-from aegis.usage.prices import prices_for
+from aegis.claude.stream import Result, ToolCall, ToolOutput
+from aegis.usage.prices import codex_prices_for, prices_for
 from aegis.usage.turns import SessionInfo, Settle, WaitRow
 
 from .records import UseRec, run
@@ -307,3 +309,98 @@ def test_an_idle_gap_is_a_wait_capped_at_8_hours():
     assert d.waits == [
         WaitRow(rec=send["i"], ts=send["ts"], woke_by="monitor", secs=28_800)
     ]
+
+
+def _feed(harness, src, items, cwd="/w"):
+    """Feed a spawn, then each (raw line or None, parsed events) as records
+    of ``src``: the raw line is what the deriver reads usage from, the events
+    what the parser would have yielded."""
+    from aegis.usage.turns import Derived, UsageDeriver
+
+    d = UsageDeriver(SessionInfo(harness=harness), lambda x: None)
+    out = Derived()
+    out.extend(d.feed({"i": 0, "ts": 1000.0, "src": "aegis", "kind": "spawn",
+                       "cwd": cwd, "harness": harness}))  # fmt: skip
+    out.extend(
+        d.feed({"i": 1, "ts": 1001.0, "src": "aegis", "kind": "send", "text": "go"})
+    )
+    for k, (line, events) in enumerate(items, start=2):
+        rec = {"i": k, "ts": 1000.0 + k, "src": src, "line": json.dumps(line or {})}
+        out.extend(d.feed(rec, events))
+    return out
+
+
+def _call(cid, name, inp, text="ok"):
+    return [
+        ToolCall(id=cid, name=name, input=inp, parent=None, usage=None),
+        ToolOutput(id=cid, text=text, is_error=False, parent=None),
+    ]
+
+
+def _result():
+    return [Result(is_error=False, subtype="", duration_ms=2000, cost_usd=0.5,
+                   stop_reason=None, context_window=None)]  # fmt: skip
+
+
+def test_a_codex_turn_is_priced_by_its_model():
+    from tests.usage.stores import codex_turn, codex_usage
+
+    d = _feed(
+        "codex",
+        "codex",
+        [
+            (codex_turn("openai/gpt-6.1-sol"), []),
+            (None, _call("a", "Read", {"file_path": "/w/x.py"})),
+            (codex_usage("u1", inp=10_000, cached=4000, out=500), []),
+            (None, _call("b", "Bash", {"command": "pytest"})),
+            (codex_usage("u1", inp=20_000, cached=15_000, out=100), []),
+            (None, _result()),
+        ],
+    )
+    t = d.turns[0]
+    rates = codex_prices_for("openai/gpt-6.1-sol")
+    want = rates.cost(inp=6000, out=500, cc5=0, cc1=0, cache_read=4000) + rates.cost(
+        inp=5000, out=100, cc5=0, cc1=0, cache_read=15_000
+    )
+    assert (t.cost_kind, t.cost, t.model) == ("priced", want, "openai/gpt-6.1-sol")
+    assert sum(p.cost for p in d.parts) == want
+    assert sum(p.tokens for p in d.parts) == t.tok_in + t.tok_out + t.tok_cw + t.tok_cr
+    assert {p.activity for p in d.parts} == {"reading", "testing"}
+
+
+def test_an_opencode_turn_has_its_step_tokens_and_no_price():
+    from tests.usage.stores import opencode_step
+
+    d = _feed(
+        "opencode",
+        "opencode",
+        [
+            (None, _call("a", "Edit", {"file_path": "/w/a.py"})),
+            (opencode_step("s1", inp=300, out=40, read=1000), []),
+            (opencode_step("s1", inp=300, out=40, read=1000), []),  # once per step
+            (None, _call("b", "Read", {"file_path": "/w/b.py"})),
+            (opencode_step("s2", inp=100, out=10, read=2000), []),
+            (None, _result()),
+        ],
+    )
+    t = d.turns[0]
+    assert (t.cost_kind, t.cost) == ("unpriced", Decimal(0))
+    assert (t.tok_in, t.tok_out, t.tok_cr) == (400, 50, 3000)
+    assert sum(p.tokens for p in d.parts) == 3450
+    assert {p.activity: p.tokens for p in d.parts} == {"editing": 1340, "reading": 2110}
+
+
+def test_a_cursor_turn_has_parts_with_no_tokens():
+    d = _feed(
+        "cursor",
+        "cursor",
+        [
+            (None, _call("a", "Read", {"file_path": "/w/a.py"})),
+            (None, _call("b", "Bash", {"command": "pytest"})),
+            (None, _result()),
+        ],
+    )
+    t = d.turns[0]
+    assert (t.cost_kind, t.cost, t.calls) == ("unpriced", Decimal(0), 2)
+    assert [(p.activity, p.tokens) for p in d.parts] == [("reading", 0), ("testing", 0)]
+    assert sum(p.secs for p in d.parts) == t.secs == 2.0

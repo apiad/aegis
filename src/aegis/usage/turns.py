@@ -44,7 +44,7 @@ from .kinds import (
     edit_purpose,
     is_shell_exit,
 )
-from .prices import prices_for
+from .prices import codex_prices_for, prices_for
 from .store import split_cache
 
 MAX_WAIT = 28_800  # an idle gap counts at most 8 hours
@@ -205,6 +205,8 @@ class _Turn:
     calls: dict[str, _Call] = field(default_factory=dict)
     errors: int = 0
     exits: int = 0
+    # Calls of a harness that reports usage per request after its calls.
+    pending: list[str] = field(default_factory=list)
 
 
 def _dec(f: Fraction) -> Decimal:
@@ -243,6 +245,8 @@ class UsageDeriver:
             line = record.get("line", "")
             if src == "claude":
                 self._claude_line(i, line)
+            elif src in ("codex", "opencode"):
+                self._usage_line(src, line)
             if events is None:
                 p = self._parsers.get(src)
                 if p is None:
@@ -285,6 +289,58 @@ class UsageDeriver:
         for block in message.get("content") or []:
             if isinstance(block, dict) and block.get("type") == "tool_use":
                 self._mid[str(block.get("id"))] = mid
+
+    def _usage_line(self, src: str, line: str) -> None:
+        """A Codex request's or an OpenCode step's tokens, read as
+        ``usage/scan.py`` reads them. The calls made since the previous one
+        are that request's."""
+        try:
+            obj = json.loads(line)
+        except ValueError:
+            return
+        if not isinstance(obj, dict):
+            return
+        if src == "codex":
+            params = obj.get("params") or {}
+            if obj.get("method") == "aegis/turn":
+                self.model = str(params.get("model") or self.model or "") or None
+                return
+            last = (params.get("tokenUsage") or {}).get("last")
+            if obj.get("method") != "thread/tokenUsage/updated" or not isinstance(
+                last, dict
+            ):
+                return
+            cached = int(last.get("cachedInputTokens") or 0)
+            write = int(last.get("cacheWriteInputTokens") or 0)
+            key = f"u{len(self._turn.msgs) if self._turn else 0}:{self._ts}"
+            m = _Msg(
+                model=self.model,
+                inp=max(0, int(last.get("inputTokens") or 0) - cached - write),
+                out=int(last.get("outputTokens") or 0),
+                cc5=write,
+                cr=cached,
+            )
+        else:
+            if obj.get("type") not in ("session.step.ended", "session.step.failed"):
+                return
+            data = obj.get("data") or {}
+            tokens = data.get("tokens")
+            if not isinstance(tokens, dict):
+                return
+            cache = tokens.get("cache") if isinstance(tokens.get("cache"), dict) else {}
+            key = f"opencode:{data.get('assistantMessageID')}"
+            m = _Msg(
+                model=self.model,
+                inp=int(tokens.get("input") or 0),
+                out=int(tokens.get("output") or 0) + int(tokens.get("reasoning") or 0),
+                cc5=int(cache.get("write") or 0),
+                cr=int(cache.get("read") or 0),
+            )
+        t = self._open_turn(self._ts)
+        if key in t.msgs:
+            return
+        m.calls, t.pending = t.pending, []
+        t.msgs[key] = m
 
     def _event(self, i: int, ts: float, ev) -> Derived:
         if isinstance(ev, Init):
@@ -376,9 +432,12 @@ class UsageDeriver:
             activity(ev.name, ev.input),
             repo or self._last_repo or self._cwd_repo(),
         )
-        # A call no message line named (a harness without them) is its own.
-        mid = self._mid.get(ev.id, f"c:{ev.id}")
-        t.msgs.setdefault(mid, _Msg(model=None)).calls.append(ev.id)
+        if self._src == "claude":
+            # A call no message line named is its own message.
+            mid = self._mid.get(ev.id, f"c:{ev.id}")
+            t.msgs.setdefault(mid, _Msg(model=None)).calls.append(ev.id)
+        else:
+            t.pending.append(ev.id)
 
     def _cwd_repo(self) -> str | None:
         return self.repo_of(self.cwd) if self.cwd else None
@@ -503,9 +562,12 @@ class UsageDeriver:
         return MODES.get(m[1], "other")
 
     def _price(self, m: _Msg) -> Decimal | None:
-        if self.harness != "claude-code":
-            return None
-        p = prices_for(m.model or self.model)
+        if self.harness == "claude-code":
+            p = prices_for(m.model or self.model)
+        elif self.harness == "codex":
+            p = codex_prices_for(m.model or self.model)
+        else:
+            p = None
         if p is None:
             return None
         return p.cost(inp=m.inp, out=m.out, cc5=m.cc5, cc1=m.cc1, cache_read=m.cr)
@@ -529,6 +591,14 @@ class UsageDeriver:
             self._prev_total, self._priced_since = c, Decimal(0)
         if t is None or not (t.msgs or t.calls):
             return Derived()
+        if t.pending:  # calls after the last request's tokens: that request's
+            msgs = [m for m in t.msgs.values() if m.tokens]
+            if msgs:
+                msgs[-1].calls += t.pending
+            else:
+                for c in t.pending:
+                    t.msgs[f"c:{c}"] = _Msg(model=None, calls=[c])
+            t.pending = []
         self._last_end = ts
         first = self._turns == 0
         self._turns += 1
