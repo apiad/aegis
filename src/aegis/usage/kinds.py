@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 
-from aegis.journal.shell import _body, _commands, _git_dir, _skip_preamble
+from ..journal.shell import _body, _commands, _git_dir, _skip_preamble
 
 # Tool names, by full name, in order.
 TOOLS: list[tuple[str, str]] = [
