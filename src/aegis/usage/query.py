@@ -21,14 +21,14 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
+from .context import BANDS, reread_cost
 from .subscription import WEEK, WEEKLY, Reading, split as split_fee, weekly_fee
 
 BYS = ("hour", "day", "week", "month", "dow", "dow_hour")
 MEASURES = (
     "cost", "tokens", "secs", "turns", "sessions", "calls", "errors", "exits",
-    "waits", "sub", "limit",
+    "waits", "sub", "limit", "whatif",
 )  # fmt: skip
-BANDS = (0, 50_000, 100_000, 200_000, 300_000, 400_000, 600_000)
 DOW = ("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")  # strftime %w order
 
 _CONTEXT = (
@@ -66,6 +66,7 @@ class UsageQuery:
     where: dict[str, str] = field(default_factory=dict)
     tz: str = "UTC"
     people: set[str] | None = None
+    whatif: int | None = None  # a handoff threshold, for the whatif measure
 
 
 @dataclass
@@ -153,7 +154,7 @@ def _owners_cte(con: sqlite3.Connection, owners: dict | None) -> tuple[str, list
     return f"ow(repo, owner) AS (VALUES {values})", [x for pr in pairs for x in pr]
 
 
-def _filter(q: UsageQuery, dims: set[str]) -> tuple[str, list]:
+def _filter(q: UsageQuery, dims: set[str], whatif: bool = False) -> tuple[str, list]:
     """The FROM and WHERE of a query over parts; the owners and the turns are
     joined only when a dimension asks for them."""
     where = ["p.ts >= ?", "p.ts < ?"]
@@ -165,8 +166,12 @@ def _filter(q: UsageQuery, dims: set[str]) -> tuple[str, list]:
         where.append(f"p.person IN ({','.join('?' * len(q.people))})")
         args += sorted(q.people)
     joins = ""
-    if "context" in dims:
+    if "context" in dims or whatif:
         joins += " JOIN usage_turns t ON t.log_id = p.log_id AND t.rec = p.rec"
+    if whatif:
+        joins += " JOIN usage_whatif w ON w.log_id = p.log_id AND w.rec = p.rec"
+        where.append("w.at = ?")
+        args.append(q.whatif)
     if "owner" in dims:
         joins += " LEFT JOIN repo_owners o ON o.repo = p.repo LEFT JOIN ow ON ow.repo = p.repo"
     return f"FROM usage_parts p{joins} WHERE {' AND '.join(where)}", args
@@ -201,7 +206,7 @@ def _grouped(con, q: UsageQuery, cte: str, cte_args: list, offsets: str) -> list
             row["bucket"] = _label(q.by, row["bucket"])
         cost, *rest = r[k : k + 8]
         row |= dict(zip(MEASURES, (round(cost or 0, 9), *(v or 0 for v in rest))))
-        row |= {"waits": 0.0, "sub": 0.0, "limit": 0.0}
+        row |= {"waits": 0.0, "sub": 0.0, "limit": 0.0, "whatif": 0.0}
         row["_priced"], row["_unpriced"] = r[k + 8] or 0, r[k + 9] or 0
         rows.append(row)
     return rows
@@ -251,6 +256,8 @@ def run(
     rows = _grouped(con, q, cte, cte_args, offsets)
     hours = _sub_hours(con, q, cte, cte_args, offsets)
     subs = _subscriptions(con, q, hours, rows, subscriptions or {})
+    if q.whatif is not None:
+        _whatif(con, q, cte, cte_args, offsets, rows)
     totals = {m: sum(r[m] for r in rows) for m in MEASURES}
     totals["cost"] = round(totals["cost"], 9)
     if q.split or q.by:
@@ -279,6 +286,32 @@ def run(
             for b, v in hours.items()
         },
     )
+
+
+def _whatif(con, q: UsageQuery, cte: str, cte_args: list, offsets: str, rows) -> None:
+    """Each row's net saving had sessions handed off at ``q.whatif``: saved
+    minus the rewrite minus a reread per handoff, a turn's share going to its
+    parts by their cost."""
+    base, args = _filter(q, {*q.split, *q.where}, whatif=True)
+    keys = [DIMS[d] for d in q.split]
+    if q.by:
+        keys.append(_bucket(q.by, "p.ts", offsets))
+    select = "".join(f"{k}, " for k in keys)
+    group = f" GROUP BY {', '.join(str(n + 1) for n in range(len(keys)))}" if keys else ""
+    reread = float(reread_cost(con))
+    sql = (
+        f"WITH {cte} SELECT {select}SUM((w.saved - w.rewrite - w.handoffs * ?)"
+        f" * CASE WHEN t.cost > 0 THEN p.cost / t.cost ELSE 0 END) {base}{group}"
+    )
+    by_key = {
+        (*(r[d] for d in q.split), *((r["bucket"],) if q.by else ())): r for r in rows
+    }
+    for r in con.execute(sql, [*cte_args, reread, *args]):
+        key = list(r[:-1])
+        if q.by:
+            key[-1] = _label(q.by, key[-1])
+        if (row := by_key.get(tuple(key))) is not None:
+            row["whatif"] = round(r[-1] or 0, 9)
 
 
 def _sub_hours(con, q: UsageQuery, cte: str, cte_args: list, offsets: str) -> dict:

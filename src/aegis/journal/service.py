@@ -41,6 +41,7 @@ from pathlib import Path
 
 from ..transcript.store import read_store
 from ..usage import tables
+from ..usage.context import successor_start
 from ..usage.owners import owner_of
 from ..usage.store import sessions as stored_sessions
 from ..usage.turns import Derived, SessionInfo, UsageDeriver
@@ -120,6 +121,7 @@ class Journal:
         self.meta_of = meta_of
         self.accounts = accounts
         self._usage: dict[str, UsageDeriver] = {}
+        self._start: tuple[float, int] | None = None  # (read at, replay start)
         # A directory's repo, and the repos whose owner has been read.
         self._repos: dict[tuple[str, str | None], str | None] = {}
         self._owned: set[str] = set()
@@ -340,8 +342,17 @@ class Journal:
             harness=str(meta.get("harness") or "claude-code"),
             continues=meta.get("continues") or None,
             account=lambda harness: self.accounts().get(harness),
+            replay_start=self._replay_start(con),
         )
         return UsageDeriver(info, self._repo_of(con, self.user_of(log_id)))
+
+    def _replay_start(self, con) -> int:
+        """Successors' median start context, read at most once a minute: a
+        backfill makes a deriver per session."""
+        now = time.monotonic()
+        if self._start is None or now - self._start[0] > 60:
+            self._start = (now, successor_start(con))
+        return self._start[1]
 
     def _repo_of(self, con, user: str | None) -> Callable[[str], str | None]:
         """A directory's main checkout, or a ``gh:owner/name`` slug's, cached

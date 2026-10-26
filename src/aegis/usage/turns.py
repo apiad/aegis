@@ -46,7 +46,8 @@ from .kinds import (
     edit_purpose,
     is_shell_exit,
 )
-from .prices import codex_prices_for, prices_for
+from .context import START, Replay, band
+from .prices import Prices, codex_prices_for, prices_for
 from .store import split_cache
 
 MAX_WAIT = 28_800  # an idle gap counts at most 8 hours
@@ -71,6 +72,7 @@ class SessionInfo:
     harness: str = "claude-code"
     continues: str | None = None
     account: Callable[[str], str | None] = lambda harness: None
+    replay_start: int = START  # successors' median start context here
 
 
 @dataclass
@@ -231,6 +233,7 @@ class UsageDeriver:
         self._ts = 0.0
         self._src = ""
         self._mid: dict[str, str] = {}  # tool_use id -> message id
+        self._replay = Replay(info.replay_start)
         self._key_source: str | None = None  # Claude's init apiKeySource
         self._prev_total: Decimal | None = None
         self._priced_since = Decimal(0)  # interrupted turns since the last result
@@ -593,13 +596,15 @@ class UsageDeriver:
             return "person" if not wake.startswith("> from ") else "other"
         return MODES.get(m[1], "other")
 
-    def _price(self, m: _Msg) -> Decimal | None:
+    def _rates(self, m: _Msg) -> Prices | None:
         if self.harness == "claude-code":
-            p = prices_for(m.model or self.model)
-        elif self.harness == "codex":
-            p = codex_prices_for(m.model or self.model)
-        else:
-            p = None
+            return prices_for(m.model or self.model)
+        if self.harness == "codex":
+            return codex_prices_for(m.model or self.model)
+        return None
+
+    def _price(self, m: _Msg) -> Decimal | None:
+        p = self._rates(m)
         if p is None:
             return None
         return p.cost(inp=m.inp, out=m.out, cc5=m.cc5, cc1=m.cc1, cache_read=m.cr)
@@ -677,6 +682,7 @@ class UsageDeriver:
             continues=self.info.continues if first else None,
         )
         out = Derived(turns=[turn])
+        out.bands, out.whatifs = self._context(i, msgs, prices, cost)
         out.settles = self._purposes(t, i)
         out.parts = self._parts(i, ts, t, msgs, prices, cost, secs, sum(tok))
         for p in out.parts:
@@ -684,6 +690,39 @@ class UsageDeriver:
                 kind = "code" if p.activity == "editing" else "support"
                 self._open.append((i, p.n, p.repo, kind))
         return out
+
+    def _context(
+        self, i: int, msgs: list[_Msg], prices: dict, cost: Decimal
+    ) -> tuple[list[BandRow], list[WhatIfRow]]:
+        """The turn's calls, cost and cache reads per context band, its cost
+        shared by the calls' weight with the last band taking the rounding,
+        and the replay's handoffs and savings per threshold passed."""
+        calls = [m for m in msgs if m.tokens]
+        w = {id(m): Fraction(prices[id(m)]) if prices[id(m)] is not None
+             else Fraction(m.tokens) for m in calls}  # fmt: skip
+        whole = sum(w.values())
+        bands: dict[int, BandRow] = {}
+        whatif: dict[int, WhatIfRow] = {}
+        for m in calls:
+            b = bands.setdefault(
+                band(m.context), BandRow(i, band(m.context), 0, Decimal(0), 0)
+            )
+            b.calls += 1
+            b.tok_cr += m.cr
+            if whole:
+                b.cost += _dec(Fraction(cost) * w[id(m)] / whole)
+            rates = self._rates(m)
+            if rates is None:
+                continue
+            for at, (h, saved, rewrite) in self._replay.call(m.context, rates).items():
+                r = whatif.setdefault(at, WhatIfRow(i, at, 0, Decimal(0), Decimal(0)))
+                r.handoffs += h
+                r.saved += saved
+                r.rewrite += rewrite
+        rows = list(bands.values())
+        if rows and whole:
+            rows[-1].cost = cost - sum((b.cost for b in rows[:-1]), Decimal(0))
+        return rows, list(whatif.values())
 
     def _billing(self) -> str:
         """The login a turn ran on: Claude's subscription unless its init
