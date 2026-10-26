@@ -130,6 +130,7 @@ The gutter of each row names what the row is.
 | `g-window` | Open in a new window; a session in the journal | cards, menus, the journal |
 | `g-open` | Open in a new tab | cards, menus, the journal |
 | `g-arrow-up` | A pull request | the journal |
+| `g-issue` | A closed issue | the journal |
 
 ## Files
 

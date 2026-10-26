@@ -367,7 +367,9 @@ class _journal:
         path: str | None = ...,
         session: str | None = ...,
         repo: str | None = ...,
-        kind: builtins.list[Literal["turn", "commit", "pr", "plan", "note", "session"]]
+        kind: builtins.list[
+            Literal["turn", "commit", "pr", "issue", "plan", "note", "session"]
+        ]
         | None = ...,
         limit: int = ...,
         q: str | None = ...,
@@ -384,7 +386,9 @@ class _journal:
         path: str | None = ...,
         session: str | None = ...,
         repo: str | None = ...,
-        kind: builtins.list[Literal["turn", "commit", "pr", "plan", "note", "session"]]
+        kind: builtins.list[
+            Literal["turn", "commit", "pr", "issue", "plan", "note", "session"]
+        ]
         | None = ...,
         limit: int = ...,
     ) -> Any:

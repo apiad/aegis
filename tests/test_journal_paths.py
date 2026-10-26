@@ -2,6 +2,7 @@ import subprocess
 
 import pytest
 
+from aegis.journal import paths
 from aegis.journal.paths import commit_files, full, name
 
 GIT = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
@@ -79,3 +80,20 @@ def test_a_blob_hash_is_not_a_commit_with_files(repo):
     blob = git("rev-parse", "HEAD:a.py", cwd=repo).strip()
     assert commit_files(str(repo), blob) is None
     assert commit_files(str(repo), blob[:7]) is None
+
+
+def git_repo(path, origin):
+    path.mkdir(parents=True)
+    git("init", "-q", "-b", "main", cwd=path)
+    git("remote", "add", "origin", origin, cwd=path)
+    return path.resolve()
+
+
+def test_checkout_of_finds_the_top_whose_origin_is_the_slug(tmp_path):
+    a = git_repo(tmp_path / "atlas", origin="git@github.com:acme-co/atlas.git")
+    b = git_repo(tmp_path / "notes", origin="https://github.com/ana/notes")
+    assert paths.remote_slug(str(b)) == "ana/notes"
+    assert paths.checkout_of("acme-co/atlas", [str(b), str(a)], None) == str(a)
+    assert paths.checkout_of("Acme-Co/Atlas", [str(a)], None) == str(a)
+    assert paths.checkout_of("acme-co/ledger", [str(a)], None) is None
+    assert paths.remote_slug(str(tmp_path / "gone")) is None

@@ -1748,7 +1748,7 @@ body{background:#000}
 .a2 .jent .pmore{color:var(--faint)}
 .a2 :is(.jent,.jpeek>div).k-commit .g,.a2 :is(.jent,.jpeek>div).k-plan .g{color:var(--ok)}
 .a2 :is(.jent,.jpeek>div).k-note .g{color:var(--accent)}
-.a2 :is(.jent,.jpeek>div).k-pr .g{color:var(--comms)}
+.a2 :is(.jent,.jpeek>div).k-pr .g,.a2 :is(.jent,.jpeek>div).k-issue .g{color:var(--comms)}
 .a2 :is(.jent,.jpeek>div).k-session .g{color:var(--faint)}
 
 /* the Help tab (js/help.js): the pages and the search box on the left, the

@@ -16,7 +16,7 @@ from .query import build, matching, page, search
 if TYPE_CHECKING:
     from ..app import App
 
-Kind = Literal["turn", "commit", "pr", "plan", "note", "session"]
+Kind = Literal["turn", "commit", "pr", "issue", "plan", "note", "session"]
 
 
 class _Strict(BaseModel):

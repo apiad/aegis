@@ -71,7 +71,7 @@ def test_a_pr_row_takes_the_repo_of_its_workdir(tmp_path):
 
 def test_top_and_sha_are_stored(tmp_path):
     con, fresh = db.connect(tmp_path / "j.db")
-    assert fresh and db.SCHEMA_VERSION == 2
+    assert fresh and db.SCHEMA_VERSION == 3
     e = db.Entry(
         "L",
         1,
@@ -188,3 +188,25 @@ def test_on_live_raising_still_inserts_and_announces(tmp_path):
     store.write_text("")
     n = sum(j._feed(con, "L", "h", store, rec, None) for rec in r.records)
     assert n == 1  # the spawn row, inserted although on_live raised
+
+
+def test_a_pr_row_named_by_slug_takes_the_checkout_whose_origin_matches(tmp_path):
+    repo, wt = _repo_with_worktree(tmp_path)
+    subprocess.run(
+        ["git", "remote", "add", "origin", "git@github.com:acme-co/atlas.git"],
+        cwd=repo,
+        check=True,
+    )
+    j = Journal(tmp_path, None, db_path=tmp_path / "j.db")
+    con, _ = db.connect(j.path)
+    pr = Row(2, 2.0, "pr", "merged #12", "h", slug="acme-co/atlas")
+    assert j._entry("log", 0, pr, con).repo is None  # no entry names a repo yet
+    j._insert(
+        con,
+        "log",
+        [Row(1, 1.0, "turn", "t", "h", touches=[("write", str(wt / "b.py"))])],
+    )
+    e = j._entry("log", 0, pr, con)
+    assert (e.repo, e.top) == (str(repo), str(repo))
+    other = Row(3, 3.0, "pr", "merged #4", "h", slug="acme-co/ledger")
+    assert j._entry("log", 0, other, con).repo is None

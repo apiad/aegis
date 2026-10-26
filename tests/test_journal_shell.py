@@ -1,3 +1,4 @@
+from aegis.journal import shell
 from aegis.journal.shell import (
     commit_dirs,
     commits,
@@ -183,3 +184,19 @@ def test_writes_skips_relative_targets_after_a_cd_to_a_variable():
         "/abs/y.txt"
     ]
     assert writes("cd $W && cd /r && echo a > z.txt", "/w") == ["/r/z.txt"]
+
+
+def test_issue_close_names_its_numbers():
+    assert shell.issue_closes("gh issue close 41", "✓ Closed issue #41", False) == [41]
+    assert shell.issue_closes("gh issue close 41 --repo a/b -c done", "", False) == [41]
+    assert shell.issue_closes("gh issue close 41", "not found", True) == []
+    url = "gh issue close https://github.com/a/b/issues/8"
+    assert shell.issue_closes(url, "", False) == [8]
+    assert shell.issue_closes("gh issue view 41", "", False) == []
+
+
+def test_closing_refs_reads_the_body_flag():
+    cmd = 'gh pr create --title t --body "Adds x.\n\nCloses #7\nFixes #9, resolves #11"'
+    assert shell.closing_refs(cmd) == [7, 9, 11]
+    assert shell.closing_refs("gh pr create --fill") == []
+    assert shell.closing_refs('gh pr create -b "Part of #3"') == []
