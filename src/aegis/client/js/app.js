@@ -92,6 +92,8 @@ function setTheme(name) {
 const sessions = new Map(); // key -> meta, from every server's `sessions` channel
 let links = []; // the home server's links, from the `links` channel
 let linksLoaded = false; // the first `links` snapshot has arrived
+let linksArrived;
+const linksReady = new Promise((ok) => (linksArrived = ok)); // resolves with it
 let linksSig = ""; // the links' names and states the archive was last read for
 const remote = new Map(); // linked server -> {unsubs, quota, host, unsubHost, loaded, state}
 
@@ -426,7 +428,7 @@ for (const b of document.querySelectorAll("#fleet-order button"))
     render();
   });
 
-// -- routing: #fleet, #new, #settings, #journal, #knowledge[=<name>], #files[=<path>[:line]], #schedules, #help[=<page>], #s=<key>, #t=<key>, #read=<key>, #w=<n>:<key> --
+// -- routing: #fleet, #new[?<fill>], #settings, #journal, #knowledge[=<name>], #files[=<path>[:line]], #schedules, #help[=<page>], #s=<key>, #t=<key>, #read=<key>, #w=<n>:<key> --
 // A help ref is URI-encoded; a hand-typed malformed one is a page name nobody has.
 const unhash = (s) => {
   try {
@@ -448,7 +450,10 @@ function route(hash = location.hash) {
   // Window n of a session's canvas, a browser tab of its own (js/canvas.js).
   const w = /^w=(\d+):(.+)$/.exec(h);
   if (w) return { view: "window", id: w[2], n: Number(w[1]) };
+  // A link or a share that fills the New session form (#735): the query after
+  // "new?" is read once by render, which drops it from the URL.
   if (h === "new") return { view: "spawn" };
+  if (h.startsWith("new?")) return { view: "spawn", fill: new URLSearchParams(h.slice(4)) };
   if (h === "settings") return { view: "settings" };
   if (h === "journal") return { view: "journal" };
   if (h === "knowledge" || h.startsWith("knowledge=")) return { view: "knowledge", id: unhash(h.slice(10)) };
@@ -865,6 +870,7 @@ conn.subscribe("sessions", ...sessionHandlers(null));
 function onLinks(list) {
   links = list || [];
   linksLoaded = true;
+  linksArrived();
   settings.onLinks(links, conn.server);
   drawServerPick();
   const names = new Set(links.map((l) => l.name));
@@ -1204,6 +1210,11 @@ function render() {
   if (r.at) {
     history.replaceState(null, "", `#s=${r.id}`);
     landEntry = { key: r.id, id: r.at };
+  }
+  // A fill is read once too, so a reload or Back never fills the form again.
+  if (r.fill) {
+    history.replaceState(null, "", "#new");
+    fillSpawn(r.fill);
   }
   // A menu or the selection bar is about the view it opened in. go() moves
   // with pushState, which fires no hashchange, so the change is caught here.
@@ -4440,6 +4451,39 @@ async function openSpawnWith({ server = null, agent, model, cwd, prompt, from = 
     markDiffs();
   }
   $("sp-cwd").value = cwd || "";
+}
+
+// The New session form filled from a link or a share (#735), never sent: the
+// prompt goes before what the form held, shared files become its chips, and
+// the server and folder are picked once the links and roster have loaded. A
+// server that is not linked is refused aloud rather than swapped for this one
+// with the person none the wiser.
+async function fillSpawn(q) {
+  const shared = q.get("share") && self.caches ? await takeShare(q.get("share")) : { text: "", files: [] };
+  const prompt = [q.get("prompt") || "", shared.text].filter(Boolean).join("\n\n");
+  const t = $("sp-text");
+  t.value = prompt + (prompt && t.value ? "\n\n" : "") + t.value;
+  spawnGrow();
+  if (shared.files.length) spAtts.add(shared.files, "spawn");
+  const server = q.get("server") || "";
+  if (server && server !== conn.server) {
+    await linksReady;
+    if (linkOf(server)?.state !== "linked") return toast(`${server} is not a linked server: the session would start on this one`, { kind: "error" });
+    await setSpServer(server);
+  }
+  await agentsLoading;
+  if (q.get("cwd")) $("sp-cwd").value = q.get("cwd");
+}
+
+// What the service worker kept of a share (sw.js stash), taken out once.
+async function takeShare(id) {
+  const cache = await caches.open("aegis.share");
+  const meta = await cache.match(`/share/${id}`);
+  if (!meta) return { text: "", files: [] }; // taken already, or replaced by a newer share
+  const { text, files } = await meta.json();
+  const blobs = await Promise.all(files.map((_, i) => cache.match(`/share/${id}/${i}`).then((r) => r?.blob())));
+  await caches.delete("aegis.share");
+  return { text, files: files.flatMap((f, i) => (blobs[i] ? [new File([blobs[i]], f.name, { type: f.type })] : [])) };
 }
 
 // What a selection in the transcript offers (spec 05). The text is taken now:

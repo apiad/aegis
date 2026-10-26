@@ -378,6 +378,19 @@ def build_web(
         "display": "standalone",
         "background_color": "#11100e",
         "theme_color": "#0b0a09",
+        # Android lists the installed app as a share target (#735). The service
+        # worker takes the POST (sw.js stash); share_fallback below when none runs.
+        "share_target": {
+            "action": "/share",
+            "method": "POST",
+            "enctype": "multipart/form-data",
+            "params": {
+                "title": "title",
+                "text": "text",
+                "url": "url",
+                "files": [{"name": "files", "accept": ["*/*"]}],
+            },
+        },
         "icons": [
             {
                 "src": "/static/icons/aegis-192.png",
@@ -407,6 +420,12 @@ def build_web(
         )
         doc["bytes"] = sum(f["bytes"] for f in doc["files"])
         return doc
+
+    async def share_fallback(request):
+        """A share that reached the server: no service worker took it, as when
+        the one running predates share targets. The body is never read, since
+        the route takes no token; the person gets an empty New session form."""
+        return RedirectResponse("/#new", status_code=303)
 
     async def files_list(request):
         """What the service worker downloads to open the client offline (sw.js)."""
@@ -852,6 +871,7 @@ def build_web(
         routes=[
             Route("/", index),
             Route("/login", login, methods=["POST"]),
+            Route("/share", share_fallback, methods=["POST"]),
             Route("/manifest.webmanifest", webmanifest),
             Route("/sw.js", service_worker),
             Route("/client-files.json", files_list),
