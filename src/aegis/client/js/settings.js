@@ -266,6 +266,7 @@ export class Settings {
       this.park(),
       this.untested(),
       this.workflows(),
+      this.usage(),
       this.fieldSection("embeddings"),
       this.fieldSection("network"),
       this.fieldSection("host"),
@@ -1632,6 +1633,73 @@ export class Settings {
       return row;
     });
     return [limit("total", "Workflow node sessions at once, all agents", "4"), ...this.doc.agents.map((a) => limit(a.name, `Workflow node sessions of ${a.name} at once`, "total")), ...stray];
+  }
+
+  // The usage: block (usage/owners.py): who owns a local repo, how an owner is
+  // shown, and each subscription's name and monthly fee. Each map's rows write
+  // the whole map back, so a row may be renamed in place.
+  usage() {
+    const u = (this.doc.usage ||= {});
+    const map = (path, label, add, cols) => {
+      const key = path.slice("usage.".length);
+      u[key] ||= {};
+      const list = Object.entries(u[key]).map(([k, v]) => ({ k, v }));
+      const sync = () => {
+        u[key] = Object.fromEntries(list.filter((r) => r.k).map((r) => [r.k, r.v]));
+        this.touch();
+      };
+      const box = h("div", { className: "set-queues", id: `set-usage-${key}` });
+      box.dataset.key = path;
+      const rowOf = (r) => {
+        const row = h("div", { className: "set-queue" });
+        const name = h("input", { value: r.k, spellcheck: false, placeholder: cols[0], className: "set-name" });
+        name.setAttribute("aria-label", `${label} ${cols[0]}`);
+        name.addEventListener("input", () => {
+          r.k = name.value.trim();
+          sync();
+        });
+        const del = button("Remove", null, () => {
+          list.splice(list.indexOf(r), 1);
+          row.remove();
+          sync();
+        }, "link danger");
+        row.append(h("div", { className: "set-queue-line" }, name, ...cols.slice(1).map((c) => this.usageValue(key, r, c, label, sync)), del));
+        return row;
+      };
+      box.append(...list.map(rowOf));
+      const more = button(add, `set-usage-add-${key}`, () => {
+        const r = { k: "", v: key === "subscriptions" ? {} : "" };
+        list.push(r);
+        box.append(rowOf(r));
+        box.lastChild.querySelector("input").focus();
+      }, "link");
+      return h("div", {}, h("div", { className: "set-section-head" }, h("h4", { textContent: label }), more), box);
+    };
+    const head = h("div", { className: "set-section-head" }, h("h3", { textContent: "Usage" }));
+    const note = h("p", { className: "set-none", textContent: "How aegis usage and the usage page split the work. Owners name who owns each local repo, by its directory name; owner names are how each owner is shown. Subscriptions give an account, the part after the colon in aegis usage --split billing, a name and a monthly fee in USD, which is shared over the work that ran on it." });
+    return h("section", { id: "set-usage" }, head, note,
+      map("usage.owners", "Owners", "Add owner", ["repo", "owner"]),
+      map("usage.owner_names", "Owner names", "Add owner name", ["owner", "shown as"]),
+      map("usage.subscriptions", "Subscriptions", "Add subscription", ["account", "name", "fee"]));
+  }
+
+  // A value cell of a usage row: a name, or a subscription's name or fee.
+  usageValue(key, r, col, label, sync) {
+    const sub = key === "subscriptions";
+    const fee = sub && col === "fee";
+    const now = sub ? (fee ? r.v.fee : r.v.name) : r.v;
+    const input = h("input", { type: fee ? "number" : "text", min: 0, step: "any", value: now ?? "", spellcheck: false, placeholder: fee ? "USD a month" : col, className: fee ? "pick set-limit" : "pick set-cmd" });
+    input.setAttribute("aria-label", `${label} ${col}`);
+    input.addEventListener("input", () => {
+      const v = input.value.trim();
+      if (!sub) r.v = v;
+      else if (fee) {
+        if (v === "") delete r.v.fee;
+        else r.v.fee = Number(v);
+      } else r.v.name = v;
+      sync();
+    });
+    return input;
   }
 
   async loadSaved() {

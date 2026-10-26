@@ -664,12 +664,67 @@ def knowledge_retrieval() -> dict:
     return {"knowledge_miss_at_3_pct": round(100 * (1 - fixture_hit_at_3()), 2)}
 
 
+def usage_query() -> dict:
+    """A four-week usage query split by repo and purpose over a year of
+    generated rows: 400,000 parts in 130,000 turns (#737)."""
+    import random
+    import tempfile
+
+    from aegis.journal import db
+    from aegis.usage import tables
+    from aegis.usage.query import UsageQuery, run
+
+    rnd = random.Random(7)
+    now = time.time()
+    year = 365 * 86400
+    repos = [f"/w/repo{k}" for k in range(30)]
+    purposes = ["build", "fix", "review", "docs", "ops", "research", "chat"]
+    acts = ["reading", "editing", "testing", "committing", "talking"]
+    with tempfile.TemporaryDirectory() as tmp:
+        con, _ = db.connect(Path(tmp) / "journal.db")
+        tables.ensure(con)
+        turns, parts = [], []
+        n_turns = 130_000
+        for k in range(n_turns):
+            ts = now - year + year * k / n_turns
+            log_id = f"s{k // 40}"
+            turns.append((log_id, k, ts, "ana", "foreground", "claude-code",
+                          "claude-opus-5-5", "person", "api", 0.1, "billed", 1, 2, 3,
+                          4, 5.0, 3, 0, 0, 1000, 2000, None))  # fmt: skip
+            for n in range(3 + (k % 13 == 0)):
+                parts.append((log_id, k, n, ts, rnd.choice(repos), rnd.choice(purposes),
+                              rnd.choice(acts), 1, 0.03, 100, 1.0, 1, 0, 0, "ana",
+                              "foreground", "claude-code", "claude-opus-5-5", "person",
+                              "api", "billed", k + 1))  # fmt: skip
+        con.execute("BEGIN")
+        con.executemany(f"INSERT INTO usage_turns VALUES({','.join('?' * 22)})", turns)
+        con.executemany(f"INSERT INTO usage_parts VALUES({','.join('?' * 22)})", parts)
+        con.execute("COMMIT")
+        con.execute("ANALYZE")
+        q = UsageQuery(since=now - 28 * 86400, until=now, split=("repo", "purpose"))
+        times = []
+        for _ in range(9):
+            t0 = time.perf_counter()
+            run(con, q)
+            times.append((time.perf_counter() - t0) * 1000)
+        con.close()
+    return {"usage_query_ms": median("usage_query_ms", times)}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--out", type=Path)
+    ap.add_argument("--only", metavar="NAME", help="run one case, such as usage_query")
     args = ap.parse_args()
+    if args.only:
+        cases = {"usage_query": usage_query, "knowledge_retrieval": knowledge_retrieval}
+        if args.only not in cases:
+            ap.error(f"--only takes one of {', '.join(cases)}")
+        for k, v in cases[args.only]().items():
+            print(f"{k:24} {v:10.2f}" if isinstance(v, float) else f"{k:24} {v:10}")
+        return
     from playwright.sync_api import sync_playwright
 
     metrics = asyncio.run(server_cost())
@@ -678,6 +733,7 @@ def main() -> None:
     metrics.update(boot_cost())
     metrics.update(asyncio.run(_term_echo()))
     metrics.update(knowledge_retrieval())
+    metrics.update(usage_query())
     with sync_playwright() as p:
         metrics.update(browser_runs(p))
         metrics.update(fleet_load(p))

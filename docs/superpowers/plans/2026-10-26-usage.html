@@ -211,6 +211,39 @@ pre.code .lang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--fa
   <li><b>Slice 1: the kinds are listed in <code>help/sessions.md</code></b> (task 3). The plan's <code>grep '"pr"' src/aegis/help</code> finds nothing; the journal bullet there names what is recorded, and now says how a <code>--repo</code> merge and a closing PR are read. <code>tests/test_journal_tops.py</code> pinned schema 2 and now pins 3.</li>
   <li><b>Slice 1: the Journal view's box matches an entry's repo</b> (an extra commit after task 3). The view has no repo filter: its box matches text, handles, kind, tag and paths, and a merge touches no path, so task 3's check "the Journal view filtered to a repo shows a merge made with --repo" could not pass. <code>query.matching</code> now adds the repo, shown relative to the root, as one more field.</li>
   <li><b>Billing of history uses today's accounts.</b> A session's account is read from the quota provider when the deriver first meets it. Sessions backfilled from before slice 4 take the account the provider reads now; the stores do not say which account a past session used.</li>
+  <li><b>Slice 2: the first split test's numbers contradicted the split rule</b> (task 5). With m1 at 1,000 in and 100 out and m2 at 1,000 in and 300 out, m1 weighs 6,000 µ$ and m2 10,000, so reading gets 6/16 and each of m2's two calls 5/16: reading is larger, not smaller. The rule follows spec 06; the test gives m2 1,000 output tokens.</li>
+  <li><b>Slice 2: a turn interrupted by stop is priced, and the next result of the same process is taken net of it</b> (task 5). Claude's running total still includes the interrupted tokens, so counting both would count them twice. A resume after an exit or a server stop carries Claude's total on (seen on the real stores: resetting it there overcounted billed cost by 4.6%), so only a total that falls starts a new segment, as <code>cost.py</code> reads it. Parity with report.py: fixtures $1.6000 billed on both sides; the real state directory (820 sessions) $4,522.70 against $4,526.29 billed (+0.079%), plus $28.25 priced from tokens on the tables' side.</li>
+  <li><b>Slice 2: task 6's code landed in task 5's commit</b>. A part's key holds its purpose, so the split could not be written without settlement; task 6's commit holds its tests. Two rules the plan left open: a commit-making call takes the purpose of the commit it printed, and a push or <code>gh pr create|merge</code> takes the session's last commit type, or build; a Bash command names a repo only by <code>--repo</code> or when it moves away from the session's directory (a <code>cd</code>, <code>git -C</code>), and Claude's Bash directory is followed through <code>shell.leading_cd</code>, as the journal does.</li>
+  <li><b>Slice 2: Codex and OpenCode calls belong to the next usage line</b> (task 7). A Codex request's and an OpenCode step's tokens arrive after the calls they made, so the calls since the previous usage line are that request's; calls after the last one go to the last. Every parser already names tools in Claude's vocabulary, so one activity table serves all harnesses.</li>
+  <li><b>Slice 2: a part row carries its turn's dimensions, its own calls, errors and exits, and its turn's rowid</b> (tasks 8 and 11). On the bench's 400,000 parts the join to <code>usage_turns</code> doubled a four-week query and a distinct count over <code>log_id || rec</code> added about 100 ms. Calls, errors and exits per part also make those measures add up across a split by activity. The context dimension still joins the turns.</li>
+  <li><b>Slice 2: owners named in config are applied at query time</b> (tasks 9 and 11). <code>repo_owners</code> caches only what the remote says; <code>query.run(con, q, owners=...)</code> takes <code>usage.owners</code>, keyed by a repo's directory name or path. <code>owner_of</code> reads the remote with <code>git</code> directly, since <code>paths.remote_slug</code> caches per process and a changed remote must show. <code>aegis doctor</code> reports a bad <code>usage:</code> block.</li>
+  <li><b>Slice 2: only <code>.playground</code> is a scratch directory by rule</b> (task 10). A path outside every repo, such as /tmp, names none through <code>paths.place</code> already; a /tmp prefix rule would also have dropped every test repo under pytest's tmp_path. <code>Journal.rebuild</code> rebuilds the usage tables too and still returns the journal's count. The usage backfill is its own pass after the journal's; its total is the count of transcript files.</li>
+  <li><b>Slice 2: time buckets are computed in SQL, in the asked zone</b> (task 11). The zone's UTC offsets over the window are passed as one CASE, so day, week, month and weekday-by-hour are exact for any zone, and turns and sessions still count once per bucket; bucketing hourly rows in Python would have needed a distinct count per hour. A <code>session</code> dimension (a part's log id) was added for the CLI's sessions view, and the waits measure fills rows only with no split or a split by mode, where what woke a session is the mode. The bench case ran at 188 ms (load 2.8 on 4 cores).</li>
+  <li><b>Slice 2: <code>aegis usage</code> only reads</b> (task 12). The CLI opens <code>journal.db</code> read-only, so its tests build the journal as a running server would (<code>Journal.rebuild</code>); a state with no usage tables says nothing is counted yet. <code>--by week</code> is now valid, so the refusal test uses another word; <code>--by hour</code> keeps its old meaning, the hour of the day; <code>--tools</code> shows cost and calls by activity, and <code>--sessions</code> the costliest sessions without the old percentiles. With report.py deleted, <code>tests/usage/test_usage_report.py</code> pins the table path to the numbers report.py gave on its fixture stores, and the parity run was a one-off script.</li>
+  <li><b>Slice 2: a Claude result's own usage stands in for its messages'</b> (task 12). Legacy-shaped stores carry tokens only on the result line; without this the fixture's estimated session had no turn. The model the harness reports at init wins over the spawn's alias.</li>
+  <li><b>Slice 3: <code>usage.read</code> refuses a <code>server</code> other than this one's only to a local caller</b> (task 13). A call over a link answers for this server whatever it names, as the constraint says. <code>measure</code> sorts the rows (every row carries every measure), and <code>split</code>, <code>where</code>, <code>by</code> and <code>measure</code> are checked by hand so the refusal names the allowed values. A member's people are the distinct <code>usage_turns.person</code> values <code>App.sees</code> lets through, passed as <code>UsageQuery.people</code>. The op tests run on a stand-in for the app (a real <code>Registry</code>, <code>App.sees</code> bound to it) rather than a server; there is no <code>tests/test_mcp*.py</code> that lists tools, so the schema check is in <code>test_ops.py</code> through <code>mcp._schema</code>, and <code>api/ops.pyi</code> is regenerated.</li>
+  <li><b>Slice 3: <code>panels</code> takes each server's answers by panel</b> (task 14). One query cannot feed every panel, so <code>page.queries</code> names nine (total, previous period, trend, owners, heat, when, mode, model, outcomes) and <code>panels(answers, ...)</code> takes <code>{server: {panel: usage.read answer}}</code>, the shape a linked server will return in slice 5, plus <code>mondays</code> so the trend has one stack per week of the window even when a week is empty. The window is whole weeks in the viewer's zone, Monday first, ending now; the previous period is the same span a window earlier cut at the same point of its week. <code>PageParams</code> gains <code>tz</code> (the browser sends its zone), and the page's measures are cost, sub, tokens and hours (secs shown in hours). The fifth tile shows the <code>sub</code> total, empty until slice 4 counts subscriptions.</li>
+  <li><b>Slice 3: the palette command is in <code>keys.js</code>, and the gauge link in <code>index.html</code> and <code>app.js</code></b> (task 15). The palette lists <code>keys.js</code>'s <code>ACTIONS</code>, and offered only actions with a key or a <code>when</code>; an action with neither now shows in every view, so "Usage: what work cost" has no shortcut. The "Quota" label above the Fleet's gauges and the sidebar's quota heading both open <code>#usage</code>; <code>gauges.js</code> and <code>palette.js</code> are unchanged. The <code>session</code> split was already in task 11's query.</li>
+  <li><b>Slice 3: session rows carry their handle and whether they are open</b> (task 15). With <code>split</code> naming <code>session</code>, <code>usage.read</code> adds each row's latest handle from the journal's <code>handles</code> table and <code>open</code>, so the list names sessions and opens <code>#s=</code> for an open one and <code>#read=</code> for an archived one (<code>#s=</code> alone sends an archived session back to the Fleet). <code>usage.page</code> returns the window's first Monday as <code>since</code> for those lists. An owner row filters by its stored owner, so "(no repo)" lists its sessions.</li>
+  <li><b>Slice 3: the fake claude gains a priced turn, <code>spend N</code></b> (task 16). It has no way to cost 0.25 otherwise (every turn costs 0.01), and a slash form is rewritten by the spawn form's command completion, so the trigger is a plain word. The phone test also checks <code>WIDER</code>, with the heat grids' sideways scroll boxes exempt as spec 12 allows. The slice's PR is left to the coordinator.</li>
+  <li><b>Slice 4: billing values are the quota provider's name and account hash</b> (task 17). The accounts map the plan gives builds <code>claude:&lt;hash&gt;</code> and <code>opencode-go:&lt;hash&gt;</code> (the providers are named <code>claude</code> and <code>opencode-go</code>), not <code>opencode:&lt;hash&gt;</code>. A Claude session with no init line (an old store) bills the login, as before; an OpenCode session bills Go when its model starts with <code>opencode-go/</code>. Quota rows take the provider's <code>read_at</code> as their time, and a provider with no account hash writes none. The weekly window is the wire's <code>weekly_all</code> for Claude, not <code>seven_day</code>.</li>
+  <li><b>Slice 4: slice 3's help page did not load</b> (before task 17). <code>help/usage.md</code> had four hints (at most three) and an anchor with an underscore, so every test that boots the app failed; its own commit merges two hints and fixes the anchor.</li>
+  <li><b>Slice 4: a rise is matched to UTC hours, not to the turns that ended in it</b> (task 18). The interface already gives <code>split</code> hourly costs; a rise between two readings goes to the hours the interval overlaps, so an hour that spans several 60 s intervals weighs in each of them (the rise, not the cost, is what is shared, so no dollar counts twice). A reset is a percent that falls or a reset time that moves on by more than an hour; the points left at it are unused and the new window's percent is the interval's rise. <code>split</code> takes a <code>span</code>, the period asked, and <code>SubSplit</code> gains <code>apportioned</code>: the hours before the first reading get that stretch's fee by cost, so history and readings mix in one window. The CLI and usage.read pass <code>usage.subscriptions</code> to <code>query.run</code>; the hash is the part after the colon of a billing value (<code>codex</code> for Codex's plan). <code>renews</code> is accepted and unused. <code>Answer</code> gains <code>subs</code> (per subscription: fee for the window, elsewhere and unused in points and dollars, apportioned, API-priced value) and <code>sub_hours</code> as <code>[hour, group, cost]</code> lists, for JSON. Until slice 5 the split runs per server; <code>page._subscriptions</code> takes the first server's summary for a billing.</li>
+  <li><b>Slice 4: the whatif measure is shared to parts by cost</b> (task 19). A whatif row is a turn's; a query split by a part dimension gives each part the turn's net saving times its share of the turn's cost. The replay hands off on the call whose context passes the threshold and counts that call as saved, which the plan's hand-computed test requires. A turn's band costs share its cost by the calls' priced weight, the last band taking the rounding, so a turn's bands sum to its cost exactly. The replay start is read at most once a minute per writer, so a backfill does not run one query per session; it reads the tables as they are, so a rebuild from empty starts early sessions at 30,000 where live derivation, later, would use the median.</li>
+  <li><b>Slice 4: the context panel's facts come with a split by context</b> (task 20). <code>query.run</code> adds <code>Answer.context</code> (bands from <code>usage_ctx</code>, each session's peak and whether a successor continued it, the replay sums and the rereading cost) when the split names context, and <code>page.queries</code> gains two queries, <code>subs</code> (billing by owner) and <code>context</code>. <code>panels</code> takes <code>handoff_at</code> from <code>context.handoff_at</code>. The panels need four CSS rules in <code>base.css</code>, a file the task did not list. <code>usage_read</code> no longer refuses <code>whatif</code>; <code>aegis usage --whatif</code> makes <code>whatif</code> the measure unless another is named, and the last line sums the replay at that threshold. The screenshots show the subscription panel empty: the fake harness runs on an API key.</li>
+  <li><b>Slice 5: the merged split lives in <code>query.py</code>, not <code>subscription.py</code></b> (task 21). <code>query.merge_subs</code> keys every server's <code>sub_hours</code> by <code>(server, group)</code>, runs <code>_subscriptions</code> once per billing with this server's readings and fee config, sets each row's <code>sub</code> and <code>limit</code> again and gives every answer the same summary, so <code>page._subscriptions</code> taking the first summary is now right. <code>_subscriptions</code> takes rows by group key so both paths share it. A server not reached has no hours in the merge: its share goes to the servers that ran in those hours, or to elsewhere. A billing that only a linked server reads is apportioned, since readings are not in the answer. The chips filter after the merge, so a hidden server's hours still shape the split. <code>test_a_subscription_two_servers_share_counts_once</code> pins it (it fails with the merge off).</li>
+  <li><b>Slice 5: <code>since</code> and <code>until</code> take epoch seconds</b> (task 21). The page's window is absolute (whole weeks in the viewer's zone), and <code>usage.read</code> took only day forms, so <code>params_of</code> sends a page query's bounds as numbers.</li>
+  <li><b>Slice 5: the merged answer's shape</b> (task 21). <code>server</code> defaults to all for a person and to this server for an agent; <code>"all"</code> is also explicit, and naming another server is still refused. Rows are not summed across servers: each keeps its own row with <code>server</code>. Outcomes are listed per server, totals add up, <code>estimated</code> is weighted by cost, <code>context</code> stays this server's and <code>sub_hours</code> is empty. <code>servers</code> maps each server to <code>{at, age_s, state}</code>, this one first; <code>test_the_op_answers_with_rows_and_totals</code> now expects the key. The last answers live in memory, per server and question (the page's questions keyed by window, split and panel, about 11 calls per linked server per refresh); a server counts as cached only if every question has a last answer. Down links come from <code>links.links()</code>; a way back that went down shows only once it has a cached answer.</li>
+  <li><b>Slice 5: a session list behind a cell lists this server's sessions</b> (task 22). Its rows open <code>#s=</code> or <code>#read=</code> on this server, so <code>usage.js</code> asks <code>usage.read</code> with <code>server</code> set to this server. The help page says so.</li>
+  <li><b>Slice 5: the server chips are buttons, styled in <code>base.css</code></b> (task 22), a file the task did not list. A click sends <code>servers</code> to <code>usage.page</code>; the last chip on cannot be turned off.</li>
+  <li><b>Slice 5: the two-server check is a browser test</b> (task 22). <code>test_two_linked_servers_show_in_one_page</code> in <code>tests/test_usage_browser.py</code> runs the verify block's manual check on <code>test_browser.py</code>'s <code>linked</code> fixture, two <code>aegis serve</code> processes joined by <code>aegis link add</code>: $0.75 across both, the footer names beta, and the beta chip off leaves $0.25. No PR was opened; the coordinator opens it.</li>
+  <li><b>Slice 6: a turn of an imported file ends at the next prompt</b> (task 23). A tool's result is a user line too, so ending a turn at every user line would cut a turn at each call and lose its outputs. A user line that is not a tool's result closes the open turn (fed as an <code>exit</code> record, then a <code>send</code>), and the end of the file closes the last one. <code>UsageDeriver._mode</code> returns <code>outside</code> for every turn of a session of kind <code>outside</code>, and <code>usage_turns.kind</code> holds <code>outside</code> for them.</li>
+  <li><b>Slice 6: what counts once, and how</b> (task 23). <code>aegis_known</code> reads the stores for Claude's message ids and Claude's session ids. A file named after a session aegis ran is skipped whole, so a live session whose store lags its file is not imported. Message ids that one imported file brought are kept in a second table, <code>usage_import_ids(mid, path)</code>, beside the plan's <code>usage_imports</code>, because a resumed session's file repeats its history. A session's log id is <code>cc-&lt;file stem&gt;</code>, not its session id: a subagent's file shares its parent's.</li>
+  <li><b>Slice 6: a file that grew is derived again in full</b> (task 23). Its last turn may have gone on, so its rows are dropped and the whole file is read again with a fresh deriver; keys come from line numbers and so stay the same. A run stopped half way resumes at the next file, since each file is recorded once its rows are in.</li>
+  <li><b>Slice 6: a rebuild keeps imported sessions</b> (task 23). <code>tables.clear</code> empties only rows whose log id is not <code>cc-%</code>, and the import tables are not cleared, because Claude Code deletes the files after 30 days and a rebuild could not restore them. A version bump still drops everything. <code>USAGE_VERSION</code> stays 1 for the two new tables, since none of this has shipped.</li>
+  <li><b>Slice 6: the command writes the file itself, and a shared server imports through an op</b> (tasks 23 and 24). <code>Journal.flush</code> works only inside the server's own process, and no CLI command talks to a running server. <code>aegis usage import</code> therefore opens <code>journal.db</code> itself; WAL and the busy timeout let it write beside a running server, and the keys make it idempotent. It reads its own user's files and names them after that user, the name <code>App</code> gives the owner. Only the server holds the capabilities to act as another Linux user, so the per-user import is a new admin op, <code>usage.import</code> (MCP <code>usage_import</code>, <code>people</code> to limit it). It lists and reads each member's files with <code>find</code> and <code>cat</code> through <code>launch.run(user=)</code>, the way the journal runs git, and runs on the writer thread through a new <code>Journal.run(fn)</code>. The CLI prints its progress on stderr. The page shows no progress line for the import; it shows the rows at its next refresh. The plan's <code>--root DIR</code> stays the config root, as in every command; Claude Code's directory is always <code>~/.claude/projects</code>.</li>
+  <li><b>Slice 6: <code>--legacy</code> runs <code>import_legacy</code>, then <code>Journal.rebuild</code></b> (task 23). <code>convert</code> converts one log, and <code>import_legacy</code> also writes the metas. The new sessions need journal entries as well as usage rows, so the command derives both again, as <code>aegis journal rebuild</code> does, and the rebuild keeps imported sessions.</li>
+  <li><b>Slice 6: the real-data check</b> (task 24). The import ran twice into a throwaway state whose <code>transcripts/</code> and <code>sessions/</code> linked the real ones, reading the real <code>~/.claude/projects</code> (3,037 files, 2.2 GB). The first run imported 2,041 sessions (2,552 turns, $120.52 priced) and skipped 826 files as run by aegis, in 102 s. The second run imported 1 session, a file that aegis's one-shot calls (<code>.aegis/state/oneshot</code>) created between the two runs, skipped 3,036 files as already imported, and took 51 s. The throwaway state was deleted afterwards. <code>tests/multiuser/test_usage_import.py</code> ran on this host, with sudo and two real members. No PR was opened; the coordinator opens it.</li>
 </ul>
 <p>Workers add to this list as they go.</p>
 
@@ -308,7 +341,7 @@ def test_a_merged_pr_closes_the_issues_its_create_named():
 
 <div class="slice" id="s2">slice 2 · the usage deriver and its tables · one PR</div>
 
-<details class="task" id="task-4" data-state="pending">
+<details class="task" id="task-4" data-state="done">
 <summary><span class="num">4</span><span><span class="ttl">The activity table and the purpose rules</span><span class="files">src/aegis/usage/kinds.py · tests/usage/test_kinds.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -353,7 +386,7 @@ def test_purposes():
 </div>
 </details>
 
-<details class="task" id="task-5" data-state="pending">
+<details class="task" id="task-5" data-state="done">
 <summary><span class="num">5</span><span><span class="ttl">UsageDeriver: a Claude turn's cost, split over its calls</span><span class="files">src/aegis/usage/turns.py · tests/usage/records.py · tests/usage/test_turns.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -422,7 +455,7 @@ else:
 </div>
 </details>
 
-<details class="task" id="task-6" data-state="pending">
+<details class="task" id="task-6" data-state="done">
 <summary><span class="num">6</span><span><span class="ttl">Purpose settlement, repo naming, mode and waits</span><span class="files">src/aegis/usage/turns.py · tests/usage/test_turns.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -470,7 +503,7 @@ def test_an_idle_gap_is_a_wait_capped_at_8_hours():
 </div>
 </details>
 
-<details class="task" id="task-7" data-state="pending">
+<details class="task" id="task-7" data-state="done">
 <summary><span class="num">7</span><span><span class="ttl">Codex, OpenCode and Cursor turns</span><span class="files">src/aegis/usage/turns.py · tests/usage/test_turns.py</span></span><span class="state"></span></summary>
 <div class="body">
 <ol class="steps">
@@ -482,7 +515,7 @@ def test_an_idle_gap_is_a_wait_capped_at_8_hours():
 </div>
 </details>
 
-<details class="task" id="task-8" data-state="pending">
+<details class="task" id="task-8" data-state="done">
 <summary><span class="num">8</span><span><span class="ttl">The usage tables</span><span class="files">src/aegis/usage/tables.py · tests/usage/test_tables.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -496,7 +529,7 @@ def test_an_idle_gap_is_a_wait_capped_at_8_hours():
 </div>
 </details>
 
-<details class="task" id="task-9" data-state="pending">
+<details class="task" id="task-9" data-state="done">
 <summary><span class="num">9</span><span><span class="ttl">A repo's owner</span><span class="files">src/aegis/usage/owners.py · src/aegis/config.py · tests/usage/test_owners.py · tests/test_config.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -510,7 +543,7 @@ def test_an_idle_gap_is_a_wait_capped_at_8_hours():
 </div>
 </details>
 
-<details class="task" id="task-10" data-state="pending">
+<details class="task" id="task-10" data-state="done">
 <summary><span class="num">10</span><span><span class="ttl">The writer thread feeds the usage deriver, live and in a backfill</span><span class="files">src/aegis/journal/service.py · src/aegis/app.py · tests/test_usage_e2e.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -535,7 +568,7 @@ async def test_a_store_without_a_meta_file_still_derives(tmp_path):      # revie
 </div>
 </details>
 
-<details class="task" id="task-11" data-state="pending">
+<details class="task" id="task-11" data-state="done">
 <summary><span class="num">11</span><span><span class="ttl">The query</span><span class="files">src/aegis/usage/query.py · tests/usage/test_query.py · scripts/bench.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -550,7 +583,7 @@ async def test_a_store_without_a_meta_file_still_derives(tmp_path):      # revie
 </div>
 </details>
 
-<details class="task" id="task-12" data-state="pending">
+<details class="task" id="task-12" data-state="done">
 <summary><span class="num">12</span><span><span class="ttl">aegis usage reads the tables</span><span class="files">src/aegis/usage/cli.py · render.py · report.py (removed) · src/aegis/help/ · DESIGN.md · changelog.d/737-usage-live.added.md · tests/usage/test_usage_cli.py · tests/usage/test_usage_report.py</span></span><span class="state"></span></summary>
 <div class="body">
 <ol class="steps">
@@ -565,7 +598,7 @@ async def test_a_store_without_a_meta_file_still_derives(tmp_path):      # revie
 
 <div class="slice" id="s3">slice 3 · query, channel, tool and page · one PR</div>
 
-<details class="task" id="task-13" data-state="pending">
+<details class="task" id="task-13" data-state="done">
 <summary><span class="num">13</span><span><span class="ttl">usage.read and the usage_read tool</span><span class="files">src/aegis/usage/ops.py · src/aegis/app.py · tests/usage/test_ops.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -580,7 +613,7 @@ op <code>usage.read</code>, <code>agent=True, read=True</code>, returning <code>
 </div>
 </details>
 
-<details class="task" id="task-14" data-state="pending">
+<details class="task" id="task-14" data-state="done">
 <summary><span class="num">14</span><span><span class="ttl">The page's panels, decided in Python</span><span class="files">src/aegis/usage/page.py · src/aegis/usage/ops.py · tests/usage/test_page.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -594,7 +627,7 @@ op <code>usage.read</code>, <code>agent=True, read=True</code>, returning <code>
 </div>
 </details>
 
-<details class="task" id="task-15" data-state="pending">
+<details class="task" id="task-15" data-state="done">
 <summary><span class="num">15</span><span><span class="ttl">The usage page in the client</span><span class="files">src/aegis/client/js/usage.js · index.html · js/app.js · js/palette.js · js/gauges.js · css/base.css</span></span><span class="state"></span></summary>
 <div class="body">
 <ol class="steps">
@@ -607,7 +640,7 @@ op <code>usage.read</code>, <code>agent=True, read=True</code>, returning <code>
 </div>
 </details>
 
-<details class="task" id="task-16" data-state="pending">
+<details class="task" id="task-16" data-state="done">
 <summary><span class="num">16</span><span><span class="ttl">Browser test, help and changelog</span><span class="files">tests/test_usage_browser.py · src/aegis/help/usage.md · changelog.d/737-usage-page.added.md</span></span><span class="state"></span></summary>
 <div class="body">
 <ol class="steps">
@@ -621,7 +654,7 @@ op <code>usage.read</code>, <code>agent=True, read=True</code>, returning <code>
 
 <div class="slice" id="s4">slice 4 · subscriptions and context · one PR</div>
 
-<details class="task" id="task-17" data-state="pending">
+<details class="task" id="task-17" data-state="done">
 <summary><span class="num">17</span><span><span class="ttl">Billing per session and quota readings</span><span class="files">src/aegis/usage/turns.py · tables.py · src/aegis/journal/service.py · src/aegis/app.py · tests/usage/test_turns.py · tests/test_usage_e2e.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -635,7 +668,7 @@ op <code>usage.read</code>, <code>agent=True, read=True</code>, returning <code>
 </div>
 </details>
 
-<details class="task" id="task-18" data-state="pending">
+<details class="task" id="task-18" data-state="done">
 <summary><span class="num">18</span><span><span class="ttl">Splitting the fee and the weekly limit</span><span class="files">src/aegis/usage/subscription.py · query.py · tests/usage/test_subscription.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -660,7 +693,7 @@ def test_without_readings_the_fee_is_apportioned_by_cost(): ...
 </div>
 </details>
 
-<details class="task" id="task-19" data-state="pending">
+<details class="task" id="task-19" data-state="done">
 <summary><span class="num">19</span><span><span class="ttl">Context bands and the handoff replay</span><span class="files">src/aegis/usage/context.py · turns.py · query.py · tests/usage/test_context.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -689,7 +722,7 @@ def test_reread_cost_is_the_median_of_successors_first_five_turns_reading(): ...
 </div>
 </details>
 
-<details class="task" id="task-20" data-state="pending">
+<details class="task" id="task-20" data-state="done">
 <summary><span class="num">20</span><span><span class="ttl">Subscription and context panels, CLI flags</span><span class="files">src/aegis/usage/page.py · ops.py · cli.py · client/js/usage.js · src/aegis/help/usage.md · help/config.md · changelog.d/737-usage-subscription-context.added.md · tests/usage/test_page.py · tests/usage/test_usage_cli.py</span></span><span class="state"></span></summary>
 <div class="body">
 <ol class="steps">
@@ -703,7 +736,7 @@ def test_reread_cost_is_the_median_of_successors_first_five_turns_reading(): ...
 
 <div class="slice" id="s5">slice 5 · across linked servers · one PR</div>
 
-<details class="task" id="task-21" data-state="pending">
+<details class="task" id="task-21" data-state="done">
 <summary><span class="num">21</span><span><span class="ttl">usage.read asks every linked server</span><span class="files">src/aegis/usage/ops.py · page.py · subscription.py · tests/usage/test_ops.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -717,7 +750,7 @@ def test_reread_cost_is_the_median_of_successors_first_five_turns_reading(): ...
 </div>
 </details>
 
-<details class="task" id="task-22" data-state="pending">
+<details class="task" id="task-22" data-state="done">
 <summary><span class="num">22</span><span><span class="ttl">Servers on the page, and two real servers</span><span class="files">src/aegis/client/js/usage.js · tests/test_usage_links.py · src/aegis/help/usage.md · changelog.d/737-usage-links.added.md</span></span><span class="state"></span></summary>
 <div class="body">
 <ol class="steps">
@@ -731,7 +764,7 @@ def test_reread_cost_is_the_median_of_successors_first_five_turns_reading(): ...
 
 <div class="slice" id="s6">slice 6 · the one-time import · one PR</div>
 
-<details class="task" id="task-23" data-state="pending">
+<details class="task" id="task-23" data-state="done">
 <summary><span class="num">23</span><span><span class="ttl">aegis usage import: the legacy tree and Claude Code's files</span><span class="files">src/aegis/usage/importer.py · cli.py · tables.py · tests/usage/test_import.py</span></span><span class="state"></span></summary>
 <div class="body">
 <h4>interfaces</h4>
@@ -745,7 +778,7 @@ def test_reread_cost_is_the_median_of_successors_first_five_turns_reading(): ...
 </div>
 </details>
 
-<details class="task" id="task-24" data-state="pending">
+<details class="task" id="task-24" data-state="done">
 <summary><span class="num">24</span><span><span class="ttl">Import per Linux user on a shared server</span><span class="files">src/aegis/usage/importer.py · tests/multiuser/test_usage_import.py · src/aegis/help/usage.md · changelog.d/737-usage-import.added.md</span></span><span class="state"></span></summary>
 <div class="body">
 <ol class="steps">

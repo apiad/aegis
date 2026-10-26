@@ -391,6 +391,21 @@ an interrupted one resumes at the next start. A corrupt `journal.db` is set asid
 and rebuilt (#289). Each touch and each commit or pr row also keeps `top`, the
 worktree it was in, and a commit row its full `sha`, for the Repos row.
 
+**Usage is counted beside the journal, from the same records.** A second pure
+deriver, `UsageDeriver` (`usage/turns.py`), is fed every record the journal's
+`Deriver` is fed, on the same writer thread, live and in its own backfill. At
+each turn's end it writes the turn and its parts to the usage tables in
+`journal.db` (`usage/tables.py`): the turn's cost (Claude's running total's
+rise, else its priced tokens) split over its tool calls by token weight, each
+part one repo, purpose and activity. A part whose purpose waits on a later
+record (a code edit on its commit, a read on the next purposeful call) is
+written unsettled and settled later, so live and backfill reach the same rows.
+The usage tables keep their own version and backfill mark in `usage_meta`, so a
+complete journal that gains them backfills usage only. A part carries its
+turn's dimensions so a query reads one table. `usage/query.py` answers every
+question with one grouped statement over a window; `aegis usage` prints it.
+Repo owners come from each repo's `origin`, cached in `repo_owners`.
+
 **A session's repos are the journal's, their state is git's.** `repos/service.py`
 lists the worktrees a session wrote to from the journal's `top` columns, plus the
 writes the writer thread reports through `Journal.on_live` before the turn's row

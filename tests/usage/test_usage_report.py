@@ -1,14 +1,20 @@
-"""The dashboard, built from aegis's store."""
+"""The usage tables over the stores report.py read, with the numbers it gave.
 
-from decimal import Decimal
+report.py summed Claude's running totals per session; the tables count them
+per turn. Its billed totals here were alpha 0.9, beta 0.7 (a resume) and an
+estimate for gamma from its tokens: the tables give the same.
+"""
+
+import sqlite3
 from pathlib import Path
 
 import pytest
 
+from aegis.journal.service import Journal
 from aegis.usage.prices import prices_for
-from aegis.usage.report import build_report
+from aegis.usage.query import UsageQuery, run
 
-from .stores import store
+from .stores import epoch, store
 
 
 def _result(cost: float | None, *, is_error=False, ms=1000, **usage) -> dict:
@@ -92,52 +98,63 @@ def state(tmp_path) -> Path:
     return s
 
 
+def _derived(state: Path) -> sqlite3.Connection:
+    j = Journal(state, None)
+    j.rebuild()
+    return sqlite3.connect(j.path)
+
+
+def _by_session(con, **kw):
+    a = run(con, UsageQuery(0, 2e9, split=("session",), **kw))
+    return {r["session"][-6:]: r for r in a.rows}
+
+
 def test_sessions_turns_and_billed_cost(state):
-    r = build_report(state)
-    by = {s.handle: s for s in r.sessions}
-    assert set(by) == {"alpha", "beta", "gamma"}
-    assert by["alpha"].turns == 2
-    assert by["alpha"].errors == 1
-    assert by["alpha"].tools["Bash"] == 1
-    assert by["alpha"].billed_usd == Decimal("0.9")
-    assert by["alpha"].model == "claude-opus-4-7"
-    assert by["beta"].billed_usd == Decimal("0.7")
-    assert by["beta"].gen_usd > 0
+    con = _derived(state)
+    by = _by_session(con)
+    assert set(by) == {"aaaaaa", "bbbbbb", "cccccc"}
+    assert by["aaaaaa"]["turns"] == 2 and by["aaaaaa"]["calls"] == 1
+    assert by["aaaaaa"]["cost"] == pytest.approx(0.9)
+    assert by["bbbbbb"]["cost"] == pytest.approx(0.7)
+    models = {t[0] for t in con.execute("SELECT DISTINCT model FROM usage_turns")}
+    assert {"claude-opus-4-7", "claude-opus-4-8"} <= models
 
 
-def test_a_session_without_a_reported_cost_is_estimated_from_its_tokens(state):
-    gamma = next(s for s in build_report(state).sessions if s.handle == "gamma")
+def test_a_session_without_a_reported_cost_is_priced_from_its_tokens(state):
+    con = _derived(state)
     haiku = prices_for("claude-haiku-4-5")
-    assert haiku is not None
     expected = haiku.cost(inp=2, out=20, cc5=5, cc1=0, cache_read=10)
-    assert gamma.est is True
-    assert gamma.model == "claude-haiku-4-5"
-    assert gamma.billed_usd == expected
+    assert con.execute(
+        "SELECT cost_kind, model, cost FROM usage_turns WHERE log_id LIKE '%cccccc'"
+    ).fetchone() == ("priced", "claude-haiku-4-5", pytest.approx(float(expected)))
+    a = run(con, UsageQuery(0, 2e9))
+    assert a.estimated == pytest.approx(float(expected) / a.totals["cost"], abs=1e-6)
 
 
-def test_rollups(state):
-    r = build_report(state)
-    models = dict(r.by_model())
-    assert "claude-opus-4-7" in models and "claude-opus-4-8" in models
-    d = r.distribution()
-    assert d["max"] >= d["p50"] >= 0
-    assert "Bash" in {name for name, _avg, _cnt in r.tool_correlation()}
-    assert sum(v for _, v in r.by_dow()) == len(r.turns)
+def test_billed_parity_with_the_old_report(state):
+    """report.py's total over these stores was 1.6 billed plus gamma's
+    estimate; the tables' billed rows give 1.6 within 1%."""
+    con = _derived(state)
+    billed = con.execute(
+        "SELECT SUM(cost) FROM usage_turns WHERE cost_kind = 'billed'"
+    ).fetchone()[0]
+    assert billed == pytest.approx(1.6, rel=0.01)
 
 
 def test_total_tokens_come_from_results(state):
-    tok = build_report(state).total_tokens()
-    assert tok == {
-        "input": 5 + 5 + 1 + 1 + 2,
-        "output": 50 + 80 + 10 + 5 + 20,
-        "cache_creation": 100 + 10 + 5,
-        "cache_read": 200 + 500 + 20 + 30 + 10,
-    }
+    con = _derived(state)
+    assert con.execute(
+        "SELECT SUM(tok_in), SUM(tok_out), SUM(tok_cw), SUM(tok_cr) FROM usage_turns"
+    ).fetchone() == (
+        5 + 5 + 1 + 1 + 2,
+        50 + 80 + 10 + 5 + 20,
+        100 + 10 + 5,
+        200 + 500 + 20 + 30 + 10,
+    )
 
 
-def test_since_and_session_filters(state):
-    assert {s.handle for s in build_report(state, since="2026-06-02").sessions} == {
-        "beta",
-        "gamma",
-    }
-    assert [s.handle for s in build_report(state, handle="beta").sessions] == ["beta"]
+def test_since_filters_turns(state):
+    con = _derived(state)
+    since = epoch("2026-06-02T00:00:00Z")
+    a = run(con, UsageQuery(since, 2e9, split=("session",)))
+    assert {r["session"][-6:] for r in a.rows} == {"bbbbbb", "cccccc"}

@@ -818,6 +818,10 @@ def run(text: str) -> None:
         assistant({"type": "text", "text": "bye"})
         result()
         threading.Timer(float(arg or 0.2), os._exit, (0,)).start()
+    elif word == "spend":
+        # A turn that costs ``arg`` dollars, by Claude's running total.
+        assistant({"type": "text", "text": f"cost {arg}"})
+        result(cost=float(arg))
     elif word == "/exit":
         sys.stderr.write("fatal: something broke\nsecond line\n")
         sys.stderr.flush()

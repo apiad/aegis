@@ -244,3 +244,28 @@ def test_multi_user_is_a_known_key_and_parses(tmp_path):
     assert "multi_user" not in snap.unknown_keys
     cfg, _ = config(tmp_path, "agents: {}\n")
     assert cfg.current().multi_user is None
+
+
+def test_the_usage_block_rides_the_snapshot(tmp_path):
+    from aegis.config import USAGE_DEFAULTS, usage_from
+
+    assert usage_from(None) == USAGE_DEFAULTS
+    raw = {"owners": {"site": "acme-co"}, "owner_names": {"acme-co": "Acme"},
+           "subscriptions": {"a1b2": {"name": "claude-max", "fee": 200, "renews": 14}}}  # fmt: skip
+    snap = Snapshot.parse(tmp_path, None, {"usage": raw})
+    assert snap.usage == raw and snap.unknown_keys == ()
+
+
+def test_a_bad_usage_block_keeps_the_defaults_and_says_why():
+    from aegis.config import USAGE_DEFAULTS, usage_from
+
+    for raw, word in (
+        ({"owner": {}}, "owner"),
+        ({"owners": ["x"]}, "owners"),
+        ({"owners": {"site": 3}}, "site"),
+        ({"subscriptions": {"a1": {"fee": -1}}}, "a1"),
+        ("big", "mapping"),
+    ):
+        u = usage_from(raw)
+        assert word in u["error"]
+        assert {k: u[k] for k in USAGE_DEFAULTS} == USAGE_DEFAULTS
