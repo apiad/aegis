@@ -124,6 +124,16 @@ def answer(app: "App", q: UsageQuery, who: "Principal") -> dict:
             a = run(con, q, owners=app.config.current().usage.get("owners"))
         except ValueError as e:
             raise OpError("bad_params", str(e)) from None
+        if "session" in q.split:
+            handles = dict(
+                con.execute(
+                    "SELECT log_id, handle FROM handles ORDER BY rowid"
+                ).fetchall()
+            )
+            live = getattr(app, "sessions", None)
+            for r in a.rows:
+                r["handle"] = handles.get(r["session"], "")
+                r["open"] = live is not None and r["session"] in live.sessions
     finally:
         con.close()
     name = app.server_name
@@ -171,6 +181,7 @@ def page_of(app: "App", p: PageParams, who: "Principal", now: float) -> dict:
     out = page.panels(answers, p.window, p.split, p.measure, names, mondays)
     return out | {
         "at": now,
+        "since": mondays[0],
         "window": p.window,
         "split": p.split,
         "measure": p.measure,

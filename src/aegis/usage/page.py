@@ -239,11 +239,11 @@ def _trend(rows, weeks: int, split: str, measure: str, mondays) -> dict:
 def _owners(rows, servers, measure, names) -> list[dict]:
     per: dict[str, dict[str, float]] = {}
     for s, r in rows:
-        o = r["owner"] or "(no repo)"
+        o = r["owner"] or ""
         per.setdefault(o, {})[s] = per.setdefault(o, {}).get(s, 0) + _value(r, measure)
     top = max((sum(v.values()) for v in per.values()), default=0) or 1
     out = [
-        {"owner": o, "label": names.get(o, o), "text": fmt(measure, sum(v.values())),
+        {"owner": o, "label": names.get(o, o) or "(no repo)", "text": fmt(measure, sum(v.values())),
          "frac": sum(v.values()) / top,
          "parts": [{"server": s, "colour": servers.index(s), "text": fmt(measure, x),
                     "frac": x / top} for s, x in v.items() if x],
