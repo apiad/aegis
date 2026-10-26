@@ -540,7 +540,10 @@ class App:
         reg.version_policy = lambda: self.config.current().harness_versions
         reg.quota = self.quota
         self.journal = Journal(
-            roots.state_root, self.publish, user_of=self._linux_user_of_session
+            roots.state_root,
+            self.publish,
+            user_of=self._linux_user_of_session,
+            meta_of=self._meta_of_session,
         )
         reg.journal = self.journal
         # knowledge.embeddings is read once, here: a change needs a restart.
@@ -1156,6 +1159,15 @@ class App:
         self.runners.shutdown()
         restarts.stopped(self.roots.state_root, stopping_at)
 
+    def _meta_of_session(self, log_id: str) -> dict:
+        """A session's meta, live or archived; {} when it has none (an old
+        store, a crash before the meta was written)."""
+        try:
+            meta = json.loads(self.sessions.metas.path(log_id).read_text())
+        except (OSError, ValueError):
+            return {}
+        return meta if isinstance(meta, dict) else {}
+
     def _linux_user_of_session(self, log_id: str) -> str | None:
         """The Linux user a session runs as (users.py): the live session's,
         else its meta's, since the journal backfills closed sessions too."""
@@ -1363,6 +1375,8 @@ class App:
             return self.host.snapshot
         if name == "journal":
             return self.journal.snapshot
+        if name == "usage":
+            return self.journal.usage_snapshot
         if name.startswith("repos:"):
             log_id = name.removeprefix("repos:")
             return lambda: self.repos.snapshot(log_id)
