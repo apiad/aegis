@@ -24,7 +24,10 @@ from .turns import Derived
 USAGE_VERSION = 1
 # Derived from the stores: dropped by a version bump, emptied by a rebuild.
 DERIVED = ("usage_turns", "usage_parts", "usage_waits", "usage_ctx", "usage_whatif")
-TABLES = (*DERIVED, "usage_quota", "repo_owners", "usage_meta")
+# What the import read (importer.py): rows of an imported session, log id
+# cc-<stem>, are not in any store, so a rebuild keeps them and these.
+IMPORTS = ("usage_imports", "usage_import_ids")
+TABLES = (*DERIVED, *IMPORTS, "usage_quota", "repo_owners", "usage_meta")
 SCHEMA = """
 CREATE TABLE usage_turns(
   log_id TEXT NOT NULL, rec INTEGER NOT NULL, ts REAL NOT NULL, person TEXT NOT NULL,
@@ -63,6 +66,9 @@ CREATE TABLE usage_quota(
 CREATE TABLE repo_owners(
   repo TEXT PRIMARY KEY, owner TEXT NOT NULL, remote TEXT, checked_at REAL NOT NULL);
 CREATE TABLE usage_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE usage_imports(path TEXT PRIMARY KEY, size INTEGER NOT NULL, mtime REAL NOT NULL);
+CREATE TABLE usage_import_ids(mid TEXT PRIMARY KEY, path TEXT NOT NULL);
+CREATE INDEX usage_import_ids_path ON usage_import_ids(path);
 """
 COMPLETE = "complete"
 
@@ -113,11 +119,12 @@ def ensure(con: sqlite3.Connection) -> bool:
 
 def clear(con: sqlite3.Connection, token: int) -> None:
     """Empty the derived tables and mark a backfill ``token`` in one
-    transaction. Quota readings and repo owners are not derived from stores."""
+    transaction. Quota readings, repo owners and imported sessions are not
+    derived from stores, and Claude Code purges what was imported."""
     con.execute("BEGIN")
     try:
         for t in DERIVED:
-            con.execute(f"DELETE FROM {t}")
+            con.execute(f"DELETE FROM {t} WHERE log_id NOT LIKE 'cc-%'")
         _set(con, "backfill", str(token))
         con.execute("COMMIT")
     except BaseException:

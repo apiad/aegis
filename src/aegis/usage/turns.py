@@ -68,7 +68,7 @@ PATH_KEYS = ("file_path", "notebook_path", "path")
 @dataclass
 class SessionInfo:
     person: str = ""
-    kind: str = "foreground"  # foreground, worker, workflow or schedule
+    kind: str = "foreground"  # foreground, worker, workflow, schedule or outside
     harness: str = "claude-code"
     continues: str | None = None
     account: Callable[[str], str | None] = lambda harness: None
@@ -587,6 +587,8 @@ class UsageDeriver:
 
     # -- closing a turn -----------------------------------------------
     def _mode(self, wake: str | None, first: bool) -> str:
+        if self.info.kind == "outside":  # imported from Claude Code's files
+            return "outside"
         if first and self.info.kind in KIND_MODES:
             return KIND_MODES[self.info.kind]
         if wake is None:

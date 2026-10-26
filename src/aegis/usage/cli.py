@@ -374,3 +374,65 @@ def _local_zone() -> str:
         return str(link).split("zoneinfo/", 1)[1]
     except (OSError, IndexError):
         return "UTC"
+
+
+@app.command("import")
+def import_history(
+    legacy: Path | None = typer.Option(
+        None, "--legacy", help="a legacy tree's state directory, the one with sessions/"
+    ),
+    claude_projects: bool = typer.Option(
+        False, "--claude-projects", help="Claude Code's own files, ~/.claude/projects"
+    ),
+    state: str | None = STATE,
+    root: Path | None = ROOT,
+) -> None:
+    """Count older work once: the legacy tree's logs and Claude Code's own
+    session files. Safe to run again: what was imported is skipped."""
+    import sys
+
+    from ..journal import db
+    from ..journal.service import Journal
+    from . import tables
+    from .importer import aegis_known, import_claude_projects
+
+    if legacy is None and not claude_projects:
+        typer.echo("name --legacy DIR, --claude-projects or both")
+        raise typer.Exit(2)
+    path = _state(state, root)
+    if legacy is not None:
+        from ..legacy_import import import_legacy
+
+        if not (legacy / "sessions").is_dir():
+            typer.echo(f"no sessions/ in {legacy}: not a legacy state directory")
+            raise typer.Exit(2)
+        r = import_legacy(legacy, path)
+        typer.echo(f"legacy: {r.imported} imported, {r.already} already imported")
+        if r.imported:
+            Journal(path, None).rebuild()  # imported sessions are kept
+            typer.echo("journal and usage derived again from every store")
+    if claude_projects:
+        con, _ = db.connect(path / "journal.db")
+        try:
+            tables.ensure(con)
+
+            def progress(done: int, total: int) -> None:
+                sys.stderr.write(f"\rclaude projects: {done} of {total} files")
+                if done == total:
+                    sys.stderr.write("\n")
+
+            r = import_claude_projects(
+                con,
+                [Path.home() / ".claude" / "projects"],
+                aegis_known(path),
+                "",
+                progress,
+            )
+        finally:
+            con.close()
+        typer.echo(
+            f"claude projects: {r.sessions} sessions ({r.turns} turns) imported,"
+            f" {r.already} files already imported, {r.live} run by aegis"
+        )
+        for p in r.unreadable:
+            typer.echo(f"  not readable: {p}")
