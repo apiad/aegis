@@ -311,16 +311,16 @@ def test_an_idle_gap_is_a_wait_capped_at_8_hours():
     ]
 
 
-def _feed(harness, src, items, cwd="/w"):
+def _feed(harness, src, items, cwd="/w", info=None, model=None):
     """Feed a spawn, then each (raw line or None, parsed events) as records
     of ``src``: the raw line is what the deriver reads usage from, the events
     what the parser would have yielded."""
     from aegis.usage.turns import Derived, UsageDeriver
 
-    d = UsageDeriver(SessionInfo(harness=harness), lambda x: None)
+    d = UsageDeriver(info or SessionInfo(harness=harness), lambda x: None)
     out = Derived()
     out.extend(d.feed({"i": 0, "ts": 1000.0, "src": "aegis", "kind": "spawn",
-                       "cwd": cwd, "harness": harness}))  # fmt: skip
+                       "cwd": cwd, "harness": harness, "model": model}))  # fmt: skip
     out.extend(
         d.feed({"i": 1, "ts": 1001.0, "src": "aegis", "kind": "send", "text": "go"})
     )
@@ -419,3 +419,43 @@ def test_a_resume_after_an_exit_that_carries_the_total_on_counts_the_rise():
     r.assistant("m2", inp=100, text="ok")
     r.result(cost_total=0.70)
     assert [t.cost for t in run(r).turns] == [Decimal("0.50"), Decimal("0.20")]
+
+
+ACCOUNTS = {"claude-code": "claude:a1b2", "opencode": "opencode-go:c3d4"}
+
+
+def _info(harness):
+    return SessionInfo(harness=harness, account=ACCOUNTS.get)
+
+
+@pytest.mark.parametrize("source, want", [("none", "claude:a1b2"), ("ANTHROPIC_API_KEY", "api")])
+def test_a_claude_session_bills_its_login_unless_it_ran_on_a_key(source, want):
+    r = UseRec()
+    r.spawn()
+    r.claude({"type": "system", "subtype": "init", "apiKeySource": source,
+              "cwd": "/w", "model": "claude-opus-5-5"})  # fmt: skip
+    r.own("send", text="go")
+    r.assistant("m1", inp=100, text="ok")
+    r.result(cost_total=0.10)
+    assert run(r, _info("claude-code")).turns[0].billing == want
+
+
+@pytest.mark.parametrize(
+    "model, want", [("opencode-go/deepseek-v4-pro", "opencode-go:c3d4"),
+                    ("anthropic/claude-opus-5-5", "api")])  # fmt: skip
+def test_an_opencode_session_bills_go_only_on_a_go_model(model, want):
+    from tests.usage.stores import opencode_step
+
+    d = _feed("opencode", "opencode",
+              [(opencode_step("s1", inp=300, out=40, read=1000), []), (None, _result())],
+              info=_info("opencode"), model=model)  # fmt: skip
+    assert d.turns[0].billing == want
+
+
+def test_codex_bills_its_plan_without_a_quota_provider():
+    from tests.usage.stores import codex_usage
+
+    d = _feed("codex", "codex",
+              [(codex_usage("u1", inp=100, cached=0, out=10), []), (None, _result())],
+              info=_info("codex"))  # fmt: skip
+    assert d.turns[0].billing == "codex"

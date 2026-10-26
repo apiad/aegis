@@ -545,6 +545,11 @@ class App:
             self.publish,
             user_of=self._linux_user_of_session,
             meta_of=self._meta_of_session,
+            accounts=lambda: {
+                p["harness"]: f"{p['name']}:{p['account']}"
+                for p in self.quota.snapshot()["providers"]
+                if p["account"]
+            },
         )
         reg.journal = self.journal
         # knowledge.embeddings is read once, here: a change needs a restart.
@@ -616,6 +621,7 @@ class App:
         # lands before it finishes does not start a second one.
         self._quota_busy: set[str] = set()
         self.quota.listeners.append(self.on_quota)
+        self.quota.listeners.append(self.journal.quota)
         reg.gate = self.gate
         # Who each session's processes run as, in multi-user mode (users.py).
         reg.multi_user = multi_user is not None

@@ -251,6 +251,9 @@ class Journal:
                 if item[0] == "usage_backfill":
                     self._usage_backfill(con)
                     continue
+                if item[0] == "quota":
+                    tables.quota(con, item[1])
+                    continue
                 n = (
                     self._backfill(con)
                     if item[0] == "backfill"
@@ -395,6 +398,11 @@ class Journal:
             self._progress = {}
         self._usage_changed()
         return n
+
+    def quota(self, snapshot: dict) -> None:
+        """A quota reading (Quota.listeners): kept on the writer thread when
+        a window's percent or reset moved."""
+        self._q.put(("quota", snapshot))
 
     def _usage_changed(self) -> None:
         self._usage_at = time.time()

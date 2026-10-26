@@ -231,6 +231,7 @@ class UsageDeriver:
         self._ts = 0.0
         self._src = ""
         self._mid: dict[str, str] = {}  # tool_use id -> message id
+        self._key_source: str | None = None  # Claude's init apiKeySource
         self._prev_total: Decimal | None = None
         self._priced_since = Decimal(0)  # interrupted turns since the last result
         self._last_end: float | None = None
@@ -278,6 +279,9 @@ class UsageDeriver:
             return
         if isinstance(obj, dict) and obj.get("type") == "result":
             self._result_usage(obj)
+            return
+        if isinstance(obj, dict) and obj.get("subtype") == "init":
+            self._key_source = obj.get("apiKeySource") or self._key_source
             return
         if not isinstance(obj, dict) or obj.get("type") != "assistant":
             return
@@ -657,7 +661,7 @@ class UsageDeriver:
             harness=self.harness,
             model=model,
             mode=self._mode(t.wake, first),
-            billing=self.info.account(self.harness) or "api",
+            billing=self._billing(),
             cost=cost,
             cost_kind=cost_kind,
             tok_in=tok[0],
@@ -680,6 +684,19 @@ class UsageDeriver:
                 kind = "code" if p.activity == "editing" else "support"
                 self._open.append((i, p.n, p.repo, kind))
         return out
+
+    def _billing(self) -> str:
+        """The login a turn ran on: Claude's subscription unless its init
+        names an API key, OpenCode Go's only for a Go model, Codex's plan."""
+        if self.harness == "codex":
+            return "codex"
+        if self.harness == "claude-code" and self._key_source not in (None, "none"):
+            return "api"
+        if self.harness == "opencode" and not (self.model or "").startswith(
+            "opencode-go/"
+        ):
+            return "api"
+        return self.info.account(self.harness) or "api"
 
     def _shares(self, t: _Turn, msgs: list[_Msg], prices: dict) -> dict[str, Fraction]:
         """Each call's share of the turn, summing to 1."""

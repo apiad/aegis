@@ -251,3 +251,30 @@ def complete_if(con: sqlite3.Connection, token: int) -> None:
 
 def is_complete(con: sqlite3.Connection) -> bool:
     return _get(con, "backfill") == COMPLETE
+
+
+def quota(con: sqlite3.Connection, snapshot: dict) -> int:
+    """Keep each window of a quota snapshot (Quota.snapshot) whose percent or
+    reset time changed since the last row for its (billing, window); the rows
+    added. A provider with no account hash bills no one and is skipped."""
+    rows = []
+    for p in snapshot.get("providers") or []:
+        if not p.get("account") or p.get("read_at") is None:
+            continue
+        billing = f"{p['name']}:{p['account']}"
+        for w in p.get("windows") or []:
+            last = con.execute(
+                "SELECT percent, resets_at FROM usage_quota"
+                " WHERE billing = ? AND window = ? ORDER BY ts DESC LIMIT 1",
+                (billing, w["kind"]),
+            ).fetchone()
+            now = (float(w["percent"]), w.get("resets_at"))
+            if last is None or (last[0], last[1]) != now:
+                rows.append((billing, w["kind"], float(p["read_at"]), *now))
+    if rows:
+        with con:
+            con.executemany(
+                "INSERT INTO usage_quota VALUES(?,?,?,?,?) ON CONFLICT DO NOTHING",
+                rows,
+            )
+    return len(rows)

@@ -107,3 +107,39 @@ async def test_a_store_without_a_meta_file_still_derives(tmp_path):  # review fo
     finally:
         con.close()
     assert rows and set(rows) == {("", "foreground")}
+
+
+def _snap(percent: float, read_at: int = 1_000_000) -> dict:
+    return {
+        "providers": [
+            {"name": "claude", "harness": "claude-code", "account": "a1b2",
+             "read_at": read_at, "windows": [
+                 {"kind": "weekly_all", "percent": percent, "resets_at": 2_000_000},
+                 {"kind": "session", "percent": 3.0, "resets_at": 1_010_000}]},
+            {"name": "opencode-go", "harness": "opencode", "account": None,
+             "read_at": 1_000_000, "windows": [{"kind": "weekly", "percent": 1.0}]},
+        ]
+    }  # fmt: skip
+
+
+async def test_a_quota_reading_is_kept_only_when_it_changed(tmp_path):
+    (tmp_path / "transcripts").mkdir()
+    j = Journal(tmp_path, lambda *a: None)
+    j.start()
+    for k in range(3):
+        j.quota(_snap(10.0, 1_000_000 + 60 * k))
+    j.quota(_snap(12.5, 1_000_200))
+    j.flush()
+    j.stop()
+    con = sqlite3.connect(j.path)
+    try:
+        rows = con.execute(
+            "SELECT billing, window, percent FROM usage_quota ORDER BY window, percent"
+        ).fetchall()
+    finally:
+        con.close()
+    assert rows == [
+        ("claude:a1b2", "session", 3.0),
+        ("claude:a1b2", "weekly_all", 10.0),
+        ("claude:a1b2", "weekly_all", 12.5),
+    ]
