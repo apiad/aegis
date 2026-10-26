@@ -68,7 +68,7 @@ measures appear:
   API prices. A rise with nothing behind it is *elsewhere* (the provider's own
   apps, a machine aegis does not run on); what a week left at its reset is
   *unused*. The slices, elsewhere and unused add up to the fee. Before the
-  first reading, or with no quota provider, the fee is *apportioned* by cost.
+  earliest reading, or with no quota provider, the fee is *apportioned* by cost.
 - **limit**: the points of the weekly limit used.
 
 `--split context` groups by the context a turn peaked at, in bands of 0, 50k,
@@ -76,7 +76,7 @@ measures appear:
 400k) replays every session as if it had handed off whenever its context
 passed that size: later calls carry less context, priced at cache read; each
 handoff pays one cache write of a successor's start and the measured cost of
-rereading, the median reading cost of real successors' first five turns. The
+rereading, the median reading cost of real successors' opening five turns. The
 `whatif` measure is that net saving, and the last line sums it.
 
 The older views still work: `--sessions` lists the costliest sessions,
@@ -93,7 +93,7 @@ measure (spend at API prices, subscription dollars, tokens or agent hours).
 
 - **Tiles**: the window's total and its change on the same span a window
   earlier, agent hours against hours waiting on the person, the share that ran
-  without a person (agent, queue, workflow, schedule, monitor), the cost per
+  without a person (agent, queue, workflow, scheduled run, monitor), the cost per
   merged pull request, and what subscriptions bought at API prices.
 - **Trend**: the measure per week, stacked by the split.
 - **Who the money goes to**: the measure by repo owner, split by server.
@@ -111,7 +111,7 @@ measure (spend at API prices, subscription dollars, tokens or agent hours).
   and of those that did not with `context.handoff_at` marked, and the replay's
   saving at every threshold, net of rewriting and rereading.
 
-Any cell, bar or row lists the sessions behind it, costliest first, and a
+Any cell, bar or row lists the sessions behind it, costliest on top, and a
 session opens its transcript. The page refreshes within 2 seconds of a turn
 ending anywhere on the server. The footer says how much of the cost is
 estimated from tokens, how many tokens have no price, and whether the
@@ -211,7 +211,7 @@ limits it to some tokens.
   its `origin` URL, or `local`; the config page says how to name owners
   ([config](config.md)).
 - **Mode** is what woke the turn: a person, an agent, a queue task's result, a
-  workflow, a schedule, a monitor, a page's answer, or other.
+  workflow, a scheduled run, a monitor, a page's answer, or other.
 
 After an upgrade the server derives the rows of every older session once, in
 the background. Until that finishes, `aegis usage` says how far it has come

@@ -86,6 +86,7 @@ and no aegis command is refused before it costs a turn.
 | `aegis usage` | what the agents' work cost, from the usage rows aegis counts as each turn ends: `--since`, `--until`, `--split`, `--by`, `--measure`, `--where`, `--json`, `--sessions`, `--tools`; see the usage page |
 | `aegis usage repo <path>` | the cost of one git repository's work |
 | `aegis usage repos <dir>` | the cost of every repository directly under a directory |
+| `aegis usage import` | count older work once: `--claude-projects` reads Claude Code's own session files, `--legacy <path>` a legacy tree; safe to run again |
 | `aegis map` | a map of the git repository holding the current directory, or `--repo`, less `--exclude` paths, for an agent learning its code; see the code map page |
 | `aegis map repo [path]` | its folders and files, with definition counts and each module's first doc line; `--depth` |
 | `aegis map deps [path]` | which files use which, with how many uses |
