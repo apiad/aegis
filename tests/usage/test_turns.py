@@ -404,3 +404,18 @@ def test_a_cursor_turn_has_parts_with_no_tokens():
     assert (t.cost_kind, t.cost, t.calls) == ("unpriced", Decimal(0), 2)
     assert [(p.activity, p.tokens) for p in d.parts] == [("reading", 0), ("testing", 0)]
     assert sum(p.secs for p in d.parts) == t.secs == 2.0
+
+
+def test_a_resume_after_an_exit_that_carries_the_total_on_counts_the_rise():
+    """Seen on real stores: after an exit or a server stop, the resumed Claude's
+    total_cost_usd goes on from where it was."""
+    r = UseRec()
+    r.spawn()
+    r.own("send", text="one")
+    r.assistant("m1", inp=100, text="ok")
+    r.result(cost_total=0.50)
+    r.own("exit")
+    r.own("send", text="two")
+    r.assistant("m2", inp=100, text="ok")
+    r.result(cost_total=0.70)
+    assert [t.cost for t in run(r).turns] == [Decimal("0.50"), Decimal("0.20")]

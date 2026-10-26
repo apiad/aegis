@@ -21,6 +21,8 @@ are keyed by their id and the last line wins. A resume restarts Claude's
 running total, so a total below the previous one is a new segment. A turn
 interrupted without a result is priced from its tokens; the next result of the
 same process includes those tokens again, so its rise is taken net of them.
+A resume after an exit or a server stop carries Claude's total on, so only a
+total that falls starts a new segment, as ``cost.py`` reads it.
 """
 
 from __future__ import annotations
@@ -408,10 +410,9 @@ class UsageDeriver:
             return out
         if kind in TURN_ENDS:
             self._end_parsers()
-            out = self._close(i, ts, None, None, interrupted=kind == "stop")
-            if kind != "stop":  # the process ended: its next total starts afresh
-                self._prev_total, self._priced_since = None, Decimal(0)
-            return out
+            # A resumed Claude carries its running total on, so a process end
+            # is no new segment: only a total that falls is (cost.py).
+            return self._close(i, ts, None, None, interrupted=kind == "stop")
         if kind == "close":
             self._end_parsers()
             return self._close(i, ts, None, None).extend(self._settle_all())
