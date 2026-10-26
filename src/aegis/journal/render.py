@@ -18,6 +18,7 @@ GLYPH = {
     "turn": "prompt",
     "commit": "dot",
     "pr": "arrow-up",
+    "issue": "issue",
     "plan": "read",
     "note": "pencil",
     "session": "window",

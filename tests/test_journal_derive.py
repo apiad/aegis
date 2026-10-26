@@ -441,3 +441,27 @@ def test_a_pr_named_with_r_equals_carries_its_slug_and_one_without_none():
     r.result()
     prs = [x for x in derive(r) if x.kind == "pr"]
     assert [(x.slug, x.workdir) for x in prs] == [("Acme-Co/Atlas", ""), ("", "/w")]
+
+
+def test_a_merged_pr_closes_the_issues_its_create_named():
+    r = Rec()
+    spawned(r)
+    r.call("t1", "Bash", {"command": 'gh pr create --title t --body "Closes #7"'})
+    r.output("t1", "https://github.com/acme-co/atlas/pull/12")
+    r.call("t2", "Bash", {"command": "gh pr merge 12 --squash"})
+    r.output("t2", "✓ Squashed and merged pull request #12")
+    r.result()
+    rows = derive(r)
+    assert [x.text for x in rows if x.kind == "issue"] == ["closed #7"]
+    [issue] = [x for x in rows if x.kind == "issue"]
+    assert issue.workdir == "/w" and issue.source == "t2"
+
+
+def test_an_issue_closed_with_repo_carries_its_slug():
+    r = Rec()
+    spawned(r)
+    r.call("t1", "Bash", {"command": "gh issue close 5 --repo acme-co/atlas"})
+    r.output("t1", "✓ Closed issue acme-co/atlas#5")
+    r.result()
+    [issue] = [x for x in derive(r) if x.kind == "issue"]
+    assert (issue.text, issue.slug, issue.workdir) == ("closed #5", "acme-co/atlas", "")

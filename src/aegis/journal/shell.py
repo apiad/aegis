@@ -20,6 +20,9 @@ PR_URL = re.compile(r"https://github\.com/[^/\s]+/[^/\s]+/pull/\d+")
 # Remove only heredoc body (lines after marker, through terminator), keep marker line.
 HEREDOC = re.compile(r"(<<-?\s*(['\"]?)(\w+)\2[^\n]*)\n.*?\n\s*\3[ \t]*(?=\n|$)", re.S)
 MERGED = re.compile(r"[Mm]erged pull request #?(\d+)")
+# The issues a PR body says it closes, as GitHub reads them.
+CLOSING = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?) #(\d+)", re.I)
+ISSUE_CLOSE = re.compile(r"\bgh\s+issue\s+close\s+(?:\S*/issues/)?#?(\d+)\b")
 # How many lines a quote may span: past it a line with a stray quote is dropped
 # at once, instead of being re-read joined with every later line.
 JOIN_WINDOW = 100
@@ -273,3 +276,19 @@ def pull_request(command: str, output: str, is_error: bool = False) -> str | Non
         return f"merged #{done[1]}" if done else None
     n = re.search(r"#(\d+)", output) or re.search(r"\bmerge\s+(\d+)", m[0])
     return f"merged #{n[1]}" if n else "merged a pull request"
+
+
+def issue_closes(command: str, output: str, is_error: bool) -> list[int]:
+    """The issue a `gh issue close` call closed, by number or URL."""
+    if is_error:
+        return []
+    m = ISSUE_CLOSE.search(_body(command))
+    return [int(m[1])] if m else []
+
+
+def closing_refs(command: str) -> list[int]:
+    """The issues a `gh pr create` names as closed in its --body; a
+    --body-file is not read."""
+    m = re.search(r"\bgh\s+pr\s+create\b(.*)", _body(command), re.S)
+    body = _flag(m[1], "--body", "-b") if m else None
+    return [int(n) for n in CLOSING.findall(body or "")]

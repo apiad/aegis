@@ -6,7 +6,7 @@
 import { entryIcon, icon } from "./glyphs.js";
 import * as menu from "./menu.js";
 
-const KINDS = ["turn", "commit", "pr", "plan", "note", "session"];
+const KINDS = ["turn", "commit", "pr", "issue", "plan", "note", "session"];
 const PAGE = 50;
 
 function el(tag, cls, text) {

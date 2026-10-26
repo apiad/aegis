@@ -37,7 +37,10 @@ WRITE_TOOLS = {
     "Delete": "write",
 }
 TURN_ENDS = ("exit", "stop", "restart", "server_stopped", "reset")
-REPO_FLAG = re.compile(r"\bgh\s+pr\b.*\s(?:--repo|-R)(?:\s+|=)(['\"]?)([^\s'\"]+)\1")
+REPO_FLAG = re.compile(
+    r"\bgh\s+(?:pr|issue)\b.*\s(?:--repo|-R)(?:\s+|=)(['\"]?)([^\s'\"]+)\1"
+)
+PR_NUMBER = re.compile(r"/pull/(\d+)|^merged #(\d+)")
 PUSH = re.compile(r"\bgit\b[^|;&\n]*\bpush\b")
 
 
@@ -63,7 +66,7 @@ class Row:
 
 
 def _pr_dir(cmd: str, cwd: str) -> tuple[str, str]:
-    """(where a gh pr call's repo is checked out, the owner/name its --repo
+    """(where a gh pr or issue call's repo is checked out, the owner/name its --repo
     names): no directory this can know when --repo names it."""
     m = REPO_FLAG.search(cmd)
     return ("", m[2]) if m else (shell.workdir(cmd, cwd), "")
@@ -92,6 +95,9 @@ class Deriver:
         self._said: str | None = None
         self._asked: str | None = None
         self._done: set[str] = set()  # done in the previous plan record
+        # The issues each PR this session opened says it closes, by number:
+        # rows when its merge is seen.
+        self._closes: dict[int, list[int]] = {}
         self._ts = 0.0
         self._src = ""
 
@@ -202,11 +208,32 @@ class Deriver:
                 found, shell.commit_dirs(cmd, cwd, len(found))
             )
         ]
-        if pr := shell.pull_request(cmd, text, out.is_error):
-            workdir, slug = _pr_dir(cmd, cwd)
+        # A merge closes what its create named; gh issue close, what it names.
+        closed = shell.issue_closes(cmd, text, out.is_error)
+        pr = shell.pull_request(cmd, text, out.is_error)
+        workdir, slug = _pr_dir(cmd, cwd) if pr or closed else ("", "")
+        if pr:
             rows.append(
                 self._row(i, ts, "pr", pr, source=source, workdir=workdir, slug=slug)
             )
+            if n := PR_NUMBER.search(pr):
+                number = int(n[1] or n[2])
+                if pr.startswith("opened"):
+                    self._closes[number] = shell.closing_refs(cmd)
+                else:
+                    closed += self._closes.pop(number, [])
+        rows += [
+            self._row(
+                i,
+                ts,
+                "issue",
+                f"closed #{k}",
+                source=source,
+                workdir=workdir,
+                slug=slug,
+            )
+            for k in closed
+        ]
         if not out.is_error:
             self._turn += [("bash-write", p) for p in shell.writes(cmd, cwd)]
         if PUSH.search(cmd):

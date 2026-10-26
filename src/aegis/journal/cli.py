@@ -14,7 +14,7 @@ app = typer.Typer(
 )
 # An Enum, not click.Choice: Typer 0.27 vendors its own click, and a
 # BadParameter raised by the click package escapes it as a traceback.
-Kind = Enum("Kind", {k: k for k in ("turn", "commit", "pr", "plan", "note", "session")})
+Kind = Enum("Kind", {k: k for k in ("turn", "commit", "pr", "issue", "plan", "note", "session")})
 
 _ROOT = typer.Option(
     None, help="Config root; default: the nearest ancestor holding .aegis.yaml."

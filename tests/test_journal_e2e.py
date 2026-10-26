@@ -653,7 +653,7 @@ def test_an_unknown_kind_is_a_usage_error_not_a_traceback(tmp_path):
     assert out.exit_code == 2, out.output
     assert "Traceback" not in out.output, out.output
     assert isinstance(out.exception, SystemExit), out.exception
-    for k in ("turn", "commit", "pr", "plan", "note", "session"):
+    for k in ("turn", "commit", "pr", "issue", "plan", "note", "session"):
         assert f"'{k}'" in out.output, out.output
 
 
