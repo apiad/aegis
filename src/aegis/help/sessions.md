@@ -484,7 +484,8 @@ files agents read.
   under the local checkout whose `origin` is that repo, and a merge closes the
   issues its `gh pr create --body` named with Closes, Fixes or Resolves #N.
   `journal_note` records a decision, a blocker or a milestone aegis cannot
-  see. People open the Journal with Alt+L.
+  see. People open the Journal with Alt+L; its search box matches an entry's
+  text, session, kind, paths and repo.
 - `quota_read` returns how much of each subscription window is left, from the
   last reading, at no cost.
 - `meta` returns the primer every agent gets at spawn and the list of aegis's

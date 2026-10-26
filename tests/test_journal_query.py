@@ -152,6 +152,7 @@ def _put(
     text="x",
     ts=None,
     paths=(),
+    repo=None,
 ):
     db.insert(
         con,
@@ -161,7 +162,7 @@ def _put(
             0,
             NOON + rec if ts is None else ts,
             handle,
-            None,
+            repo,
             kind,
             "",
             text,
@@ -215,6 +216,19 @@ def test_the_fuzzy_box_reads_old_handles_paths_and_kinds(tmp_path):
     assert texts("elsewhere") == ["9f9f9f9 y · main"]
     [(_, marks)] = list(query.matching(con, db.Query(), "fix scra", root))
     assert marks == [8, 9, 10]
+
+
+def test_the_fuzzy_box_reads_an_entrys_repo_as_shown(tmp_path):
+    """A merge named by --repo touches no path; its repo still finds it."""
+    con, _ = db.connect(tmp_path / "j.db")
+    _put(con, 1, kind="pr", text="merged #12", repo="/root/atlas")
+    _put(con, 2, kind="pr", text="merged #3", repo="/elsewhere/ledger")
+
+    def texts(q):
+        return [h.text for h, _ in query.matching(con, db.Query(), q, "/root")]
+
+    assert texts("atlas") == ["merged #12"]
+    assert texts("elsewhere/ledger") == ["merged #3"]
 
 
 def test_the_fuzzy_walk_goes_on_past_a_batch_newest_first(tmp_path, monkeypatch):
