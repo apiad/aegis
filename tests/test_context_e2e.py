@@ -55,6 +55,11 @@ async def test_the_card_carries_the_cold_thresholds_for_claude(world):
     assert a.wire()["cache_cold"] == {"after": 3600, "min": 100000}
 
 
+def no_context_line(said: str) -> bool:
+    # The plain reply: noted, then what the person has seen (test_turn_end_seen.py).
+    return said.startswith("noted. The person has") and "Your context" not in said
+
+
 async def end(world, a, **args):
     # A named session, so the reply is about the context alone, not the rename
     # reminder (test_rename_nudge.py).
@@ -66,7 +71,7 @@ async def end(world, a, **args):
 async def test_turn_end_answers_noted_below_the_threshold(world):
     a = await world.spawn()
     await turn(a, "/ctx 299999")
-    assert await end(world, a) == "noted"
+    assert no_context_line(await end(world, a))
 
 
 async def test_turn_end_names_the_context_above_it_and_takes_a_brief(world):
@@ -75,7 +80,7 @@ async def test_turn_end_names_the_context_above_it_and_takes_a_brief(world):
     said = await end(world, a)
     assert said.startswith("noted. Your context is 342k tokens")
     assert "handoff" in said
-    assert await end(world, a, handoff="Done: A. Next: B.") == "noted"
+    assert no_context_line(await end(world, a, handoff="Done: A. Next: B."))
     assert a.wire()["handoff"] == "Done: A. Next: B."
     await end(world, a)
     assert a.wire()["handoff"] is None  # a later turn_end without one clears it
@@ -86,7 +91,7 @@ async def test_handoff_at_zero_turns_the_line_off(world):
     cfg.write_text(cfg.read_text() + "context: {handoff_at: 0}\n")
     a = await world.spawn()
     await turn(a, "/ctx 900000")
-    assert await end(world, a) == "noted"
+    assert no_context_line(await end(world, a))
 
 
 async def test_a_queue_worker_always_hears_noted_and_keeps_no_brief(world):

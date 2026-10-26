@@ -42,8 +42,8 @@ TOAST_WINDOW_S = 60.0
 
 # What turn_end answers a session that still has the handle or the title aegis
 # gave it (#586): agents often set the handle and keep the drawn title.
-RENAME_NUDGE = (
-    "noted. This session still has the handle or title aegis gave it. Once the "
+RENAME_LINE = (
+    "This session still has the handle or title aegis gave it. Once the "
     "task is clear, call session_rename with both a handle and a title that say "
     "what this session works on."
 )
@@ -295,6 +295,26 @@ class TurnEnd(_Strict):
 # break the prompt cache. A turn reported done or review is at a break by
 # definition, so the line asks for the brief outright; a real Sonnet ignored
 # the conditional wording on a finished task in 2 of 3 runs.
+# What turn_end tells an agent about the person's view of this turn (#679). A
+# model that worked its answer out in its thinking believes it was shown, so a
+# reminder to "write your final message" is not enough: the reply states what
+# the transcript holds, counted from the stream, where text arrives before the
+# call (Claude Code writes its own log only after the tool returns).
+SEEN_NOTHING = (
+    "The person has seen nothing from you this turn: what you worked out in your "
+    "thinking is not shown to them. Write your full final message now, complete "
+    "on its own: what you found or did, and what you need from them."
+)
+SEEN_SOME = (
+    "The person has already seen the {n} characters you wrote this turn. Close "
+    "with one or two lines; do not repeat what you wrote."
+)
+
+
+def seen_line(shown: int) -> str:
+    return SEEN_SOME.format(n=shown) if shown else SEEN_NOTHING
+
+
 CONTEXT_LINE = (
     "noted. Your context is {k} tokens, and every turn from here rereads all of it. "
 )
@@ -1498,16 +1518,22 @@ def register_agent_ops(app: App) -> None:
             )
             return (
                 f"noted. aegis archives this session{tree} when this turn ends; "
-                "your final message is the last thing in its tab."
+                "your final message is the last thing in its tab. "
+                + seen_line(s.fold().shown())
             )
         at = app.config.current().context["handoff_at"]
         n = s.context_tokens or 0
         unnamed = not s.worker and not (s.handle_set and s.title_set)
-        if s.worker or p.handoff or not at or n < at:
-            return RENAME_NUDGE if unnamed else "noted"
+        if s.worker:
+            # A worker's final message is its task's result, read by the
+            # enqueuer, not a reply to the person.
+            return "noted"
+        if p.handoff or not at or n < at:
+            said = f"noted. {seen_line(s.fold().shown())}"
+            return f"{said}\n{RENAME_LINE}" if unnamed else said
         then = BRIEF_IF if p.attention == "needs_you" else BRIEF_NOW
         line = CONTEXT_LINE.format(k=f"{round(n / 1000)}k") + then
-        return f"{line}\n{RENAME_NUDGE}" if unnamed else line
+        return f"{line}\n{RENAME_LINE}" if unnamed else line
 
     toasted: dict[str, list[float]] = {}
 

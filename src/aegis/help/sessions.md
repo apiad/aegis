@@ -162,7 +162,10 @@ Two calls keep the person informed without reading the transcript:
   message asks something, review when it gives something to read or reports
   a step while work remains, done only when the whole task is over, with a
   one-line summary and up to three replies
-  the person can click to answer. Past 300k tokens of context its answer
+  the person can click to answer. Its answer says how much the person has
+  seen from the agent this turn: nothing yet, and the agent writes its whole
+  message after the call; some, and it closes in a line or two without
+  repeating it. Past 300k tokens of context its answer
   names the size, and at a break the agent calls it again with `handoff`: a
   brief that lets a fresh session continue the work. A done card offers an
   Archive button, so aegis refuses done while the plan has items not done,
