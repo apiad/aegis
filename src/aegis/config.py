@@ -670,6 +670,15 @@ class HarnessVersionsDoc(BaseModel):
     accepted: dict[str, list[str]] = Field(default_factory=dict)
 
 
+class UsageDoc(BaseModel):
+    model_config = {"extra": "forbid"}
+    owners: dict[str, str] = Field(default_factory=dict)
+    owner_names: dict[str, str] = Field(default_factory=dict)
+    subscriptions: dict[str, dict[str, str | int | float]] = Field(
+        default_factory=dict
+    )
+
+
 class ConfigDoc(BaseModel):
     """What the Settings form edits and ``aegis init`` proposes."""
 
@@ -685,6 +694,8 @@ class ConfigDoc(BaseModel):
     # one the reader refuses.
     harness_versions: HarnessVersionsDoc = Field(default_factory=HarnessVersionsDoc)
     terminals: list[TerminalDoc] = Field(default_factory=list)
+    # The usage: block; empty when the file has none, or one the reader refuses.
+    usage: UsageDoc = Field(default_factory=UsageDoc)
     # Each key of fields() the file sets, by its dotted path; a switch only
     # when it is off (false).
     settings: dict[str, bool | int | float | str | list[str]] = Field(
@@ -724,6 +735,7 @@ def doc_from(data: dict) -> ConfigDoc:
     w = data.get("workflows")
     pool = workflows_from(w)
     hv = harness_versions_from(data.get("harness_versions"))
+    usage = usage_from(data.get("usage"))
     return ConfigDoc(
         agents=agents,
         default_agent=str(d) if d else None,
@@ -734,6 +746,7 @@ def doc_from(data: dict) -> ConfigDoc:
             **{k: v for k, v in hv.items() if k != "error"}
         ),
         terminals=_terminals_doc(data.get("terminals")),
+        usage=UsageDoc() if "error" in usage else UsageDoc(**usage),
         settings=_settings_doc(data),
     )
 
@@ -1003,6 +1016,8 @@ def validate(doc: ConfigDoc) -> list[Finding]:
         out.append(
             Finding("error", "harness_versions", hv["error"], "harness_versions")
         )
+    if "error" in (u := usage_from(doc.usage.model_dump())):
+        out.append(Finding("error", "usage", u["error"], "usage"))
     if doc.max_agents:
         # The rules aegis doctor applies to the block, each on its row.
         pool = workflows_from({"max_agents": doc.max_agents})
@@ -1179,6 +1194,7 @@ def _apply(data: CommentedMap, doc: ConfigDoc) -> None:
     elif block is not None and "error" not in workflows_from(block):
         del data["workflows"]  # every bound back to its default
     _apply_harness_versions(data, doc.harness_versions)
+    _apply_usage(data, doc.usage)
     _apply_terminals(data, doc.terminals)
     _apply_settings(data, doc.settings)
 
@@ -1247,6 +1263,22 @@ def _del_at(data: CommentedMap, key: str) -> None:
         if nodes[i]:
             break
         del nodes[i - 1][parts[i - 1]]
+
+
+def _apply_usage(data: CommentedMap, usage: UsageDoc) -> None:
+    block = data.get("usage")
+    want = usage.model_dump()
+    if not any(want.values()):
+        if block is not None and "error" not in usage_from(block):
+            del data["usage"]
+        return
+    node = _section(data, "usage")
+    for k, v in want.items():
+        # An untouched map compares equal and keeps its style and comments.
+        if not v:
+            node.pop(k, None)
+        elif usage_from({k: node.get(k)}).get(k) != v:
+            node[k] = v
 
 
 def _apply_harness_versions(data: CommentedMap, hv: HarnessVersionsDoc) -> None:
