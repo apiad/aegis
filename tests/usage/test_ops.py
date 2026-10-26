@@ -42,7 +42,8 @@ def stand_in(tmp_path, multi_user=None):
     app = SimpleNamespace(
         registry=Registry(),
         journal=SimpleNamespace(path=tmp_path / "journal.db", usage_progress=dict),
-        config=SimpleNamespace(current=lambda: SimpleNamespace(usage={"owners": {}})),
+        config=SimpleNamespace(current=lambda: SimpleNamespace(
+            usage={"owners": {}}, context={"handoff_at": 300_000})),
         server_name="here",
         multi_user=multi_user,
         user="ana",
@@ -67,7 +68,7 @@ async def test_the_op_answers_with_rows_and_totals(app):
     assert a["rows"][0]["repo"] == "/w/notes"  # sorted by the measure
     assert a["totals"]["cost"] == 1.6 and a["server"] == "here"
     assert set(a) == {"server", "at", "rows", "totals", "outcomes", "estimated",
-                      "unpriced_tokens", "backfill", "subs", "sub_hours"}  # fmt: skip
+                      "unpriced_tokens", "backfill", "subs", "sub_hours", "context"}  # fmt: skip
 
 
 async def test_a_where_narrows_and_a_server_split_names_this_server(app):

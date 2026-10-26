@@ -92,6 +92,8 @@ export class Usage {
       grid(pane("Driven by", "What woke each turn", this.bars(p.mode, (r) => ({ mode: r.key }))),
            pane("Harness and model", "Unpriced tokens shown as tokens", this.bars(p.model, (r) => r.where))),
       pane("Outcomes", "From the journal; cost is the measure of the same slice", this.outcomes(p.outcomes), true, "uout"),
+      grid(pane("Subscriptions", "Each fee split by owner, elsewhere and unused", subscriptions(p.subscriptions)),
+           pane("Context length", "Every call rereads its context: cost by band, peaks and an earlier handoff", context(p.context))),
       foot(p.foot),
     );
   }
@@ -324,6 +326,96 @@ function grid(...panes) {
   const g = el("div", "ugrid");
   g.append(...panes);
   return g;
+}
+
+function hbar(label, parts, text, cls = "") {
+  const line = el("div", `uhb ${cls}`.trim());
+  const stack = el("div", "ustack");
+  for (const [c, frac, title] of parts) {
+    const d = el("div", c);
+    d.style.width = `${frac * 100}%`;
+    if (title) d.title = title;
+    stack.append(d);
+  }
+  line.append(el("span", "nm", label), stack, el("span", "vv", text));
+  return line;
+}
+
+function subscriptions(subs) {
+  const box = el("div");
+  for (const s of subs) {
+    const n = el("div", "usub");
+    const hd = el("div", "uhd");
+    hd.append(el("span", null, s.name), el("span", null, `fee ${s.fee} · ${s.value} at API prices · ${s.ratio}`));
+    const colour = (x) => (x.colour === "rest" ? "urest" : `c${x.colour % 8}`);
+    const legend = el("div", "ulegend");
+    for (const x of s.parts) {
+      const it = el("span");
+      it.append(el("i", colour(x)), `${x.label} ${x.text}`);
+      legend.append(it);
+    }
+    const stack = el("div", "ustack");
+    for (const x of s.parts) {
+      const d = el("div", colour(x));
+      d.style.width = `${x.frac * 100}%`;
+      d.title = `${x.label}: ${x.text}`;
+      stack.append(d);
+    }
+    n.append(hd, stack, legend, el("p", "unote", s.note));
+    box.append(n);
+  }
+  if (!subs.length) box.append(el("p", "unote", "No subscription ran here in this window."));
+  return box;
+}
+
+function context(c) {
+  const box = el("div");
+  if (!c.bands.length) {
+    box.append(el("p", "unote", "No call's context counted in this window."));
+    return box;
+  }
+  const legend = el("div", "ulegend");
+  for (const [cls, label] of [["urest", "share of calls"], ["c0", "share of cost"]]) {
+    const it = el("span");
+    it.append(el("i", cls), label);
+    legend.append(it);
+  }
+  box.append(legend);
+  for (const b of c.bands) {
+    const line = el("div", "uhb");
+    const bars = el("div", "ucx");
+    for (const [cls, frac, t] of [["urest", b.calls_frac, `${b.calls} of calls`], ["c0", b.cost_frac, `${b.cost} of cost`]]) {
+      const st = el("div", "ustack");
+      const d = el("div", cls);
+      d.style.width = `${frac * 100}%`;
+      d.title = t;
+      st.append(d);
+      bars.append(st);
+    }
+    line.title = `${b.label}: ${b.calls} of calls, ${b.cost} of cost, ${b.per_call} a call`;
+    line.append(el("span", "nm", b.label), bars, el("span", "vv", `${b.per_call}/call`));
+    box.append(line);
+  }
+  box.append(el("div", "h", `Session peaks, handed off · not: ${c.peaks.sessions} session${c.peaks.sessions === 1 ? "" : "s"}; handoff_at ${c.peaks.handoff_at} marked`));
+  for (const r of c.peaks.rows) {
+    if (!r.handed && !r.other && !r.mark) continue;
+    box.append(hbar(r.mark ? `${r.label} ◂` : r.label,
+      [["c1", r.handed_frac, `${r.handed} handed off`], ["urest", r.other_frac, `${r.other} did not`]],
+      `${r.handed} · ${r.other}`, r.mark ? "mark" : ""));
+  }
+  const t = el("table");
+  const hr = el("tr");
+  for (const h of ["hand off at", "handoffs", "saved", "rewrite", "reread", "net"]) hr.append(el("th", null, h));
+  t.append(hr);
+  for (const r of c.replay) {
+    const tr = el("tr");
+    for (const v of [r.at, r.handoffs, r.saved, r.rewrite, r.reread, r.net]) tr.append(el("td", null, String(v)));
+    t.append(tr);
+  }
+  const sc = el("div", "uscroll");
+  sc.append(t);
+  box.append(sc);
+  return box;
 }
 
 function foot(f) {

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from .context import BANDS, band_label
 from .query import Answer
 
 _BLOCKS = " ▁▂▃▄▅▆▇█"
@@ -37,7 +38,7 @@ def _bar(v: float, mx: float, width: int = 34) -> str:
 
 
 def value(measure: str, v) -> str:
-    if measure in ("cost", "sub"):
+    if measure in ("cost", "sub", "whatif"):
         return _money(v)
     if measure in ("secs", "waits"):
         return _hours(v)
@@ -147,6 +148,8 @@ def table_lines(a: Answer, split: tuple[str, ...], by: str | None, measure: str,
 
     def label(r, c):
         v = r.get(c)
+        if c == "context":
+            return band_label(BANDS.index(v))
         return str((names or {}).get(v, v) if c == "session" else v or "(none)")
 
     widths = {c: max([len(c), *(len(label(r, c)) for r in rows)]) for c in cols}

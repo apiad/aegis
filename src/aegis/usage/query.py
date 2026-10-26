@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from .context import BANDS, reread_cost
+from .context import BANDS, reread_cost, summary
 from .subscription import WEEK, WEEKLY, Reading, split as split_fee, weekly_fee
 
 BYS = ("hour", "day", "week", "month", "dow", "dow_hour")
@@ -81,6 +81,8 @@ class Answer:
     # [hour, group, cost], which a merge across servers shares again.
     subs: dict[str, dict] = field(default_factory=dict)
     sub_hours: dict[str, list] = field(default_factory=dict)
+    # With a split by context: bands, session peaks and the replay (context.py).
+    context: dict | None = None
 
 
 def _offsets(since: float, until: float, tz: str) -> str:
@@ -281,6 +283,7 @@ def run(
         estimated=round(priced / cost, 6) if cost else 0.0,
         unpriced_tokens=int(unpriced),
         subs=subs,
+        context=summary(con, q.since, q.until, q.people) if "context" in q.split else None,
         sub_hours={
             b: [[h, list(k), round(float(c), 9)] for (h, k), c in v.items()]
             for b, v in hours.items()

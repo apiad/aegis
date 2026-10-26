@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from ..journal import db, when
 from ..ops import OpError
 from . import page
+from .context import threshold
 from .query import BYS, DIMS, MEASURES, UsageQuery, run
 
 if TYPE_CHECKING:
@@ -62,7 +63,9 @@ class ReadParams(_Strict):
         None, description="The server to answer for; this one by default."
     )
     whatif: str | None = Field(
-        None, description="A context limit to replay handoffs at, such as 200k."
+        None,
+        description="A context limit to replay handoffs at, 100k, 150k, 200k, 300k"
+        " or 400k: fills the whatif measure.",
     )
     tz: str | None = Field(
         None, description="IANA time zone for periods; the server's by default."
@@ -93,6 +96,7 @@ def query_of(p: ReadParams, now: float) -> UsageQuery:
     try:
         since = _bound(p.since, False, now) or 0.0
         until = _bound(p.until, True, now) or now + 1
+        whatif = threshold(p.whatif) if p.whatif is not None else None
     except ValueError as e:
         raise OpError("bad_params", str(e)) from None
     return UsageQuery(
@@ -103,6 +107,7 @@ def query_of(p: ReadParams, now: float) -> UsageQuery:
         measure=p.measure,
         where=dict(p.where),
         tz=p.tz or _local_zone(),
+        whatif=whatif,
     )
 
 
@@ -183,8 +188,12 @@ def page_of(app: "App", p: PageParams, who: "Principal", now: float) -> dict:
         }
     }
     *_, mondays = page.window(p.window, now, tz)
-    names = app.config.current().usage.get("owner_names") or {}
-    out = page.panels(answers, p.window, p.split, p.measure, names, mondays)
+    conf = app.config.current()
+    names = conf.usage.get("owner_names") or {}
+    out = page.panels(
+        answers, p.window, p.split, p.measure, names, mondays,
+        handoff_at=conf.context["handoff_at"],
+    )  # fmt: skip
     return out | {
         "at": now,
         "since": mondays[0],
@@ -210,9 +219,10 @@ def register_usage_ops(app: "App") -> None:
         sessions, tool calls and waits, over a window, grouped by any of the
         split's dimensions and by period. Returns rows, totals and the
         journal's outcomes (commits, PRs, closed issues) for the same slice.
+        sub and limit are a subscription's fee and weekly limit shared by
+        cost; whatif (with whatif=200k) what handing off there would save,
+        net of rewriting and rereading.
         Background work is mode queue, workflow, schedule, monitor or agent."""
-        if p.whatif is not None:
-            raise OpError("bad_params", "whatif is not counted yet")
         if caller.link is None and p.server not in (None, app.server_name):
             raise OpError(
                 "bad_params",

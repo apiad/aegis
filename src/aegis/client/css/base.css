@@ -1638,6 +1638,13 @@ body{background:#000}
 #a2 .urow:hover{color:var(--strong)}
 #a2 .urow .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 #a2 .urow .vv{white-space:nowrap;color:var(--muted)}
+#a2 .usage .urest{background:color-mix(in oklab,var(--muted) 70%,var(--bg))}
+#a2 .usub+.usub{margin-top:14px}
+#a2 .usub .uhd{display:flex;justify-content:space-between;gap:4px 10px;flex-wrap:wrap;font:11.5px var(--font-mono);color:var(--strong);margin-bottom:6px}
+#a2 .usub .ulegend{margin:6px 0 0}
+#a2 .ucx{display:flex;flex-direction:column;gap:2px;min-width:0}
+#a2 .ucx .ustack{height:6px}
+#a2 .uhb.mark .nm{color:var(--accent)}
 @media (max-width:640px){
   #a2 .usage{padding:12px 10px 24px}
   #a2 .utiles{grid-template-columns:1fr 1fr}

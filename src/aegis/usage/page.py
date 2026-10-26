@@ -15,6 +15,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from .context import BANDS, THRESHOLDS, band, band_label
 from .query import UsageQuery
 
 PURPOSES = ("build", "fix", "refactor", "review", "docs", "writing", "planning",
@@ -63,6 +64,8 @@ def queries(weeks: int, split: str, now: float, tz: str) -> dict[str, UsageQuery
         "mode": q(split=("mode",)),
         "model": q(split=("harness", "model")),
         "outcomes": q(split=("repo",)),
+        "subs": q(split=("billing", "owner")),
+        "context": q(split=("context",)),
     }
 
 
@@ -125,6 +128,7 @@ def panels(
     measure: str,
     names: dict[str, str],
     mondays: list[str] | None = None,
+    handoff_at: int = 300_000,
 ) -> dict:
     """``answers``: per server, its answer to each of ``queries``. ``names``
     relabels owners (``usage.owner_names``). ``mondays`` are the window's
@@ -148,6 +152,8 @@ def panels(
         "mode": _bars(_by(rows("mode"), "mode", measure), measure),
         "model": _model(rows("model"), measure),
         "outcomes": _outcomes(answers, servers, measure),
+        "subscriptions": _subscriptions(answers, servers, names),
+        "context": _context(answers, servers, handoff_at),
         "foot": _foot(answers, servers, total),
     }
 
@@ -343,6 +349,99 @@ def _outcomes(answers, servers, measure) -> dict:
             "where": {"repo": repo},
         })  # fmt: skip
     return {"rows": out}
+
+
+def _subscriptions(answers, servers, names) -> list[dict]:
+    """Per subscription: its fee, split over owners, elsewhere and unused,
+    and what it ran at API prices against the fee. One server's readings
+    serve every server on the account: the first that has the summary."""
+    summary: dict[str, dict] = {}
+    owners: dict[str, dict[str, float]] = {}
+    for s in servers:
+        a = answers[s].get("subs")
+        if not a:
+            continue
+        for b, v in (a.get("subs") or {}).items():
+            summary.setdefault(b, v)
+        for r in a["rows"]:
+            o = owners.setdefault(r["billing"], {})
+            o[r["owner"] or ""] = o.get(r["owner"] or "", 0) + (r.get("sub") or 0)
+    out = []
+    for b, v in sorted(summary.items(), key=lambda kv: -kv[1]["value"]):
+        parts = [(names.get(o, o) or "(no repo)", x) for o, x in
+                 sorted(owners.get(b, {}).items(), key=lambda kv: -kv[1]) if x]  # fmt: skip
+        parts += [("elsewhere", v["elsewhere_usd"]), ("unused", v["unused_usd"])]
+        whole = max(sum(x for _, x in parts), v["fee"]) or 1
+        fee = v["fee"]
+        note = (
+            f"{_pct(v['apportioned'] / v['sub'])} of it apportioned by cost, without readings"
+            if v["sub"] and v["apportioned"]
+            else ("metered by the weekly limit" if fee else "no fee set: limit only")
+        )
+        out.append({
+            "billing": b, "name": v["name"], "kind": v["kind"],
+            "fee": fmt("cost", fee) if fee else "—",
+            "value": fmt("cost", v["value"]),
+            "ratio": f"{v['value'] / fee:.1f}×" if fee else "—",
+            "parts": [{"label": k, "text": fmt("cost", x), "frac": x / whole,
+                       "colour": "rest" if k in ("elsewhere", "unused") else i}
+                      for i, (k, x) in enumerate(parts) if x],
+            "note": note,
+        })  # fmt: skip
+    return out
+
+
+def _context(answers, servers, handoff_at: int) -> dict:
+    """Share of calls against share of cost per band, with a call's mean
+    cost; session peaks for handed-off and other sessions, the band of
+    ``handoff_at`` marked; the replay per threshold, net of rereading."""
+    calls: dict[int, int] = {}
+    cost: dict[int, float] = {}
+    peaks: list = []
+    replay: dict[int, dict] = {}
+    for s in servers:
+        c = (answers[s].get("context") or {}).get("context")
+        if not c:
+            continue
+        for b in c["bands"]:
+            calls[b["band"]] = calls.get(b["band"], 0) + b["calls"]
+            cost[b["band"]] = cost.get(b["band"], 0) + b["cost"]
+        peaks += c["peaks"]
+        for r in c["replay"]:
+            acc = replay.setdefault(r["at"], {"handoffs": 0, "saved": 0.0,
+                                              "rewrite": 0.0, "reread": r["reread"]})  # fmt: skip
+            for k in ("handoffs", "saved", "rewrite"):
+                acc[k] += r[k]
+    n, usd = sum(calls.values()) or 1, sum(cost.values()) or 1
+    bands = [
+        {"label": band_label(k), "calls": _pct(calls[k] / n), "cost": _pct(cost.get(k, 0) / usd),
+         "calls_frac": calls[k] / n, "cost_frac": cost.get(k, 0) / usd,
+         "per_call": fmt("cost", cost.get(k, 0) / calls[k]) if calls[k] else "—"}
+        for k in sorted(calls)
+    ]  # fmt: skip
+    counts = {k: [0, 0] for k in range(len(BANDS))}
+    for peak, handed in peaks:
+        counts[band(peak)][0 if handed else 1] += 1
+    top = max((sum(v) for v in counts.values()), default=0) or 1
+    rows = [
+        {"label": band_label(k), "handed": h, "other": o, "handed_frac": h / top,
+         "other_frac": o / top, "mark": k == band(handoff_at)}
+        for k, (h, o) in counts.items()
+    ]  # fmt: skip
+    table = []
+    for at in THRESHOLDS:
+        r = replay.get(at, {"handoffs": 0, "saved": 0.0, "rewrite": 0.0, "reread": 0.0})
+        net = r["saved"] - r["rewrite"] - r["handoffs"] * r["reread"]
+        table.append({"at": f"{at // 1000}k", "handoffs": r["handoffs"],
+                      "saved": fmt("cost", r["saved"]), "rewrite": fmt("cost", r["rewrite"]),
+                      "reread": fmt("cost", r["handoffs"] * r["reread"]),
+                      "net": fmt("cost", net)})  # fmt: skip
+    return {
+        "bands": bands,
+        "peaks": {"rows": rows, "handoff_at": f"{handoff_at // 1000}k",
+                  "sessions": len(peaks)},
+        "replay": table,
+    }  # fmt: skip
 
 
 def _foot(answers, servers, total) -> dict:

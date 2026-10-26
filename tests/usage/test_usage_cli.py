@@ -144,3 +144,39 @@ def test_a_partial_backfill_says_how_far_it_came(tmp_path):
     assert res.exit_code == 0, res.output
     assert "1 of about 2 sessions" in res.output
     assert "AEGIS USAGE" in res.output and "s0" in res.output
+
+
+def _subscribed(tmp_path):
+    root = _root(tmp_path)
+    (root / ".aegis.yaml").write_text(
+        "agents: {}\nusage:\n  subscriptions:\n    a1b2: {name: claude-max, fee: 200}\n"
+    )
+    t = datetime(2026, 6, 1, 12, tzinfo=timezone.utc).timestamp()
+    con = sqlite3.connect(root / ".aegis" / "state" / "journal.db")
+    con.execute("UPDATE usage_turns SET billing = 'claude:a1b2'")
+    con.execute("UPDATE usage_parts SET billing = 'claude:a1b2'")
+    con.executemany("INSERT INTO usage_quota VALUES('claude:a1b2', 'weekly_all', ?, ?, ?)",
+                    [(t - 1800, 10.0, t + 86400), (t + 1800, 14.0, t + 86400)])  # fmt: skip
+    con.commit()
+    con.close()
+    return root
+
+
+def test_measure_subscription_split_by_owner_prints_the_fee_share(tmp_path):
+    root = _subscribed(tmp_path)
+    res = invoke("usage", "--root", str(root), "--since", "2026-06-01",
+                 "--measure", "subscription", "--split", "owner")  # fmt: skip
+    assert res.exit_code == 0, res.output
+    assert "OWNER" in res.output and "SUB" in res.output
+    assert "$1.85" in res.output  # 4 points of a $200 month's week
+
+
+def test_split_context_with_whatif_prints_the_replay(tmp_path):
+    root = _root(tmp_path)
+    res = invoke("usage", "--root", str(root), "--since", "2026-06-01",
+                 "--split", "context", "--whatif", "200k")  # fmt: skip
+    assert res.exit_code == 0, res.output
+    assert "CONTEXT" in res.output and "WHATIF" in res.output and "0–50k" in res.output
+    assert "Handing off at 200k: 0 handoffs" in res.output
+    bad = invoke("usage", "--root", str(root), "--whatif", "250k")
+    assert bad.exit_code == 2 and "100k, 150k, 200k, 300k, 400k" in bad.output

@@ -132,3 +132,66 @@ async def test_the_page_op_answers_every_panel(tmp_path):
                       "outcomes", "foot", "controls"}  # fmt: skip
     assert p["tiles"][0]["value"] == "$1.60" and len(p["trend"]["weeks"]) == 2
     assert [m["key"] for m in p["mode"]] == ["queue", "person"]
+
+
+SUB = {"name": "claude-max", "fee": 100.0, "kind": "metered", "sub": 60.0,
+       "elsewhere": 20.0, "unused": 20.0, "elsewhere_usd": 20.0, "unused_usd": 20.0,
+       "apportioned": 15.0, "value": 250.0}  # fmt: skip
+CONTEXT = {
+    "bands": [{"band": 0, "calls": 300, "cost": 10.0, "tok_cr": 0},
+              {"band": 3, "calls": 100, "cost": 30.0, "tok_cr": 0}],
+    "peaks": [[40_000, False], [250_000, False], [350_000, True]],
+    "replay": [{"at": at, "handoffs": h, "saved": s, "rewrite": 0.5 if h else 0.0, "reread": r}
+               for at, h, s, r in ((100_000, 3, 9.0, 1.0), (150_000, 2, 5.0, 1.0),
+                                   (200_000, 2, 4.0, 1.0), (300_000, 1, 1.0, 1.0),
+                                   (400_000, 0, 0.0, 1.0))],
+}  # fmt: skip
+
+
+def with_subs_and_context():
+    s = server()
+    s["subs"] = ans([row(billing="claude:a1b2", owner="acme-co", sub=40.0, limit=40.0),
+                     row(billing="claude:a1b2", owner="ana", sub=20.0, limit=20.0)])
+    s["subs"]["subs"] = {"claude:a1b2": SUB}
+    s["context"] = ans([row(context=0, cost=10.0)])
+    s["context"]["context"] = CONTEXT
+    return {"here": s}
+
+
+def test_a_subscription_panel_splits_its_fee_by_owner_elsewhere_and_unused():
+    (p,) = one(answers=with_subs_and_context())["subscriptions"]
+    assert (p["name"], p["fee"], p["ratio"]) == ("claude-max", "$100", "2.5×")
+    assert [(x["label"], x["text"]) for x in p["parts"]] == [
+        ("acme-co", "$40.00"), ("ana", "$20.00"), ("elsewhere", "$20.00"),
+        ("unused", "$20.00")]  # fmt: skip
+    assert round(sum(x["frac"] for x in p["parts"]), 9) == 1.0
+    assert "25% of it apportioned" in p["note"]
+
+
+def test_the_context_panel_has_bands_peaks_and_every_threshold():
+    c = one(answers=with_subs_and_context(), handoff_at=300_000)["context"]
+    b = {x["label"]: x for x in c["bands"]}
+    assert (b["0–50k"]["calls"], b["0–50k"]["cost"]) == ("75%", "25%")
+    assert b["200k–300k"]["per_call"] == "$0.30" and b["0–50k"]["per_call"] == "$0.03"
+    assert [p["label"] for p in c["peaks"]["rows"]][-1] == "600k+"
+    marked = [p["label"] for p in c["peaks"]["rows"] if p["mark"]]
+    assert marked == ["300k–400k"]
+    handed = {p["label"]: (p["handed"], p["other"]) for p in c["peaks"]["rows"]}
+    assert handed["300k–400k"] == (1, 0) and handed["200k–300k"] == (0, 1)
+    r = {x["at"]: x for x in c["replay"]}
+    assert list(r) == ["100k", "150k", "200k", "300k", "400k"]
+    assert r["100k"]["net"] == "$5.50"  # 9 − 0.5 − 3 × 1
+    assert r["400k"]["net"] == "$0.00" and r["400k"]["handoffs"] == 0
+
+
+def test_the_measure_control_offers_sub_and_old_answers_draw_empty_panels():
+    p = one()
+    assert p["subscriptions"] == [] and p["context"]["bands"] == []
+
+
+async def test_the_page_op_answers_the_new_panels(tmp_path):
+    app = stand_in(tmp_path)
+    p = await app.registry.call("usage.page", {"window": 2, "tz": "UTC"})
+    assert "sub" in [m["key"] for m in p["controls"]["measures"]]
+    assert {"subscriptions", "context"} <= set(p)
+    assert [x["at"] for x in p["context"]["replay"]][0] == "100k"

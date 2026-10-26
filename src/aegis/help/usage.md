@@ -43,9 +43,41 @@ aegis usage --split mode --where harness=claude-code --where person=ana
 `mode`, `kind`, `purpose`, `activity`, `billing`, `context` and `session`.
 `--by` buckets by `hour`, `day`, `week`, `month`, `dow` (weekday) or
 `--by dow_hour`; `--by hour` alone shows the hour of the day. `--measure` is one of
-`cost`, `tokens`, `secs`, `turns`, `sessions`, `calls`, `errors`, `exits` or
-`waits`. `--where dimension=value` filters, and may repeat. `--json` prints the
-rows, the totals and the outcomes.
+`cost`, `tokens`, `secs`, `turns`, `sessions`, `calls`, `errors`, `exits`,
+`waits`, `subscription` (or `sub`), `limit` or `whatif`. `--where
+dimension=value` filters, and may repeat. `--json` prints the rows, the totals,
+the outcomes, each subscription's split and, split by context, the context
+facts.
+
+## Subscriptions and context
+
+```bash
+aegis usage --since 4w --measure subscription --split owner
+aegis usage --since 4w --split context --whatif 200k
+```
+
+A turn run on a subscription (Claude Code signed in, OpenCode Go, Codex's
+plan) bills it; a turn on an API key bills `api`. `--split billing` names each
+subscription, as `claude:<hash>` for Claude Code's account. Name it and give
+it a fee in the config's `usage.subscriptions` ([config](config.md)), and two
+measures appear:
+
+- **subscription** (`sub`): the fee's share. A week of the fee is the monthly
+  fee times 12 / 52, and each rise of the weekly limit between two quota
+  readings goes to what ran on the subscription in those hours, by its cost at
+  API prices. A rise with nothing behind it is *elsewhere* (the provider's own
+  apps, a machine aegis does not run on); what a week left at its reset is
+  *unused*. The slices, elsewhere and unused add up to the fee. Before the
+  first reading, or with no quota provider, the fee is *apportioned* by cost.
+- **limit**: the points of the weekly limit used.
+
+`--split context` groups by the context a turn peaked at, in bands of 0, 50k,
+100k, 200k, 300k, 400k and 600k tokens. `--whatif` (100k, 150k, 200k, 300k or
+400k) replays every session as if it had handed off whenever its context
+passed that size: later calls carry less context, priced at cache read; each
+handoff pays one cache write of a successor's start and the measured cost of
+rereading, the median reading cost of real successors' first five turns. The
+`whatif` measure is that net saving, and the last line sums it.
 
 The older views still work: `--sessions` lists the costliest sessions,
 `--tools` the cost and calls by activity, `--session <handle>` one session and
@@ -71,6 +103,13 @@ measure (spend at API prices, subscription dollars, tokens or agent hours).
   it; a model with no price shows its tokens.
 - **Outcomes**: commits, pull requests and closed issues per repo, with the
   repo's measure and its cost per merged pull request.
+- **Subscriptions**: per subscription, its fee for the window split over
+  owners, elsewhere and unused, what it ran at API prices against the fee, and
+  how much of it was apportioned without readings.
+- **Context length**: the share of calls against the share of cost per
+  context band with a call's mean cost, the peaks of sessions that handed off
+  and of those that did not with `context.handoff_at` marked, and the replay's
+  saving at every threshold, net of rewriting and rereading.
 
 Any cell, bar or row lists the sessions behind it, costliest first, and a
 session opens its transcript. The page refreshes within 2 seconds of a turn
@@ -83,8 +122,10 @@ background count of older sessions is still running.
 An agent asks the same question with one call to `usage_read`. It takes the
 CLI's parameters: `since` and `until` (`2026-10-01`, `today`, `yesterday`,
 `7d`, `4w`), `by`, `split`, `measure` (rows are sorted by it), `where`, and
-`tz`. It returns the rows, their totals, the journal's outcomes, the share of
-cost estimated from tokens and the count of tokens with no price.
+`tz`, and `whatif`. It returns the rows, their totals, the journal's outcomes,
+the share of cost estimated from tokens, the count of tokens with no price,
+each subscription's split (`subs`) and, split by context, the bands, peaks and
+replay (`context`).
 
 What did background work cost this week, per repo? Background work is every
 turn no person woke: ask once per mode, or split by mode and repo at once.
@@ -101,8 +142,7 @@ or `agent`. For one mode alone:
 ```
 
 A member's call counts only the sessions it owns; an admin's counts all.
-`server` names this server only for now, and `whatif` is refused until the
-context bands are counted.
+`server` names this server only for now.
 
 ## What the numbers mean
 

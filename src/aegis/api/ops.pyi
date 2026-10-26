@@ -903,7 +903,7 @@ class _usage:
         whatif: str | None = ...,
         tz: str | None = ...,
     ) -> Any:
-        """What work cost on this server, from the usage tables aegis fills as each turn ends: cost at API prices, tokens, agent seconds, turns, sessions, tool calls and waits, over a window, grouped by any of the split's dimensions and by period. Returns rows, totals and the journal's outcomes (commits, PRs, closed issues) for the same slice. Background work is mode queue, workflow, schedule, monitor or agent."""
+        """What work cost on this server, from the usage tables aegis fills as each turn ends: cost at API prices, tokens, agent seconds, turns, sessions, tool calls and waits, over a window, grouped by any of the split's dimensions and by period. Returns rows, totals and the journal's outcomes (commits, PRs, closed issues) for the same slice. sub and limit are a subscription's fee and weekly limit shared by cost; whatif (with whatif=200k) what handing off there would save, net of rewriting and rereading. Background work is mode queue, workflow, schedule, monitor or agent."""
 
 class _workflow:
     async def answer(

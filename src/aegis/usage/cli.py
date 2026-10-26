@@ -182,7 +182,10 @@ def usage(
         help="comma-separated dimensions: repo,purpose, owner, model...",
     ),
     measure: str = typer.Option(
-        "cost", "--measure", help="cost, tokens, secs, turns..."
+        "cost", "--measure", help="cost, tokens, secs, turns, subscription, limit..."
+    ),
+    whatif: str = typer.Option(
+        None, "--whatif", help="replay handoffs at 100k, 150k, 200k, 300k or 400k"
     ),
     where: list[str] = typer.Option(
         None, "--where", help="dimension=value, repeatable: harness=claude-code"
@@ -210,9 +213,20 @@ def usage(
     from zoneinfo import ZoneInfo
 
     from ..journal import db
+    from .context import threshold
     from .query import DIMS, MEASURES, UsageQuery, run
-    from .render import dashboard_lines, table_lines
+    from .render import dashboard_lines, table_lines, value
 
+    measure = {"subscription": "sub"}.get(measure, measure)
+    at = None
+    if whatif:
+        try:
+            at = threshold(whatif)
+        except ValueError as e:
+            typer.echo(f"--{e}")
+            raise typer.Exit(2) from None
+        if measure == "cost":
+            measure = "whatif"
     if by and by not in BYS:
         typer.echo(f"--by takes {', '.join(BYS)}, not {by!r}")
         raise typer.Exit(2)
@@ -255,7 +269,8 @@ def usage(
     except sqlite3.OperationalError:
         typer.echo("No sessions found: aegis serve has not counted any usage here yet.")
         raise typer.Exit(0) from None
-    q = UsageQuery(lo, hi, where=filters, tz=zone_name)
+    q = UsageQuery(lo, hi, where=filters, tz=zone_name, whatif=at)
+    subs = _subscriptions(root)
     window = (
         f"{datetime.fromtimestamp(lo, zone):%Y-%m-%d} → "
         f"{datetime.fromtimestamp(min(hi, now), zone):%Y-%m-%d} ({zone_name})"
@@ -270,7 +285,11 @@ def usage(
     elif tools:
         dims = ("activity",)
     if dims or by:
-        a = run(con, replace(q, split=dims, by="dow_hour" if hour_of_day else by))
+        a = run(
+            con,
+            replace(q, split=dims, by="dow_hour" if hour_of_day else by),
+            subscriptions=subs,
+        )
         if hour_of_day:  # the hour of the day, as the old --by hour showed it
             hours: dict[str, dict] = {}
             for r in a.rows:
@@ -282,7 +301,7 @@ def usage(
                     acc[m] += r[m]
             a.rows = list(hours.values())
     else:
-        a = run(con, q)
+        a = run(con, q, subscriptions=subs)
     if as_json:
         typer.echo(
             json.dumps(
@@ -292,6 +311,8 @@ def usage(
                     "outcomes": a.outcomes,
                     "estimated": a.estimated,
                     "unpriced_tokens": a.unpriced_tokens,
+                    "subs": a.subs,
+                    "context": a.context,
                     "backfill": note,
                 },
                 indent=1,
@@ -304,6 +325,14 @@ def usage(
     names = _handles(con)
     if dims or by:
         lines = table_lines(a, dims, by, measure, names)
+        r = next((r for r in (a.context or {}).get("replay", []) if r["at"] == at), None)
+        if r is not None:
+            net = r["saved"] - r["rewrite"] - r["handoffs"] * r["reread"]
+            lines.append(
+                f"Handing off at {at // 1000}k: {r['handoffs']} handoffs,"
+                f" {value('cost', r['saved'])} saved, {value('cost', net)} net of"
+                " rewriting and rereading"
+            )
     else:
         each = {
             d: run(con, replace(q, split=(d,)))
@@ -321,6 +350,19 @@ def usage(
         daily = run(con, replace(q, by="day"))
         lines = dashboard_lines(a, each, daily, window, names)
     typer.echo("\n".join(lines))
+
+
+def _subscriptions(root: Path | None) -> dict:
+    """The config's usage.subscriptions, or none when it cannot be read."""
+    from ..cli import roots_here
+    from ..config import load, usage_from
+    from ..roots import CONFIG_FILE
+
+    try:
+        data, _ = load(roots_here(root).config_root / CONFIG_FILE)
+    except Exception:
+        return {}
+    return usage_from((data or {}).get("usage"))["subscriptions"]
 
 
 def _local_zone() -> str:
