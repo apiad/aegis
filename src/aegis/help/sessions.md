@@ -478,8 +478,11 @@ files agents read.
 ## The journal, quota and the rest
 
 - `journal_search` asks what was done on this server, by day, words, path,
-  session, repo or kind; commits, pull requests, finished plan items and turns
-  that changed files are recorded without anyone writing them down.
+  session, repo or kind; commits, pull requests, closed issues, finished plan
+  items and turns that changed files are recorded without anyone writing them
+  down. A pull request merged with `gh pr merge --repo owner/name` is filed
+  under the local checkout whose `origin` is that repo, and a merge closes the
+  issues its `gh pr create --body` named with Closes, Fixes or Resolves #N.
   `journal_note` records a decision, a blocker or a milestone aegis cannot
   see. People open the Journal with Alt+L.
 - `quota_read` returns how much of each subscription window is left, from the

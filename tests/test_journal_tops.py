@@ -71,7 +71,7 @@ def test_a_pr_row_takes_the_repo_of_its_workdir(tmp_path):
 
 def test_top_and_sha_are_stored(tmp_path):
     con, fresh = db.connect(tmp_path / "j.db")
-    assert fresh and db.SCHEMA_VERSION == 2
+    assert fresh and db.SCHEMA_VERSION == 3
     e = db.Entry(
         "L",
         1,
