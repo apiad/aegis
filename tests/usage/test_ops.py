@@ -11,7 +11,7 @@ from aegis.app import App
 from aegis.journal import db
 from aegis.mcp import _schema
 from aegis.ops import Caller, OpError, Principal, Registry
-from aegis.usage import tables
+from aegis.usage import ops, tables
 from aegis.usage.ops import register_usage_ops
 from aegis.usage.turns import Derived, PartRow, TurnRow
 
@@ -154,11 +154,13 @@ class FakeLink:
 
     def __init__(self, far, state="linked"):
         self.far, self.name, self.state = far, far.server_name, state
-        self.error: str | None = None
+        self.error: str | BaseException | None = None
         self.asked: list[dict] = []
 
     async def call(self, op, params=None):
         self.asked.append(params)
+        if isinstance(self.error, BaseException):
+            raise self.error
         if self.error:
             raise OpError(self.error, "no")
         return await self.far.registry.call(op, params, Caller("user", link="here"))
@@ -196,14 +198,35 @@ async def test_rows_from_every_linked_server_carry_their_server(tmp_path):
     assert beta.asked[0]["server"] == "beta" and beta.asked[0]["split"] == ["repo"]
 
 
-async def test_a_server_that_fails_serves_its_last_answer_as_cached(tmp_path):
+async def test_a_server_that_fails_serves_its_last_answer_as_cached(
+    tmp_path, monkeypatch
+):
     app, [beta] = linked(tmp_path, "beta")
     first = await app.registry.call("usage.read", {})
+    monkeypatch.setattr(ops, "LINKED_S", 0)
     beta.error = "server_offline"
     a = await app.registry.call("usage.read", {})
     s = a["servers"]["beta"]
     assert s["state"] == "cached" and s["at"] == first["servers"]["beta"]["at"]
     assert isinstance(s["age_s"], int) and a["totals"]["cost"] == 3.2
+
+
+async def test_a_dropped_connection_serves_the_last_answer_too(tmp_path, monkeypatch):
+    app, [beta] = linked(tmp_path, "beta")
+    await app.registry.call("usage.read", {})
+    monkeypatch.setattr(ops, "LINKED_S", 0)
+    beta.error = ConnectionResetError("reset by peer")
+    a = await app.registry.call("usage.read", {})
+    assert a["servers"]["beta"]["state"] == "cached" and a["totals"]["cost"] == 3.2
+
+
+async def test_a_linked_server_is_asked_at_most_once_a_minute(tmp_path):
+    app, [beta] = linked(tmp_path, "beta")
+    first = await app.registry.call("usage.read", {})
+    again = await app.registry.call("usage.read", {})
+    assert len(beta.asked) == 1
+    assert again["servers"]["beta"]["state"] == "live"
+    assert again["totals"] == first["totals"]
 
 
 async def test_a_server_never_answered_is_missing(tmp_path):

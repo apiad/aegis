@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import json
+import logging
 import pwd
 import re
 import time
@@ -33,7 +34,12 @@ if TYPE_CHECKING:
     from ..app import App
     from ..ops import Principal
 
+log = logging.getLogger(__name__)
+
 WEEKS = re.compile(r"(\d+)w")
+# A linked server is asked a question at most once a minute; its answer is
+# reused until then, so a busy page does not call every link each refresh.
+LINKED_S = 60
 EPOCH = re.compile(r"\d+(\.\d+)?")
 
 
@@ -180,11 +186,14 @@ def params_of(q: UsageQuery) -> dict:
             "tz": q.tz}  # fmt: skip
 
 
-async def far(app: "App", caller, who: "Principal", asks: dict, last: dict) -> dict:
+async def far(
+    app: "App", caller, who: "Principal", asks: dict, last: dict, asked: dict
+) -> dict:
     """Ask every linked server each question in ``asks`` (a key to usage.read
     params): per server, its state, when it answered and its answers by key.
     A server that fails serves the last answers ``last`` kept, as cached; one
-    never answered (down, or an aegis with no usage.read) is missing. A call
+    never answered (down, or an aegis with no usage.read) is missing. An
+    answer younger than LINKED_S (``asked`` keeps when) is reused. A call
     over a link and a member's call ask no link: links are the admin's."""
     links = getattr(app, "links", None)
     member = app.multi_user is not None and not who.is_admin
@@ -192,20 +201,29 @@ async def far(app: "App", caller, who: "Principal", asks: dict, last: dict) -> d
         return {}
     up = links.up()
 
+    now = time.time()
+
+    def recent(name: str) -> bool:
+        return all(now - asked.get((name, k), 0) < LINKED_S for k in asks)
+
     async def one(link):
         got = await asyncio.gather(
             *(link.call("usage.read", {**p, "server": link.name}) for p in asks.values()),
             return_exceptions=True,
         )  # fmt: skip
         for g in got:
-            if isinstance(g, OpError):
-                return None
             if isinstance(g, BaseException):
-                raise g
+                if not isinstance(g, OpError):
+                    log.warning("usage: %s did not answer: %r", link.name, g)
+                return None
+        asked.update({(link.name, k): now for k in asks})
         return dict(zip(asks, got))
 
-    fresh = dict(zip([link.name for link in up], await asyncio.gather(*map(one, up))))
-    now = time.time()
+    ask = [link for link in up if not recent(link.name)]
+    fresh = dict(zip([link.name for link in ask], await asyncio.gather(*map(one, ask))))
+    for link in up:
+        if link.name not in fresh:
+            fresh[link.name] = {k: last[link.name, k] for k in asks}
     out = {}
     names = [*fresh, *(link.name for link in links.links()), *(n for n, _ in last)]
     for name in dict.fromkeys(names):
@@ -360,6 +378,7 @@ def register_usage_ops(app: "App") -> None:
     # The last answer from each linked server, by (server, question): what a
     # server that stops answering is shown with, marked cached.
     last: dict[tuple[str, str], dict] = {}
+    asked: dict[tuple[str, str], float] = {}
 
     @r.op("usage.read", ReadParams, agent=True, read=True)
     async def usage_read(p: ReadParams, caller):
@@ -384,7 +403,7 @@ def register_usage_ops(app: "App") -> None:
             return await asyncio.to_thread(answer, app, q, who)
         params = p.model_dump(exclude={"server"})
         key = json.dumps(params, sort_keys=True)
-        servers = await far(app, caller, who, {key: params}, last)
+        servers = await far(app, caller, who, {key: params}, last, asked)
         return await asyncio.to_thread(across, app, q, who, servers)
 
     @r.op("usage.import", ImportParams, agent=True, admin=True)
@@ -430,7 +449,7 @@ def register_usage_ops(app: "App") -> None:
         qs = page.queries(p.window, p.split, now, p.tz or _local_zone())
         tag = f"page:{p.window}:{p.split}:"
         asks = {tag + name: params_of(q) for name, q in qs.items()}
-        servers = await far(app, caller, who, asks, last)
+        servers = await far(app, caller, who, asks, last, asked)
         for s in servers.values():
             s["answers"] = {k.removeprefix(tag): a for k, a in s["answers"].items()}
         return await asyncio.to_thread(page_of, app, p, who, now, qs, servers)
