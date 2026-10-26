@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from ..journal import db, when
 from ..ops import OpError
+from . import page
 from .query import BYS, DIMS, MEASURES, UsageQuery, run
 
 if TYPE_CHECKING:
@@ -139,6 +140,49 @@ def answer(app: "App", q: UsageQuery, who: "Principal") -> dict:
     }
 
 
+class PageParams(_Strict):
+    window: int = Field(4, ge=1, le=52, description="Weeks, ending this one.")
+    split: str = "purpose"
+    measure: str = "cost"
+    servers: list[str] | None = None
+    tz: str | None = None
+
+
+# The page's controls: what each offers.
+WINDOWS = (1, 4, 12, 26)
+PAGE_SPLITS = ("purpose", "repo", "owner", "mode", "model", "harness", "activity",
+               "person", "server")  # fmt: skip
+
+
+def page_of(app: "App", p: PageParams, who: "Principal", now: float) -> dict:
+    """Every query the page needs, here, and its panels."""
+    from .cli import _local_zone
+
+    tz = p.tz or _local_zone()
+    here = app.server_name
+    answers = {
+        here: {
+            name: answer(app, q, who)
+            for name, q in page.queries(p.window, p.split, now, tz).items()
+        }
+    }
+    *_, mondays = page.window(p.window, now, tz)
+    names = app.config.current().usage.get("owner_names") or {}
+    out = page.panels(answers, p.window, p.split, p.measure, names, mondays)
+    return out | {
+        "at": now,
+        "window": p.window,
+        "split": p.split,
+        "measure": p.measure,
+        "controls": {
+            "windows": list(WINDOWS),
+            "splits": list(PAGE_SPLITS),
+            "measures": [{"key": k, "label": v} for k, v in page.TITLES.items()],
+            "servers": [{"name": here, "on": True}],
+        },
+    }
+
+
 def register_usage_ops(app: "App") -> None:
     r = app.registry
 
@@ -159,3 +203,18 @@ def register_usage_ops(app: "App") -> None:
             )
         q = query_of(p, time.time())
         return await asyncio.to_thread(answer, app, q, app.who(caller))
+
+    @r.op("usage.page", PageParams)
+    async def usage_page(p: PageParams, caller):
+        """The usage page's panels: tiles, trend, owners, repo by purpose,
+        when, driven by, harness and model, outcomes and the footer."""
+        if p.split not in PAGE_SPLITS:
+            raise OpError(
+                "bad_params", f"split takes {', '.join(PAGE_SPLITS)}, not {p.split!r}"
+            )
+        if p.measure not in page.MEASURES:
+            raise OpError(
+                "bad_params",
+                f"measure takes {', '.join(page.MEASURES)}, not {p.measure!r}",
+            )
+        return await asyncio.to_thread(page_of, app, p, app.who(caller), time.time())

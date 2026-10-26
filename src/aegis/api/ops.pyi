@@ -880,6 +880,16 @@ class _turn:
         """Call this before the final message of every turn you hand back to the person, and not when you end a turn to wait on a monitor or a queue task. It sets the mark on your tab and the line on your card."""
 
 class _usage:
+    async def page(
+        self,
+        *,
+        window: int = ...,
+        split: str = ...,
+        measure: str = ...,
+        servers: builtins.list[str] | None = ...,
+        tz: str | None = ...,
+    ) -> Any:
+        """The usage page's panels: tiles, trend, owners, repo by purpose, when, driven by, harness and model, outcomes and the footer."""
     async def read(
         self,
         *,
