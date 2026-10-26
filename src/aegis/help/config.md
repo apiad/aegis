@@ -221,6 +221,27 @@ covers Claude Code only, because only its cache lifetime was measured.
 A `context:` block with a wrong key or value leaves all three defaults in
 force, and `aegis doctor` names the mistake.
 
+## Who owns a repo
+
+`aegis usage` splits spend by the owner of each repo: the account or
+organisation in its `origin` URL (`git@github.com:acme-co/atlas.git` is owned
+by `acme-co`), or `local` when it has no remote. `usage:` names an owner for a
+local repo, by the repo's directory name, and renames an owner for display:
+
+```yaml
+usage:
+  owners:
+    landing-page: acme-co      # a local-only repo, done for a client
+  owner_names:
+    acme-co: Acme              # how an owner is labelled
+  subscriptions:
+    a1b2: {name: claude-max, fee: 200, renews: 14}  # USD a month, billing day
+```
+
+A repo's owner is read once and read again when its `.git/config` changes. A
+`usage:` block with a wrong key or value leaves every default in force, and
+`aegis doctor` names the mistake.
+
 ## Notices about the host
 
 `notices:` sets when aegis tells agents that the host runs short (the

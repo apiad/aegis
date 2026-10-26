@@ -58,7 +58,7 @@ log = logging.getLogger("aegis.config")
 
 WATCH_EVERY_S = 1.0
 TOP_KEYS = (
-    "agents", "queues", "default_agent", "recap", "btw", "context",
+    "agents", "queues", "default_agent", "recap", "btw", "context", "usage",
     "session_memory_max", "terminals", "terminal_memory_max", "park", "network",
     "host", "workflows", "harness_versions", "notices", "nudges", "multi_user",
     "knowledge",
@@ -99,6 +99,52 @@ def context_from(raw: object) -> dict:
                 "error": f"context.{k} {v!r} is not a {kind} integer"
             }
         out[k] = v
+    return out
+
+
+# Who owns a local repo, how an owner is shown, and the subscriptions' fees
+# (usage/owners.py, spec #737).
+USAGE_DEFAULTS: dict = {"owners": {}, "owner_names": {}, "subscriptions": {}}
+
+
+def _usage_defaults(error: str | None = None) -> dict:
+    out: dict = {k: {} for k in USAGE_DEFAULTS}
+    return out | {"error": error} if error else out
+
+
+def usage_from(raw: object) -> dict:
+    """The ``usage:`` block over its defaults: ``owners`` and ``owner_names``
+    map a name to a name, ``subscriptions`` an account to its name, fee and
+    renewal day. A wrong block keeps every default and carries ``error``."""
+    out = _usage_defaults()
+    if raw is None:
+        return out
+    if not isinstance(raw, dict):
+        return _usage_defaults(
+            "usage must be a mapping of " + ", ".join(USAGE_DEFAULTS)
+        )
+    for k, v in raw.items():
+        if k not in USAGE_DEFAULTS:
+            return _usage_defaults(
+                f"usage has no key {k!r}; it takes " + ", ".join(USAGE_DEFAULTS)
+            )
+        if not isinstance(v, dict):
+            return _usage_defaults(f"usage.{k} must be a mapping")
+        for name, value in v.items():
+            if k == "subscriptions":
+                fee = value.get("fee", 0) if isinstance(value, dict) else None
+                if (
+                    not isinstance(value, dict)
+                    or isinstance(fee, bool)
+                    or not (isinstance(fee, (int, float)) and fee >= 0)
+                ):
+                    return _usage_defaults(
+                        f"usage.subscriptions.{name} must be a mapping with a"
+                        " non-negative fee"
+                    )
+            elif not isinstance(value, str) or not value:
+                return _usage_defaults(f"usage.{k}.{name} {value!r} is not a name")
+        out[k] = {str(n): val for n, val in v.items()}
     return out
 
 
@@ -784,6 +830,7 @@ class Snapshot:
     unknown_keys: tuple[str, ...] = ()
     doc: ConfigDoc = field(default_factory=ConfigDoc)
     context: dict = field(default_factory=lambda: dict(CONTEXT_DEFAULTS))
+    usage: dict = field(default_factory=_usage_defaults)
     notices: dict = field(default_factory=_notices_defaults)
     nudges: dict = field(default_factory=lambda: dict(NUDGES_DEFAULTS))
     knowledge: dict = field(default_factory=lambda: dict(KNOWLEDGE_DEFAULTS))
@@ -827,6 +874,7 @@ class Snapshot:
             unknown_keys=tuple(str(k) for k in data if k not in TOP_KEYS),
             doc=doc_from(data),
             context=context_from(data.get("context")),
+            usage=usage_from(data.get("usage")),
             notices=notices_from(data.get("notices")),
             nudges=nudges_from(data.get("nudges")),
             knowledge=knowledge_from(data.get("knowledge")),

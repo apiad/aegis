@@ -711,6 +711,8 @@ async def doctor(
         out.append(Finding("error", "terminal_memory_max", snap.terminal_memory_error))
     out += _recap(roots)
     out.append(_context(snap.context))
+    if "error" in snap.usage:
+        out.append(Finding("error", "usage", snap.usage["error"]))
     out += _notices(snap.notices)
     if "error" in snap.nudges:
         out.append(Finding("error", "nudges", snap.nudges["error"]))
