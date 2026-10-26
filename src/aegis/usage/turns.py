@@ -274,6 +274,9 @@ class UsageDeriver:
             obj = json.loads(line)
         except ValueError:
             return
+        if isinstance(obj, dict) and obj.get("type") == "result":
+            self._result_usage(obj)
+            return
         if not isinstance(obj, dict) or obj.get("type") != "assistant":
             return
         message = obj.get("message") or {}
@@ -292,6 +295,27 @@ class UsageDeriver:
         for block in message.get("content") or []:
             if isinstance(block, dict) and block.get("type") == "tool_use":
                 self._mid[str(block.get("id"))] = mid
+
+    def _result_usage(self, obj: dict) -> None:
+        """A result's own usage, the turn's sum, stands in for its messages'
+        when none of them reported any (an imported legacy log)."""
+        u = obj.get("usage")
+        t = self._turn
+        if not isinstance(u, dict) or (t and any(m.tokens for m in t.msgs.values())):
+            if t is None and obj.get("total_cost_usd") is not None:
+                self._open_turn(self._ts)  # a billed turn with nothing else
+            return
+        cc5, cc1, _ = split_cache(u)
+        m = _Msg(
+            model=None,
+            inp=int(u.get("input_tokens") or 0),
+            out=int(u.get("output_tokens") or 0),
+            cc5=cc5,
+            cc1=cc1,
+            cr=int(u.get("cache_read_input_tokens") or 0),
+        )
+        if m.tokens or obj.get("total_cost_usd") is not None:
+            self._open_turn(self._ts).msgs["result"] = m
 
     def _usage_line(self, src: str, line: str) -> None:
         """A Codex request's or an OpenCode step's tokens, read as
@@ -348,7 +372,7 @@ class UsageDeriver:
     def _event(self, i: int, ts: float, ev) -> Derived:
         if isinstance(ev, Init):
             self.cwd = ev.cwd or self.cwd
-            self.model = self.model or ev.model
+            self.model = ev.model or self.model  # the harness's own, over an alias
             return Derived()
         if isinstance(ev, Echo):
             return Derived()

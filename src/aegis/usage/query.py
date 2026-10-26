@@ -46,6 +46,7 @@ DIMS = {
     "activity": "p.activity",
     "billing": "p.billing",
     "context": _CONTEXT,
+    "session": "p.log_id",
 }
 # Turn-level dimensions, which usage_turns answers alone.
 TURN_DIMS = {"person", "harness", "model", "mode", "kind", "billing"}
@@ -73,23 +74,29 @@ class Answer:
 
 
 def _offsets(since: float, until: float, tz: str) -> str:
-    """The SQL for ``ts``'s offset from UTC in ``tz``, in seconds, over the
-    window: one CASE over the ranges between the zone's changes."""
+    """The SQL for ``{ts}``'s offset from UTC in ``tz``, in seconds, over the
+    window: one CASE over the ranges between the zone's changes, found by
+    day and then by hour."""
     zone = ZoneInfo(tz)
 
     def off(t: float) -> int:
         u = datetime.fromtimestamp(t, timezone.utc).astimezone(zone).utcoffset()
         return int(u.total_seconds()) if u else 0
 
+    day = 86400
     t = since - since % 3600
     ranges: list[tuple[float, int]] = []
-    cur = off(since)
+    cur = off(t)
     while t < until:
-        t += 3600
-        o = off(t)
-        if o != cur:
-            ranges.append((t, cur))
-            cur = o
+        nxt = t + day
+        if off(nxt) != cur:
+            h = t
+            while h < nxt:
+                h += 3600
+                if (o := off(h)) != cur:
+                    ranges.append((h, cur))
+                    cur = o
+        t = nxt
     if not ranges:
         return str(cur)
     whens = " ".join(f"WHEN {{ts}} < {at} THEN {o}" for at, o in ranges)
@@ -218,7 +225,13 @@ def run(con: sqlite3.Connection, q: UsageQuery, owners: dict | None = None) -> A
     for d in (*q.split, *q.where):
         if d not in DIMS:
             raise ValueError(f"no dimension {d!r}; one of {', '.join(DIMS)}")
-    offsets = _offsets(q.since, q.until, q.tz)
+    # The zone's offsets matter only where there are rows: an open window
+    # (since 0) would otherwise walk every day since 1970.
+    lo, hi = con.execute("SELECT MIN(ts), MAX(ts) FROM usage_parts").fetchone()
+    lo2, hi2 = con.execute("SELECT MIN(ts), MAX(ts) FROM entries").fetchone()
+    lo = min(x for x in (lo, lo2, q.until) if x is not None)
+    hi = max(x for x in (hi, hi2, q.since) if x is not None)
+    offsets = _offsets(max(q.since, lo), min(q.until, hi + 1), q.tz)
     cte, cte_args = _owners_cte(con, owners)
     rows = _grouped(con, q, cte, cte_args, offsets)
     totals = {m: sum(r[m] for r in rows) for m in MEASURES}
@@ -227,7 +240,7 @@ def run(con: sqlite3.Connection, q: UsageQuery, owners: dict | None = None) -> A
         totals["turns"], totals["sessions"] = _distinct(con, q, cte, cte_args)
     priced = sum(r.pop("_priced") for r in rows)
     unpriced = sum(r.pop("_unpriced") for r in rows)
-    waits = _waits(con, q)
+    waits = _waits(con, q, offsets)
     totals["waits"] = sum(waits.values())
     for row in rows:
         if q.split == ("mode",):
@@ -246,9 +259,8 @@ def run(con: sqlite3.Connection, q: UsageQuery, owners: dict | None = None) -> A
     )
 
 
-def _waits(con: sqlite3.Connection, q: UsageQuery) -> dict[tuple, float]:
+def _waits(con: sqlite3.Connection, q: UsageQuery, offsets: str) -> dict[tuple, float]:
     """Seconds waited, by what woke the session and bucket."""
-    offsets = _offsets(q.since, q.until, q.tz)
     bucket = _bucket(q.by, "w.ts", offsets) if q.by else "NULL"
     where, args = ["w.ts >= ?", "w.ts < ?"], [q.since, q.until]
     if q.people is not None:

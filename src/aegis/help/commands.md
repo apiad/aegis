@@ -83,7 +83,7 @@ and no aegis command is refused before it costs a turn.
 | `aegis token revoke <name>` | end a token; revoking the server's own admin token, the one in `.aegis/state/token`, prints its replacement |
 | `aegis journal search [pattern]` | search what was done: `--since`, `--until`, `--path`, `--session`, `--kind`, `--limit` |
 | `aegis journal rebuild` | rebuild the journal from every transcript |
-| `aegis usage` | what the agents' work cost: `--by` month, dow or hour, `--sessions`, `--tools`, `--since` |
+| `aegis usage` | what the agents' work cost, from the usage rows aegis counts as each turn ends: `--since`, `--until`, `--split`, `--by`, `--measure`, `--where`, `--json`, `--sessions`, `--tools`; see the usage page |
 | `aegis usage repo <path>` | the cost of one git repository's work |
 | `aegis usage repos <dir>` | the cost of every repository directly under a directory |
 | `aegis map` | a map of the git repository holding the current directory, or `--repo`, less `--exclude` paths, for an agent learning its code; see the code map page |
