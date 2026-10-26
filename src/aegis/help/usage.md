@@ -3,10 +3,9 @@ title: Usage
 kind: howto
 when: asking what the agents' work cost, on which repos and owners, for what kind of work, by whom and when
 hints:
-  - aegis usage --since 4w: four weeks' cost by model, purpose, repo and owner. #the-dashboard
-  - Split any measure by any dimension, by period. #split-by-any-dimension
+  - aegis usage --since 4w: four weeks' cost by model, purpose and repo; --split any. #the-dashboard
   - The usage page: Usage in the command palette, or click Quota. #the-usage-page
-  - usage_read answers an agent's cost question in one call. #ask-from-an-agent-usage_read
+  - usage_read answers an agent's cost question in one call. #ask-from-an-agent-usage-read
 ---
 
 aegis counts every turn as it ends. The journal's writer thread reads each
