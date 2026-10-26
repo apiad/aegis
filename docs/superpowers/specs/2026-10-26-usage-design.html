@@ -116,6 +116,15 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 .um .chip{font:11px var(--font-mono);border:1px solid var(--rule);border-radius:999px;padding:1px 8px;color:var(--faint);background:none;cursor:pointer;text-transform:none;letter-spacing:0}
 .um .chip.on{color:var(--strong);border-color:var(--faint)}
 .um .tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1px;background:var(--rule);border-bottom:1px solid var(--rule)}
+.cx{padding:12px 14px}
+.cx .cx-h{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin-bottom:8px}
+.cx .cx-h b{font:500 13px var(--font-mono);color:var(--strong)}
+.cx .cx-h>span:not(.seg){font:11px var(--font-mono);color:var(--faint)}
+.cx .tiles{grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--rule)}
+.cx .row{display:grid;grid-template-columns:78px minmax(0,1fr) 58px;gap:8px;align-items:center;margin:3px 0;font:11px var(--font-mono);color:var(--muted)}
+.cx .bars{display:flex;flex-direction:column;gap:2px}
+.cx .bars i{display:block;height:7px;border-radius:2px}
+@media (max-width:640px){.cx .tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .um .tile{background:var(--bg);padding:10px 14px}
 .um .tile .k{font:10.5px var(--font-mono);color:var(--faint);text-transform:uppercase;letter-spacing:.04em}
 .um .tile .v{font:500 20px var(--font-mono);color:var(--strong);margin:2px 0}
@@ -195,6 +204,8 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <a class="sub" href="#repo">Repo and owner</a>
   <a class="sub" href="#mode">Mode</a>
   <a href="#outcomes">Outcomes from the journal</a>
+  <a href="#subscription">Subscription share</a>
+  <a href="#context">Context length</a>
   <a href="#live">Counting live</a>
   <a href="#links">Across linked servers</a>
   <a href="#surfaces">The page, the CLI, the tool</a>
@@ -210,7 +221,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <main>
 <h1>Usage: how aegis is used, for whom, counted as it happens</h1>
 <div class="meta"><span>docs/superpowers/specs/2026-10-26-usage-design.html</span><span>·</span><span>proposed, not started</span></div>
-<p class="lede">A person running agents through aegis should be able to answer, at any moment and without waiting: what have I spent, on which projects and for which owners, on what kind of work, with which harnesses and models, driven by whom, on which days and hours, and on which of my linked servers. This spec counts every turn as it ends, splits its cost over what the turn did, and serves the totals to a live page, to <code>aegis usage</code> and to an MCP tool from the same tables.</p>
+<p class="lede">A person running agents through aegis should be able to answer, at any moment and without waiting: what have I spent at API prices and what share of my subscriptions that is, on which projects and for which owners, on what kind of work, with which harnesses and models, driven by whom, on which days and hours, on which of my linked servers, and how much of it went to long contexts. This spec counts every turn as it ends, splits its cost over what the turn did, and serves the totals to a live page, to <code>aegis usage</code> and to an MCP tool from the same tables.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
 <div class="trio">
@@ -230,13 +241,15 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <div class="card">
   <h4>The questions it answers</h4>
   <ul>
-    <li>How much, and how it moves: spend, tokens, agent hours, turns and sessions per day, week or month.</li>
+    <li>How much, and how it moves: spend at API prices, tokens, agent hours, turns and sessions per day, week or month.</li>
+    <li>What share of each subscription: the part of its fee and of its weekly limit that each slice used, and how much of the limit went unused or to use outside aegis.</li>
     <li>For which projects and for whom: by repo, and by the repo's owner, so a person sees which client, lab or project of their own the money goes to.</li>
     <li>On what kind of work: by purpose (build, fix, review, docs, writing, research, ops, planning, coordinate, chat) and by activity (reading, testing, editing, bookkeeping, server, web, other agents, talking).</li>
     <li>With what: by harness and by model.</li>
     <li>Driven by whom: by mode, from a person in the chat to an agent-led queue, a workflow, a schedule or a monitor waking a session.</li>
     <li>When: by weekday and hour, in the person's time zone.</li>
     <li>Where: by server, across every linked server, and by person on a server several people use.</li>
+    <li>How long contexts get: what calls cost at each context length, how long sessions run before a handoff, and what handing off earlier would have saved.</li>
     <li>For what result: commits, pull requests opened and merged, issues closed, and the cost of each.</li>
   </ul>
 </div>
@@ -255,12 +268,19 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <div class="stat"><div class="v">262 / 527</div><div class="k">merged PRs the journal recorded with a repo, of those GitHub counts</div></div>
   <div class="stat"><div class="v">58%</div><div class="k">agreement between a model's label from the title and what the session did</div></div>
 </div>
+<div class="stats">
+  <div class="stat"><div class="v">73%</div><div class="k">of spend at API prices went to the 216 of 804 sessions whose context passed 200k tokens</div></div>
+  <div class="stat"><div class="v">$0.03 → $0.15</div><div class="k">mean cost of an API call at 50–100k context, and at 600k or more</div></div>
+  <div class="stat"><div class="v">338k</div><div class="k">median peak context of the 58 sessions that handed off; their successors started at 29k</div></div>
+  <div class="stat"><div class="v">15–26%</div><div class="k">of spend a handoff at 300k or at 200k would have saved, before the cost of rereading</div></div>
+</div>
 <ul>
   <li>One label per session put 59% of spend on "build". Split per turn, build is 23%, and review, ops and docs show up at 13–14% each. Sessions are mixtures, so the unit has to be smaller than a session.</li>
   <li>Labelling sessions by title with a small model cost cents and agreed with the sessions' own actions on 58% of them. The title says what the person asked; the commits, edits and commands say what was done. The rules below use only the second.</li>
   <li>Reading is half of all spend because every API call pays for the whole context, and most calls read. So reading, testing and bookkeeping are shown as activities, and for purposes they take the purpose of the work they lead to.</li>
   <li>A session's repo by "the repo it wrote most files in" left 14% of spend on the workspace root. A rule that read repo names from titles and vault paths moved 40% of that to a repo; naming the repo per tool call, from the path it touched, is the mechanical form of the same idea.</li>
   <li>Waiting is visible and large: between turns, sessions sat 323 hours waiting on a person and 222 hours on monitors, against 239 hours of work.</li>
+  <li>A call's cost grows with its context, because every call reads the whole cached prefix again. Calls above 200k were 26% of calls and 42% of spend. The handoff hint at 300k (<code>config.py</code>, <code>CONTEXT_DEFAULTS</code>) is taken: sessions that handed off peaked at a median of 338k. The saving of an earlier handoff is an estimate, because a successor rereads some files its predecessor had in context, and the spike did not measure that.</li>
   <li>Of 2,448 tool errors, 2,157 were shell commands that exited non-zero, most of them failing tests. A tool error rate means little until shell exits are counted apart.</li>
 </ul>
 
@@ -277,6 +297,11 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <tr><td>Servers</td><td>Every view totals this server and every linked server, and can split by server</td><td class="why"><span class="who">maintainer</span> A person running a laptop, an agent host and a team server needs to know which one spends.</td></tr>
 <tr><td>History</td><td>A one-time import of older transcripts: the legacy tree's logs and Claude Code's own session files</td><td class="why"><span class="who">maintainer</span> The count should start when the person started, not when this ships.</td></tr>
 <tr><td>Sessions run outside aegis</td><td>Imported from Claude Code's own files and counted in every total, as mode <code>outside</code>, which a filter removes in one click</td><td class="why"><span class="who">maintainer</span> The totals should cover all the agent work, and the mode split shows how much of it ran through aegis. Their outcomes are not in the journal, so cost per outcome reads a little high when they are included.</td></tr>
+<tr><td>What cost means</td><td>Cost at API list prices for every turn, subscription or not; and, for turns run on a subscription, its share of that subscription's fee and limit as two more measures</td><td class="why"><span class="who">maintainer</span> API prices compare everything on one scale. On a subscription the money is the fee, so the share of the fee and of the limit is what a slice really cost.</td></tr>
+<tr><td>Context length</td><td>Counted per API call, with a section of the page on how long contexts get, what they cost and what an earlier handoff would save</td><td class="why"><span class="who">maintainer</span> Long contexts may be what drives cost up, and the handoff threshold is a setting a person can change.</td></tr>
+<tr><td>Which subscription a turn used</td><td>The provider and account of the login the harness ran on, read from its credentials; an API key is <code>api</code></td><td class="why"><span class="who q">proposed</span> The quota service already reads those credentials (<code>quota/claude.py</code>). The same account on two servers is one subscription, with no configuration.</td></tr>
+<tr><td>Subscription cost</td><td>The fee, split by the limit each slice used: each rise of the weekly limit between two quota readings goes to the turns that ran in that interval, by their cost at API prices. The rest of the limit is <code>unused</code>; a rise with no turn behind it is <code>elsewhere</code></td><td class="why"><span class="who q">proposed</span> The limit is what the fee buys, and aegis already reads it every 60 s. Splitting only by API-priced cost would hide unused capacity and use outside aegis. History without readings falls back to that split, marked as such.</td></tr>
+<tr><td>What an earlier handoff saves</td><td>A replay of each session's calls with a handoff at a threshold: later calls carry the context above the successor's start less, priced at cache read, minus one cache write per handoff and the measured cost of rereading</td><td class="why"><span class="who q">proposed</span> It is mechanical and uses only counted calls. Rereading is measured on real successors, so the estimate is not just an upper bound.</td></tr>
 <tr><td>Two levels of kind</td><td>Activity per tool call, and purpose, where support activities inherit the purpose of the next purposeful call</td><td class="why"><span class="who q">proposed</span> Reading is 51% of spend and says nothing about what the money was for; dropping it would hide where the tokens go.</td></tr>
 <tr><td>Where the rows live</td><td>New tables in <code>journal.db</code>, written by a usage deriver beside the journal's</td><td class="why"><span class="who q">proposed</span> Same records, same writer thread, same idempotent keys, same backfill marker. A second file would need a second writer and its own backfill bookkeeping.</td></tr>
 <tr><td>Grain of the rows</td><td>One row per (turn, repo, purpose, activity), with cost, tokens and seconds</td><td class="why"><span class="who q">proposed</span> About three rows per turn: some 250,000 a year on a busy host, and a four-week query over them takes about 100 ms.</td></tr>
@@ -329,10 +354,12 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <tbody>
 <tr><td>server</td><td>this server's name, or a linked server's</td><td class="why">Added by the query on the viewing side; rows on disk do not carry it.</td></tr>
 <tr><td>person</td><td>the token that owns the session</td><td class="why">The session meta's <code>owner</code>. One value on a single-person server.</td></tr>
-<tr><td>owner</td><td>the account or organisation that owns the repo</td><td class="why">The repo's <code>origin</code> URL; <code>local</code> when it has none, unless config names one (section 07).</td></tr>
+<tr><td>owner</td><td>the account or organisation that owns the repo</td><td class="why">The repo's <code>origin</code> URL; <code>local</code> when it has none, unless config names one (section 06).</td></tr>
 <tr><td>repo</td><td>the main checkout's name; a worktree counts as its repo</td><td class="why">Per tool call, from the path it touched (section 06).</td></tr>
 <tr><td>harness</td><td>claude-code, opencode, codex, cursor</td><td class="why">The spawn record. A harness whose records carry no tokens or cost (Cursor today) still gets rows with time, tool calls and parts, marked <code>unpriced</code> with zero tokens; the activity table maps its tool names.</td></tr>
 <tr><td>model</td><td>the model id each API call reported</td><td class="why">The assistant line's <code>model</code>; the spawn record's when the harness reports none.</td></tr>
+<tr><td>billing</td><td><code>api</code>, or a subscription: provider and account, such as <code>claude · a1b2</code></td><td class="why">The login the harness ran on (section 08). <code>usage.subscriptions</code> in config gives an account a name and a fee.</td></tr>
+<tr><td>context</td><td>bands of 0–50k, 50–100k, 100–200k, 200–300k, 300–400k, 400–600k, 600k and more</td><td class="why">Each API call's input, cache read and cache write tokens (section 09).</td></tr>
 <tr><td>mode</td><td>person, agent, queue, workflow, schedule, monitor, outside, other</td><td class="why">What woke the turn (section 06).</td></tr>
 <tr><td>purpose</td><td>build, fix, refactor, review, docs, writing, planning, research, ops, coordinate, chat</td><td class="why">Section 06.</td></tr>
 <tr><td>activity</td><td>reading, testing, editing, committing, bookkeeping, server, web, other agents, showing, talking</td><td class="why">Section 06.</td></tr>
@@ -343,7 +370,10 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 <table class="tbl">
 <thead><tr><th>Measure</th><th>Meaning</th><th>Note</th></tr></thead>
 <tbody>
-<tr><td>cost</td><td>USD, billed where the harness reports it, else priced from tokens</td><td class="why">Each row says which (<code>billed</code>, <code>priced</code>, <code>unpriced</code>), so a total can say how much of it is estimated.</td></tr>
+<tr><td>cost</td><td>USD at API list prices: the harness's own figure where it reports one, else priced from tokens</td><td class="why">Each row says which (<code>billed</code>, <code>priced</code>, <code>unpriced</code>), so a total can say how much of it is estimated. Claude reports its figure at API prices on a subscription too.</td></tr>
+<tr><td>subscription cost</td><td>USD of a subscription's fee that the slice used</td><td class="why">Section 08. Zero for turns on an API key; <code>unused</code> and <code>elsewhere</code> carry the rest of the fee.</td></tr>
+<tr><td>limit used</td><td>points of a subscription's weekly limit</td><td class="why">Section 08. Works without a fee in config.</td></tr>
+<tr><td>context</td><td>tokens per call: start, peak and mean per turn; peak per session</td><td class="why">Section 09.</td></tr>
 <tr><td>tokens</td><td>input, output, cache write, cache read</td><td class="why">The only measure an unpriced harness has. A subscription's quota follows tokens.</td></tr>
 <tr><td>agent seconds</td><td>time a turn was working</td><td class="why">The result line's <code>duration_ms</code>.</td></tr>
 <tr><td>wait seconds</td><td>idle time between a turn's end and the next wake, by what woke it</td><td class="why">A gap counts at most 8 hours, so nights do not swamp it.</td></tr>
@@ -353,14 +383,21 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 </tbody>
 </table>
 <h3 id="tables">Tables</h3>
-<p>Three tables join the journal's in <code>journal.db</code>. Keys follow the journal: a row is keyed by the store record that produced it, so live and backfill insert the same keys and a repeat does nothing.</p>
+<p>Seven tables join the journal's in <code>journal.db</code>. Keys follow the journal: a row is keyed by the store record that produced it, so live and backfill insert the same keys and a repeat does nothing.</p>
 <pre><span class="k">usage_turns</span>   log_id, rec              <span class="c">-- the result record that ended the turn</span>
-              ts, person, harness, model, mode, cost, cost_kind,
-              tok_in, tok_out, tok_cw, tok_cr, secs, calls, errors, exits
+              ts, person, harness, model, mode, billing, cost, cost_kind,
+              tok_in, tok_out, tok_cw, tok_cr, secs, calls, errors, exits,
+              ctx_start, ctx_peak, continues   <span class="c">-- continues: the predecessor, on a successor's first turn</span>
 <span class="k">usage_parts</span>   log_id, rec, n           <span class="c">-- one per (repo, purpose, activity) in the turn</span>
               ts, repo, purpose, activity, settled, cost, tokens, secs
 <span class="k">usage_waits</span>   log_id, rec              <span class="c">-- the send record that ended an idle gap</span>
               ts, woke_by, secs
+<span class="k">usage_ctx</span>     log_id, rec, band        <span class="c">-- the turn's API calls in one context band</span>
+              calls, cost, tok_cr
+<span class="k">usage_whatif</span>  log_id, rec, at          <span class="c">-- a handoff at 100k, 150k, 200k, 300k or 400k</span>
+              handoffs, saved, rewrite
+<span class="k">usage_quota</span>   billing, window, ts      <span class="c">-- a quota reading, kept when it changed</span>
+              percent, resets_at
 <span class="k">repo_owners</span>   repo → owner, remote, checked_at  <span class="c">-- read from git on the writer thread</span></pre>
 <p>Indexes on <code>ts</code> and on <code>(repo, ts)</code>. Queries group the rows of a window; the spike's synthetic year answered a four-week group-by in 70 to 110 ms. The builder may add a daily rollup table if a year-wide query proves slow; it is not part of this design.</p>
 
@@ -417,7 +454,43 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 </ul>
 <p>An outcome counts in the slice of the part that produced it: a merge by a session in repo <code>atlas</code> on a Tuesday counts for atlas, its owner and that Tuesday. Cost per outcome is the slice's cost over its count. Work merged by hand on the forge is not counted; the page says that its outcomes are aegis's.</p>
 
-<h2 id="live"><span class="n">08</span>Counting live</h2>
+<h2 id="subscription"><span class="n">08</span>Subscription share</h2>
+<p>Cost at API prices answers "what would this have cost on a key" and puts every harness on one scale. On a subscription the money spent is the fee, and the fee buys a limit. So a turn run on a subscription also gets its share of both.</p>
+<h3>Which subscription</h3>
+<p>The deriver gives each session a <code>billing</code> value when it starts: the provider and account of the login the harness used, or <code>api</code> when it ran on an API key. For Claude Code the account is the OAuth account in the file <code>quota/claude.py</code> already reads; for OpenCode Go, the one in <code>quota/opencode.py</code>'s credentials. Only a short hash of the account id is stored. The same account seen on two linked servers is one subscription. A harness with no quota provider (Codex today) still gets its billing value, and has only the fee split described below. Config names an account and gives it a fee:</p>
+<pre><span class="k">usage</span>:
+  <span class="k">subscriptions</span>:
+    <span class="k">a1b2</span>: { <span class="k">name</span>: claude-max, <span class="k">fee</span>: 200, <span class="k">renews</span>: 14 }  <span class="c"># USD a month, billing day</span>
+    <span class="k">c3d4</span>: { <span class="k">name</span>: opencode-go, <span class="k">fee</span>: 10 }</pre>
+<h3>Limit used and subscription cost</h3>
+<ol>
+  <li><b>Readings.</b> The quota service already reads each window every 60 s. It now also hands each reading to the writer thread, which keeps it in <code>usage_quota</code> when its percent or reset time changed: a few hundred rows a day per subscription.</li>
+  <li><b>The meter.</b> The weekly window (Claude's <code>seven_day</code>, OpenCode's <code>weekly</code>) is the one the fee is split by, since it is the longest window that every model counts against. The five-hour window is shown as a gauge, not split.</li>
+  <li><b>Limit used.</b> Each rise of the weekly percent between two readings is shared among the turns on that subscription that ended between them, by their cost at API prices. A rise with no turn behind it, on any server the page reached, is <code>elsewhere</code>: the provider's own apps or a machine aegis does not run on. At a reset, what the window had not used is <code>unused</code>.</li>
+  <li><b>Subscription cost.</b> A week of the fee is its monthly fee times 12 / 52. A slice's subscription cost is that weekly fee times the points of the weekly limit it used, over 100. So the slices, <code>elsewhere</code> and <code>unused</code> add up to the fee.</li>
+  <li><b>Without readings.</b> History before this ships, imported sessions and harnesses with no quota provider have no readings. For those the period's fee is split by cost at API prices among that subscription's turns, with no <code>unused</code>; the rows are marked <code>apportioned</code> and the page says how much of the subscription cost is.</li>
+</ol>
+<p>The split runs at query time, after the page has merged the servers' answers: each server returns its subscription turns' API-priced cost per hour and group, and the viewing server shares the rises of its own readings across all of them. One server's readings serve all, since they read the same account. A server that the page could not reach puts its share in <code>elsewhere</code>, and the page says so.</p>
+<p>On the page this adds two measures, <b>subscription $</b> and <b>limit used</b>, beside cost at API prices, and a panel per subscription: the fee, how it split across owners, <code>elsewhere</code> and <code>unused</code>, and the ratio of API-priced cost to fee, which says how much the subscription saved over a key.</p>
+
+<h2 id="context"><span class="n">09</span>Context length</h2>
+<p>Every API call pays to read its whole context again, so the same work costs more late in a long session than early in a fresh one. The deriver records each call's context, the sum of its input, cache read and cache write tokens. It keeps per turn the context at the start and the peak, and per turn and band the calls, their cost and their cache reads (<code>usage_ctx</code>). A successor's first turn names the session it continues, from the session meta's <code>continues</code>, so handoff chains are visible.</p>
+<h3>What it shows</h3>
+<ul>
+  <li><b>Cost by context band.</b> Share of calls against share of cost per band, with the mean cost of a call in each. Context is a dimension like any other, so it splits by repo, purpose or model too.</li>
+  <li><b>How long sessions run.</b> The distribution of each session's peak context, for sessions that handed off and sessions that did not, with the configured <code>handoff_at</code> marked.</li>
+  <li><b>What an earlier handoff would save.</b> For each threshold in 100k, 150k, 200k, 300k and 400k, the deriver replays the session's calls with a handoff whenever the context passes it. The successor starts at the median start context of real successors on this server. Every later call carries less context, which is priced at cache read. Each handoff costs one cache write of that start, plus the measured cost of rereading: the cost of the reading activity in real successors' first five turns, as a median. The result goes to <code>usage_whatif</code> per turn and threshold, so it sums over any slice.</li>
+</ul>
+<p>The figure below is the spike's real data from one agent host (804 Claude sessions, three weeks), with no rereading cost subtracted, so its savings are upper bounds.</p>
+<div class="um cx" id="cx">
+  <div class="cx-h"><b>Cost by context length</b><span>one agent host · 69,938 API calls · $3,515 at API prices</span></div>
+  <div id="cx-bands"></div>
+  <div class="cx-h" style="margin-top:14px"><b>Hand off at</b><span class="seg" id="cx-at"></span></div>
+  <div class="tiles" id="cx-tiles"></div>
+</div>
+<p>The handoff at 300k is already the default hint, and the 58 sessions that took it peaked at a median of 338k. The replay counts the sessions that never reached the hint and the stretch between 300k and the actual handoff. The open question of section 16 is whether the default should move once rereading is measured.</p>
+
+<h2 id="live"><span class="n">10</span>Counting live</h2>
 <ul>
   <li><b>Writing.</b> The usage deriver keeps per-session state on the writer thread: the open turn's messages and tool calls, the unsettled parts, the last repo and the last commit type. On a <code>result</code> it writes the turn's rows in the same transaction as the journal's rows for that record. Per turn it inserts a handful of rows; the writer thread already runs git for commits, so the owner lookup adds nothing new.</li>
   <li><b>Publishing.</b> After a write, the writer thread tells the event loop which session changed, as the journal does with <code>_changed</code>. The usage service runs each live subscription's query only for the new rows and sends the difference as a patch, at most once every 2 seconds per subscription.</li>
@@ -430,7 +503,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
   <div class="stat"><div class="v">0</div><div class="k">transcript reads to answer a question</div></div>
 </div>
 
-<h2 id="links"><span class="n">09</span>Across linked servers</h2>
+<h2 id="links"><span class="n">11</span>Across linked servers</h2>
 <p>A link is a client: the server that opened it can subscribe to the far server's channels, and the far server can never reach back unless the link is trusted (<code>links.py</code>). So the server where the person opens the page asks:</p>
 <ol>
   <li>It runs the query on its own rows and opens the same <code>usage</code> subscription, with the same window and grouping, over each link. Each far server answers with its own rows, already filtered by what that link's token may see.</li>
@@ -440,7 +513,7 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 </ol>
 <p>Rows never cross a link, so each server's privacy rules apply to its own data, and nothing is counted twice: a session lives on exactly one server.</p>
 
-<h2 id="surfaces"><span class="n">10</span>The page, the CLI, the tool</h2>
+<h2 id="surfaces"><span class="n">12</span>The page, the CLI, the tool</h2>
 <h3 id="page"><span class="try">try it</span>The usage page</h3>
 <p>A page in the client beside Fleet, opened from the command palette or the quota gauge. It is one layout, with every control changing every panel. The mockup below runs on sample data with three linked servers; click the controls. The live dot means the page holds a subscription.</p>
 
@@ -471,13 +544,15 @@ pre .c{color:var(--faint)} pre .k{color:var(--accent)} pre .s{color:var(--ok)}
 </div>
 <p>What each part is for:</p>
 <ul>
-  <li><b>Tiles</b>: the total and its change on the previous period, agent hours against hours waiting on the person, the share of spend that ran without a person (agent, queue, workflow, schedule, monitor), cost per merged PR, and the share of cost that is estimated or unpriced.</li>
+  <li><b>Tiles</b>: the total and its change on the previous period, agent hours against hours waiting on the person, the share of spend that ran without a person (agent, queue, workflow, schedule, monitor), cost per merged PR, and what each subscription's fee bought at API prices with the share of its limit left unused. The share of cost that is estimated or unpriced is in the footer.</li>
+  <li><b>Measure</b>: cost at API prices, subscription $ (section 08), tokens or agent hours; every panel follows it.</li>
   <li><b>Trend</b>: the measure per day, week or month, stacked by the chosen split.</li>
   <li><b>Owners</b>: the answer to "who is my money going to", split by server.</li>
   <li><b>Repo by purpose</b>: what each repo's money does; a click lists the sessions behind a cell.</li>
   <li><b>When</b>: a weekday by hour grid of the measure.</li>
   <li><b>Driven by</b> and <b>harness and model</b>: how much of the work a person drove and what ran it.</li>
   <li><b>Outcomes</b>: commits, PRs and closed issues per repo, with cost per merged PR.</li>
+  <li><b>Subscriptions</b> and <b>context</b>: the panels of sections 08 and 09, below the outcomes. The mockup leaves them out; the figure in section 09 shows the context panel.</li>
 </ul>
 <p>Any cell, bar or row opens the list of sessions behind it, each with its own mix, and a session opens its transcript. On a phone the panels stack in the order above, and the heat grids scroll sideways inside their panel.</p>
 
@@ -489,14 +564,17 @@ aegis usage --since 4w
 aegis usage --since 12w --by week --split owner --measure cost
 aegis usage --split repo,purpose --server all --json
 aegis usage --split mode --where harness=claude-code --where person=ana
-<span class="c"># the one-time import (section 11)</span>
+<span class="c"># subscription share, and cost by context band</span>
+aegis usage --since 4w --split owner --measure subscription
+aegis usage --since 4w --split context --whatif 200k
+<span class="c"># the one-time import (section 13)</span>
 aegis usage import --legacy &lt;dir&gt; --claude-projects</pre>
 <p><code>aegis usage repo</code> and <code>repos</code> stay as they are: they price a repository against every transcript store, including sessions run outside aegis, which is a different question.</p>
 
 <h3 id="mcp">MCP</h3>
-<p>One read-only tool, <code>usage_read</code>, with the CLI's parameters: <code>since</code>, <code>until</code>, <code>by</code>, <code>split</code>, <code>measure</code>, <code>where</code>, <code>server</code>. It returns rows and totals as JSON, and the help page shows an agent how to answer "what did background work cost this week, per repo" with one call. A member's call sees only its own sessions.</p>
+<p>One read-only tool, <code>usage_read</code>, with the CLI's parameters: <code>since</code>, <code>until</code>, <code>by</code>, <code>split</code>, <code>measure</code>, <code>where</code>, <code>server</code>, <code>whatif</code>. It returns rows and totals as JSON, and the help page shows an agent how to answer "what did background work cost this week, per repo" with one call. A member's call sees only its own sessions.</p>
 
-<h2 id="migration"><span class="n">11</span>Migrating old transcripts</h2>
+<h2 id="migration"><span class="n">13</span>Migrating old transcripts</h2>
 <p>History lives in three places on each server. One command, run once per server, brings all of it into the tables; every step is idempotent, so a second run adds only what is new.</p>
 <div class="steps">
   <div class="step"><div class="n"></div><div><h4>aegis 2's own store</h4><p>The backfill: the usage deriver reads every <code>transcripts/*.jsonl</code> as the journal's backfill does, on the writer thread, after boot. In the spike that was 779 sessions and 1.8 GB in 36 s of parsing.</p></div></div>
@@ -505,17 +583,18 @@ aegis usage import --legacy &lt;dir&gt; --claude-projects</pre>
 </div>
 <p>On a server several people use, the import reads the Claude Code files of each Linux user the server runs sessions as, through the same per-user execution the journal uses for git (<code>Journal.user_of</code>), and gives the imported sessions to the token of that user. A file aegis cannot read as that user is skipped and listed. The import runs on the writer thread with a progress line on the page and in the CLI, and can stop and resume: a store or file already imported is recorded and skipped. Each server imports its own history; the laptop's legacy tree is imported on the laptop.</p>
 
-<h2 id="delivery"><span class="n">12</span>Delivery</h2>
-<p>Five slices, each a PR that ships something a person can use.</p>
+<h2 id="delivery"><span class="n">14</span>Delivery</h2>
+<p>Six slices, each a PR that ships something a person can use.</p>
 <div class="steps">
   <div class="step"><div class="n"></div><div><h4>Journal outcomes</h4><p>The repo of a <code>gh pr</code> named by <code>--repo</code>, PR numbers on PR rows, and closed-issue rows. Small, and useful on its own in <code>journal_search</code>.</p></div></div>
   <div class="step"><div class="n"></div><div><h4>The usage deriver and its tables</h4><p>Turns, parts and waits written live and by backfill, with the activity table and the purpose rules; <code>repo_owners</code>; <code>aegis usage</code> rewritten on the tables. The proof: <code>aegis usage</code> answers in under a second, and its billed total for Claude sessions over a window matches today's <code>report.py</code> billed total within 1%. The token-priced estimate may differ, because the new rule prices per turn where today's prices a whole session that reported no cost; the PR states both numbers.</p></div></div>
   <div class="step"><div class="n"></div><div><h4>Query, channel, tool and page</h4><p>The query function, the <code>usage</code> channel with live deltas, <code>usage_read</code>, the help page, and the page for one server.</p></div></div>
+  <div class="step"><div class="n"></div><div><h4>Subscriptions and context</h4><p>Billing per session, <code>usage_quota</code> fed by the quota service, the fee and limit split, <code>usage_ctx</code> and <code>usage_whatif</code> with the measured rereading cost, and their panels and CLI flags. The proof: for one week of readings, the slices, <code>elsewhere</code> and <code>unused</code> add up to the week's fee, and the replay at a threshold no session reached saves nothing.</p></div></div>
   <div class="step"><div class="n"></div><div><h4>Across links</h4><p>The fan-out over links, the server split, the last-answer cache and the list of servers not reached.</p></div></div>
   <div class="step"><div class="n"></div><div><h4>The one-time import</h4><p><code>aegis usage import</code> for the legacy tree and Claude Code's files, with progress and resume.</p></div></div>
 </div>
 
-<h2 id="testing"><span class="n">13</span>Testing</h2>
+<h2 id="testing"><span class="n">15</span>Testing</h2>
 <ul class="checks">
   <li>Live equals backfill: a session driven through the fake claude yields the same usage rows live as from a backfill of its store.</li>
   <li>Splitting: fixture turns with known tool calls give known parts, including a code edit settled by a later <code>fix</code> commit and reading that inherits the next purpose.</li>
@@ -526,22 +605,27 @@ aegis usage import --legacy &lt;dir&gt; --claude-projects</pre>
   <li>Browser: the page updates within 2 s of a fake turn ending, at desktop and phone width.</li>
   <li>Links: two real servers, one linked to the other; the page on the first totals both and splits by server, and shows the second's last answer after it stops.</li>
   <li>Members: a member's query and page see only its sessions.</li>
+  <li>Subscriptions: fixture readings and turns give known limit points per slice; a rise with no turn is <code>elsewhere</code>; a reset leaves the remainder <code>unused</code>; two servers on one account share one week's rises; an API-key session has no subscription cost.</li>
+  <li>Context: fixture calls land in the right bands; a replayed handoff at 100k on a session that peaked at 300k matches a hand-computed saving; a threshold above the peak saves zero.</li>
   <li>Import: running it twice adds nothing the second time; a message id in both an aegis store and a Claude Code file counts once.</li>
 </ul>
 
-<h2 id="nongoals"><span class="n">14</span>Non-goals and open questions</h2>
+<h2 id="nongoals"><span class="n">16</span>Non-goals and open questions</h2>
 <h3>Non-goals</h3>
 <ul>
   <li>Any model in the count. An agent explaining the numbers reads them through <code>usage_read</code>.</li>
   <li>Budgets and alerts. The quota gate (#311) limits spend; this spec only measures it.</li>
   <li>Outcomes from GitHub or any network service.</li>
   <li>Copying usage rows between servers.</li>
-  <li>Host meters and quota history from #235; this spec covers spend and work, and leaves the host recorder to that issue.</li>
+  <li>Host meters from #235. This spec keeps quota readings for the subscription split only (<code>usage_quota</code>); the host recorder and a quota history view stay with that issue, which can read the same table.</li>
+  <li>Changing <code>handoff_at</code> on its own. The page shows what a threshold would have saved; the person sets it.</li>
 </ul>
 <h3>Open questions</h3>
 <ul>
   <li>Should "support inherits the next purpose" look back instead when the next purposeful call is far away, say after a long reading spell that ended in a one-line docs commit? The spike used forward inheritance and found it plausible on the sessions checked by hand.</li>
   <li>Is <code>owner</code> enough to answer "who the money goes to", or does a person also want named groups across owners (all client work against all own work)? The config's <code>owner_names</code> could carry a group later.</li>
+  <li>Should the default <code>handoff_at</code> move from 300k once rereading is measured? The spike's upper bound says a handoff at 200k would have saved 26% of spend against 15% at 300k, but a successor that rereads 50k of files at cache write price gives back about $0.25 of that per handoff.</li>
+  <li>For a subscription with no quota provider (Codex on a ChatGPT plan), is splitting the fee by API-priced cost enough, or should config be able to name its limit?</li>
   <li>How long to keep usage rows: forever, as the journal does, or rolled up after a year?</li>
 </ul>
 </main>
@@ -576,13 +660,16 @@ aegis usage import --legacy &lt;dir&gt; --claude-projects</pre>
       rows.push({ w, s, r, o, p, h, m, mode, day, hour, cost: h === 'opencode' ? 0 : c, tok: c * 9000, hours: c / 16, prm: p === 'build' || p === 'fix' ? c / 9 * rnd() : 0 });
     });
   }
+  // A $200 subscription for the claude-code rows: each week's fee, of which 22% of the limit went unused, split by API-priced cost.
+  const FEE_W = 200 * 12 / 52, USED = .78;
+  for (let w = 0; w < WEEKS; w++) { const sw = rows.filter(x => x.w === w && x.h === 'claude-code'), t = sw.reduce((a, x) => a + x.cost, 0) || 1; rows.forEach(x => { if (x.w === w) x.sub = x.h === 'claude-code' ? x.cost / t * FEE_W * USED : 0; }); }
   const S = { win: 4, by: 'purpose', meas: 'cost', srv: new Set(SERVERS) };
   const COLS = ['var(--c1)', 'var(--c2)', 'var(--c3)', 'var(--c4)', 'var(--c5)', 'var(--c6)', 'var(--c7)', 'var(--c8)'];
   const ORDER = { purpose: PUR, owner: ['acme-co', 'own', 'lab', 'local'], repo: REPOS.map(r => r[0]), server: SERVERS, mode: MODES, model: MODELS.map(m => m[1]) };
   const col = (by, k) => { const i = ORDER[by].indexOf(k); return k === 'chat' || k === 'local' ? 'var(--c0)' : COLS[i % 8]; };
   const keyOf = (x, by) => by === 'model' ? x.m : x[{ purpose: 'p', owner: 'o', repo: 'r', server: 's', mode: 'mode' }[by]];
-  const fmt = { cost: v => '$' + (v >= 1000 ? (v / 1000).toFixed(1) + 'k' : Math.round(v)), tok: v => (v / 1e6).toFixed(v >= 1e8 ? 0 : 1) + 'M', hours: v => Math.round(v) + ' h' };
-  const MEAS = { cost: 'spend', tok: 'tokens', hours: 'agent hours' };
+  const fmt = { cost: v => '$' + (v >= 1000 ? (v / 1000).toFixed(1) + 'k' : Math.round(v)), sub: v => '$' + (v >= 100 ? Math.round(v) : v.toFixed(1)), tok: v => (v / 1e6).toFixed(v >= 1e8 ? 0 : 1) + 'M', hours: v => Math.round(v) + ' h' };
+  const MEAS = { cost: 'API-priced', sub: 'subscription $', tok: 'tokens', hours: 'agent hours' };
   const $ = id => document.getElementById(id);
   const tip = $('um-tip');
   const showTip = (e, h) => { tip.innerHTML = h; tip.style.display = 'block'; tip.style.left = Math.min(e.clientX + 12, innerWidth - 290) + 'px'; tip.style.top = (e.clientY + 12) + 'px'; };
@@ -608,7 +695,7 @@ aegis usage import --legacy &lt;dir&gt; --claude-projects</pre>
       ['agent hours', Math.round(sum(V, 'hours')) + ' h', `about ${Math.round(sum(V, 'hours') * 1.3)} h waiting on a person`],
       ['ran without a person', (auto * 100).toFixed(0) + '%', 'agent, queue, workflow, schedule, monitor'],
       ['per merged PR', prs ? '$' + (cost / prs).toFixed(2) : '–', `${Math.round(prs)} PRs merged by agents`],
-      ['unpriced', (unpriced * 100).toFixed(0) + '%', 'of tokens ran on a harness with no price'],
+      ['subscription', (sum(V.filter(x => x.h === 'claude-code'), 'cost') / (FEE_W * S.win)).toFixed(1) + '×', `API-priced value of the $200 fee; ${Math.round((1 - USED) * 100)}% of the weekly limit unused`],
     ].map(([k, v, d]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="d">${d}</div></div>`).join('');
 
     // trend
@@ -663,10 +750,28 @@ aegis usage import --legacy &lt;dir&gt; --claude-projects</pre>
     REPOS.forEach(([r, ow]) => { const rv = V.filter(x => x.r === r), pr = sum(rv, 'prm'), c = sum(rv, 'cost');
       o += `<tr><td>${r}</td><td>${ow}</td><td>${Math.round(pr * 2.4)}</td><td>${Math.round(pr)}</td><td>${Math.round(pr * .8)}</td><td>${fmt.cost(c)}</td><td>${pr >= 1 ? '$' + (c / pr).toFixed(2) : '–'}</td></tr>`; });
     $('um-out').innerHTML = o;
-    $('um-foot').textContent = `Includes ${[...S.srv].join(', ')}. team-server last answered 40 s ago; laptop and agent-host are live.`;
+    $('um-foot').textContent = `Includes ${[...S.srv].join(', ')}. team-server last answered 40 s ago; laptop and agent-host are live. ${(unpriced * 100).toFixed(0)}% of tokens ran on a harness with no price.`;
   }
   render();
   addEventListener('resize', render);
+})();
+
+// The context figure: the spike's real numbers, no rereading cost subtracted.
+(() => {
+  const BANDS = [['0–50k', 10.3, 9.5, .046], ['50–100k', 27.4, 16.8, .031], ['100–200k', 36.3, 31.3, .043], ['200–300k', 16.6, 22.7, .069], ['300–400k', 6.0, 10.7, .089], ['400–600k', 2.6, 6.8, .129], ['600k+', .7, 2.2, .153]];
+  const AT = { '100k': [1043, 1510, 152], '150k': [485, 1209, 71], '200k': [262, 943, 38], '300k': [89, 526, 13], '400k': [27, 269, 4] }, TOTAL = 3515;
+  let at = '300k';
+  const $ = id => document.getElementById(id), mx = 40;
+  $('cx-bands').innerHTML = '<div class="row"><span></span><span><i style="display:inline-block;width:9px;height:7px;background:var(--c0)"></i> calls &nbsp; <i style="display:inline-block;width:9px;height:7px;background:var(--c1)"></i> cost</span><span>$/call</span></div>' +
+    BANDS.map(([b, c, k, pc]) => `<div class="row"><span>${b}</span><span class="bars"><i style="width:${c / mx * 100}%;background:var(--c0)" title="${c}% of calls"></i><i style="width:${k / mx * 100}%;background:var(--c1)" title="${k}% of cost"></i></span><span>${pc.toFixed(3)}</span></div>`).join('');
+  const draw = () => {
+    $('cx-at').innerHTML = Object.keys(AT).map(k => `<button class="${k === at ? 'on' : ''}" data-v="${k}">${k}</button>`).join('');
+    $('cx-at').querySelectorAll('button').forEach(b => b.onclick = () => { at = b.dataset.v; draw(); });
+    const [n, saved, rw] = AT[at], net = saved - rw;
+    $('cx-tiles').innerHTML = [['handoffs', n.toLocaleString('en'), 'in three weeks, replayed'], ['saved at cache read', '$' + saved.toLocaleString('en'), 'less context on every later call'], ['cache rewrites', '$' + rw, 'one 29k start per handoff'], ['net, upper bound', (net / TOTAL * 100).toFixed(1) + '%', '$' + net.toLocaleString('en') + ' of $3,515, before rereading']]
+      .map(([k, v, d]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="d">${d}</div></div>`).join('');
+  };
+  draw();
 })();
 </script>
 </body>
