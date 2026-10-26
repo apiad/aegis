@@ -94,6 +94,8 @@ class Ops:
     @property
     def turn(self) -> _turn: ...
     @property
+    def usage(self) -> _usage: ...
+    @property
     def workflow(self) -> _workflow: ...
 
 class _agents:
@@ -876,6 +878,22 @@ class _turn:
         close: bool = ...,
     ) -> Any:
         """Call this before the final message of every turn you hand back to the person, and not when you end a turn to wait on a monitor or a queue task. It sets the mark on your tab and the line on your card."""
+
+class _usage:
+    async def read(
+        self,
+        *,
+        since: str = ...,
+        until: str | None = ...,
+        by: str | None = ...,
+        split: builtins.list[str] = ...,
+        measure: str = ...,
+        where: dict[str, str] = ...,
+        server: str | None = ...,
+        whatif: str | None = ...,
+        tz: str | None = ...,
+    ) -> Any:
+        """What work cost on this server, from the usage tables aegis fills as each turn ends: cost at API prices, tokens, agent seconds, turns, sessions, tool calls and waits, over a window, grouped by any of the split's dimensions and by period. Returns rows, totals and the journal's outcomes (commits, PRs, closed issues) for the same slice. Background work is mode queue, workflow, schedule, monitor or agent."""
 
 class _workflow:
     async def answer(

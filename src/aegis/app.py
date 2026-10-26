@@ -145,6 +145,7 @@ from .users import MultiUser
 from .registry import Registry
 from .roots import Roots
 from .transcript.entries import _sent_file
+from .usage.ops import register_usage_ops
 from .session import PUBLISH_EVERY_S, SpawnSpec
 from .term_ops import register_term_ops
 from .browser_ops import register_browser_ops
@@ -651,6 +652,7 @@ class App:
         register_browser_ops(self)
         self.push = register_push_ops(self)
         register_journal_ops(self)
+        register_usage_ops(self)
         register_help_ops(self)
         register_knowledge_ops(self)
         register_notice_ops(self)
