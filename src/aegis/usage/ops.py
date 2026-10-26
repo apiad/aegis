@@ -5,11 +5,14 @@ thread owns writes.
 
 A member sees only the parts of sessions it owns (``App.sees`` over
 ``usage_turns.person``, the session's owner); an admin sees all. A call that
-arrives over a link answers for this server only."""
+arrives over a link answers for this server only; a person's call asks every
+linked server too, and merges their answers (``far``, ``across``)."""
 
 from __future__ import annotations
 
 import asyncio
+import copy
+import json
 import re
 import time
 from dataclasses import asdict
@@ -21,13 +24,14 @@ from ..journal import db, when
 from ..ops import OpError
 from . import page
 from .context import threshold
-from .query import BYS, DIMS, MEASURES, UsageQuery, run
+from .query import BYS, DIMS, MEASURES, UsageQuery, merge_subs, run
 
 if TYPE_CHECKING:
     from ..app import App
     from ..ops import Principal
 
 WEEKS = re.compile(r"(\d+)w")
+EPOCH = re.compile(r"\d+(\.\d+)?")
 
 
 class _Strict(BaseModel):
@@ -37,7 +41,8 @@ class _Strict(BaseModel):
 class ReadParams(_Strict):
     since: str = Field(
         "4w",
-        description="First day: 2026-10-09, today, yesterday, 7d or 4w (the last 4 weeks).",
+        description="First day: 2026-10-09, today, yesterday, 7d, 4w (the last 4"
+        " weeks) or epoch seconds.",
     )
     until: str | None = Field(
         None, description="Last day, included, in the same forms; now by default."
@@ -60,7 +65,9 @@ class ReadParams(_Strict):
         description='Only parts whose dimension has this value: {"mode": "queue"}.',
     )
     server: str | None = Field(
-        None, description="The server to answer for; this one by default."
+        None,
+        description="The server to answer for: this one, or all to merge every"
+        " linked server's answer. All by default for a person, this one for an agent.",
     )
     whatif: str | None = Field(
         None,
@@ -75,6 +82,8 @@ class ReadParams(_Strict):
 def _bound(text: str | None, end: bool, now: float) -> float | None:
     if text and (m := WEEKS.fullmatch(text.strip().lower())):
         return now - int(m[1]) * 7 * 86400
+    if text and EPOCH.fullmatch(text.strip()):
+        return float(text)
     return when.bound(text, end=end, now=now)
 
 
@@ -161,6 +170,105 @@ def answer(app: "App", q: UsageQuery, who: "Principal") -> dict:
     }
 
 
+def params_of(q: UsageQuery) -> dict:
+    """``q`` as usage.read's params, for a linked server."""
+    return {"since": repr(q.since), "until": repr(q.until), "by": q.by,
+            "split": list(q.split), "measure": q.measure, "where": dict(q.where),
+            "tz": q.tz}  # fmt: skip
+
+
+async def far(app: "App", caller, who: "Principal", asks: dict, last: dict) -> dict:
+    """Ask every linked server each question in ``asks`` (a key to usage.read
+    params): per server, its state, when it answered and its answers by key.
+    A server that fails serves the last answers ``last`` kept, as cached; one
+    never answered (down, or an aegis with no usage.read) is missing. A call
+    over a link and a member's call ask no link: links are the admin's."""
+    links = getattr(app, "links", None)
+    member = app.multi_user is not None and not who.is_admin
+    if links is None or caller.link is not None or member:
+        return {}
+    up = links.up()
+
+    async def one(link):
+        got = await asyncio.gather(
+            *(link.call("usage.read", {**p, "server": link.name}) for p in asks.values()),
+            return_exceptions=True,
+        )  # fmt: skip
+        for g in got:
+            if isinstance(g, OpError):
+                return None
+            if isinstance(g, BaseException):
+                raise g
+        return dict(zip(asks, got))
+
+    fresh = dict(zip([link.name for link in up], await asyncio.gather(*map(one, up))))
+    now = time.time()
+    out = {}
+    names = [*fresh, *(link.name for link in links.links()), *(n for n, _ in last)]
+    for name in dict.fromkeys(names):
+        if (got := fresh.get(name)) is not None:
+            last.update({(name, k): a for k, a in got.items()})
+            state = "live"
+        else:
+            got = {k: last[name, k] for k in asks if (name, k) in last}
+            state = "cached" if got and len(got) == len(asks) else "missing"
+            got = got if state == "cached" else {}
+        at = min((a["at"] for a in got.values()), default=None)
+        out[name] = {"state": state, "at": at,
+                     "age_s": None if at is None else max(round(now - at), 0),
+                     "answers": copy.deepcopy(got)}  # fmt: skip
+    return out
+
+
+def states(here: str, at: float, servers: dict) -> dict:
+    """Each server's state, this one first."""
+    return {here: {"at": at, "age_s": 0, "state": "live"}} | {
+        n: {k: s[k] for k in ("at", "age_s", "state")} for n, s in servers.items()
+    }
+
+
+def _merge(app: "App", qs: dict, answers: dict[str, dict[str, dict]]) -> None:
+    """Split subscriptions once over every server's hours, per question."""
+    if len(answers) < 2:
+        return
+    subs = app.config.current().usage.get("subscriptions") or {}
+    con = db.open_read(app.journal.path)
+    try:
+        for key, q in qs.items():
+            merge_subs(con, q, {s: a[key] for s, a in answers.items()}, subs)
+    finally:
+        con.close()
+
+
+def across(app: "App", q: UsageQuery, who: "Principal", servers: dict) -> dict:
+    """``q`` here and on every linked server that answered, merged: rows carry
+    their server, totals add up, a subscription counts once."""
+    here = answer(app, q, who)
+    answers = {app.server_name: {"q": here}} | {
+        n: {"q": next(iter(s["answers"].values()))}
+        for n, s in servers.items()
+        if s["answers"]
+    }
+    _merge(app, {"q": q}, answers)
+    each = {n: a["q"] for n, a in answers.items()}
+    rows = [{**r, "server": n} for n, a in each.items() for r in a["rows"]]
+    rows.sort(key=lambda r: (str(r.get("bucket", "")), -r[q.measure]))
+    totals = {m: sum(a["totals"].get(m, 0) for a in each.values())
+              for m in here["totals"]}  # fmt: skip
+    totals["cost"] = round(totals["cost"], 9)
+    cost = totals["cost"]
+    priced = sum(a["estimated"] * a["totals"]["cost"] for a in each.values())
+    return here | {
+        "rows": rows,
+        "totals": totals,
+        "outcomes": [{**o, "server": n} for n, a in each.items() for o in a["outcomes"]],
+        "estimated": round(priced / cost, 6) if cost else 0.0,
+        "unpriced_tokens": sum(a["unpriced_tokens"] for a in each.values()),
+        "sub_hours": {},
+        "servers": states(app.server_name, here["at"], servers),
+    }  # fmt: skip
+
+
 class PageParams(_Strict):
     window: int = Field(4, ge=1, le=52, description="Weeks, ending this one.")
     split: str = "purpose"
@@ -175,19 +283,26 @@ PAGE_SPLITS = ("purpose", "repo", "owner", "mode", "model", "harness", "activity
                "person", "server")  # fmt: skip
 
 
-def page_of(app: "App", p: PageParams, who: "Principal", now: float) -> dict:
-    """Every query the page needs, here, and its panels."""
-    from .cli import _local_zone
-
-    tz = p.tz or _local_zone()
+def page_of(
+    app: "App",
+    p: PageParams,
+    who: "Principal",
+    now: float,
+    qs: dict[str, UsageQuery],
+    servers: dict | None = None,
+) -> dict:
+    """Every query the page needs, here and from the linked ``servers``
+    (from ``far``, keyed by panel), and its panels over the servers shown."""
+    servers = servers or {}
     here = app.server_name
-    answers = {
-        here: {
-            name: answer(app, q, who)
-            for name, q in page.queries(p.window, p.split, now, tz).items()
+    answers = {here: {name: answer(app, q, who) for name, q in qs.items()}}
+    answers |= {n: s["answers"] for n, s in servers.items() if s["answers"]}
+    _merge(app, qs, answers)
+    if p.servers is not None:
+        answers = {n: a for n, a in answers.items() if n in p.servers} or {
+            here: answers[here]
         }
-    }
-    *_, mondays = page.window(p.window, now, tz)
+    *_, mondays = page.window(p.window, now, qs["total"].tz)
     conf = app.config.current()
     names = conf.usage.get("owner_names") or {}
     out = page.panels(
@@ -200,17 +315,23 @@ def page_of(app: "App", p: PageParams, who: "Principal", now: float) -> dict:
         "window": p.window,
         "split": p.split,
         "measure": p.measure,
+        "servers": states(here, now, servers),
         "controls": {
             "windows": list(WINDOWS),
             "splits": list(PAGE_SPLITS),
             "measures": [{"key": k, "label": v} for k, v in page.TITLES.items()],
-            "servers": [{"name": here, "on": True}],
+            "servers": [
+                {"name": n, "on": n in answers} for n in (here, *servers)
+            ],  # fmt: skip
         },
     }
 
 
 def register_usage_ops(app: "App") -> None:
     r = app.registry
+    # The last answer from each linked server, by (server, question): what a
+    # server that stops answering is shown with, marked cached.
+    last: dict[tuple[str, str], dict] = {}
 
     @r.op("usage.read", ReadParams, agent=True, read=True)
     async def usage_read(p: ReadParams, caller):
@@ -223,13 +344,20 @@ def register_usage_ops(app: "App") -> None:
         cost; whatif (with whatif=200k) what handing off there would save,
         net of rewriting and rereading.
         Background work is mode queue, workflow, schedule, monitor or agent."""
-        if caller.link is None and p.server not in (None, app.server_name):
+        if caller.link is None and p.server not in (None, "all", app.server_name):
             raise OpError(
                 "bad_params",
-                f"usage_read answers for this server ({app.server_name}) only",
+                f"usage_read answers for this server ({app.server_name}) or all",
             )
         q = query_of(p, time.time())
-        return await asyncio.to_thread(answer, app, q, app.who(caller))
+        who = app.who(caller)
+        alone = p.server == app.server_name or (p.server is None and caller.is_agent)
+        if caller.link is not None or alone:
+            return await asyncio.to_thread(answer, app, q, who)
+        params = p.model_dump(exclude={"server"})
+        key = json.dumps(params, sort_keys=True)
+        servers = await far(app, caller, who, {key: params}, last)
+        return await asyncio.to_thread(across, app, q, who, servers)
 
     @r.op("usage.page", PageParams)
     async def usage_page(p: PageParams, caller):
@@ -244,4 +372,13 @@ def register_usage_ops(app: "App") -> None:
                 "bad_params",
                 f"measure takes {', '.join(page.MEASURES)}, not {p.measure!r}",
             )
-        return await asyncio.to_thread(page_of, app, p, app.who(caller), time.time())
+        from .cli import _local_zone
+
+        who, now = app.who(caller), time.time()
+        qs = page.queries(p.window, p.split, now, p.tz or _local_zone())
+        tag = f"page:{p.window}:{p.split}:"
+        asks = {tag + name: params_of(q) for name, q in qs.items()}
+        servers = await far(app, caller, who, asks, last)
+        for s in servers.values():
+            s["answers"] = {k.removeprefix(tag): a for k, a in s["answers"].items()}
+        return await asyncio.to_thread(page_of, app, p, who, now, qs, servers)

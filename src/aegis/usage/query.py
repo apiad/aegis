@@ -257,7 +257,9 @@ def run(
     cte, cte_args = _owners_cte(con, owners)
     rows = _grouped(con, q, cte, cte_args, offsets)
     hours = _sub_hours(con, q, cte, cte_args, offsets)
-    subs = _subscriptions(con, q, hours, rows, subscriptions or {})
+    subs = _subscriptions(
+        con, q, hours, {_key(q, r): r for r in rows}, subscriptions or {}
+    )
     if q.whatif is not None:
         _whatif(con, q, cte, cte_args, offsets, rows)
     totals = {m: sum(r[m] for r in rows) for m in MEASURES}
@@ -357,13 +359,42 @@ def _readings(con, billing: str, since: float, until: float) -> list[Reading]:
     return [Reading(*r) for r in rows]
 
 
-def _subscriptions(con, q: UsageQuery, hours: dict, rows: list, conf: dict) -> dict:
-    """Split each subscription's fee and limit over the rows: their ``sub``
-    and ``limit``, and a summary per subscription."""
+def _key(q: UsageQuery, r: dict) -> tuple:
+    """A row's group as ``sub_hours`` names it: the split's values (the server
+    dimension is blank in SQL) and the bucket."""
+    return (*("" if d == "server" else r[d] for d in q.split),
+            *((r["bucket"],) if q.by else ()))  # fmt: skip
+
+
+def merge_subs(con, q: UsageQuery, answers: dict[str, dict], conf: dict) -> dict:
+    """Split each subscription once over every server's ``sub_hours``, with
+    this server's readings, so an account two servers share counts its fee
+    once. Each answer's rows get their ``sub`` and ``limit`` again, and every
+    answer the merged summary. A server not reached has no hours here: its
+    share goes to the others that ran then, or elsewhere."""
+    hours: dict[str, dict] = {}
+    by_key: dict[tuple, dict] = {}
+    for s, a in answers.items():
+        for r in a["rows"]:
+            r["sub"] = r["limit"] = 0.0
+            by_key[(s, *_key(q, r))] = r
+        for b, items in (a.get("sub_hours") or {}).items():
+            into = hours.setdefault(b, {})
+            for h, key, c in items:
+                k = (h, (s, *key))
+                into[k] = into.get(k, Decimal(0)) + Decimal(str(c))
+    subs = _subscriptions(con, q, hours, by_key, conf)
+    for a in answers.values():
+        a["subs"] = subs
+        for m in ("sub", "limit"):
+            a["totals"][m] = sum(r[m] for r in a["rows"])
+    return subs
+
+
+def _subscriptions(con, q: UsageQuery, hours: dict, by_key: dict, conf: dict) -> dict:
+    """Split each subscription's fee and limit over the rows ``by_key`` names
+    by group: their ``sub`` and ``limit``, and a summary per subscription."""
     out: dict[str, dict] = {}
-    by_key = {
-        (*(r[d] for d in q.split), *((r["bucket"],) if q.by else ())): r for r in rows
-    }
     billings = set(hours) | {
         b
         for (b,) in con.execute(
