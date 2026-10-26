@@ -1,18 +1,20 @@
 ---
 title: On a phone: install, offline, push
 kind: howto
-when: installing on a phone home screen, opening with no connection, messages written offline, push notifications, docked panes as tabs on a phone
+when: installing on a phone home screen, opening with no connection, messages written offline, push notifications, sharing files or text into aegis, a link that opens a new session with a prompt, docked panes as tabs on a phone
 hints:
   - Install aegis on your phone's home screen and get push notifications. #install-it-as-an-app
   - Write messages without a connection; they send when it comes back. #messages-written-offline
+  - Share a file or a link from another app into a new aegis session. #share-into-aegis
 ---
 
 The client runs in a browser, and on a phone it can live on the home screen
 like an app: it opens without a connection, keeps messages written offline
 until the connection returns, and receives push notifications while it is
 closed. All of it needs the server reached over https, or on localhost; over
-plain http the page works as before, without any of this. The last section
-covers a session's docked pages and files on a small screen.
+plain http the page works as before, without any of this. Other apps can
+share into it, and a link can open it on a new session with a prompt written.
+The last section covers a session's docked pages and files on a small screen.
 
 ## Install it as an app
 
@@ -85,6 +87,55 @@ another device.
 Push is built for Chrome, on Android and on the desktop, and for the other
 desktop browsers. Safari on an iPhone supports push for apps on the home
 screen, but this has not been tried there.
+
+## Share into aegis
+
+Once aegis is installed on Android, it appears in the share sheet of other
+apps. Sharing text, a link, an image or any other file into it opens the New
+session form: the text goes in the box and each file becomes a chip, as if
+attached by hand. Nothing is sent. Pick the agent and the folder, add to the
+prompt, and press Enter, or leave the form.
+
+When an app shares a page, its title goes on the first line and the link
+once, even when the app also put the link inside the text. Whatever the box
+held before stays after the shared text. Only the latest share waits for the
+form: a share the app never opened is replaced by the next one.
+
+A device still running a version from before sharing opens an empty form.
+Reload aegis once to move it to the current version.
+
+## Open a new session from a link
+
+A link can open aegis on the New session form with a prompt already written,
+so another tool or an agent can hand you a ready prompt to tap. The link is
+the address you open aegis at, followed by `#new?` and up to three
+parameters:
+
+```text
+https://aegis.example.org/#new?prompt=Review%20the%20open%20PRs&server=forge&cwd=%2Fsrv%2Fsite
+```
+
+- `prompt` is the text put in the box, before anything it already held.
+- `server` is the name of a linked server, as the form's server pick shows
+  it. Leave it out for the server the address belongs to. A name that is not
+  linked shows an error and the form stays on this server.
+- `cwd` is the folder on that server. Leave it out for the agent's own.
+
+Encode each value as a URL component: JavaScript's `encodeURIComponent`, or
+Python's `urllib.parse.quote(value, safe="")`. A space is `%20` and a newline
+`%0A`. A raw `+` reads as a space, so a plus sign must be `%2B`, and a raw
+`&` would end the value, so it must be `%26`.
+
+Nothing is sent: the person reads the prompt, picks the agent and presses
+Enter. The form is filled once, and the parameters leave the address bar, so
+a reload or Back does not fill it again. Everything after `#` stays in the
+browser, so the prompt never reaches the server's or a proxy's logs.
+
+On Android, a link to the address aegis was installed from opens in the
+installed app when tapped in another app, such as a chat or mail. Elsewhere
+it opens in a browser tab, which works the same once that browser is signed
+in. A link with its own scheme, such as `aegis://`, is not possible: an
+installed web app cannot claim one on Android.
 
 ## For whoever runs the server
 

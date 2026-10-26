@@ -890,7 +890,13 @@ which every page does when it loads and reconnects. A sign-in
 come from the worker's registration too: Chrome on Android refuses
 `new Notification()`, and the worker's `notificationclick` opens the session even
 after the page is gone. The constructor remains only for a page without an
-active worker, which is a desktop on plain http (#342).
+active worker, which is a desktop on plain http (#342). The worker also takes
+what Android shares into the installed app (the manifest's `share_target`,
+#735): a page cannot read a POST's body, so the worker keeps the text and files
+in the `aegis.share` cache and redirects to `/#new?share=<id>`, where the New
+session form takes them out. `#new?prompt=&server=&cwd=` fills the same form
+from a link; the query is read once and dropped from the URL, and nothing is
+sent until the person sends it.
 
 **The device keeps what it saw.** `js/devicestore.js` holds the last Fleet and
 the twenty transcripts saved most recently in IndexedDB, as the wire carried
