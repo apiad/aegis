@@ -243,12 +243,13 @@ precedence. No model reads a transcript to guess what a turn meant. Past the
 `context:` block's `handoff_at`, `turn_end` answers with the session's context
 size, and the agent passes a `handoff` brief in a second call when its task is
 at a break; the answer is a tool result, not part of the system prompt, so it
-never breaks the prompt cache. Below that, its answer says how much prose
-the person has seen from the agent since the last send (`Fold.shown`, counted
-from the stream, where text arrives before the call): a model that worked its
-answer out in its thinking believes it was shown, and only that count tells it
-to write the answer now, or to close without repeating it (#679). A queue
-worker hears `noted`, since its final message is its task's result. The brief rides in the report, and
+never breaks the prompt cache. Below that, its answer says what the person has seen from the agent
+since the last send (`Fold.shown`, read from the stream, where text arrives
+before the call): nothing, or how many messages and how the last begins. A
+model that worked its answer out in its thinking believes it was shown, so it
+needs the fact; the opening, not a verdict, because a status line before a
+tool call is prose too and only the agent can tell it from its answer (#679).
+A queue worker hears `noted`, since its final message is its task's result. The brief rides in the report, and
 `session.handoff`, which only a person can call, starts the fresh session
 from it. The fold also
 times the plan from the records' `ts`: work is time inside a turn and after a

@@ -4,7 +4,7 @@ counts the prose in the transcript since the last send."""
 
 import json
 
-from aegis.agent_ops import SEEN_NOTHING, SEEN_SOME
+from aegis.agent_ops import SEEN_NOTHING, seen_line
 from aegis.transcript.store import read_store
 
 from .test_agents import turn, world  # noqa: F401
@@ -53,7 +53,8 @@ async def test_prose_before_the_call_is_counted_and_not_asked_again(world):  # n
     s = await named(world)
     answer = "The bug is in volume: it squares r instead of cubing it."
     await turn(s, script(["say", answer], END))
-    assert last_turn_end_reply(s) == f"noted. {SEEN_SOME.format(n=len(answer))}"
+    assert last_turn_end_reply(s) == f"noted. {seen_line([answer])}"
+    assert f"1 message from you, {len(answer)} characters" in seen_line([answer])
 
 
 async def test_prose_from_an_earlier_turn_does_not_count(world):  # noqa: F811
@@ -67,5 +68,14 @@ async def test_an_unnamed_session_hears_both_lines(world):  # noqa: F811
     s = await world.spawn()
     await turn(s, script(["say", "Done."], END))
     reply = last_turn_end_reply(s)
-    assert reply.startswith(f"noted. {SEEN_SOME.format(n=5)}\n")
+    assert reply.startswith(f"noted. {seen_line(['Done.'])}\n")
     assert "session_rename" in reply
+
+
+def test_the_line_quotes_the_last_message_and_counts_them_all():
+    said = seen_line(
+        ["Let me read the files.", "The bug is in volume:\nit squares r. " * 9]
+    )
+    assert "2 messages from you" in said
+    assert 'begins "The bug is in volume: it squares r.' in said
+    assert "…" in said and "\n" not in said

@@ -306,13 +306,23 @@ SEEN_NOTHING = (
     "on its own: what you found or did, and what you need from them."
 )
 SEEN_SOME = (
-    "The person has already seen the {n} characters you wrote this turn. Close "
-    "with one or two lines; do not repeat what you wrote."
+    "This turn the person has seen {k} from you, {n} characters in all; the last "
+    'begins "{head}". If your answer is already there, close with one or two '
+    "lines and do not repeat it. If not, write your full final message now, "
+    "complete on its own."
 )
 
 
-def seen_line(shown: int) -> str:
-    return SEEN_SOME.format(n=shown) if shown else SEEN_NOTHING
+def seen_line(shown: list[str]) -> str:
+    """What turn_end tells the agent the person has seen. The last message's
+    opening, not a verdict: a status line before a tool call is prose too, and
+    only the agent can tell it from an answer."""
+    if not shown:
+        return SEEN_NOTHING
+    head = " ".join(shown[-1].split())
+    head = head if len(head) <= 80 else head[:80].rstrip() + "…"
+    k = f"{len(shown)} message" + ("s" if len(shown) != 1 else "")
+    return SEEN_SOME.format(k=k, n=sum(map(len, shown)), head=head)
 
 
 CONTEXT_LINE = (

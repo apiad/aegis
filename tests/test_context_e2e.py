@@ -57,7 +57,10 @@ async def test_the_card_carries_the_cold_thresholds_for_claude(world):
 
 def no_context_line(said: str) -> bool:
     # The plain reply: noted, then what the person has seen (test_turn_end_seen.py).
-    return said.startswith("noted. The person has") and "Your context" not in said
+    return (
+        said.startswith(("noted. The person has", "noted. This turn the person"))
+        and "Your context" not in said
+    )
 
 
 async def end(world, a, **args):

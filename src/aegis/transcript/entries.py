@@ -244,18 +244,18 @@ class Fold:
     def entry(self, id: str) -> dict | None:
         return self._entries.get(id)
 
-    def shown(self) -> int:
-        """Characters of prose the agent wrote since the last send: what the
+    def shown(self) -> list[str]:
+        """The prose the agent wrote since the last send, in order: what the
         person can have read from it this turn. A subagent's text is never
-        prose, so it does not count (#679)."""
+        prose, so it is not here (#679)."""
         since = self._sent_at
-        return sum(
-            len(e["md"])
+        return [
+            e["md"]
             for e in self._entries.values()
             if e["kind"] == "prose"
             and e.get("md")
             and (since is None or (e["ts"] or 0) >= since)
-        )
+        ]
 
     def snapshot(self, since: int | None = None) -> dict:
         """What a subscriber gets: every entry, or, given the ``rev`` it holds,
