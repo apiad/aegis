@@ -29,6 +29,7 @@ Rules:
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import logging
 import os
 import queue
@@ -195,6 +196,16 @@ class Journal:
             if not t.is_alive():
                 return
 
+    def run(self, fn: Callable) -> concurrent.futures.Future:
+        """``fn(con)`` on the writer thread, as every write runs; its result
+        or error lands in the Future. The usage tables changed after it."""
+        fut: concurrent.futures.Future = concurrent.futures.Future()
+        if self._thread is None or not self._thread.is_alive():
+            fut.set_exception(RuntimeError("the journal is not running"))
+        else:
+            self._q.put(("run", fn, fut))
+        return fut
+
     def snapshot(self) -> dict:
         return {"at": self._at}
 
@@ -252,6 +263,13 @@ class Journal:
                     continue
                 if item[0] == "usage_backfill":
                     self._usage_backfill(con)
+                    continue
+                if item[0] == "run":
+                    try:
+                        item[2].set_result(item[1](con))
+                    except Exception as e:
+                        item[2].set_exception(e)
+                    self._usage_changed()
                     continue
                 if item[0] == "quota":
                     tables.quota(con, item[1])

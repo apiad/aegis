@@ -13,17 +13,20 @@ from __future__ import annotations
 import asyncio
 import copy
 import json
+import pwd
 import re
 import time
 from dataclasses import asdict
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
 from ..journal import db, when
 from ..ops import OpError
-from . import page
+from . import page, tables
 from .context import threshold
+from .importer import ImportReport, aegis_known, import_claude_projects
 from .query import BYS, DIMS, MEASURES, UsageQuery, merge_subs, run
 
 if TYPE_CHECKING:
@@ -327,6 +330,31 @@ def page_of(
     }
 
 
+class ImportParams(_Strict):
+    people: list[str] | None = Field(
+        None, description="whose files to read, by token name; default everyone"
+    )
+
+
+def import_sources(app: "App", people: list[str] | None) -> list[tuple]:
+    """(person, Linux user, home) for each person whose Claude Code files
+    the import reads: the server's own user's, and each member's read as its
+    Linux user. A token without a user of its own acts as the server."""
+    out = []
+    for row in app.principals.rows():
+        name, user = str(row["name"]), row["linux_user"]
+        if people is not None and name not in people:
+            continue
+        if row["owner"]:
+            out.append((name, None, Path.home()))
+        elif user:
+            try:
+                out.append((name, user, Path(pwd.getpwnam(user).pw_dir)))
+            except KeyError:
+                continue  # aegis warns at boot
+    return out
+
+
 def register_usage_ops(app: "App") -> None:
     r = app.registry
     # The last answer from each linked server, by (server, question): what a
@@ -358,6 +386,30 @@ def register_usage_ops(app: "App") -> None:
         key = json.dumps(params, sort_keys=True)
         servers = await far(app, caller, who, {key: params}, last)
         return await asyncio.to_thread(across, app, q, who, servers)
+
+    @r.op("usage.import", ImportParams, agent=True, admin=True)
+    async def usage_import(p: ImportParams, caller):
+        """Count once the sessions Claude Code ran outside aegis: each
+        person's ~/.claude/projects, read as their Linux user, as mode
+        outside. Messages aegis already counts are skipped, and a file
+        already imported is not read again. Claude Code purges its files
+        after 30 days, so run it soon after upgrading, on each server."""
+        sources = import_sources(app, p.people)
+        known = await asyncio.to_thread(aegis_known, app.roots.state_root)
+
+        def job(con) -> dict:
+            tables.ensure(con)
+            total = ImportReport()
+            for person, user, home in sources:
+                r = import_claude_projects(
+                    con, [home / ".claude" / "projects"], known, person, user=user
+                )
+                for k in ("files", "sessions", "turns", "already", "live"):
+                    setattr(total, k, getattr(total, k) + getattr(r, k))
+                total.unreadable += r.unreadable
+            return asdict(total)
+
+        return await asyncio.wrap_future(app.journal.run(job))
 
     @r.op("usage.page", PageParams)
     async def usage_page(p: PageParams, caller):

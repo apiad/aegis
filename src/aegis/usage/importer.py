@@ -22,11 +22,13 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from .. import launch
 from ..journal import paths
 from ..journal.service import _scratch
 from . import tables
@@ -79,12 +81,47 @@ def _note(known: set[str], raw: str) -> None:
             known.add(str(message["id"]))
 
 
-def _files(roots: Iterable[Path]) -> list[Path]:
-    found: list[Path] = []
+def _files(roots: Iterable[Path], user: str | None) -> list[tuple[str, int, float]]:
+    """(path, size, mtime) of every ``*.jsonl`` under ``roots``, listed as
+    ``user`` when one is named: a member's home may be closed to the server."""
+    found: list[tuple[str, int, float]] = []
     for root in roots:
-        if root.is_dir():
-            found += root.rglob("*.jsonl")
+        if user is None:
+            if root.is_dir():
+                for f in root.rglob("*.jsonl"):
+                    try:
+                        st = f.stat()
+                    except OSError:
+                        continue
+                    found.append((str(f), st.st_size, st.st_mtime))
+            continue
+        try:
+            r = launch.run(
+                ["find", str(root), "-name", "*.jsonl", "-type", "f",
+                 "-printf", "%p\\t%s\\t%T@\\n"],
+                user=user, text=True, errors="replace", timeout=120,
+            )  # fmt: skip
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        for row in r.stdout.splitlines():
+            path, size, mtime = row.rsplit("\t", 2)
+            found.append((path, int(size), float(mtime)))
     return sorted(found)
+
+
+def _lines(path: str, user: str | None) -> list[str]:
+    """A file's lines, read as ``user``; OSError when it cannot be read."""
+    if user is None:
+        return Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
+    try:
+        r = launch.run(
+            ["cat", "--", path], user=user, text=True, errors="replace", timeout=120
+        )
+    except subprocess.TimeoutExpired as e:
+        raise OSError(f"reading {path} timed out") from e
+    if r.returncode != 0:
+        raise OSError(r.stderr.strip() or f"cannot read {path}")
+    return r.stdout.splitlines()
 
 
 def _epoch(ts: object) -> float | None:
@@ -197,22 +234,21 @@ def import_claude_projects(
     user: str | None = None,
 ) -> ImportReport:
     """Import every ``*.jsonl`` under ``roots`` as sessions of ``person``;
-    ``user`` is the Linux user their repos are read as."""
+    ``user`` is the Linux user the files and their repos are read as. A file
+    that cannot be read is skipped and listed."""
     report = ImportReport()
-    files = _files(roots)
+    files = _files(roots, user)
     report.files = len(files)
     repo_of = _repo_of(user)
     owned: set[str] = set()
-    for k, f in enumerate(files):
-        path = str(f)
+    for k, (path, size, mtime) in enumerate(files):
+        f = Path(path)
         try:
-            st = f.stat()
-            lines = f.read_text(encoding="utf-8", errors="replace").splitlines()
+            lines = _lines(path, user)
         except OSError:
             report.unreadable.append(path)
             progress(k + 1, len(files))
             continue
-        size, mtime = st.st_size, st.st_mtime
         seen = con.execute(
             "SELECT size, mtime FROM usage_imports WHERE path = ?", (path,)
         ).fetchone()

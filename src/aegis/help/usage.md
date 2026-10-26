@@ -161,6 +161,38 @@ is `live`, `cached` (its last answer) or `missing`. An agent's call, and one
 with `server` naming this server, counts this server only; `server: "all"`
 asks every linked server from an agent too.
 
+## Import older work
+
+aegis counts from the day it was upgraded. To count earlier work too, import
+it once, on each server:
+
+```bash
+aegis usage import --claude-projects
+aegis usage import --legacy ~/old-aegis/state
+```
+
+`--claude-projects` reads Claude Code's own session files in
+`~/.claude/projects`, sessions run with or without aegis. Each file becomes a
+session named `cc-<id>` whose turns have mode `outside`, with its repo from
+its working directory; the mode filter on the page takes them out in one
+click. A message aegis already counted is skipped, and so is a whole file
+whose session aegis ran itself. Claude Code deletes these files after 30
+days, so run the import soon after upgrading.
+
+`--legacy` imports the logs of aegis before 2.0, as `aegis import-legacy`
+does, then derives the journal and the usage tables again from every store.
+
+Running either again adds nothing: each file imported is recorded with its
+size and time, and one that grew since is read again in full. A rebuild of
+the journal keeps imported sessions. The page shows them once it next
+refreshes.
+
+On a server several people use, the command reads only its own user's files.
+An admin's agent calls `usage_import` instead (or `aegis call usage_import`
+from its shell): it reads each person's files as their Linux user, gives the
+sessions to their token, and lists any file it could not read. `people`
+limits it to some tokens.
+
 ## What the numbers mean
 
 - **Cost** is at API list prices: Claude's own running total where it reports

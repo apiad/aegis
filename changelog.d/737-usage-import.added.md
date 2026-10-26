@@ -1,0 +1,2 @@
+- **Older work counts too.** `aegis usage import --claude-projects` adds the sessions Claude Code ran outside aegis, from its own files, as mode `outside`; `--legacy DIR` adds the logs of aegis before 2.0. Running it again adds nothing, and a message aegis already counted counts once. On a shared server an admin's `usage_import` reads each member's files as their Linux user. Claude Code deletes its files after 30 days, so import soon after upgrading.
+help: usage

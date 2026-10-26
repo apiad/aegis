@@ -388,7 +388,9 @@ def import_history(
     root: Path | None = ROOT,
 ) -> None:
     """Count older work once: the legacy tree's logs and Claude Code's own
-    session files. Safe to run again: what was imported is skipped."""
+    session files. Safe to run again: what was imported is skipped. On a
+    shared server, an admin's usage_import also reads each member's files."""
+    import getpass
     import sys
 
     from ..journal import db
@@ -425,7 +427,7 @@ def import_history(
                 con,
                 [Path.home() / ".claude" / "projects"],
                 aegis_known(path),
-                "",
+                getpass.getuser(),  # the server's owner, as App names it
                 progress,
             )
         finally:
