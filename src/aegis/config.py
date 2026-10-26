@@ -674,9 +674,7 @@ class UsageDoc(BaseModel):
     model_config = {"extra": "forbid"}
     owners: dict[str, str] = Field(default_factory=dict)
     owner_names: dict[str, str] = Field(default_factory=dict)
-    subscriptions: dict[str, dict[str, str | int | float]] = Field(
-        default_factory=dict
-    )
+    subscriptions: dict[str, dict[str, str | int | float]] = Field(default_factory=dict)
 
 
 class ConfigDoc(BaseModel):

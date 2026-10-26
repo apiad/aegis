@@ -124,9 +124,7 @@ def paths(node: object, prefix: str = "") -> set[str]:
             "usage.owners",
             "usage.owner_names",
             "usage.subscriptions",
-        ) or (
-            p.startswith("terminals.*.") and p.count(".") == 2
-        )
+        ) or (p.startswith("terminals.*.") and p.count(".") == 2)
         out |= {p} if leaf else paths(v, p)
     return out
 
