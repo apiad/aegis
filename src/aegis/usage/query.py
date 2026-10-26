@@ -15,9 +15,13 @@ caller that merges servers' answers fills it, and here it is "".
 from __future__ import annotations
 
 import sqlite3
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from decimal import Decimal
 from zoneinfo import ZoneInfo
+
+from .subscription import WEEK, WEEKLY, Reading, split as split_fee, weekly_fee
 
 BYS = ("hour", "day", "week", "month", "dow", "dow_hour")
 MEASURES = (
@@ -71,6 +75,11 @@ class Answer:
     outcomes: list[dict]
     estimated: float
     unpriced_tokens: int
+    # Per subscription (billing): its fee for the window, elsewhere, unused,
+    # apportioned dollars and API-priced value; and its API-priced cost per
+    # [hour, group, cost], which a merge across servers shares again.
+    subs: dict[str, dict] = field(default_factory=dict)
+    sub_hours: dict[str, list] = field(default_factory=dict)
 
 
 def _offsets(since: float, until: float, tz: str) -> str:
@@ -218,8 +227,14 @@ def _distinct(con, q: UsageQuery, cte: str, cte_args: list) -> tuple[int, int]:
     ).fetchone()
 
 
-def run(con: sqlite3.Connection, q: UsageQuery, owners: dict | None = None) -> Answer:
-    """The answer to ``q``; ``owners`` is the config's ``usage.owners``."""
+def run(
+    con: sqlite3.Connection,
+    q: UsageQuery,
+    owners: dict | None = None,
+    subscriptions: dict | None = None,
+) -> Answer:
+    """The answer to ``q``; ``owners`` is the config's ``usage.owners`` and
+    ``subscriptions`` its ``usage.subscriptions``."""
     if q.by is not None and q.by not in BYS:
         raise ValueError(f"by must be one of {', '.join(BYS)}")
     for d in (*q.split, *q.where):
@@ -234,6 +249,8 @@ def run(con: sqlite3.Connection, q: UsageQuery, owners: dict | None = None) -> A
     offsets = _offsets(max(q.since, lo), min(q.until, hi + 1), q.tz)
     cte, cte_args = _owners_cte(con, owners)
     rows = _grouped(con, q, cte, cte_args, offsets)
+    hours = _sub_hours(con, q, cte, cte_args, offsets)
+    subs = _subscriptions(con, q, hours, rows, subscriptions or {})
     totals = {m: sum(r[m] for r in rows) for m in MEASURES}
     totals["cost"] = round(totals["cost"], 9)
     if q.split or q.by:
@@ -256,7 +273,91 @@ def run(con: sqlite3.Connection, q: UsageQuery, owners: dict | None = None) -> A
         outcomes=_outcomes(con, q, offsets, owners),
         estimated=round(priced / cost, 6) if cost else 0.0,
         unpriced_tokens=int(unpriced),
+        subs=subs,
+        sub_hours={
+            b: [[h, list(k), round(float(c), 9)] for (h, k), c in v.items()]
+            for b, v in hours.items()
+        },
     )
+
+
+def _sub_hours(con, q: UsageQuery, cte: str, cte_args: list, offsets: str) -> dict:
+    """API-priced cost on each subscription, by UTC hour and the row's group
+    (the split's values and the bucket)."""
+    base, args = _filter(q, {*q.split, *q.where})
+    keys = [DIMS[d] for d in q.split]
+    if q.by:
+        keys.append(_bucket(q.by, "p.ts", offsets))
+    select = "".join(f", {k}" for k in keys)
+    group = ", ".join(str(n + 1) for n in range(len(keys) + 2))
+    sql = (
+        f"WITH {cte} SELECT p.billing, CAST(p.ts / 3600 AS INTEGER) * 3600{select},"
+        f" SUM(p.cost) {base} AND p.billing <> 'api' GROUP BY {group}"
+    )
+    out: dict[str, dict] = {}
+    for r in con.execute(sql, cte_args + args):
+        key = list(r[2:-1])
+        if q.by:
+            key[-1] = _label(q.by, key[-1])
+        out.setdefault(r[0], {})[(r[1], tuple(key))] = Decimal(str(r[-1] or 0))
+    return out
+
+
+def _readings(con, billing: str, since: float, until: float) -> list[Reading]:
+    """The weekly window's readings in the window, and the one before it."""
+    window = WEEKLY.get(billing.split(":", 1)[0])
+    if window is None:
+        return []
+    rows = con.execute(
+        "SELECT ts, percent, resets_at FROM usage_quota WHERE billing = ? AND window = ?"
+        " AND ts >= (SELECT COALESCE(MAX(ts), ?) FROM usage_quota"
+        " WHERE billing = ? AND window = ? AND ts < ?) AND ts < ? ORDER BY ts",
+        (billing, window, since, billing, window, since, until),
+    ).fetchall()
+    return [Reading(*r) for r in rows]
+
+
+def _subscriptions(con, q: UsageQuery, hours: dict, rows: list, conf: dict) -> dict:
+    """Split each subscription's fee and limit over the rows: their ``sub``
+    and ``limit``, and a summary per subscription."""
+    out: dict[str, dict] = {}
+    by_key = {
+        (*(r[d] for d in q.split), *((r["bucket"],) if q.by else ())): r for r in rows
+    }
+    billings = set(hours) | {
+        b
+        for (b,) in con.execute(
+            "SELECT DISTINCT billing FROM usage_quota WHERE ts >= ? AND ts < ?",
+            (q.since, q.until),
+        )
+    }
+    for billing in sorted(billings):
+        c = conf.get(billing.split(":", 1)[-1]) or {}
+        fee = Decimal(str(c["fee"])) if c.get("fee") else None
+        hourly = hours.get(billing, {})
+        first = min((h for h, _ in hourly), default=q.since)
+        span = (max(q.since, first), min(q.until, time.time()))
+        s = split_fee(_readings(con, billing, q.since, q.until), hourly, fee, span)
+        for key, points in s.limit.items():
+            if key in by_key:
+                by_key[key]["limit"] += points
+        for key, dollars in s.dollars.items():
+            if key in by_key:
+                by_key[key]["sub"] += float(dollars)
+        week = weekly_fee(fee) if fee is not None else Decimal(0)
+        out[billing] = {
+            "name": c.get("name") or billing,
+            "fee": float(week * Decimal(str(max(span[1] - span[0], 0))) / WEEK),
+            "kind": s.kind,
+            "sub": float(sum(s.dollars.values(), Decimal(0))),
+            "elsewhere": s.elsewhere,
+            "unused": s.unused,
+            "elsewhere_usd": float(week * Decimal(str(s.elsewhere)) / 100),
+            "unused_usd": float(week * Decimal(str(s.unused)) / 100),
+            "apportioned": float(s.apportioned),
+            "value": round(float(sum(hourly.values(), Decimal(0))), 9),
+        }
+    return out
 
 
 def _waits(con: sqlite3.Connection, q: UsageQuery, offsets: str) -> dict[tuple, float]:

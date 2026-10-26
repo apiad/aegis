@@ -114,3 +114,25 @@ def test_config_owners_name_a_local_repo(con):
     assert {r["owner"]: r["cost"] for r in a.rows}["acme-co"] == 1.5
     a = run(con, q(split=("owner",)))
     assert {r["owner"]: r["cost"] for r in a.rows}["local"] == 0.5
+
+
+def test_sub_and_limit_share_the_weekly_rise_by_cost(con):
+    from dataclasses import replace
+
+    t = replace(turn(1, cost="0.4"), billing="claude:a1b2")
+    tables.insert(con, "s3", Derived(turns=[t], parts=[
+        part(1, 0, "/w/atlas", "0.3"), part(1, 1, "/w/notes", "0.1")]))  # fmt: skip
+    con.executemany("INSERT INTO usage_quota VALUES('claude:a1b2', 'weekly_all', ?, ?, ?)",
+                    [(T0 - 1800, 10.0, T0 + 86400), (T0 + 1800, 14.0, T0 + 86400)])  # fmt: skip
+    subs = {"a1b2": {"name": "claude-max", "fee": 200}}
+    a = run(con, q(split=("owner",)), subscriptions=subs)
+    week = 200 * 12 / 52
+    by = {r["owner"]: r for r in a.rows}
+    assert (by["acme-co"]["limit"], by["ana"]["limit"]) == (3.0, 1.0)
+    assert round(by["acme-co"]["sub"], 6) == round(week * 3 / 100, 6)
+    assert round(a.totals["sub"], 6) == round(week * 4 / 100, 6)
+    s = a.subs["claude:a1b2"]
+    assert (s["name"], s["kind"], s["elsewhere"], s["unused"]) == ("claude-max", "metered", 0, 0)
+    assert s["value"] == 0.4  # API-priced cost on the subscription
+    assert sum(c for _, _, c in a.sub_hours["claude:a1b2"]) == 0.4
+    assert run(con, q(split=("owner",))).totals["sub"] == 0  # no fee, no dollars

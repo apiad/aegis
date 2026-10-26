@@ -67,7 +67,7 @@ async def test_the_op_answers_with_rows_and_totals(app):
     assert a["rows"][0]["repo"] == "/w/notes"  # sorted by the measure
     assert a["totals"]["cost"] == 1.6 and a["server"] == "here"
     assert set(a) == {"server", "at", "rows", "totals", "outcomes", "estimated",
-                      "unpriced_tokens", "backfill"}  # fmt: skip
+                      "unpriced_tokens", "backfill", "subs", "sub_hours"}  # fmt: skip
 
 
 async def test_a_where_narrows_and_a_server_split_names_this_server(app):

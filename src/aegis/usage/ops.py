@@ -121,7 +121,13 @@ def answer(app: "App", q: UsageQuery, who: "Principal") -> dict:
     try:
         q.people = people(app, con, who)
         try:
-            a = run(con, q, owners=app.config.current().usage.get("owners"))
+            usage = app.config.current().usage
+            a = run(
+                con,
+                q,
+                owners=usage.get("owners"),
+                subscriptions=usage.get("subscriptions"),
+            )
         except ValueError as e:
             raise OpError("bad_params", str(e)) from None
         if "session" in q.split:
