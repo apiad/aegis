@@ -2,7 +2,10 @@
 
 from decimal import Decimal
 
+import pytest
+
 from aegis.usage.prices import prices_for
+from aegis.usage.turns import SessionInfo, Settle, WaitRow
 
 from .records import UseRec, run
 
@@ -136,3 +139,171 @@ def test_a_message_repeated_on_three_lines_counts_once():  # review focus 3
     d = run(r)
     t = d.turns[0]
     assert (t.tok_in, t.tok_out, t.calls) == (700, 30, 3)
+
+
+def _turn(r, text, *calls, cost=None):
+    """A turn woken by ``text`` making ``calls`` (id, tool, input, output);
+    returns the record index of its result."""
+    r.own("send", text=text)
+    for k, (cid, tool, inp, out) in enumerate(calls):
+        r.assistant(f"{cid}-m", inp=100 * (k + 1), tools=[(cid, tool, inp)])
+        r.output(cid, out)
+    r.assistant(f"{text}-end", inp=10, text="done")
+    return r.result(cost_total=cost)["i"]
+
+
+def test_a_code_edit_is_settled_by_the_next_commit_in_its_repo():
+    r = UseRec()
+    r.spawn(cwd="/w/atlas")
+    t1 = _turn(r, "edit", ("a", "Edit", {"file_path": "/w/atlas/a.py"}, "ok"))
+    _turn(
+        r,
+        "commit",
+        ("b", "Bash", {"command": "git commit -qm 'fix: y'"}, "[main 1a2b3c4] fix: y"),
+    )
+    d = run(r, repo_of={"/w/atlas": "atlas"}.get)
+    first = [p for p in d.parts if p.rec == t1][0]
+    assert (first.repo, first.purpose, first.settled) == ("atlas", "build", False)
+    assert Settle(rec=t1, n=0, purpose="fix") in d.settles
+    commit = [p for p in d.parts if p.activity == "committing"][0]
+    assert (commit.purpose, commit.settled) == ("fix", True)
+
+
+def test_a_commit_in_another_repo_leaves_the_edit_open():
+    r = UseRec()
+    r.spawn(cwd="/w")
+    t1 = _turn(r, "edit", ("a", "Edit", {"file_path": "/w/atlas/a.py"}, "ok"))
+    _turn(
+        r,
+        "commit",
+        (
+            "b",
+            "Bash",
+            {"command": "git -C /w/notes commit -qm 'docs: y'"},
+            "[main 1a2b3c4] docs: y",
+        ),
+    )
+    d = run(r, repo_of={"/w/atlas": "atlas", "/w/notes": "notes"}.get)
+    assert not [s for s in d.settles if s.rec == t1]
+
+
+def test_reading_takes_the_purpose_of_the_next_purposeful_call():
+    r = UseRec()
+    r.spawn()
+    t1 = _turn(r, "read", ("a", "Read", {"file_path": "/w/x.py"}, "..."))
+    _turn(r, "search", ("b", "WebSearch", {"query": "q"}, "..."))
+    d = run(r)
+    assert Settle(rec=t1, n=0, purpose="research") in d.settles
+
+
+def test_reading_in_the_same_turn_settles_at_once():
+    r = UseRec()
+    r.spawn()
+    _turn(
+        r,
+        "go",
+        ("a", "Read", {"file_path": "/w/x.py"}, "..."),
+        ("b", "WebSearch", {"query": "q"}, "..."),
+    )
+    d = run(r)
+    assert {(p.activity, p.purpose, p.settled) for p in d.parts} == {
+        ("reading", "research", True),
+        ("web", "research", True),
+    }
+
+
+def test_support_at_the_end_takes_the_last_purpose_and_background_without_one_is_review():
+    r = UseRec()
+    r.spawn()
+    _turn(r, "search", ("a", "WebSearch", {"query": "q"}, "..."))
+    t2 = _turn(r, "read", ("b", "Read", {"file_path": "/w/x.py"}, "..."))
+    r.own("close")
+    d = run(r)
+    part = [p for p in d.parts if p.rec == t2][0]
+    assert (part.purpose, part.settled) == ("research", False)
+    assert Settle(rec=t2, n=0, purpose="research") in d.settles
+
+    r = UseRec()
+    r.spawn()
+    t1 = _turn(r, "review this", ("a", "Read", {"file_path": "/w/x.py"}, "..."))
+    r.own("close")
+    d = run(r, info=SessionInfo(kind="worker"))
+    assert d.parts[0].purpose == "review"
+    assert Settle(rec=t1, n=0, purpose="review") in d.settles
+
+
+def test_a_pr_read_is_review_unless_the_turn_edits_after_it():
+    r = UseRec()
+    r.spawn()
+    _turn(r, "look", ("a", "Bash", {"command": "gh pr diff 3"}, "..."))
+    _turn(
+        r,
+        "fix",
+        ("b", "Bash", {"command": "gh pr view 3"}, "..."),
+        ("c", "Edit", {"file_path": "/w/a.py"}, "ok"),
+    )
+    d = run(r)
+    assert d.parts[0].purpose == "review" and d.parts[0].settled
+    view = [p for p in d.parts if p.rec != d.parts[0].rec and p.activity == "reading"]
+    assert not view[0].settled
+
+
+def test_repo_by_path_then_workdir_then_gh_repo_then_last_then_cwd():
+    repo_of = {
+        "/w/atlas": "atlas",
+        "/w/notes": "notes",
+        "gh:acme-co/ledger": "ledger",
+    }.get
+    r = UseRec()
+    r.spawn(cwd="/w")
+    _turn(r, "1", ("a", "Read", {"file_path": "/w/atlas/x"}, "..."))
+    _turn(r, "2", ("b", "Bash", {"command": "cd /w/notes && ls"}, "..."))
+    _turn(r, "3", ("c", "Bash", {"command": "gh pr view 3 --repo acme-co/ledger"}, "."))
+    _turn(r, "4", ("d", "ToolSearch", {"query": "x"}, "..."))
+    _turn(r, "5", ("e", "Read", {"file_path": "/tmp/x"}, "..."))
+    d = run(r, repo_of=repo_of)
+    assert [p.repo for p in d.parts] == ["atlas", "notes", "ledger", "ledger", "ledger"]
+
+    r = UseRec()
+    r.spawn(cwd="/w/atlas")
+    _turn(r, "1", ("a", "ToolSearch", {"query": "x"}, "..."))
+    assert run(r, repo_of=repo_of).parts[0].repo == "atlas"
+
+
+@pytest.mark.parametrize(
+    "text,kind,first,want",
+    [
+        ("do it", "foreground", False, "person"),
+        ("> from agent:calm-hopper · x", "foreground", False, "agent"),
+        ("> from queue:general · task#3 · ok", "foreground", False, "queue"),
+        ("> from monitor:m1 · done", "foreground", False, "monitor"),
+        ("> from artifact:a1 · submit", "foreground", False, "artifact"),
+        ("> from schedule:nightly · run#2", "foreground", False, "schedule"),
+        ("> from workflow:w1 · done", "foreground", False, "workflow"),
+        ("> from feedback · x", "foreground", False, "other"),
+        ("review this", "worker", True, "queue"),
+        ("build x", "workflow", True, "workflow"),
+        ("do it", "foreground", True, "person"),
+    ],
+)
+def test_mode(text, kind, first, want):
+    r = UseRec()
+    r.spawn()
+    if not first:
+        _turn(r, "hello")
+    _turn(r, text)
+    assert run(r, info=SessionInfo(kind=kind)).turns[-1].mode == want
+
+
+def test_an_idle_gap_is_a_wait_capped_at_8_hours():
+    r = UseRec()
+    r.spawn()
+    _turn(r, "go")
+    r.wait(40_000)
+    send = r.own("send", text="> from monitor:m1 · done")
+    r.assistant("m9", inp=10, text="ok")
+    r.result()
+    d = run(r)
+    assert d.waits == [
+        WaitRow(rec=send["i"], ts=send["ts"], woke_by="monitor", secs=28_800)
+    ]
