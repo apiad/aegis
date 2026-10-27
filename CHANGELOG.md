@@ -5,6 +5,143 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [2.17.0] - 2026-10-27
+
+### Added
+
+- **The slash menu completes `/spawn`'s agent, its flags and their values.** `/spawn ` lists this server's agents, then each linked server's as `agent@server`; `-` lists the flags, and `--model`, `--effort` and `--permission` list their values. `/announce` completes its flags too. Before, every one of them had to be typed from memory, and a typo showed only as an error after sending.
+  help: commands#slash-commands
+
+- **A Waiting on row shows its session's tab card.** Hovering a row in the session panel's Waiting on section, or a long press on a phone, opens the card a hover on that session's tab opens: its Fleet card with the tab menu's actions, beside the panel. Before, the row named the session and nothing more, and a quiet worker had no tab to hover.
+  help: queues#while-you-wait
+
+- **A workflow step shows how far along its wait is.** An `sh` step, or a `check` whose probe is `sh`, takes a `progress:` command that prints 0 to 100, as a monitor's does, and the workflow card draws its bar and percentage in Now and on the step's row. Before, a waiting step showed only its command and how long it had run, so a check nearly done looked the same as one that was stuck.
+  help: workflows#commands-checks-and-pauses
+
+- **Agents act across a trusted link as at home.** `queue_enqueue` with `queue@server` enqueues on the other server and the result comes back to the inbox; `task_status`, `task_cancel` and `task_resume` take `task-id@server`; `monitor_sessions` waits on `handle@server`; and `session_close` closes `handle@server` under the same two-step rule as at home.
+  help: links#trusted-links
+
+- **Agents read across a trusted link.** Over a link both servers trust, `session_list` gives the other server's sessions in full (title, attention, plan, cwd), `peer_read` reads `handle@server`, and the other server's errors reach the agent in its own words. A plain link still gives handles and states only.
+  help: links#trusted-links
+
+- **Trusted links join two servers you alone use, both ways.** `aegis link add <name> <url> --trusted`, `aegis link trust <name>` or the "Trusted (both ways)" box in Settings asks for it, and the far server grants it only to its admin token while no other token exists there. Its agents then spawn and hand off to this server's sessions over the same socket, so a laptop behind NAT is reached without a connection of its own, and `session_list` there lists this server's sessions. Settings shows the trust on both servers, or why it was refused.
+  help: links#trusted-links
+
+- **Autoclose: a session closes itself once its agent finishes.** Turn it on with the Autoclose button in the session panel, the card or tab menu, or `/autoclose`; while it is on, `turn_end` refuses done without `close`, so the agent ends done and closes, or ends with review or needs_you. Before, a session closed only when you remembered to tell its agent to close when done.
+  help: sessions#autoclose
+
+- **`/consolidate` reviews your skills and memories with the agent.** It reads `knowledge_stats` and shows one page with a row per proposal: merge two duplicates, renew or drop an expired memory, fix a stale one, retire a skill nobody uses, mend a broken link. Each row has its evidence and a checkbox, and the agent applies only the rows you tick, each a commit with Undo on its card. A monthly schedule can start the review; you still tick the rows. Agents gain `skill_delete`.
+  help: consolidate
+
+- **Optional embeddings for searching skills and memories.** With the `aegis-harness[embeddings]` extra installed and `knowledge.embeddings` naming a fastembed model in `.aegis.yaml` (or in Settings → Search embeddings), `memory_search` and `skill_search` fuse the keyword rank with the model's, so a message in one language finds an item written in another. Off by default; the vectors are cached on disk, the block under a message never waits for the model, and `aegis doctor` warns when the key is set without the extra.
+  help: config#search-embeddings
+
+- **Memories that every session finds.** aegis keeps each person's memories on the server, one Markdown file per fact with a git history, and every message to a session carries a short block naming the three memories that may matter, which the agent reads with `memory_read`. Agents search, save and delete them with `memory_search`, `memory_save` and `memory_delete`, `knowledge_stats` says which are used, and `/remember` saves one you ask for. A member's agents never see another member's memories.
+  help: knowledge
+
+- **`knowledge_stats` finds duplicates and items never recalled.** `duplicates=true` adds the pairs of skills or memories that are likely the same item, each the other's best match both ways, and each item says whether it is `never_recalled`: hinted 10 times or more and never read or invoked. `flag=never_recalled` lists only those.
+  help: knowledge#tools-for-agents
+
+- **Skills that every session finds.** aegis keeps each person's skills beside their memories, one SKILL.md folder each, and the block under a message now names the three skills that may matter too. Agents of every harness find them with `skill_search`, load them with `skill_read` and save them with `skill_save`, and a session's card and sidebar list the skills it loaded. Each skill is also a command in the composer, `/<name> args`, in every harness, `skill_run` runs the Python scripts a loaded skill declares, and `skill_tool` calls the tools of an MCP server a skill brings, each as your Linux user on a shared server.
+  help: knowledge#skills
+
+- **Approve what an agent remembers.** A memory or skill an agent saves without being asked is now a proposal: a card in the transcript shows it with Approve and Discard, and it is not named under messages, nor offered as a command, until you approve it. What you ask for in your own message is saved at once, and its card offers Undo; a request that reaches the agent from another agent, a queue task or a wake is a proposal. When an agent changes or deletes one you already approved, the change applies at once, asked or not, and its card offers Undo, which reverts that commit. The cards keep working after a restart.
+  help: knowledge#approving-what-an-agent-saves
+
+- **Expired and stale memories are flagged.** A temporary memory past its day is flagged expired and leaves the block under messages. When a memory is saved, and once a day, aegis looks for the paths it quotes in backticks, as your Linux user on a shared server, and flags it stale with each path it cannot find; a stale memory stays in the block. Search results and `knowledge_stats` carry the flags, and `knowledge_stats flag=stale` lists only those.
+  help: knowledge#expired-and-stale-memories
+
+- **Moving skills and memories in.** The `/setup` agent can move the skill folders, auto-memory files and procedure docs you tick into aegis with `knowledge_import`. Each is read as your own user, copied whole with its scripts and binaries (20 MiB at most per folder), saved approved as one commit when your own submit of the `/setup` page began the turn (a proposal with its own card otherwise), and a name aegis already holds is refused rather than overwritten. One card lists what came in, with an Undo per item. Your setup record keeps what was imported, so a later `/setup` proposes only what is new.
+  help: knowledge#moving-in-what-a-harness-kept
+
+- **Only aegis's skills and memory, if you want.** A switch in Settings, under Skills and memory, starts your own sessions without the harness's own skills and memory: Claude Code without its Skill tool and its auto-memory, Codex without its skills catalog and memories, OpenCode without its skills. A skill in your store then also takes a harness command's name. It is per person and off by default, `/setup` offers it as a row, and a session keeps the setting it started with, so turning it off again restores the harness's own in the sessions you start after.
+  help: knowledge#turning-the-harness-s-own-off
+
+- **The Knowledge view.** The Knowledge button in the top bar, or Alt+I, lists your own memories and skills with a search box and an all, skills, memories and flagged filter, proposals first. Open one to edit its file, which saves it approved as one commit and refuses an edit of a file that changed since you opened it, to see its history and restore an earlier version, or to delete it. A proposal's card has an Edit button that opens it there. It works at phone width.
+  help: knowledge#the-knowledge-view
+
+- **A workflow card folds its inputs and shows time and cost.** Each arg folds to its name and a preview until opened, and a list or an object opens as coloured JSON instead of one wrapped line, so the progress is no longer a long scroll away on a phone. Under the progress bar the card says how long the run has gone and what its steps cost, and while it runs, an estimate of the time left and of the total cost.
+  help: workflows#what-the-person-sees
+
+- **Share into aegis, and links that open a new session with a prompt.** On
+  Android, the installed app is now a share target: text, links and files
+  shared from another app open the New session form with the text in the box
+  and the files attached, unsent. A link to `/#new?prompt=…&server=…&cwd=…`
+  opens the same form filled, so a tool or an agent can hand you a ready prompt
+  to tap.
+  help: phone#open-a-new-session-from-a-link
+
+- **Older work counts too.** `aegis usage import --claude-projects` adds the sessions Claude Code ran outside aegis, from its own files, as mode `outside`; `--legacy DIR` adds the logs of aegis before 2.0. Running it again adds nothing, and a message aegis already counted counts once. On a shared server an admin's `usage_import` reads each member's files as their Linux user. Claude Code deletes its files after 30 days, so import soon after upgrading.
+  help: usage
+
+- **The usage page counts every linked server.** Its panels add up the rows of each server this one links, a chip per server takes one out, a subscription two servers share counts its fee once, and the footer says when each server last answered; a server that stops answering keeps its last numbers. `usage_read` with `server: "all"` merges them the same way.
+  help: usage
+
+- **aegis counts usage as each turn ends, and `aegis usage` answers from it in under a second.** The journal's writer thread now splits every finished turn's cost over its tool calls and records each share with its activity (reading, testing, editing...), its purpose (build, fix, review, docs...), its repo and the repo's owner, read from its `origin`. `aegis usage` reads those rows instead of rereading every transcript: `--split` any dimension, `--by` day, week, month or weekday and hour, `--measure` cost, tokens, hours or counts, `--where` to filter, `--json` for scripts. A `usage:` block in `.aegis.yaml` names the owners of local repos. The server derives older sessions once after the upgrade.
+  help: usage
+
+- **A usage page shows what the agents' work cost, live.** Open Usage from the command palette or click Quota above the quota gauges: tiles for the window's spend and its change, agent hours against time waiting on you, the share run without a person and the cost per merged pull request; the spend per week stacked by purpose, repo, owner, mode or model; who the money goes to; each repo's spend by purpose; a weekday-by-hour grid; what woke each turn; the harnesses and models; and the commits, pull requests and closed issues per repo. Every control changes every panel, any cell lists the sessions behind it, and the page follows each turn within 2 seconds. Agents ask the same questions with the new `usage_read` tool.
+  help: usage
+
+- **Usage counts subscriptions and context length.** Each turn bills its subscription or `api`, and quota readings are kept as they change. Give a subscription a fee in `usage.subscriptions` and its fee and weekly limit are shared over what ran on it (`aegis usage --measure subscription`, `--measure limit`), with what ran elsewhere and what went unused; before the first reading the fee is apportioned by cost. Each call's context is banded, and `aegis usage --split context --whatif 200k` (or `usage_read`'s `whatif`) replays what handing off earlier would have saved, net of rereading. The usage page gains a Subscriptions and a Context length panel.
+  help: usage#subscriptions-and-context
+
+### Changed
+
+- **A rename can take an archived session's handle.** Handles had to be unique across every session the server ever ran, so a finished session kept its name reserved and `session_rename` refused it with `handle_taken`. Now only open sessions hold their handles. Reopening an archived session whose handle an open one took gives it a numbered form (`docs-sweep-2`). New handles aegis picks itself still avoid archived ones.
+  help: sessions#rename-it
+
+- **Claude Code's background-task notices draw as inbox rows.** When a background command or a subagent ends, Claude Code wakes the agent with a `<task-notification>` prompt, which the transcript drew as the person's own message, tag by tag, with the whole command repeated in it. It is now a row like a monitor's wake: a header such as `background · failed · exit 1`, in red when the task failed or was killed, the command's opening comment as its label, and the command, or the subagent's report, and the output file folded under it.
+  help: sessions#when-a-background-task-ends
+
+- **The disk notice points to another disk with room.** When the disk holding aegis fills and the host has another disk below the disk's `clear:` level, writable by aegis's user and with more free space, the notice names it and asks agents to put new clones, build output, caches and downloads there, instead of telling them to start no large download or build. The disks are the ones the host meters list, so `host: hide_mounts` keeps one out.
+  help: sessions#notices
+
+- **This release is tested with Claude Code 2.1.296 to 2.1.311, Codex 0.163.0 to 0.164.0 and OpenCode 2.0.31 to 2.1.2.** Claude Code 2.1.311 passed every canary scenario at both ends of the range; OpenCode 2.2.0 did not (see Known issues), so its range stays where it was.
+  help: sessions#an-untested-harness-version
+
+### Fixed
+
+- **OpenCode servers no longer outlive what started them.** An `opencode serve`
+  child survived its `aegis serve` being stopped or killed, a doctor or catalog
+  probe cancelled while it started, and test servers stopped at teardown; at
+  about 300 MB each, 81 of them took 24 GB and woke the OOM killer. The child
+  now dies with the process that started it, a cancelled start or probe ends
+  it, and `aegis serve` ends at start any OpenCode server whose owner is gone,
+  including the ones earlier versions left behind.
+
+- **A harness that exits cleanly between turns no longer marks its session as an error.** Claude Code exiting with code 0 while idle used to show `Claude Code exited with code 0` with the error mark, and on a workflow step that was already done it also gave the hidden session a tab nobody could archive. Now the session is asleep, marked `exited`, and the next message wakes it. Closing a done step's session that a later step may still continue in (`session:`) is still refused, but the refusal names those steps and says the run closes it once none can.
+
+- **The tab bar's session menu opens under its button.** With the tabs overflowing, the "N ▾" menu opened in the top-left corner over the header and transcript, because its position came out as NaN.
+
+- **On a phone the message box opens two lines wide when you tap into it.** It
+  was one row beside five buttons, about 130 px wide: its placeholder wrapped
+  and was cut off at the bottom, a scroll bar showed, and a tap changed
+  nothing. A focused box now takes the whole width with its buttons under it,
+  the empty box has no placeholder on a touch screen, and the scroll bar shows
+  only once the text outgrows the box.
+
+- **On a phone, the new tab fits the screen whatever tip it shows.** A long rotating tip made the whole column as wide as the tip on one line, so the message box, the send button and the last option chips ran off the right edge. The tip is now cut with an ellipsis.
+
+- **The journal records closed issues and the repo of every merge.** A pull request merged or opened with `gh pr --repo owner/name` is now filed under the local checkout whose `origin` is that repo, where before it named no repo. `gh issue close N` is a new `issue` entry, and a merged pull request adds one for each `Closes #N`, `Fixes #N` or `Resolves #N` in the body its `gh pr create` passed. The journal rebuilds itself once on upgrade, so history gains these entries. The Journal view's search box now matches an entry's repo too, so typing a repo's name finds its merges and closed issues.
+
+- **The Fleet no longer scrolls sideways on a phone.** A card waiting on several sessions listed them all in one unbreakable label, which pushed the whole Fleet wider than the screen; the label now ends in an ellipsis.
+
+### Known issues
+
+- On OpenCode, a session's first prompt can go out before aegis's tools are
+  offered, about 2 s before they appear, so the agent's first turn has no
+  `aegis_*` tool. On CI the canary failed 3 OpenCode scenarios twice on 2.1.2
+  and 5 once on 2.0.31; the same race was seen at 2.13.0, so it is not new in
+  this release (#540).
+- OpenCode 2.2.0 is outside the tested range: on it the canary also fails a
+  queue worker's result waking the session that enqueued it (#755) and
+  `/tutorial`'s guide reading its page (#740).
+- A tab that returns from the Fleet, or reloads with its copy on the device,
+  downloads 4 to 7 KB of transcript frames where 2.16.0 downloaded about 1 KB
+  (`return_tab_kb` and `cold_saved_kb` in `make bench`). Every timing in the
+  bench is the same or faster than 2.16.0's on the same host.
+
 ## [2.16.0] - 2026-10-23
 
 ### Added
