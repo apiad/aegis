@@ -1468,7 +1468,7 @@ body{background:#000}
 #a2 .set-empty{width:min(520px,100%);margin:12vh auto 0;padding:0 24px;display:grid;gap:14px;justify-items:start;font-size:14px;line-height:1.55;color:var(--ink)}
 #a2 .set-empty p{margin:0}
 #a2 .set-empty code{font-family:var(--font-mono);font-size:12.5px;color:var(--strong)}
-#a2 #settings-btn.on,#a2 #journal-btn.on,#a2 #knowledge-btn.on,#a2 #files-btn.on,#a2 #schedules-btn.on,#a2 #help-btn.on{color:var(--accent)}
+#a2 #settings-btn.on,#a2 #journal-btn.on,#a2 #knowledge-btn.on,#a2 #usage-btn.on,#a2 #files-btn.on,#a2 #schedules-btn.on,#a2 #help-btn.on{color:var(--accent)}
 @media (max-width:640px){#a2 .set-agent{grid-template-columns:1fr}#a2 .set-card-foot,#a2 .set-agent > .set-why{grid-column:1}#a2 .set-findings li{grid-template-columns:1fr;gap:2px}}
 
 /* the Files view (js/files.js): a bar with the path and Save, the folder tree
