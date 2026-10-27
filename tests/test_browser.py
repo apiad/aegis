@@ -8415,8 +8415,51 @@ def test_attached_files_upload_as_chips_and_land_as_one_card(server, page, tmp_p
     assert "look at these" in row.inner_text()
     assert "Attached files:" not in row.inner_text()
     assert page.locator("#atts .chip").count() == 0
+    dock = row.locator(".fcard .dock")
+    assert dock.is_visible()
+    key = dock.get_attribute("data-dock")
+    dock.click()
+    pane = page.locator(f'#canvas .pane[data-pane="{key}"]')
+    pane.wait_for()
+    assert pane.locator(".fn").inner_text() == "shot.png"
+    assert row.locator(".fcard .held").inner_text() == "docked · show"
     (got,) = inbox_of(server, lid).glob("*-notes.txt")
     assert got.read_text() == "line one\n" * 50000
+    assert page.errors == []
+
+
+def test_a_local_file_link_opens_in_the_viewer_and_docks(server, page):
+    (server.root / "docs").mkdir()
+    notes = server.root / "docs" / "notes.md"
+    notes.write_text("# Notes\n\nKeep this beside the chat.\n")
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.wait_for_selector("#tab-add:not(.needs-net)")
+    spawn(page)
+    page.fill("#input", "/md Open `docs/notes.md:3`.")
+    page.click("#send")
+    turns_done(page, 1)
+    # The path is clickable before the lazy path.stat decoration lands.
+    ref = page.locator(".row.prose code.ref")
+    ref.wait_for()
+    ref.click()
+    viewer = page.locator("#viewer")
+    viewer.wait_for(state="visible")
+    dock = viewer.locator(".fbar .dock")
+    assert dock.is_visible()
+    key = dock.get_attribute("data-dock")
+    dock.click()
+    pane = page.locator(f'#canvas .pane[data-pane="{key}"]')
+    pane.wait_for()
+    assert pane.locator(".fn").inner_text() == "notes.md"
+    assert pane.locator(".ver").inner_text() == "v1"
+    notes.write_text("# Notes, revised\n\nStill beside the chat.\n")
+    ref.click()
+    pane.locator(".ver", has_text="v2").wait_for()
+    page.reload()
+    kept = page.locator(f'#canvas .pane[data-pane="{key}"]')
+    kept.locator(".fn").wait_for()
+    assert kept.locator(".ver").inner_text() == "v2"
     assert page.errors == []
 
 

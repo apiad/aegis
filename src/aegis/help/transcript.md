@@ -108,12 +108,14 @@ an address that opens the session at that row, selected and in view.
 
 ## Files and the viewer
 
-A file an agent sends with `file_send`, and a page it sends with
-`artifact_send`, arrive as a card in the transcript. Open shows it inside
-aegis, over the transcript and the message box, and leaves the tabs and the
-session panel usable. Markdown renders in the theme, source shows with line
-numbers and syntax colours, PDFs, HTML and images fill the view, and media
-plays. A live page runs there and answers the agent from there.
+A file an agent sends with `file_send`, a file you attach to your message, and
+a page it sends with `artifact_send` arrive as a card in the transcript. A
+local file path the agent links in a reply opens the same viewer when you click
+it. Open shows the item inside aegis, over the transcript and the message box,
+and leaves the tabs and the session panel usable. Markdown renders in the
+theme, source shows with line numbers and syntax colours, PDFs, HTML and images
+fill the view, and media plays. A live page runs there and answers the agent
+from there.
 
 Esc or the close button returns to the transcript, and the viewer's bar opens
 the file in a new browser tab. A file card's Open, new tab and Download are
@@ -122,9 +124,10 @@ desktop.
 
 ## The canvas
 
-A page or a file can stay on screen beside the transcript instead of
-scrolling away with its card. Dock, on its card or on the viewer's bar, opens
-it in a pane to the right of the transcript. The card keeps one line,
+A page, a sent or attached file, or a local file opened from a reply can stay
+on screen beside the transcript instead of scrolling away with its card or
+viewer. Dock, on its card or on the viewer's bar, opens it in a pane to the
+right of the transcript. The card keeps one line,
 docked · show, and Show outlines the pane; Open on a docked card outlines it
 too. The panes and the transcript make up the session's canvas, columns of
 stacked panes:

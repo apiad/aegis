@@ -129,6 +129,18 @@ export function swipe(node, step) {
   );
 }
 
+// Every stored file an entry can keep: a file_send card, the person's input
+// attachments, a file-tool peek, or a local path opened from a reply. The last
+// two live inside their row instead of adding another transcript card.
+export function entryFiles(e) {
+  const detail = e?.detail || {};
+  return [
+    ...(detail.files || []),
+    ...(detail.peek?.files || []),
+    ...Object.values(detail.path_peeks || {}).flatMap((p) => p.files || []),
+  ];
+}
+
 // A set of sent files as one card: a bar with the name and the actions, the
 // preview below. A set pages in place (‹ ›, or a swipe on a touch screen),
 // round from the last file to the first, and a preview is built only when

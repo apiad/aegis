@@ -233,6 +233,24 @@ class Fold:
         self.last_recap_upto: int | None = None
         self._btws: dict[str, str] = {}  # side note id -> entry id
 
+    def _dockable_copies(self, records: list[dict]) -> list[dict]:
+        """Stored copies that are not ``file_send`` records, with stable pane ids.
+
+        Attachments and peeked files are already copied into the sent-files
+        store. Attachments use the immutable copy id; peeks provide a stable key
+        for the row and advance its version when opened again.
+        """
+        out = []
+        for rec in records:
+            one = _sent_file(rec)
+            key = str(rec.get("pane_key") or f"f-{one['file_id']}")
+            latest = self.file_keys.get(key)
+            version = int(latest["version"]) + 1 if latest else 1
+            one |= {"key": key, "version": version}
+            self.file_keys[key] = one
+            out.append(one)
+        return out
+
     @property
     def rev(self) -> int:
         """The store index of the last record folded; -1 before the first."""
@@ -519,7 +537,7 @@ class Fold:
             self._pending.append(pid)
             text = str(rec.get("text", ""))
             head, notices = split_notices(text)
-            attached = [_sent_file(f) for f in rec.get("files") or []]
+            attached = self._dockable_copies(rec.get("files") or [])
             if attached or notices or without_note(head)[1]:
                 self._said[pid] = text
             return folded + self._upsert(
@@ -1083,19 +1101,24 @@ class Fold:
                 {**e, "status": status, "summary": status, "detail": det}
             )
         if kind == "peek":
-            # A file tool's file, copied because the person asked to see it:
-            # it opens inside that tool's row, the latest copy replacing any.
+            # A file copied because the person asked to see it. A tool's copy
+            # opens inside that row; a reply path's copy stays on the reply as
+            # hidden state, so a docked pane survives a reload.
             row = self._entries.get(str(rec.get("entry")))
-            if row is None or row["kind"] != "tool":
+            if row is None or row["kind"] not in ("tool", "prose"):
                 return []
-            sent = [_sent_file(f) for f in rec.get("files") or []]
+            sent = self._dockable_copies(rec.get("files") or [])
+            peek = {"ts": ts, "glyph": d.FILE_GLYPH, "files": sent}
+            if row["kind"] == "prose":
+                peeks = dict(row["detail"].get("path_peeks") or {})
+                peeks[str(rec.get("index"))] = peek
+                detail = {**row["detail"], "path_peeks": peeks}
+            else:
+                detail = {**row["detail"], "peek": peek}
             return self._upsert(
                 {
                     **row,
-                    "detail": {
-                        **row["detail"],
-                        "peek": {"ts": ts, "glyph": d.FILE_GLYPH, "files": sent},
-                    },
+                    "detail": detail,
                 }
             )
         if kind == "configure":

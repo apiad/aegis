@@ -8,7 +8,7 @@
 
 import { Connection } from "./protocol.js";
 import { Transcript } from "./transcript.js";
-import { artifactStage, btwFolds, fadeTables, fileUrl, refreshApprovals, refreshWorkflows, setApprovals, setDocker, setFileBase, setOpener, setSecrets, setSpeaker, setWorkflows, syncDock, tickWorkflows, workflowLocked, workflowTitle } from "./entries.js";
+import { artifactStage, btwFolds, entryFiles, fadeTables, fileUrl, refreshApprovals, refreshWorkflows, setApprovals, setDocker, setFileBase, setOpener, setSecrets, setSpeaker, setWorkflows, syncDock, tickWorkflows, workflowLocked, workflowTitle } from "./entries.js";
 import { setScroller } from "./highlight.js";
 import { Viewer, peekRoots } from "./viewer.js";
 import { Canvas } from "./canvas.js";
@@ -177,13 +177,13 @@ setOpener((item) => {
   if (away) openWindow(shown, away);
   else if (!(id && canvas.flash(id))) viewer.open(item);
 });
-// The newest sent file with a key, for its pane: the last file entry that
-// holds it unreplaced. Walked on a pane's draw only.
+// The newest stored file with a key, for its pane: sent files, input
+// attachments, and files opened from tool rows or reply paths. Walked only
+// when a pane draws.
 function latestFile(key) {
   const es = [...transcript.entries.values()];
   for (let i = es.length - 1; i >= 0; i--) {
-    if (es[i].kind !== "file") continue;
-    const f = (es[i].detail?.files || []).find((x) => x.key === key && !x.replaced);
+    const f = entryFiles(es[i]).find((x) => x.key === key && !x.replaced);
     if (f) return f;
   }
   return undefined;

@@ -1301,7 +1301,10 @@ def test_an_attached_send_shows_what_was_typed_and_one_card():
     (user,) = f.entries()
     assert (user["md"], user["status"]) == ("look", "ok")
     assert [x["name"] for x in user["detail"]["files"]] == ["a.png"]
-    assert user["detail"]["files"][0]["url"] == "/files/id-a.png/a.png"
+    attached = user["detail"]["files"][0]
+    assert attached["url"] == "/files/id-a.png/a.png"
+    assert (attached["key"], attached["version"]) == ("f-id-a.png", 1)
+    assert f.file_keys[attached["key"]] == attached
 
 
 def test_a_send_of_files_alone_has_no_text():
