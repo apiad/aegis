@@ -4,7 +4,7 @@ kind: howto
 when: asking what the agents' work cost, on which repos and owners, for what kind of work, by whom and when
 hints:
   - aegis usage --since 4w: four weeks' cost by model, purpose and repo; --split any. #the-dashboard
-  - The usage page: Usage in the command palette, or click Quota. #the-usage-page
+  - The usage page: the bar chart in the top bar, or Usage in the command palette. #the-usage-page
   - usage_read answers an agent's cost question in one call. #ask-from-an-agent-usage-read
 ---
 
@@ -85,8 +85,9 @@ The older views still work: `--sessions` lists the costliest sessions,
 
 ## The usage page
 
-Open it with **Usage** in the command palette (Ctrl+K), or click the
-**Quota** label above the quota gauges, on the Fleet or beside a session. One
+Open it with the Usage button in the top bar (a small bar chart), with
+**Usage** in the command palette (Ctrl+K), or by clicking the **Quota** label
+above the quota gauges, on the Fleet or beside a session. One
 row of controls changes every panel: the window (1, 4, 12 or 26 weeks, ending
 this week, in your browser's time zone), what the trend is split by, and the
 measure (spend at API prices, subscription dollars, tokens or agent hours).
