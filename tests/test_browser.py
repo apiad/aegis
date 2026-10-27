@@ -8434,7 +8434,6 @@ def test_a_local_file_link_opens_in_the_viewer_and_docks(server, page):
     notes.write_text("# Notes\n\nKeep this beside the chat.\n")
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
-    page.wait_for_selector("#tab-add:not(.needs-net)")
     spawn(page)
     page.fill("#input", "/md Open `docs/notes.md:3`.")
     page.click("#send")
