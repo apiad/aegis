@@ -1798,7 +1798,7 @@ function follow(id) {
         const fresh = ops.some((op) => op.upsert?.unread && !transcript.entries.has(op.upsert.id));
         transcript.apply(ops);
         if (fresh) canvas.mark("transcript");
-        for (const op of ops) if (op.upsert?.kind === "artifact" || op.upsert?.kind === "file") canvas.onEntry(op.upsert);
+        for (const op of ops) if (op.upsert) canvas.onEntry(op.upsert);
         keepTranscript();
       },
       undefined,
