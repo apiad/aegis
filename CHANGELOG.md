@@ -86,6 +86,9 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 - **Usage counts subscriptions and context length.** Each turn bills its subscription or `api`, and quota readings are kept as they change. Give a subscription a fee in `usage.subscriptions` and its fee and weekly limit are shared over what ran on it (`aegis usage --measure subscription`, `--measure limit`), with what ran elsewhere and what went unused; before the first reading the fee is apportioned by cost. Each call's context is banded, and `aegis usage --split context --whatif 200k` (or `usage_read`'s `whatif`) replays what handing off earlier would have saved, net of rereading. The usage page gains a Subscriptions and a Context length panel.
   help: usage#subscriptions-and-context
 
+- **A Usage button in the top bar.** A small bar chart beside the Knowledge button opens the usage page, and lights while it is open. Before, the page opened only from the command palette or by clicking the Quota label, which on a phone meant finding it through the palette.
+  help: usage#the-usage-page
+
 ### Changed
 
 - **A rename can take an archived session's handle.** Handles had to be unique across every session the server ever ran, so a finished session kept its name reserved and `session_rename` refused it with `handle_taken`. Now only open sessions hold their handles. Reopening an archived session whose handle an open one took gives it a numbered form (`docs-sweep-2`). New handles aegis picks itself still avoid archived ones.
