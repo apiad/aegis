@@ -1500,7 +1500,7 @@ body{background:#000}
 .a2 .set-empty{width:min(520px,100%);margin:12vh auto 0;padding:0 24px;display:grid;gap:14px;justify-items:start;font-size:14px;line-height:1.55;color:var(--ink)}
 .a2 .set-empty p{margin:0}
 .a2 .set-empty code{font-family:var(--font-mono);font-size:12.5px;color:var(--strong)}
-.a2 #settings-btn.on,.a2 #journal-btn.on,.a2 #knowledge-btn.on,.a2 #files-btn.on,.a2 #schedules-btn.on,.a2 #help-btn.on{color:var(--accent)}
+.a2 #settings-btn.on,.a2 #journal-btn.on,.a2 #knowledge-btn.on,.a2 #usage-btn.on,.a2 #files-btn.on,.a2 #schedules-btn.on,.a2 #help-btn.on{color:var(--accent)}
 @media (max-width:640px){.a2 .set-agent{grid-template-columns:1fr}.a2 .set-card-foot,.a2 .set-agent > .set-why{grid-column:1}.a2 .set-findings li{grid-template-columns:1fr;gap:2px}}
 
 /* the Files view (js/files.js): a bar with the path and Save, the folder tree
@@ -1601,6 +1601,93 @@ body{background:#000}
 .a2 .jcount:empty{display:none}
 .a2 .journal .empty{padding:36px 2px;text-align:center}
 .a2 .journal .jmore{display:block;margin:16px auto 0}
+/* usage: the usage page (js/usage.js). The server decides every number,
+   width and shade; colours c0..c7 are its series, l0..l4 its heat levels.
+   Below 640 px the panels stack in the spec's order and the heat grids
+   scroll inside their panel. */
+.a2[data-view=usage] .v-usage{display:flex;flex-direction:column;overflow:auto}
+.a2 .usage{--u0:var(--accent);--u1:var(--ok);--u2:var(--warn);--u3:var(--comms);--u4:var(--err);--u5:color-mix(in oklab,var(--accent) 50%,var(--ok));--u6:color-mix(in oklab,var(--warn) 50%,var(--err));--u7:var(--muted);max-width:1180px;width:100%;margin:0 auto;padding:18px 24px 32px;font-family:var(--font-ui);font-size:13px;box-sizing:border-box}
+.a2 .usage .c0{background:var(--u0)}.a2 .usage .c1{background:var(--u1)}.a2 .usage .c2{background:var(--u2)}.a2 .usage .c3{background:var(--u3)}
+.a2 .usage .c4{background:var(--u4)}.a2 .usage .c5{background:var(--u5)}.a2 .usage .c6{background:var(--u6)}.a2 .usage .c7{background:var(--u7)}
+.a2 .usage .l1{background:color-mix(in oklab,var(--accent) 18%,var(--bg))}.a2 .usage .l2{background:color-mix(in oklab,var(--accent) 38%,var(--bg))}
+.a2 .usage .l3{background:color-mix(in oklab,var(--accent) 62%,var(--bg))}.a2 .usage .l4{background:color-mix(in oklab,var(--accent) 88%,var(--bg));color:var(--on-accent)}
+.a2 .uhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.a2 .uhead b{font:500 15px var(--font-mono);color:var(--strong)}
+.a2 .ulive{font:11px var(--font-mono);color:var(--ok);display:inline-flex;align-items:center;gap:6px}
+.a2 .ulive i{width:7px;height:7px;border-radius:50%;background:var(--ok);display:inline-block}
+.a2 .uctl{display:flex;flex-wrap:wrap;gap:10px 16px;padding:10px 0 12px}
+.a2 .uctl label{font:10.5px var(--font-mono);color:var(--faint);text-transform:uppercase;letter-spacing:.04em;display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
+.a2 .useg{display:inline-flex;flex-wrap:wrap}
+.a2 .useg button{font:11.5px var(--font-mono);background:var(--bg);color:var(--muted);border:1px solid var(--rule);padding:3px 9px;cursor:pointer;text-transform:none;letter-spacing:0;margin:0 -1px -1px 0}
+.a2 .useg button.on{color:var(--on-accent);background:var(--accent);border-color:var(--accent)}
+.a2 .uchips{display:inline-flex;gap:5px;flex-wrap:wrap}
+.a2 .uchip{font:11px var(--font-mono);border:1px solid var(--rule);border-radius:999px;padding:1px 8px;color:var(--faint);text-transform:none;letter-spacing:0;background:none;cursor:pointer}
+.a2 .uchip.on{color:var(--strong);border-color:var(--faint)}
+.a2 .utiles,.a2 .ugrid{display:grid;gap:1px;background:var(--rule);border:1px solid var(--rule);border-bottom:0}
+.a2 .utiles{grid-template-columns:repeat(5,minmax(0,1fr))}
+.a2 .ugrid{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)}
+.a2 .utile{background:var(--bg);padding:10px 14px;min-width:0}
+.a2 .utile .k{font:10.5px var(--font-mono);color:var(--faint);text-transform:uppercase;letter-spacing:.04em}
+.a2 .utile .v{font:500 20px var(--font-mono);color:var(--strong);margin:2px 0;white-space:nowrap}
+.a2 .utile .chg{font-size:12px;color:var(--muted)}
+.a2 .utile .d{font-size:11.5px;color:var(--muted);line-height:1.35}
+.a2 .usage .pane{background:var(--bg);padding:12px 14px;min-width:0}
+.a2 .usage>.pane{border:1px solid var(--rule);border-bottom:0}
+.a2 .usage .pane h5{margin:0 0 2px;font:500 12px var(--font-mono);color:var(--strong);display:flex;align-items:center;gap:8px}
+.a2 .usage .pane .h{font-size:11.5px;color:var(--faint);margin-bottom:8px}
+.a2 .uclose{margin-left:auto;background:none;border:0;color:var(--muted);font-size:16px;cursor:pointer;padding:0 4px}
+.a2 .ulegend{display:flex;flex-wrap:wrap;gap:4px 10px;font:11px var(--font-mono);color:var(--muted);margin:0 0 8px}
+.a2 .ulegend span{display:inline-flex;align-items:center;gap:5px;min-width:0}
+.a2 .ulegend i{width:9px;height:9px;border-radius:2px;display:inline-block;flex:none}
+.a2 .utrend{display:flex;gap:3px;height:140px;align-items:stretch}
+.a2 .ucol{flex:1;min-width:0;display:flex;flex-direction:column}
+.a2 .ubar{flex:1;display:flex;flex-direction:column-reverse;gap:1px;background:var(--surface);border-radius:3px 3px 0 0;overflow:hidden}
+.a2 .ulab{font:10px var(--font-mono);color:var(--faint);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:clip;margin-top:3px}
+.a2 .uhb{display:grid;grid-template-columns:180px minmax(0,1fr) 72px;gap:8px;align-items:center;margin:5px 0;font:11.5px var(--font-mono)}
+.a2 .uhb .nm{color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.a2 .uhb .vv{color:var(--strong);text-align:right;white-space:nowrap}
+.a2 .ustack{display:flex;height:12px;border-radius:3px;overflow:hidden;gap:1px;background:var(--surface)}
+.a2 .ustack div{height:100%}
+.a2 .usage table{width:100%;border-collapse:collapse;font:11.5px var(--font-mono)}
+.a2 .usage th{color:var(--faint);font-weight:400;text-align:right;padding:4px 6px;border-bottom:1px solid var(--rule);white-space:nowrap}
+.a2 .usage td{text-align:right;padding:4px 6px;border-bottom:1px solid var(--rule);white-space:nowrap;color:var(--ink)}
+.a2 .usage th:first-child,.a2 .usage td:first-child{text-align:left}
+.a2 .uheat td{text-align:center}
+.a2 .uheat td:first-child,.a2 .uheat td.tot{text-align:left}
+.a2 .uwhen{table-layout:fixed}
+.a2 .uwhen td{padding:0;height:14px;border:1px solid var(--bg)}
+.a2 .uwhen th{padding:2px;font-size:10px;border:0;text-align:left}
+.a2 .uwhen tr>th:first-child{width:32px}
+.a2 .uscroll{overflow-x:auto}
+.a2 .uhit,.a2 .qlink{cursor:pointer}
+.a2 .qlink:hover{color:var(--accent)}
+.a2 .uhit:hover,.a2 .uhit:focus-visible{outline:1px solid var(--accent);outline-offset:-1px}
+.a2 .ufoot{padding:8px 14px;font:11px var(--font-mono);color:var(--faint);border:1px solid var(--rule)}
+.a2 .unote{color:var(--faint);font-size:12px;margin:4px 0}
+.a2 .udrill{border:1px solid var(--accent)!important}
+.a2 .ulist{display:flex;flex-direction:column}
+.a2 .urow{display:flex;justify-content:space-between;gap:10px;padding:5px 2px;border-bottom:1px solid var(--rule);font:11.5px var(--font-mono);color:var(--ink);text-decoration:none}
+.a2 .urow:hover{color:var(--strong)}
+.a2 .urow .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.a2 .urow .vv{white-space:nowrap;color:var(--muted)}
+.a2 .usage .urest{background:color-mix(in oklab,var(--muted) 70%,var(--bg))}
+.a2 .usub+.usub{margin-top:14px}
+.a2 .usub .uhd{display:flex;justify-content:space-between;gap:4px 10px;flex-wrap:wrap;font:11.5px var(--font-mono);color:var(--strong);margin-bottom:6px}
+.a2 .usub .ulegend{margin:6px 0 0}
+.a2 .ucx{display:flex;flex-direction:column;gap:2px;min-width:0}
+.a2 .ucx .ustack{height:6px}
+.a2 .uhb.mark .nm{color:var(--accent)}
+@media (max-width:640px){
+  .a2 .usage{padding:12px 10px 24px}
+  .a2 .utiles{grid-template-columns:1fr 1fr}
+  .a2 .utile:last-child:nth-child(odd){grid-column:1/-1}
+  .a2 .ugrid{grid-template-columns:1fr}
+  .a2 .uhb{grid-template-columns:86px minmax(0,1fr) 62px}
+  .a2 .useg button{min-height:34px;padding:6px 11px}
+  .a2 .uwhen th{font-size:9px;padding:1px}
+  .a2 .utile .v{font-size:17px}
+}
+
 /* The Knowledge view (js/knowledge.js): the Journal's box and chips, rows as
    in the spec's mockup, and beside them the open item: its text in the
    editor, Save and Delete, and its history. Below 640 px the rows drop the

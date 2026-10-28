@@ -223,6 +223,12 @@ Free what this session created and no longer needs (your merged worktrees, ...
 The transcript shows it as an aegis row under the message or the tool call
 that carried it; your own row shows only what you typed.
 
+When the host has another disk that is below the disk's `clear:` level, that
+aegis's user can write to and that has more room, the disk notice names it
+(`/mnt/data has 65.0 GB free`) and asks the agent to put new large files
+there, in place of starting no large download or build. The disks are the
+ones the host meters list, so a mount the `host:` block hides is never named.
+
 Each session is told once per episode. An episode starts when a reading
 reaches `on:`, is told again when it reaches `critical:`, and ends only when
 the reading falls below `clear:`, so a disk hovering at the line is not

@@ -42,6 +42,7 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
     <button class="jr-btn" id="files-btn" title="Files (Alt+O)" aria-label="Files"></button>
     <button class="jr-btn" id="journal-btn" title="Journal (Alt+L)" aria-label="Journal"></button>
     <button class="jr-btn" id="knowledge-btn" title="Knowledge: skills and memories (Alt+I)" aria-label="Knowledge"></button>
+    <button class="jr-btn" id="usage-btn" title="Usage: what the work cost" aria-label="Usage"></button>
     <button class="keys-btn bell" id="bell" title="Turn on desktop notifications"></button>
     <button class="side-btn" id="side-btn" title="Session panel (Alt+B)" aria-label="Session panel"><svg class="ic i-panel" aria-hidden="true"><use href="#g-panel"/></svg></button>
     <button class="keys-btn help-btn" id="help-btn" title="Help: how to use aegis" aria-label="Help">?</button>
@@ -66,7 +67,7 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
       <div class="band-mark" id="band-mark"></div>
       <div><h5><span class="band-server" id="band-server">server</span><span class="band-link"></span></h5><div class="counts band-counts" id="band-counts"></div></div>
       <div><h5>Host</h5><div class="band-host" id="band-host"></div></div>
-      <div class="q band-quota-col" id="band-quota-col" hidden><h5><span>Quota</span><span class="age band-quota-age" id="band-quota-age"></span></h5><div class="band-quota" id="band-quota"></div></div>
+      <div class="q band-quota-col" id="band-quota-col" hidden><h5><span class="qlink" id="band-quota-link" title="Usage: what work cost">Quota</span><span class="age band-quota-age" id="band-quota-age"></span></h5><div class="band-quota" id="band-quota"></div></div>
     </section>
     <div class="order"><h3>Sessions</h3>
       <div class="seg" id="fleet-order">
@@ -133,6 +134,7 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
 
   <main class="view v-settings"><section class="settings" id="settings"></section></main>
   <main class="view v-journal"><section class="journal" id="journal"></section></main>
+  <main class="view v-usage"><section class="usage" id="usage"></section></main>
   <main class="view v-knowledge"><section class="knowledge" id="knowledge"></section></main>
   <main class="view v-files"><section class="files" id="files"></section></main>
   <main class="view v-schedules"><section class="schedules" id="schedules"></section></main>
@@ -236,7 +238,7 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
               <p class="cnote" id="s-ctxnote"></p>
               <p class="cnote" id="s-counters" hidden></p>
             </div>
-            <div class="csec" id="s-quota-sec"><h5><span id="s-quota-head">Quota</span><span id="s-quota-age"></span></h5><div id="s-quota"></div></div>
+            <div class="csec" id="s-quota-sec"><h5><span class="qlink" id="s-quota-head" title="Usage: what work cost">Quota</span><span id="s-quota-age"></span></h5><div id="s-quota"></div></div>
           </div>
         </div>
       </div>

@@ -21,6 +21,7 @@ HEADER_ICONS = [
     "files-btn",
     "journal-btn",
     "knowledge-btn",
+    "usage-btn",
 ]
 
 
@@ -57,6 +58,18 @@ def test_the_header_buttons_are_bare_icons(server, page):  # noqa: F811
             "icon": True,
         }, id
         assert page.get_attribute(f"#{id}", "aria-label")
+    assert page.errors == []
+
+
+def test_the_usage_button_opens_the_usage_page(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.click("#usage-btn")
+    page.wait_for_selector("#a2[data-view=usage]")
+    assert "on" in page.get_attribute("#usage-btn", "class")
+    page.click("#journal-btn")
+    page.wait_for_selector("#a2[data-view=journal]")
+    assert "on" not in page.get_attribute("#usage-btn", "class")
     assert page.errors == []
 
 

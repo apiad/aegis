@@ -94,6 +94,8 @@ class Ops:
     @property
     def turn(self) -> _turn: ...
     @property
+    def usage(self) -> _usage: ...
+    @property
     def workflow(self) -> _workflow: ...
 
 class _agents:
@@ -876,6 +878,34 @@ class _turn:
         close: bool = ...,
     ) -> Any:
         """Call this before the final message of every turn you hand back to the person, and not when you end a turn to wait on a monitor or a queue task. It sets the mark on your tab and the line on your card."""
+
+class _usage:
+    async def import_(self, *, people: builtins.list[str] | None = ...) -> Any:
+        """Count once the sessions Claude Code ran outside aegis: each person's ~/.claude/projects, read as their Linux user, as mode outside. Messages aegis already counts are skipped, and a file already imported is not read again. Claude Code purges its files after 30 days, so run it soon after upgrading, on each server."""
+    async def page(
+        self,
+        *,
+        window: int = ...,
+        split: str = ...,
+        measure: str = ...,
+        servers: builtins.list[str] | None = ...,
+        tz: str | None = ...,
+    ) -> Any:
+        """The usage page's panels: tiles, trend, owners, repo by purpose, when, driven by, harness and model, outcomes and the footer."""
+    async def read(
+        self,
+        *,
+        since: str = ...,
+        until: str | None = ...,
+        by: str | None = ...,
+        split: builtins.list[str] = ...,
+        measure: str = ...,
+        where: dict[str, str] = ...,
+        server: str | None = ...,
+        whatif: str | None = ...,
+        tz: str | None = ...,
+    ) -> Any:
+        """What work cost on this server, from the usage tables aegis fills as each turn ends: cost at API prices, tokens, agent seconds, turns, sessions, tool calls and waits, over a window, grouped by any of the split's dimensions and by period. Returns rows, totals and the journal's outcomes (commits, PRs, closed issues) for the same slice. sub and limit are a subscription's fee and weekly limit shared by cost; whatif (with whatif=200k) what handing off there would save, net of rewriting and rereading. Background work is mode queue, workflow, schedule, monitor or agent."""
 
 class _workflow:
     async def answer(

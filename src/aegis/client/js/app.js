@@ -31,6 +31,7 @@ import { clampToRow, insertIntoComposer, quoted, rangeText } from "./quote.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
 import { entry, Journal, opens } from "./journal.js";
+import { Usage } from "./usage.js";
 import { Knowledge } from "./knowledge.js";
 import { FilePicker, Files, filesHash, parseTarget } from "./files.js";
 import { Schedules } from "./schedules.js";
@@ -274,6 +275,7 @@ $("bell").append(icon("bell"));
 $("settings-btn").prepend(icon("gear"));
 $("journal-btn").append(icon("book"));
 $("knowledge-btn").append(icon("knowledge"));
+$("usage-btn").append(icon("usage"));
 $("files-btn").append(icon("folder"));
 $("schedules-btn").prepend(icon("clock"));
 $("send").append(icon("send"));
@@ -428,7 +430,7 @@ for (const b of document.querySelectorAll("#fleet-order button"))
     render();
   });
 
-// -- routing: #fleet, #new[?<fill>], #settings, #journal, #knowledge[=<name>], #files[=<path>[:line]], #schedules, #help[=<page>], #s=<key>, #t=<key>, #read=<key>, #w=<n>:<key> --
+// -- routing: #fleet, #new[?<fill>], #settings, #journal, #usage, #knowledge[=<name>], #files[=<path>[:line]], #schedules, #help[=<page>], #s=<key>, #t=<key>, #read=<key>, #w=<n>:<key> --
 // A help ref is URI-encoded; a hand-typed malformed one is a page name nobody has.
 const unhash = (s) => {
   try {
@@ -456,6 +458,7 @@ function route(hash = location.hash) {
   if (h.startsWith("new?")) return { view: "spawn", fill: new URLSearchParams(h.slice(4)) };
   if (h === "settings") return { view: "settings" };
   if (h === "journal") return { view: "journal" };
+  if (h === "usage") return { view: "usage" };
   if (h === "knowledge" || h.startsWith("knowledge=")) return { view: "knowledge", id: unhash(h.slice(10)) };
   if (h === "files" || h.startsWith("files=")) return { view: "files", id: unhash(h.slice(6)) };
   if (h === "schedules") return { view: "schedules" };
@@ -707,6 +710,14 @@ const sideJournalChanged = () => {
   sideJournalTimer = setTimeout(() => drawSideJournal(sideJournalFor, true), 300);
 };
 conn.subscribe("journal", sideJournalChanged, sideJournalChanged);
+// The usage page (usage.js): the channel says a turn was counted, the page
+// asks again while it is shown.
+const usage = new Usage(conn, $("usage"), {
+  onOpen: (r) => go(r.open ? `#s=${r.session}` : `#read=${r.session}`),
+});
+const usageChanged = () => usage.changed();
+conn.subscribe("usage", usageChanged, usageChanged);
+for (const id of ["band-quota-link", "s-quota-head"]) $(id).addEventListener("click", () => go("#usage"));
 // The Schedules view (schedules.js); its button counts them, red while one is
 // paused by errors.
 const schedules = new Schedules(conn, $("schedules"), {
@@ -1262,7 +1273,9 @@ function render() {
   $("tab-add").classList.toggle("on", r.view === "spawn");
   $("settings-btn").classList.toggle("on", r.view === "settings");
   $("journal-btn").classList.toggle("on", r.view === "journal");
+  if (r.view !== "usage") usage.close();
   $("knowledge-btn").classList.toggle("on", r.view === "knowledge");
+  $("usage-btn").classList.toggle("on", r.view === "usage");
   $("files-btn").classList.toggle("on", r.view === "files");
   $("schedules-btn").classList.toggle("on", r.view === "schedules");
   if (r.view !== "schedules") schedules.close();
@@ -1304,6 +1317,12 @@ function render() {
     show("journal");
     if (newView) journal.open();
     setTitle("Journal · aegis");
+  } else if (r.view === "usage") {
+    watchHost(null);
+    follow(null);
+    show("usage");
+    if (newView) usage.open();
+    setTitle("Usage · aegis");
   } else if (r.view === "knowledge") {
     watchHost(null);
     follow(null);
@@ -3337,6 +3356,7 @@ $("help-btn").addEventListener("click", () => go("#help"));
 $("settings-btn").addEventListener("click", () => go("#settings"));
 $("journal-btn").addEventListener("click", () => go("#journal"));
 $("knowledge-btn").addEventListener("click", () => go("#knowledge"));
+$("usage-btn").addEventListener("click", () => go("#usage"));
 $("files-btn").addEventListener("click", () => go(filesView.path ? filesHash(filesView.path) : "#files"));
 $("schedules-btn").addEventListener("click", () => go("#schedules"));
 keymap.addEventListener("click", (ev) => ev.target === keymap && help(false));
@@ -3426,6 +3446,7 @@ installKeys(
     },
     settings: () => go("#settings"),
     journal: () => go("#journal"),
+    usage: () => go("#usage"),
     knowledge: () => go("#knowledge"),
     files: () => filePicker.open(),
     save: () => route().view === "files" && filesView.save(),

@@ -1,1 +1,0 @@
-- **On a phone, the new tab fits the screen whatever tip it shows.** A long rotating tip made the whole column as wide as the tip on one line, so the message box, the send button and the last option chips ran off the right edge. The tip is now cut with an ellipsis.

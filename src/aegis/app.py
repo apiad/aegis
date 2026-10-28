@@ -145,6 +145,7 @@ from .users import MultiUser
 from .registry import Registry
 from .roots import Roots
 from .transcript.entries import _sent_file
+from .usage.ops import register_usage_ops
 from .session import PUBLISH_EVERY_S, SpawnSpec
 from .term_ops import register_term_ops
 from .browser_ops import register_browser_ops
@@ -540,7 +541,15 @@ class App:
         reg.version_policy = lambda: self.config.current().harness_versions
         reg.quota = self.quota
         self.journal = Journal(
-            roots.state_root, self.publish, user_of=self._linux_user_of_session
+            roots.state_root,
+            self.publish,
+            user_of=self._linux_user_of_session,
+            meta_of=self._meta_of_session,
+            accounts=lambda: {
+                p["harness"]: f"{p['name']}:{p['account']}"
+                for p in self.quota.snapshot()["providers"]
+                if p["account"]
+            },
         )
         reg.journal = self.journal
         # knowledge.embeddings is read once, here: a change needs a restart.
@@ -612,6 +621,7 @@ class App:
         # lands before it finishes does not start a second one.
         self._quota_busy: set[str] = set()
         self.quota.listeners.append(self.on_quota)
+        self.quota.listeners.append(self.journal.quota)
         reg.gate = self.gate
         # Who each session's processes run as, in multi-user mode (users.py).
         reg.multi_user = multi_user is not None
@@ -648,6 +658,7 @@ class App:
         register_browser_ops(self)
         self.push = register_push_ops(self)
         register_journal_ops(self)
+        register_usage_ops(self)
         register_help_ops(self)
         register_knowledge_ops(self)
         register_notice_ops(self)
@@ -1156,6 +1167,15 @@ class App:
         self.runners.shutdown()
         restarts.stopped(self.roots.state_root, stopping_at)
 
+    def _meta_of_session(self, log_id: str) -> dict:
+        """A session's meta, live or archived; {} when it has none (an old
+        store, a crash before the meta was written)."""
+        try:
+            meta = json.loads(self.sessions.metas.path(log_id).read_text())
+        except (OSError, ValueError):
+            return {}
+        return meta if isinstance(meta, dict) else {}
+
     def _linux_user_of_session(self, log_id: str) -> str | None:
         """The Linux user a session runs as (users.py): the live session's,
         else its meta's, since the journal backfills closed sessions too."""
@@ -1363,6 +1383,8 @@ class App:
             return self.host.snapshot
         if name == "journal":
             return self.journal.snapshot
+        if name == "usage":
+            return self.journal.usage_snapshot
         if name.startswith("repos:"):
             log_id = name.removeprefix("repos:")
             return lambda: self.repos.snapshot(log_id)

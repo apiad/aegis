@@ -1,2 +1,0 @@
-- **Claude Code's background-task notices draw as inbox rows.** When a background command or a subagent ends, Claude Code wakes the agent with a `<task-notification>` prompt, which the transcript drew as the person's own message, tag by tag, with the whole command repeated in it. It is now a row like a monitor's wake: a header such as `background · failed · exit 1`, in red when the task failed or was killed, the command's opening comment as its label, and the command, or the subagent's report, and the output file folded under it.
-help: sessions#when-a-background-task-ends

@@ -58,7 +58,7 @@ log = logging.getLogger("aegis.config")
 
 WATCH_EVERY_S = 1.0
 TOP_KEYS = (
-    "agents", "queues", "default_agent", "recap", "btw", "context",
+    "agents", "queues", "default_agent", "recap", "btw", "context", "usage",
     "session_memory_max", "terminals", "terminal_memory_max", "park", "network",
     "host", "workflows", "harness_versions", "notices", "nudges", "multi_user",
     "knowledge",
@@ -99,6 +99,52 @@ def context_from(raw: object) -> dict:
                 "error": f"context.{k} {v!r} is not a {kind} integer"
             }
         out[k] = v
+    return out
+
+
+# Who owns a local repo, how an owner is shown, and the subscriptions' fees
+# (usage/owners.py, spec #737).
+USAGE_DEFAULTS: dict = {"owners": {}, "owner_names": {}, "subscriptions": {}}
+
+
+def _usage_defaults(error: str | None = None) -> dict:
+    out: dict = {k: {} for k in USAGE_DEFAULTS}
+    return out | {"error": error} if error else out
+
+
+def usage_from(raw: object) -> dict:
+    """The ``usage:`` block over its defaults: ``owners`` and ``owner_names``
+    map a name to a name, ``subscriptions`` an account to its name, fee and
+    renewal day. A wrong block keeps every default and carries ``error``."""
+    out = _usage_defaults()
+    if raw is None:
+        return out
+    if not isinstance(raw, dict):
+        return _usage_defaults(
+            "usage must be a mapping of " + ", ".join(USAGE_DEFAULTS)
+        )
+    for k, v in raw.items():
+        if k not in USAGE_DEFAULTS:
+            return _usage_defaults(
+                f"usage has no key {k!r}; it takes " + ", ".join(USAGE_DEFAULTS)
+            )
+        if not isinstance(v, dict):
+            return _usage_defaults(f"usage.{k} must be a mapping")
+        for name, value in v.items():
+            if k == "subscriptions":
+                fee = dict(value).get("fee", 0) if isinstance(value, dict) else None
+                if (
+                    not isinstance(value, dict)
+                    or isinstance(fee, bool)
+                    or not (isinstance(fee, (int, float)) and fee >= 0)
+                ):
+                    return _usage_defaults(
+                        f"usage.subscriptions.{name} must be a mapping with a"
+                        " non-negative fee"
+                    )
+            elif not isinstance(value, str) or not value:
+                return _usage_defaults(f"usage.{k}.{name} {value!r} is not a name")
+        out[k] = {str(n): val for n, val in v.items()}
     return out
 
 
@@ -624,6 +670,13 @@ class HarnessVersionsDoc(BaseModel):
     accepted: dict[str, list[str]] = Field(default_factory=dict)
 
 
+class UsageDoc(BaseModel):
+    model_config = {"extra": "forbid"}
+    owners: dict[str, str] = Field(default_factory=dict)
+    owner_names: dict[str, str] = Field(default_factory=dict)
+    subscriptions: dict[str, dict[str, str | int | float]] = Field(default_factory=dict)
+
+
 class ConfigDoc(BaseModel):
     """What the Settings form edits and ``aegis init`` proposes."""
 
@@ -639,6 +692,8 @@ class ConfigDoc(BaseModel):
     # one the reader refuses.
     harness_versions: HarnessVersionsDoc = Field(default_factory=HarnessVersionsDoc)
     terminals: list[TerminalDoc] = Field(default_factory=list)
+    # The usage: block; empty when the file has none, or one the reader refuses.
+    usage: UsageDoc = Field(default_factory=UsageDoc)
     # Each key of fields() the file sets, by its dotted path; a switch only
     # when it is off (false).
     settings: dict[str, bool | int | float | str | list[str]] = Field(
@@ -678,6 +733,7 @@ def doc_from(data: dict) -> ConfigDoc:
     w = data.get("workflows")
     pool = workflows_from(w)
     hv = harness_versions_from(data.get("harness_versions"))
+    usage = usage_from(data.get("usage"))
     return ConfigDoc(
         agents=agents,
         default_agent=str(d) if d else None,
@@ -688,6 +744,7 @@ def doc_from(data: dict) -> ConfigDoc:
             **{k: v for k, v in hv.items() if k != "error"}
         ),
         terminals=_terminals_doc(data.get("terminals")),
+        usage=UsageDoc() if "error" in usage else UsageDoc(**usage),
         settings=_settings_doc(data),
     )
 
@@ -784,6 +841,7 @@ class Snapshot:
     unknown_keys: tuple[str, ...] = ()
     doc: ConfigDoc = field(default_factory=ConfigDoc)
     context: dict = field(default_factory=lambda: dict(CONTEXT_DEFAULTS))
+    usage: dict = field(default_factory=_usage_defaults)
     notices: dict = field(default_factory=_notices_defaults)
     nudges: dict = field(default_factory=lambda: dict(NUDGES_DEFAULTS))
     knowledge: dict = field(default_factory=lambda: dict(KNOWLEDGE_DEFAULTS))
@@ -827,6 +885,7 @@ class Snapshot:
             unknown_keys=tuple(str(k) for k in data if k not in TOP_KEYS),
             doc=doc_from(data),
             context=context_from(data.get("context")),
+            usage=usage_from(data.get("usage")),
             notices=notices_from(data.get("notices")),
             nudges=nudges_from(data.get("nudges")),
             knowledge=knowledge_from(data.get("knowledge")),
@@ -955,6 +1014,8 @@ def validate(doc: ConfigDoc) -> list[Finding]:
         out.append(
             Finding("error", "harness_versions", hv["error"], "harness_versions")
         )
+    if "error" in (u := usage_from(doc.usage.model_dump())):
+        out.append(Finding("error", "usage", u["error"], "usage"))
     if doc.max_agents:
         # The rules aegis doctor applies to the block, each on its row.
         pool = workflows_from({"max_agents": doc.max_agents})
@@ -1131,6 +1192,7 @@ def _apply(data: CommentedMap, doc: ConfigDoc) -> None:
     elif block is not None and "error" not in workflows_from(block):
         del data["workflows"]  # every bound back to its default
     _apply_harness_versions(data, doc.harness_versions)
+    _apply_usage(data, doc.usage)
     _apply_terminals(data, doc.terminals)
     _apply_settings(data, doc.settings)
 
@@ -1199,6 +1261,22 @@ def _del_at(data: CommentedMap, key: str) -> None:
         if nodes[i]:
             break
         del nodes[i - 1][parts[i - 1]]
+
+
+def _apply_usage(data: CommentedMap, usage: UsageDoc) -> None:
+    block = data.get("usage")
+    want = usage.model_dump()
+    if not any(want.values()):
+        if block is not None and "error" not in usage_from(block):
+            del data["usage"]
+        return
+    node = _section(data, "usage")
+    for k, v in want.items():
+        # An untouched map compares equal and keeps its style and comments.
+        if not v:
+            node.pop(k, None)
+        elif usage_from({k: node.get(k)}).get(k) != v:
+            node[k] = v
 
 
 def _apply_harness_versions(data: CommentedMap, hv: HarnessVersionsDoc) -> None:
