@@ -165,7 +165,8 @@ the message and the first five lines of the stack, so the agent sees
 the draft before it asks the person anything. No browser open, or none answered within the three seconds (a background tab
 the browser throttles): nothing was proved, the record is written with
 `started: null`, and the first browser to mount it reports an error, if any,
-to the inbox.
+to the inbox. The reply's `watching` tells the two apart (#763): false when no
+browser had the transcript on screen, true when one had it and did not answer.
 
 The failed sends show as the harness's own tool rows with an error mark, which
 is the right trace of the iteration; the transcript shows one card.
