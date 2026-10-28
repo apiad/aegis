@@ -3,12 +3,13 @@ were set, and turn_end reminds an agent until both are."""
 
 import json
 
-from aegis.agent_ops import RENAME_NUDGE
+from aegis.agent_ops import RENAME_LINE, SEEN_NOTHING
 
 from .conftest import until
 from .test_agents import inbox, mcp, turn, world  # noqa: F401
 
 END = mcp("turn_end", attention="review", line="a step")
+NUDGED = f"mcp ok: noted. {SEEN_NOTHING}\n{RENAME_LINE}"
 
 
 async def test_a_new_session_has_neither_name_set(world):  # noqa: F811
@@ -33,19 +34,19 @@ async def test_a_meta_from_before_the_field_reads_as_set(world):  # noqa: F811
 
 async def test_turn_end_reminds_a_fresh_session(world):  # noqa: F811
     s = await world.spawn()
-    assert await turn(s, END) == f"mcp ok: {RENAME_NUDGE}"
+    assert await turn(s, END) == NUDGED
 
 
 async def test_a_handle_alone_still_gets_the_reminder(world):  # noqa: F811
     s = await world.spawn()
     await turn(s, mcp("session_rename", handle="tab-bar"))
-    assert await turn(s, END) == f"mcp ok: {RENAME_NUDGE}"
+    assert await turn(s, END) == NUDGED
 
 
 async def test_handle_and_title_end_the_reminder(world):  # noqa: F811
     s = await world.spawn()
     await turn(s, mcp("session_rename", handle="tab-bar", title="Redesign the bar"))
-    assert await turn(s, END) == "mcp ok: noted"
+    assert await turn(s, END) == f"mcp ok: noted. {SEEN_NOTHING}"
 
 
 async def test_a_worker_never_gets_it(world):  # noqa: F811
@@ -58,4 +59,4 @@ async def test_a_worker_never_gets_it(world):  # noqa: F811
         what="the worker's result",
     )
     assert "mcp ok: noted" in inbox(a)[0]["md"]
-    assert RENAME_NUDGE not in inbox(a)[0]["md"]
+    assert RENAME_LINE not in inbox(a)[0]["md"]

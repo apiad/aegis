@@ -28,7 +28,8 @@ stdout. The text of a prompt picks a script:
     /mcp T JSON    call tool T of the aegis MCP server named in --mcp-config with
                    arguments JSON, as a tool call and its result, then a result.
     /script JSON   a list of steps in one turn: ["sleep", N] waits N seconds
-                   (an interrupt ends the turn, as /busy's does); [T, {args}]
+                   (an interrupt ends the turn, as /busy's does); ["say", TEXT]
+                   writes TEXT as its own text block; [T, {args}]
                    calls aegis tool T as /mcp does. Then text naming each
                    call's outcome, and a result.
     /bgtask N      start a background task (task_started) and end the turn; N
@@ -758,6 +759,9 @@ def run(text: str) -> None:
                     interrupted.clear()
                     result(is_error=True, subtype="error_during_execution")
                     return
+                continue
+            if step[0] == "say":
+                assistant({"type": "text", "text": step[1]})
                 continue
             tool, args = step
             tid = tool_id()

@@ -997,6 +997,91 @@ async def test_real_claude_reports_its_turns_with_turn_end(tmp_path: Path):
         await asyncio.wait_for(task, 30)
 
 
+async def test_real_claude_writes_its_answer_after_turn_end_once(tmp_path: Path):
+    """turn_end says what the person has seen (#679). A status line before the
+    work is not the answer, so the answer follows the call; an answer written
+    before the call is not repeated after it. The current Sonnet at medium:
+    claude-sonnet-5 at low effort skipped turn_end in 1 of 1 runs."""
+    import asyncio
+    import difflib
+
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / "geom.py").write_text(
+        "def area(r):\n    return 3.14 * r * r\n\n"
+        "def volume(r):\n    return 4/3 * 3.14 * r ** 2\n"
+    )
+    (tmp_path / ".aegis.yaml").write_text(
+        "agents:\n  sonnet: {harness: claude-code, model: sonnet, effort: medium, permission: full}\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        claude_bin=claude,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+
+    def split(s, since: int) -> tuple[str, str]:
+        # The prose of this turn before the last turn_end, and after it.
+        es = s.entries()[since:]
+        ends = [
+            i
+            for i, e in enumerate(es)
+            if e["kind"] == "tool" and e["title"] == "turn_end"
+        ]
+        assert ends, [
+            (e["kind"], e["title"], (e.get("md") or e.get("summary") or "")[:80])
+            for e in es
+        ]
+        prose = lambda part: " ".join(e["md"] for e in part if e["kind"] == "prose")  # noqa: E731
+        return prose(es[: ends[-1]]), prose(es[ends[-1] + 1 :])
+
+    try:
+        r = await app.registry.call("session.spawn", {"agent": "sonnet"})
+        s = app.sessions.sessions[r["log_id"]]
+        app.sessions.rename(s.log_id, "seen-live", "Live turn_end test")
+        mark = len(s.entries())
+        await s.send(
+            "First tell me in one line what you are about to do. Then read geom.py "
+            "and tell me whether it has bugs. Do not change anything."
+        )
+        await until(lambda: s.status == "idle" and s.cost_usd, 180, "the review turn")
+        before, after = split(s, mark)
+        assert "volume" in after and len(after) > len(before), (before, after)
+
+        mark = len(s.entries())
+        await s.send(
+            "Explain in a paragraph why r ** 3 is right. Write your full answer "
+            "first and call turn_end as the very last thing you do."
+        )
+        await until(
+            lambda: s.status == "idle" and len(s.entries()) > mark + 2,
+            180,
+            "the answer-first turn",
+        )
+        before, after = split(s, mark)
+        assert len(before) > 200 and len(after) < len(before) / 2, (before, after)
+        assert difflib.SequenceMatcher(None, before, after).ratio() < 0.5
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)
+
+
 async def test_real_claude_drafts_feedback_and_files_nothing_before_a_yes(
     tmp_path: Path, monkeypatch
 ):
