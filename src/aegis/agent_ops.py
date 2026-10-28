@@ -561,6 +561,7 @@ LISTED = (
     "plan_done",
     "plan_total",
     "plan_clock",
+    "load",
 )
 
 
@@ -1143,7 +1144,9 @@ def register_agent_ops(app: App) -> None:
         """The open sessions on this server, each with its state, what it needs
         (attention and its line, what it waits on), its plan and what it is
         doing now, its model (`model` as configured, `model_id` as the harness
-        resolved it, null until it has) and spend; then each linked server's by
+        resolved it, null until it has), spend, and `load`: the CPU in cores
+        over the last minute and the RAM in GB of it and everything it started,
+        null while it has no process; then each linked server's by
         handle and state alone, as `handle@server`: reach one with
         peer_handoff. A server linked with trust lists its sessions in full,
         with `server`."""

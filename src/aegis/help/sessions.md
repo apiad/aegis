@@ -243,6 +243,9 @@ clear. A notice at critical also shows you a toast, once per episode.
 | quota | the account's quota windows, for sessions that draw on that account: warning when a window is on pace to run out before its reset with half of it spent, critical at 90% spent | warning, critical, normal |
 | announce | what a person or an admin's agent wrote | as written |
 
+The memory and cpu notices also say what the reading session itself holds,
+and which session holds the most (see [Load](#load)). The heaviest session is
+told to slow or free its own work first; the others read the usual advice.
 The text tells an agent to free or cut back only what its own session
 created and never to touch shared caches or another session's work. Only
 one session asks you about the rest: per kind and per owner, the first
@@ -454,6 +457,31 @@ to twice in a row after clean restarts and once after a crash; the next cut
 leaves it waiting for you, with a note saying so. After a crash, a harness
 the dead server left running is ended first. A harness that failed on its own
 is not restarted.
+
+## Load
+
+aegis measures every session's CPU and RAM every 5 seconds: what its agent
+and everything the agent started use, test runs and builds included. The
+CPU is in cores over the last minute, so 2.0 means two cores busy; the RAM
+is the resident memory, in GB.
+
+- The sidebar's Usage row shows a `load` line, `2.0 cores · 3.1 GB`.
+- A Fleet card shows the same in its footer while the session holds at least
+  one core or 1 GB, so an idle session's card stays quiet.
+- `session_list` gives each session here its `load`, `{"cpu": 2.0,
+  "rss_gb": 3.1}`, or null while it has no process, so an agent can see who
+  loads the host before it starts a build.
+- The memory and cpu notices name the reading session's own figure and the
+  session that holds the most, when that one holds at least a core, or a
+  tenth of the RAM.
+
+With a cgroup per session (see the config page's Memory per session), the
+kernel counts each session's processes. Without one, aegis follows each
+process up to the agent that started it, and a process that left that tree,
+such as a background test run whose shell ended, is counted by the
+`AEGIS_SESSION` it inherited. Memory shared between processes is counted
+once per process, so the figure ranks sessions; it does not add up to the
+host's.
 
 ## Context and the cache
 

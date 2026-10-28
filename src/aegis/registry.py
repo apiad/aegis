@@ -135,6 +135,7 @@ class Registry(Host):
         self.browsers = None  # browsers.py, set by the app: docked browser panes
         self.quota = None
         self.notices = None  # notices.Notices, set by App
+        self.load = None  # load.LoadSampler, set by App
         # knowledge.Knowledge, and whose knowledge a session's sends are
         # hinted from (its owner, else the admin); both set by App.
         self.knowledge = None
@@ -220,6 +221,11 @@ class Registry(Host):
     def released(self, session: Session) -> None:
         if self.cgroups is not None:
             self.cgroups.release(session.log_id)
+
+    def load_changed(self, log_id: str) -> None:
+        """A session's shown load changed: republish its card."""
+        if (s := self.sessions.get(log_id)) is not None:
+            s._publish_now()
 
     def cgroup_dir(self, session: Session) -> Path | None:
         """The session's cgroup, or None when the unit is not delegated."""
@@ -451,6 +457,8 @@ class Registry(Host):
             "waiting_for": self._waiting_for(session),
             **self._worker(session),
             "layout": session.standing.get("layout"),
+            # CPU in cores over the last minute and RSS, with what it started.
+            "load": self.load.of(session.log_id) if self.load is not None else None,
             "cache_cold": cache.cold_policy(session.spec.harness, self.context()),
             # Only a live successor counts; an archived session keeps its own.
             "continued_by": session.continued_by
