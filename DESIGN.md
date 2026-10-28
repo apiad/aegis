@@ -879,7 +879,10 @@ made typing cost grow with the transcript's length and the number of sessions
 
 **A sampler runs only while someone watches.** The host meters (`host.py`)
 and the network readings (`net/service.py`) read nothing while no browser
-subscribes to `host`; the network loop polls for a watcher once a second and
+subscribes to `host`. The one exception is each session's load (`load.py`,
+#762): the cpu and memory notices name a session's own share of the last
+minute, which needs samples nobody watched, so it walks `/proc` (or reads
+the session cgroups) every 5 s in a thread, about 80 ms for 400 processes. The network loop polls for a watcher once a second and
 refreshes the moment one arrives. The network readings reach the internet and
 the speed test downloads a megabyte, so a server nobody looks at must not pay
 for them. Both ride the one `host` snapshot, so a linked server's band shows

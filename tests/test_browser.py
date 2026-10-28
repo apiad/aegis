@@ -9254,3 +9254,13 @@ def test_an_urgent_handoff_shows_steered_in_on_the_row_it_makes(server, page):
     page.click(f"#tablist .tab[data-id='{b}']")
     pill = page.wait_for_selector(".row.inbox .from .steered", timeout=10000)
     assert pill.inner_text() == "steered in"
+
+
+def test_the_sidebar_shows_the_sessions_load(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    # The sampler reads every 5 s; the first reading after the spawn shows it.
+    page.wait_for_selector("#s-load:not([hidden])", timeout=15000)
+    assert re.fullmatch(r"\d+\.\d cores · \d+\.\d GB", page.inner_text("#s-load-v"))
+    assert page.errors == []

@@ -1538,6 +1538,9 @@ function ctxPct(s) {
 
 // The tiles and the card's context: on every patch of the session, rebuilt
 // only when what they show changed.
+// A session's load (load.py): cores over the last minute and RAM.
+const loadText = (l) => `${l.cpu.toFixed(1)} cores · ${l.rss_gb.toFixed(1)} GB`;
+
 function drawSideUsage(s) {
   const now = nowS();
   const p = sideProvider(s);
@@ -1545,6 +1548,8 @@ function drawSideUsage(s) {
   const pct = ctxPct(s);
   const tokens = s.context_tokens != null ? fmtTokens(s.context_tokens) : null;
   const cost = money(s.cost_usd);
+  $("s-load").hidden = !s.load;
+  if (s.load) $("s-load-v").textContent = loadText(s.load);
 
   $("s-tokens").textContent = tokens ?? "no turn yet";
   $("s-of").textContent = tokens == null ? "" : s.context_window ? `of ${fmtTokens(s.context_window)} · ${pct}%` : "tokens";
