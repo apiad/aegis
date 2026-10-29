@@ -2088,8 +2088,6 @@ body{background:#000}
   .a2 .tab{min-height:40px}
   /* every header icon one size, so their icons share a line (#631) */
   .a2 .tabs :is(.keys-btn.bell,.set-btn,.jr-btn,.help-btn){min-width:40px;min-height:40px}
-  /* with Fleet on their row (#752), a 360 px phone has 36 px for each */
-  @media (max-width:760px){.a2 .tabs :is(.keys-btn.bell,.set-btn,.jr-btn,.help-btn){flex:1 0 34px;min-width:34px;max-width:40px}}
   .a2 .nav button{height:34px;min-width:36px}
   .a2 .nav button::before{content:"";position:absolute;inset:-5px 0}
   .a2 .tr{padding-bottom:66px}
@@ -2097,6 +2095,10 @@ body{background:#000}
   .a2 .btn{min-height:44px}
   .a2 .tbl td.acts .btn{width:44px;height:44px}
 }
+/* With Fleet on their row (#752), a 360 px phone has 36 px for each header
+   button. Any pointer: a narrow window wrapped ? onto a row of its own (#807).
+   After the touch block, so it wins over the 40 px there. */
+@media (max-width:760px){.a2 .tabs :is(.keys-btn.bell,.set-btn,.jr-btn,.help-btn){flex:1 0 34px;min-width:34px;max-width:40px}}
 /* Toasts (toast.js): cards in the bottom-right; in a session toast.js lifts
    them above the message box. Full width on a phone. */
 .a2 .toasts{position:fixed;right:16px;bottom:16px;z-index:40;display:flex;flex-direction:column;gap:6px;width:min(320px,calc(100vw - 32px));pointer-events:none}

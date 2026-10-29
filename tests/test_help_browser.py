@@ -281,7 +281,9 @@ def test_the_help_tab_is_two_screens_on_a_phone(long_named, browser):  # noqa: F
     spawn(pg)  # a session view adds the panel button: the fullest header
     btn = pg.locator("#help-btn").bounding_box()
     gear = pg.locator("#settings-btn").bounding_box()
-    assert btn and btn["x"] + btn["width"] <= 390 and btn["width"] >= 40, btn
+    # 34 to 40 px wide on a phone, so Fleet fits on their row (#752).
+    assert btn and btn["x"] + btn["width"] <= 390 and btn["width"] >= 34, btn
+    assert btn["height"] >= 40, btn
     assert abs(btn["y"] - gear["y"]) < 2, "the ? sits on the header's first row"
     assert pg.evaluate(WIDER) == []
     pg.tap("#help-btn")

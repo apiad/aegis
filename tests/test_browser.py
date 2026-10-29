@@ -8438,7 +8438,9 @@ def test_the_header_opens_the_journal_from_a_book_icon(server, browser, page):
     pg.goto(server.url)
     pg.wait_for_selector("#a2[data-view=fleet]")
     box = pg.locator("#journal-btn").bounding_box()
-    assert box and box["x"] + box["width"] <= 390 and box["width"] >= 40
+    # 34 to 40 px wide on a phone, so Fleet fits on their row (#752).
+    assert box and box["x"] + box["width"] <= 390 and box["width"] >= 34
+    assert box["height"] >= 40
     assert pg.evaluate(WIDER) == []
     pg.tap("#journal-btn")
     pg.wait_for_selector("#a2[data-view=journal]")
