@@ -3,6 +3,6 @@ Upgrade: base.css mtime +1 s (a new build id), server restarted on the same root
 A tab's first load is its open (the ?token= URL is a redirect, no document); the second is the reload onto the new build.
 
 1280 document loads in this tab: 2
-1280 build 48539efd70dc -> c24383fe016c reloads after the upgrade: ?
+1280 build 48539efd70dc -> c24383fe016c
 390 document loads in this tab: 2
-390 build 48539efd70dc -> c24383fe016c reloads after the upgrade: ?
+390 build 48539efd70dc -> c24383fe016c
