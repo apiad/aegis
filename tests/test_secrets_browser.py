@@ -3,6 +3,7 @@
 and in another browser; a requested secret typed into its card lands in the
 file; both through a linked server too (secret_ops.py)."""
 
+import json
 import secrets
 
 import pytest
@@ -13,6 +14,7 @@ from .test_browser import (  # noqa: F401
     linked,
     new_page,
     page,
+    phone,
     server,
     spawn,
     turns_done,
@@ -103,3 +105,33 @@ def test_secret_cards_work_on_a_linked_servers_session(linked, browser, page):  
     provide(page, typed)
     assert (root / "tok").read_text() == typed
     assert page.errors == []
+
+
+def test_a_secret_cards_title_sits_beside_its_icon_on_a_phone(server, browser):  # noqa: F811
+    """#633: on a phone a title wider than what the icon left of the line
+    dropped below the icon. It wraps beside it, and the size and Reveal take
+    the next line."""
+    errors: list = []
+    page = phone(browser, errors)
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    (server.root / "pw").write_text("x" * 25)
+    args = {
+        "path": str(server.root / "pw"),
+        "caption": "the production database admin password",
+    }
+    page.fill("#input", f"/mcp secret_send {json.dumps(args)}")
+    page.tap("#send")  # Enter adds a line on a touch screen
+    page.wait_for_selector(CARD)
+    box = page.evaluate(
+        """(sel) => Object.fromEntries(['.fbar > .ic', '.fbar .fn', '.fbar .acts'].map((s) => {
+          const r = document.querySelector(sel + ' ' + s).getBoundingClientRect();
+          return [s, { top: r.top, bottom: r.bottom, left: r.left, right: r.right }];
+        }))""",
+        CARD,
+    )
+    icon, title, acts = box[".fbar > .ic"], box[".fbar .fn"], box[".fbar .acts"]
+    assert title["top"] < icon["bottom"] and title["left"] > icon["right"], box
+    assert title["right"] <= 390 and acts["top"] >= title["bottom"] - 1, box
+    assert errors == []

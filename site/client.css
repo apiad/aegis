@@ -961,6 +961,10 @@ body{background:#000}
 @media (pointer:coarse){.a2 .gate .btn,.a2 .edit .btn,.a2 .again .btn{min-height:44px}}
 /* A secret's card (entries.js fillSecret, fillRequest): the value only ever in this DOM. */
 .a2 .scard .fbar{flex-wrap:wrap}
+/* On a phone the title takes the rest of the icon's line and wraps there, and
+   the size and the buttons take the next (#633): a title wider than what was
+   left of the line dropped below the icon. 25 px: the icon and the gap. */
+@media (max-width:760px){.a2 .scard .fbar .fn{flex:1 1 calc(100% - 25px);white-space:normal;overflow-wrap:anywhere}}
 .a2 .scard .sbody{border-top:1px solid var(--rule);background:var(--bg);padding:10px 12px;font-size:13px}
 .a2 .scard .sbody.val{font-family:var(--font-mono);font-size:14px;color:var(--strong);overflow-wrap:anywhere}
 .a2 .scard .sbody.dim{color:var(--muted);font-size:12.5px}
