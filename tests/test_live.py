@@ -646,7 +646,7 @@ async def test_real_claude_gives_a_countable_wait_a_progress_command(tmp_path: P
         # October waited on GitHub checks or runs, all of them countable. Before
         # #165 this prompt got a progress command in 1 of 6 runs.
         await s.send(
-            "CI is running on pull request 12 of the GitHub repo apiad/aegis. Wait "
+            "CI is running on pull request 12 of the GitHub repo syalia-srl/aegis. Wait "
             "for its checks to finish with the aegis monitor_start tool, then end "
             "your turn. Do not run any command yourself first."
         )
