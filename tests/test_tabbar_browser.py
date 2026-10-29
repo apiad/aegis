@@ -212,21 +212,23 @@ def test_the_more_button_shows_only_when_the_strip_overflows(server, browser):  
     pg.close()
 
 
-def test_choosing_a_row_opens_its_session_and_scrolls_its_tab_into_view(
+def test_the_more_button_opens_the_switcher_and_a_row_scrolls_its_tab_into_view(
     server,  # noqa: F811
     browser,  # noqa: F811
 ):
+    # #781: the button opens the session switcher in place of its menu.
     pg = browser.new_page(viewport={"width": 900, "height": 700})
     pg.goto(server.url)
     pg.wait_for_selector("#a2[data-view=fleet]")
     keys = [spawn(pg) for _ in range(6)]
     pg.goto(server.url.split("#")[0] + "#fleet")
     pg.click("#tab-more")
+    pg.wait_for_selector("#switcher", state="visible")
     rows = pg.eval_on_selector_all(
-        ".cmenu [data-id]", "els => els.map(e => e.dataset.id)"
+        "#switcher .sw-row", "els => els.map(e => e.dataset.id)"
     )
-    assert rows == keys
-    pg.click(f".cmenu [data-id='{keys[-1]}']")
+    assert sorted(rows) == sorted(keys)
+    pg.click(f"#switcher .sw-row[data-id='{keys[-1]}']")
     pg.wait_for_function(f"location.hash === '#s={keys[-1]}'")
     inside = pg.evaluate(
         f"""() => {{ const t = document.querySelector("#tablist .tab[data-id='{keys[-1]}']").getBoundingClientRect();
@@ -237,18 +239,27 @@ def test_choosing_a_row_opens_its_session_and_scrolls_its_tab_into_view(
     pg.close()
 
 
-def test_the_more_menu_opens_under_its_button(server, browser):  # noqa: F811
-    # #680: the button itself was passed where open() takes {anchor}, so the
-    # menu's left and top came out NaN and it opened in the corner.
-    pg = browser.new_page(viewport={"width": 900, "height": 700})
+def test_on_a_phone_the_more_button_always_shows_and_opens_the_switcher(
+    server,  # noqa: F811
+    browser,  # noqa: F811
+):
+    # #781: a phone has no Alt key; the button is its way in, even when the
+    # one tab fits, and a tap leaves the field unfocused: no keyboard.
+    pg = browser.new_page(
+        viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True
+    )
     pg.goto(server.url)
     pg.wait_for_selector("#a2[data-view=fleet]")
-    for _ in range(6):
-        spawn(pg)
-    pg.click("#tab-more")
-    pg.wait_for_selector(".cmenu")
-    b = pg.locator("#tab-more").bounding_box()
-    m = pg.locator(".cmenu").bounding_box()
-    assert b["y"] + b["height"] <= m["y"] <= b["y"] + b["height"] + 8
-    assert m["x"] <= b["x"] + b["width"] and m["x"] + m["width"] >= b["x"]
+    a = spawn(pg)
+    pg.goto(server.url.split("#")[0] + "#fleet")
+    pg.wait_for_selector("#tab-more:visible")
+    assert pg.inner_text("#tab-more").strip() == "1"
+    pg.tap("#tab-more")
+    pg.wait_for_selector("#switcher", state="visible")
+    assert pg.evaluate("document.activeElement.id") != "switcher-q"
+    box = pg.locator("#switcher .panel").bounding_box()
+    assert box["width"] >= 389
+    assert pg.evaluate("document.documentElement.scrollWidth") <= 390
+    pg.tap(f"#switcher .sw-row[data-id='{a}']")
+    pg.wait_for_function(f"location.hash === '#s={a}'")
     pg.close()
