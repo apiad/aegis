@@ -243,6 +243,7 @@ export class CommandMenu {
     this.items = complete(line, this.catalog, this.meta()).items.slice(0, 50);
     this.at = 0;
     this.rows.replaceChildren(...this.items.map((it, i) => rowNode(it, i === this.at)));
+    if (!this.items.length && !this.overlay) this.close();
   }
 
   // Whether the line names a known command, for the composer's outline. An
