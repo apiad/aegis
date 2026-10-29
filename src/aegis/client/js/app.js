@@ -22,6 +22,7 @@ import { age, countdown, diskRows, elapsed, hostRow, hostSeverity, mbps, netRows
 import { closeCard, initSide, restState, toggleCollapsed } from "./side.js";
 import { installKeys, renderKeys } from "./keys.js";
 import { Palette } from "./palette.js";
+import { Switcher } from "./switcher.js";
 import { entryIcon, factIcon, glyph, gorgoneion, icon, iconText, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
 import * as cmenu from "./menu.js";
@@ -1036,6 +1037,7 @@ function flushSessions() {
   changed = new Set();
   if (!booted) return;
   ordered = ordered.map((m) => sessions.get(m.key)).filter(Boolean);
+  switcher.refresh();
   // A session that went quiet or came back changes the set of tabs (#386).
   if (quietChanged()) {
     render();
@@ -1067,6 +1069,7 @@ function onSessions() {
   const since = (m) => m.created_at ?? m.started_at ?? 0;
   const ids = order.arrange([...sessions.values()].sort((a, b) => since(a) - since(b)).map((m) => m.key));
   ordered = ids.map((id) => sessions.get(id));
+  switcher.refresh();
   render();
   drawNav(); // the needs count
   ping();
@@ -3366,6 +3369,14 @@ $("files-btn").addEventListener("click", () => go(filesView.path ? filesHash(fil
 $("schedules-btn").addEventListener("click", () => go("#schedules"));
 keymap.addEventListener("click", (ev) => ev.target === keymap && help(false));
 const palette = new Palette($("palette"), () => route().view);
+// Alt+P and the strip's "N ▾" button (#781): every open session, by server.
+const switcher = new Switcher($("switcher"), {
+  metas: () => ordered,
+  here: () => fleetStacks.here || "this server",
+  links: () => links,
+  current: () => tabFocus(route()),
+  open: (key) => openCard(key),
+});
 
 // Alt+J and the navigator's button. In byNeed's order, from the tab after this
 // one; from the top when this one is not in the list, as after reading a
@@ -3494,6 +3505,10 @@ installKeys(
       if (route().view === "session" && !b.disabled) b.click();
     },
     palette: () => palette.toggle(),
+    sessions: () => {
+      palette.close();
+      switcher.open();
+    },
   },
   () => (booted ? route().view : "boot"),
 );
