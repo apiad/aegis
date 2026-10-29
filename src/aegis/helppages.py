@@ -179,6 +179,24 @@ def snippet(text: str, query: set[str], width: int = 240) -> str:
     return out if len(out) <= width else out[: width - 1] + "…"
 
 
+def _subsection(text: str, want: str) -> str | None:
+    """The ``### `` heading of ``text`` whose slug is ``want``, with its lines
+    up to the next ``### `` or the end; a heading inside a fence is code."""
+    out: list[str] | None = None
+    fence = False
+    for line in text.splitlines():
+        if line.startswith("```"):
+            fence = not fence
+        elif not fence and line.startswith("### "):
+            if out is not None:
+                break
+            if slug(line[4:]) == want:
+                out = []
+        if out is not None:
+            out.append(line)
+    return "\n".join(out).strip() + "\n" if out else None
+
+
 class Index:
     def __init__(self, pages: list[Page]) -> None:
         self.pages: dict[str, Page] = {p.id: p for p in pages}
@@ -248,6 +266,10 @@ class Index:
         for s in p.sections[1:]:
             if s.slug == want:
                 return f"## {s.heading}\n\n{s.text}\n"
+        # A ### heading inside a section (#760): a guide names one as often.
+        for s in p.sections:
+            if (sub := _subsection(s.text, want)) is not None:
+                return sub
         have = ", ".join(s.slug for s in p.sections[1:])
         raise KeyError(f"{page} has no section {section!r}; its sections are {have}")
 

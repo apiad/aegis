@@ -46,7 +46,9 @@ Open with a paragraph that says what the page covers, then one `## ` heading
 per section. A section is addressed `page#slug`, the heading in lowercase
 with every run of other characters turned into one hyphen, so two headings on
 a page must not slug alike. Keep a section to one idea: search returns
-sections, and an agent reads the one it was pointed to.
+sections, and an agent reads the one it was pointed to. `help_read` also
+opens a `### ` heading inside a section by its slug, from the heading to the
+next `### `; search never returns one.
 
 A tutorial's sections are numbered steps. Each says what to do and what the
 person should see. A step that starts an agent, spends quota or reaches
