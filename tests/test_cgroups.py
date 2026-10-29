@@ -231,6 +231,28 @@ def test_release_without_cgroup_kill_signals_each_process(tmp_path):
     assert left.wait(5) == -signal.SIGKILL and not d.exists()
 
 
+def test_release_without_cgroup_kill_signals_as_the_member(tmp_path, monkeypatch):
+    from aegis import launch
+
+    cg = Tree(tmp_path).setup()
+    d = cg.create("log-abc")
+    (d / "cgroup.procs").write_text("4321\n")
+    seen = []
+    monkeypatch.setattr(
+        launch,
+        "signal_process",
+        lambda pid, sig, *, user, group=False: seen.append((pid, sig, user)),
+    )
+    monkeypatch.setattr(
+        SessionCgroups, "remove", staticmethod(lambda p: shutil.rmtree(p))
+    )
+
+    cg.release("log-abc", user="ben")
+
+    assert seen == [(4321, signal.SIGKILL, "ben")]
+    assert not d.exists()
+
+
 async def test_a_busy_cgroup_is_removed_on_a_later_try(tmp_path, monkeypatch):
     monkeypatch.setattr(cgroups, "RETRY_RMDIR_S", 0.01)
     cg = Tree(tmp_path).setup()

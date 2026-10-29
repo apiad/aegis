@@ -694,6 +694,10 @@ switched to the owner's user with every capability dropped, with the owner's
 environment and the pool file's variables. Files the server opens for a person,
 it opens on a thread switched to that person (`as_user.py`), so the kernel checks
 every access. The state directory is mode 0700, out of every member's reach. A
+signal follows the same ownership rule: the launcher tries the signal directly,
+then, when Linux denies it, retries through `kill` as the process's recorded
+user (or as the server for server-owned processes). Harnesses, terminals,
+timeout cleanup, workflow commands and crash recovery all use this path.
 member sees only what it owns: one rule, `App.sees`, hides another's sessions,
 runs, tasks, schedules, journal rows and toasts at the three places data leaves
 the server (an op's params in `Registry.call`, each channel subscriber's view in

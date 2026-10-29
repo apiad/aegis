@@ -220,7 +220,7 @@ class Registry(Host):
 
     def released(self, session: Session) -> None:
         if self.cgroups is not None:
-            self.cgroups.release(session.log_id)
+            self.cgroups.release(session.log_id, user=session.spec.linux_user)
 
     def load_changed(self, log_id: str) -> None:
         """A session's shown load changed: republish its card."""
@@ -734,7 +734,7 @@ class Registry(Host):
             self.archived[meta["log_id"]] = meta
             return
         if not self._prev.clean and restarts.end_leftover(
-            meta.get("pid"), meta.get("pid_started")
+            meta.get("pid"), meta.get("pid_started"), user=meta.get("linux_user")
         ):
             log.warning(
                 "aegis: ended the harness a crash left behind for %s", meta["handle"]

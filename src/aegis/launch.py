@@ -8,8 +8,9 @@ and drops its capabilities, and that has to happen for every process or it
 protects nothing (docs/superpowers/specs/2026-10-21-linux-users-design.html,
 section 06), so there is one place to do it.
 
-A caller picks one of five shapes and keeps its own reading, timeout and kill
-logic:
+A caller picks one of five shapes and keeps its own reading and timeout
+logic. Process signals use the shared helper below, so a server that cannot
+signal a member's process retries as that member:
 
 - ``child``: async, with pipes, optionally in a session's cgroup with the OOM
   score raised. Harnesses, monitors, workflow steps, one-shot runs, probes.
@@ -38,6 +39,7 @@ from __future__ import annotations
 import asyncio
 import os
 import pwd
+import signal
 import shutil
 import subprocess
 import webbrowser
@@ -211,6 +213,72 @@ def run(
         text=text,
         errors=errors,
     )
+
+
+def _signal_direct(pid: int, sig: int, group: bool) -> bool:
+    """Send ``sig`` directly; return False only when permissions refuse it."""
+    try:
+        (os.killpg if group else os.kill)(pid, sig)
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        return False
+    return True
+
+
+def _signal_via_launcher(
+    pid: int, sig: int, user: str | None, group: bool, denied: PermissionError
+) -> None:
+    name = signal.Signals(sig).name.removeprefix("SIG")
+    target = f"-{pid}" if group else str(pid)
+    argv = ["kill", "-s", name, "--", target]
+    try:
+        result = run(argv, user=user, timeout=5, text=True)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise PermissionError(
+            f"could not send {name} to {'process group' if group else 'process'} "
+            f"{pid} as {user}: {e}"
+        ) from e
+    if result.returncode:
+        try:
+            (os.killpg if group else os.kill)(pid, 0)
+        except ProcessLookupError:
+            return  # it exited between the server's attempt and the retry
+        except PermissionError:
+            pass
+        detail = (result.stderr or "").strip()
+        raise PermissionError(
+            f"could not send {name} to {'process group' if group else 'process'} "
+            f"{pid} as {user}: {detail or f'kill exited {result.returncode}'}"
+        ) from denied
+
+
+def signal_process(
+    pid: int, sig: int, *, user: str | None, group: bool = False
+) -> None:
+    """Signal a child or process group, retrying through the launcher as its
+    owner when the server lacks permission. With no owner, the retry uses the
+    server's user. ``pid`` must be positive; missing processes are stopped."""
+    if pid <= 0:
+        raise ValueError("pid must be positive")
+    if _signal_direct(pid, sig, group):
+        return
+    _signal_via_launcher(
+        pid, sig, user, group, PermissionError(f"server cannot signal pid {pid}")
+    )
+
+
+async def signal_process_async(
+    pid: int, sig: int, *, user: str | None, group: bool = False
+) -> None:
+    """Async form: direct signals happen before yielding; a permission
+    fallback runs off the event loop."""
+    if pid <= 0:
+        raise ValueError("pid must be positive")
+    if _signal_direct(pid, sig, group):
+        return
+    denied = PermissionError(f"server cannot signal pid {pid}")
+    await asyncio.to_thread(_signal_via_launcher, pid, sig, user, group, denied)
 
 
 def detach(

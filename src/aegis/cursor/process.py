@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import signal
 import time
 from collections import deque
@@ -281,7 +280,7 @@ class CursorProcess:
         assert self._proc is not None
         proc = self._proc
         code = await _exited(proc)
-        self._signal(proc, signal.SIGKILL)  # whatever it left kept the pipes
+        await self._signal(proc, signal.SIGKILL)  # whatever it left kept the pipes
         self._fail_pending(Exited("cursor-agent acp exited"))
         if self._quiet:
             return
@@ -303,26 +302,24 @@ class CursorProcess:
             try:
                 await asyncio.wait_for(_exited(proc), TERM_GRACE_S)
             except TimeoutError:
-                self._signal(proc, signal.SIGTERM)
+                await self._signal(proc, signal.SIGTERM)
                 try:
                     await asyncio.wait_for(_exited(proc), TERM_GRACE_S)
                 except TimeoutError:
-                    self._signal(proc, signal.SIGKILL)
+                    await self._signal(proc, signal.SIGKILL)
                     await _exited(proc)
         if proc is not None:
-            self._signal(proc, signal.SIGKILL)
+            await self._signal(proc, signal.SIGKILL)
         for t in list(self._tasks):
             t.cancel()
         if self._wait_task is not None:
             self._wait_task.cancel()
         self._fail_pending(ConnectionResetError("cursor-agent acp was stopped"))
 
-    @staticmethod
-    def _signal(proc: asyncio.subprocess.Process, sig: int) -> None:
-        try:
-            os.killpg(proc.pid, sig)
-        except (ProcessLookupError, PermissionError):
-            pass
+    async def _signal(self, proc: asyncio.subprocess.Process, sig: int) -> None:
+        await launch.signal_process_async(
+            proc.pid, sig, user=self._launch.user, group=True
+        )
 
     def _fail_pending(self, err: Exception) -> None:
         pending, self._pending = self._pending, {}

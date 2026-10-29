@@ -144,3 +144,30 @@ def test_end_group_spares_a_reused_pid_and_ends_a_live_group():
         p.wait(timeout=5)
     finally:
         p.kill()
+
+
+def test_end_group_signals_as_the_recorded_member(monkeypatch):
+    seen = []
+    monkeypatch.setattr(restarts, "started_at", lambda pid: 123)
+    monkeypatch.setattr(restarts, "group_alive", lambda pgid: True)
+    monkeypatch.setattr(
+        restarts.launch,
+        "signal_process",
+        lambda pid, sig, *, user, group: seen.append((pid, sig, user, group)),
+    )
+
+    assert restarts.end_group(4321, 123, wait_s=0, user="ben")
+
+    assert seen == [
+        (4321, signal.SIGTERM, "ben", True),
+        (4321, signal.SIGKILL, "ben", True),
+    ]
+
+
+def test_group_alive_treats_a_permission_error_as_alive(monkeypatch):
+    def denied(pgid, sig):
+        raise PermissionError("the server cannot inspect the member group")
+
+    monkeypatch.setattr(restarts.os, "killpg", denied)
+
+    assert restarts.group_alive(4321)

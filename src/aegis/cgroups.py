@@ -278,10 +278,12 @@ class SessionCgroups:
             pass  # a kernel without swap accounting has no swap to cap
         return d
 
-    def release(self, log_id: str) -> None:
+    def release(self, log_id: str, user: str | None = None) -> None:
         """Kill what is left in the session's cgroup and remove it. A process
         dies a moment after SIGKILL, so a busy rmdir is retried later; one the
-        next spawn got to first fails harmlessly, as the cgroup is in use."""
+        next spawn got to first fails harmlessly, as the cgroup is in use.
+        ``user`` is the owner of member processes for kernels without
+        ``cgroup.kill``."""
         d = self.path(log_id)
         if not d.is_dir():
             return
@@ -289,8 +291,10 @@ class SessionCgroups:
             if (d / "cgroup.kill").exists():
                 (d / "cgroup.kill").write_text("1")
             else:
+                from .launch import signal_process
+
                 for p in _procs(d):
-                    os.kill(p, signal.SIGKILL)
+                    signal_process(p, signal.SIGKILL, user=user)
         except OSError:
             pass
         self._rmdir(d, RMDIR_TRIES)

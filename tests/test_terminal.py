@@ -164,3 +164,14 @@ def _alive(pid: int) -> bool:
         return False
     with open(f"/proc/{pid}/stat") as f:
         return f.read().split(") ")[1][0] != "Z"
+
+
+def test_terminal_group_alive_treats_a_permission_error_as_alive(monkeypatch):
+    from aegis import terminal
+
+    def denied(pgid, sig):
+        raise PermissionError("the server cannot inspect the member group")
+
+    monkeypatch.setattr(terminal.os, "killpg", denied)
+
+    assert terminal._alive(4321)

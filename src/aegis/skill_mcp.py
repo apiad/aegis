@@ -26,7 +26,6 @@ import asyncio
 import contextlib
 import json
 import logging
-import os
 import signal
 from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass, field
@@ -69,19 +68,7 @@ async def _signal_group(pgid: int, sig: signal.Signals, user: str | None) -> Non
     signal is sent again by ``kill`` started through the launcher as that
     user. Never raises: a failure is logged."""
     try:
-        os.killpg(pgid, sig)
-        return
-    except ProcessLookupError:
-        return
-    except PermissionError:
-        pass
-    try:
-        await asyncio.to_thread(
-            launch.run,
-            ["kill", "-s", sig.name.removeprefix("SIG"), "--", f"-{pgid}"],
-            user=user,
-            timeout=5,
-        )
+        await launch.signal_process_async(pgid, sig, user=user, group=True)
     except Exception as e:  # noqa: BLE001 - a stop must finish
         log.warning(
             "skill mcp: could not %s group %s as %s: %s", sig.name, pgid, user, e

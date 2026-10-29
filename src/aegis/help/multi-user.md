@@ -26,6 +26,10 @@ A member and their agents see only what the member owns: sessions, the
 archive, queues, schedules, workflow runs, the journal and toasts. Someone
 else's session answers as one that never existed. An admin sees everything.
 
+When the server cannot signal a member's process directly, it retries as that
+member. Session close, terminal stop, timeouts and workflow cleanup can then
+end the member's harnesses and commands without leaving them running.
+
 ## What it does not protect against
 
 - An admin, and anyone with root on the host, can read everything.
