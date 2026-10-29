@@ -59,6 +59,7 @@ from pydantic import BaseModel, Field, model_validator
 from pydantic.json_schema import SkipJsonSchema
 
 from . import archive, attachments as att, commands, dictation, files, restarts, speech
+from . import pause
 from . import feedback, harness_versions, multiuser, setup
 from . import layout as canvas
 from . import workflow_store
@@ -635,9 +636,14 @@ class App:
         # Sessions a pause or a continue is under way for, so a reading that
         # lands before it finishes does not start a second one.
         self._quota_busy: set[str] = set()
+        # Every session paused by the person, and the ones resumed since
+        # (pause.py); read before boot, so a cut turn waits.
+        self.paused = pause.read(roots.state_root)
+        self.resumed: set[str] = set()
         self.quota.listeners.append(self.on_quota)
         self.quota.listeners.append(self.journal.quota)
         reg.gate = self.gate
+        reg.pause_hold = self.pause_hold
         # Who each session's processes run as, in multi-user mode (users.py).
         reg.multi_user = multi_user is not None
         reg.acts_for = lambda name: self.principals.acts_for(name)
@@ -782,7 +788,10 @@ class App:
         """The spec a start runs and the gate it passes. A cascade starts on
         its first model that is neither cooling nor gated, or is closed with
         why. A spec with no cascade, or whose model a person moved outside it
-        (a handoff after /model), asks that model's gate alone."""
+        (a handoff after /model), asks that model's gate alone. Nothing new
+        starts while every session is paused (pause.py)."""
+        if self.paused is not None:
+            return spec, Gate("stopped", pause.WHY)
         if spec.model not in spec.cascade:
             return spec, self.gate(spec.owner, spec.harness, spec.model)
         model, why = pick(
@@ -849,6 +858,8 @@ class App:
             # A turn the restart guard declined waits for a person (restarts.py).
             if s.log_id in self._quota_busy or s.log_id in self.sessions.declined:
                 continue
+            if self.pause_hold(s) is not None:
+                continue  # the person's pause outranks the gate (pause.py)
             policy = self.principals.policy_of(s.spec.owner or self.user)
             if policy is None:
                 continue
@@ -931,6 +942,88 @@ class App:
             if paused:
                 msgs = msgs[1:]  # the next continue writes its own
             s.held = [m | {"held_for": "quota"} for m in msgs + s.held]
+            self.sessions.metas.write(s.meta())
+            s._publish_now()
+
+    def pause_hold(self, s) -> str | None:
+        """Why ``s`` may not start a turn while every session is paused, or
+        None: no pause, or the person resumed this one."""
+        if self.paused is None or s.log_id in self.resumed:
+            return None
+        return pause.WHY
+
+    async def pause_all(self, by: str) -> int:
+        """Pause every session (pause.py): mark and cut each working turn,
+        then end every process, which kills what its agent left running.
+        The number of sessions whose process it ended."""
+        self.paused = pause.write(self.roots.state_root, by)
+        self.resumed.clear()
+        ended = 0
+        for s in list(self.sessions.sessions.values()):
+            if not self._live(s):
+                continue
+            if s.status == "working" and not s.quota_paused:
+                s.report({"kind": "server_paused"})
+                s.quota_paused = pause.WHY
+                self.sessions.metas.write(s.meta())
+            if s.running:
+                await s.stop()
+                ended += 1
+            s._publish_now()
+        self.toast("Every session is paused: nothing runs until you resume it.")
+        return ended
+
+    async def resume_all(self) -> None:
+        """Remove the pause, continue every turn it cut and release what the
+        gate held."""
+        self.paused = None
+        self.resumed.clear()
+        pause.clear(self.roots.state_root)
+        for s in list(self.sessions.sessions.values()):
+            if s.quota_paused == pause.WHY or s.held:
+                self._quota_task(s, self._unpause(s))
+        self._release_held()
+        self.toast("Every session is resumed.")
+
+    async def resume_one(self, s) -> None:
+        """A person's message resumes this session alone, its cut turn first."""
+        if self.pause_hold(s) is None:
+            return
+        self.resumed.add(s.log_id)
+        await self._unpause(s)
+
+    async def _unpause(self, s) -> None:
+        """Continue a session the pause held: ``RESUMED`` ahead of what it
+        held when the pause cut its turn, in one turn. One the quota gate
+        still holds keeps waiting for it."""
+        if not self._live(s) or self.pause_hold(s) is not None:
+            return
+        cut = s.quota_paused == pause.WHY
+        if cut:
+            s.quota_paused = None
+        if self.sessions.quota_hold(s) is not None:
+            self.sessions.metas.write(s.meta())
+            return
+        msgs = [{k: v for k, v in m.items() if k != "held_for"} for m in s.held]
+        if cut:
+            msgs.insert(
+                0,
+                {
+                    "header": f"> from aegis:pause · {iso_now()}",
+                    "body": pause.RESUMED,
+                    "ts": time.time(),
+                },
+            )
+        s.held = msgs
+        self.sessions.metas.write(s.meta())
+        if s.in_turn or not msgs:
+            s._publish_now()
+            return
+        try:
+            await s._flush_held()
+        except Exception:
+            log.exception("aegis: could not continue %s after the pause", s.handle)
+            s.held = msgs + s.held
             self.sessions.metas.write(s.meta())
             s._publish_now()
 
@@ -1727,6 +1820,8 @@ class App:
         on a workflow's locked step, behind a closed quota gate, and on a
         harness version outside the tested range until the person says so."""
         s.check_lock()
+        if not caller.is_agent:
+            await self.resume_one(s)
         if (why := self.sessions.quota_hold(s)) is not None:
             raise OpError("quota_closed", _held(s.spec.owner or self.user, why))
         not_saved = await self._version_gate(caller, s.spec.harness, untested, s)
@@ -2165,6 +2260,8 @@ class App:
             text = commands.escape(p.text)
             if p.dictated and cmd is None:
                 text = dictation.with_note(text)
+            if not caller.is_agent:
+                await self.resume_one(s)
             if (why := reg.quota_hold(s)) is not None:
                 raise OpError("quota_closed", _held(s.spec.owner or self.user, why))
             not_saved = None
@@ -2747,6 +2844,25 @@ class App:
             """The servers that linked this one with trust, so their agents
             reach this one over their link."""
             return self.links.incoming()
+
+        @r.op("server.paused", admin=True)
+        async def server_paused(p, caller):
+            """The pause in force (pause.py), or null."""
+            return {"paused": self.paused}
+
+        @r.op("server.pause", admin=True)
+        async def server_pause(p, caller):
+            """Pause every session: end their processes, hold all new work."""
+            ended = await self.pause_all(
+                by=caller.principal.name if caller.principal else self.user
+            )
+            return {"paused": self.paused, "ended": ended}
+
+        @r.op("server.resume", admin=True)
+        async def server_resume(p, caller):
+            """Resume every session the pause held, and the work it held."""
+            await self.resume_all()
+            return {"paused": None}
 
         @r.op("token.list", admin=True)
         async def token_list(_, caller):

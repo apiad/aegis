@@ -156,6 +156,8 @@ class Registry(Host):
         self.version_policy: Callable[[], dict | None] = lambda: None
         # The app's quota gate: (owner, harness, model) -> quota_gate.Gate.
         self.gate = None
+        # The person's pause of every session (pause.py): session -> why.
+        self.pause_hold = None
         # The app's start_spec: a spec -> the spec to start (its cascade's
         # first model free now) and the gate it passes.
         self.start_spec = None
@@ -447,7 +449,9 @@ class Registry(Host):
     def quota_hold(self, session: Session) -> str | None:
         """A paused session waits for its gate to open; any other may start a
         turn unless its owner is stopped, or closed and the harness would
-        have to start (quota_gate.py)."""
+        have to start (quota_gate.py), or every session is paused (pause.py)."""
+        if self.pause_hold is not None and (why := self.pause_hold(session)):
+            return why
         if session.quota_paused:
             return session.quota_paused
         if self.gate is None:

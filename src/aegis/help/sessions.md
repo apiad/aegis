@@ -479,6 +479,30 @@ leaves it waiting for you, with a note saying so. After a crash, a harness
 the dead server left running is ended first. A harness that failed on its own
 is not restarted.
 
+## Pause every session
+
+When the sessions together overload the host, a restart alone brings the
+load back: it continues every turn it cut. Pause every session instead.
+
+- **Settings, Sessions, Pause all**, on a running server. Every session's
+  process ends, and with it whatever its agent left running: builds, test
+  runs, browsers it started. A turn this cuts shows `paused: the person
+  paused every session` in its transcript.
+- **`aegis serve --paused`**, to start or restart with every session paused:
+  the turns the stop cut stay cut. It works in a one-off run or a systemd
+  drop-in.
+
+While the pause lasts, nothing new runs. Messages from agents, monitors and
+schedules wait in each session's held list, queue tasks stay pending,
+workflow nodes and spawns wait, and each says why: `the person paused every
+session`. The pause lasts across a restart, until you lift it:
+
+- **Resume all**, in the same place, continues each cut turn with a note
+  that the pause cut it, sends what each session held, and starts what
+  waited.
+- **A message you write to one session** resumes that session alone, its cut
+  turn first. The others stay paused. An agent's message cannot resume one.
+
 ## Load
 
 aegis measures every session's CPU and RAM every 5 seconds: what its agent

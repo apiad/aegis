@@ -250,6 +250,7 @@ export class Settings {
       this.browser(),
       this.knowledge(),
       this.servers(),
+      this.pauseView(),
       this.tokens(),
       w.error && h("p", { className: "set-alert err", id: "set-error", textContent: `The file on disk does not parse, so aegis is still using the last version that did. ${w.error}` }),
       this.stale && this.staleAlert(),
@@ -575,6 +576,47 @@ export class Settings {
       h("div", { className: "set-linkrow" }, url, token, trustBox, add),
       this.linkError && h("p", { className: "err-text", id: "set-link-error", textContent: this.linkError }),
       picker,
+    );
+  }
+
+  // Every session paused at once (pause.py): their processes end and nothing
+  // new starts until Resume all, or a message to one session resumes it.
+  pauseView() {
+    if (this.paused === undefined) {
+      this.paused = null;
+      this.conn
+        .call("server.paused")
+        .then((r) => {
+          this.paused = r.paused;
+          if (r.paused && !this.dirty) this.editing() ? this.later() : this.draw();
+        })
+        .catch(() => {});
+    }
+    const act = async (op) => {
+      this.pauseBusy = true;
+      this.draw();
+      try {
+        this.paused = (await this.conn.call(op)).paused;
+      } finally {
+        this.pauseBusy = false;
+        this.draw();
+      }
+    };
+    const on = this.paused;
+    const since = on && new Date(on.at * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+    const b = on ? button("Resume all", "set-resume-all", () => act("server.resume"), "btn primary") : button("Pause all", "set-pause-all", () => act("server.pause"));
+    b.disabled = !!this.pauseBusy;
+    return h(
+      "section",
+      { className: "set-pause", id: "set-pause" },
+      h("h3", { textContent: "Sessions" }),
+      h("p", {
+        className: "set-none",
+        textContent: on
+          ? `Every session is paused, since ${since}${on.by.startsWith("aegis ") ? `, by ${on.by}` : ""}. Nothing runs until you resume it: here for all, or by writing to one.`
+          : "Pause all ends every session's process, with what its agent left running, and holds new work, messages and spawns until you resume. It lasts across a restart.",
+      }),
+      h("div", { className: "set-linkrow" }, b),
     );
   }
 

@@ -798,6 +798,19 @@ class Fold:
             return self._upsert(
                 _entry(f"e{i}", "system", "ok", ts, d.SYSTEM_GLYPH, summary=line)
             )
+        if kind == "server_paused":
+            # The person paused every session (app.pause_all); the stop's
+            # own record follows.
+            return self._upsert(
+                _entry(
+                    f"e{i}",
+                    "system",
+                    "ok",
+                    ts,
+                    d.SYSTEM_GLYPH,
+                    summary="paused: the person paused every session",
+                )
+            )
         if kind == "quota_paused":
             # The quota gate interrupted the turn (app.on_quota); the
             # interrupt's own record and result follow.
