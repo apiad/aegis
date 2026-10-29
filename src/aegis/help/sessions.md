@@ -33,7 +33,10 @@ preset back. An agent is a named preset from
 with the paperclip go out with the first message.
 
 An agent starts a session with `session_spawn`, and a person can type
-`/spawn <agent> <prompt>` in any session's box (see the commands page).
+`/spawn <agent> <prompt>` in any session's box (see the commands page). A
+first message that starts with `/` runs as if typed in the new session's box,
+so `/feedback <words>` runs aegis's command instead of reaching the harness as
+text; start it with `//` to send a leading `/`.
 
 ## An untested harness version
 

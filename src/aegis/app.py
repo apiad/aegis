@@ -222,7 +222,12 @@ class SpawnParams(_Strict):
         "resolves against yours.",
     )
     prompt: str | None = Field(
-        None, min_length=1, description="The new session's first message."
+        None,
+        min_length=1,
+        description=(
+            "The new session's first message. A / line runs as if typed in "
+            "that session's box: an aegis command runs, // sends a leading /."
+        ),
     )
     # Set by a server that links this one, for an agent of its own that
     # spawns here (app.spawn); refused from anything but a link.
@@ -2206,7 +2211,23 @@ class App:
                 raise OpError(
                     "harness_failed", f"{self._bin(spec.harness)!r} did not start: {e}"
                 ) from e
-            if p.prompt:
+            ran = None
+            if p.prompt and commands.split(p.prompt) is not None:
+                # A / line runs as if typed in the new session (#545), as the
+                # new tab does (#570): as text, the harness answered an aegis
+                # command with its own builtin of that name.
+                try:
+                    ran = await deliver(
+                        SendParams(log_id=s.log_id, text=p.prompt), caller
+                    )
+                except OpError as e:
+                    raise OpError(
+                        e.code,
+                        f"{s.handle} ({s.log_id}) started, but its first line "
+                        f"failed: {e.message}",
+                        e.data,
+                    ) from e
+            elif p.prompt:
                 try:
                     await s.send(p.prompt, by_person=person)
                 except (BrokenPipeError, ConnectionResetError, FileNotFoundError) as e:
@@ -2216,6 +2237,8 @@ class App:
                         f"failed: {e}",
                     ) from e
             out = {"log_id": s.log_id, "handle": s.handle}
+            if ran is not None:
+                out["command"] = ran
             if parent is not None and s.last_notice:
                 out["untested"] = s.last_notice
             if not_saved:
