@@ -243,6 +243,9 @@ export class CommandMenu {
     this.items = complete(line, this.catalog, this.meta()).items.slice(0, 50);
     this.at = 0;
     this.rows.replaceChildren(...this.items.map((it, i) => rowNode(it, i === this.at)));
+    // Nothing to offer, as in /spawn's prompt (#764): the inline menu stays
+    // open, to come back as the line changes, but shows nothing.
+    this.box.classList.toggle("empty", !this.items.length && !this.overlay);
   }
 
   // Whether the line names a known command, for the composer's outline. An
@@ -272,7 +275,7 @@ export class CommandMenu {
   // whose required argument is missing never sends: Enter opens its
   // arguments. One whose argument is optional (`[page]`) sends as it is.
   onKey(ev) {
-    if (!this.isOpen) return false;
+    if (!this.isOpen || this.box.classList.contains("empty")) return false;
     const line = this.line();
     const it = this.items[this.at];
     if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {

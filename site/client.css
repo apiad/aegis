@@ -585,6 +585,7 @@ body{background:#000}
 /* the command menu, drawn above the composer */
 .a2 .composer{position:relative}
 .a2 .cmd-menu{position:absolute;left:22px;right:22px;bottom:calc(100% - 6px);background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);padding:4px;max-height:280px;overflow:auto;font-family:var(--font-chrome);font-size:12.5px;z-index:5}
+.a2 .cmd-menu.empty{display:none}
 /* the new tab's menu (#632): in the form's flow, under its box */
 .a2 .spawn .cmd-menu{position:static;margin-top:6px}
 .a2 .cmd-menu input{width:100%;margin-bottom:4px;padding:6px 8px;background:var(--bg);border:1px solid var(--accent);border-radius:4px;color:var(--strong);font:inherit;outline:none}
