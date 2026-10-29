@@ -152,6 +152,41 @@ def test_the_button_counts_schedules_and_is_red_while_one_is_paused_by_errors(
     assert page.text_content("#schedules-n") == "2" and not page.errors
 
 
+def test_the_count_keeps_the_desktop_header_buttons_one_size_on_one_line(
+    server,
+    page,  # noqa: F811
+):
+    # #801: the count widened Schedules to 42 px beside 30 px buttons, and the
+    # server's name and version sat 3 px below the icons.
+    page.set_viewport_size({"width": 1440, "height": 900})
+    page.goto(server.url)
+    page.wait_for_selector("#schedules-n >> text=2")
+    row = page.evaluate(
+        """ids => Object.fromEntries(ids.map(id => {
+          const b = document.getElementById(id), r = document.createRange();
+          r.selectNodeContents(b);
+          const q = (b.querySelector('svg, .ic') ?? r).getBoundingClientRect();
+          const o = b.getBoundingClientRect();
+          return [id, [q.y + q.height / 2, q.x + q.width / 2 - o.x - o.width / 2, o.width, o.height]];
+        }))""",
+        [
+            "schedules-btn",
+            "settings-btn",
+            "files-btn",
+            "journal-btn",
+            "bell",
+            "help-btn",
+            "conn-text",
+        ],
+    )
+    mids = [m for m, _, _, _ in row.values()]
+    assert max(mids) - min(mids) <= 1, row
+    buttons = {k: v for k, v in row.items() if k != "conn-text"}
+    assert {(w, h) for _, _, w, h in buttons.values()} == {(30, 28)}, row
+    assert all(abs(off) <= 1 for _, off, _, _ in buttons.values()), row
+    assert not page.errors
+
+
 def test_a_schedule_shows_its_layers_and_its_runs_with_quiet_ticks_folded(server, page):  # noqa: F811
     open_view(page, server)
     page.click(".sch-row[data-name=pr-triage]")

@@ -78,7 +78,7 @@ body{background:#000}
 #a2 .tab.asleep{opacity:.6}
 #a2 .tab.dragging{opacity:.35}
 #a2 .tab.drop{box-shadow:inset 2px 0 0 var(--accent)}
-#a2 .tabs .servers{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--faint);padding:0 10px}
+#a2 .tabs .servers{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--faint);padding:0 10px;margin-bottom:6px}
 /* The header's buttons are bare icons at every width (#586): no box, a tint on hover. */
 #a2 .keys-btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:30px;height:28px;background:none;border:1px solid transparent;border-radius:var(--r);color:var(--muted);font-family:var(--font-mono);font-size:11.5px;padding:0 4px;margin:0 1px 6px;cursor:pointer}
 #a2 .keys-btn:hover{color:var(--strong);background:color-mix(in srgb,var(--ink) 7%,transparent)}
@@ -722,6 +722,7 @@ body{background:#000}
 #a2 .side .ver{border-top:1px solid var(--rule);padding-top:8px;font-family:var(--font-mono);font-size:11px;color:var(--faint)}
 #a2 .side .ver>.prow{display:flex;gap:6px;align-items:center;margin:-4px -8px;padding:4px 8px}
 #a2 .side .ver>.prow>span{display:flex;gap:6px;align-items:center}
+#a2 .side .ver>.prow>span>:is(.ok,.upd){margin-left:0}
 #a2 .ver .v{font-family:var(--font-mono);color:var(--ink)}
 #a2 .ver .kv.dim .v{color:var(--faint)}
 #a2 .tag{font-size:10.5px;padding:0 6px;border-radius:4px;margin-left:6px;border:1px solid var(--comms);color:var(--comms)}
@@ -1754,7 +1755,8 @@ body{background:#000}
    its runs, and the editor laid out as the same layers. */
 #a2[data-view=schedules] .v-schedules{display:flex;flex-direction:column;overflow:auto}
 #a2 .schedules{max-width:1100px;width:100%;margin:0 auto;padding:22px 28px 32px;font-size:13px}
-#a2 .sch-btn .n{margin-left:5px;color:var(--muted)}
+#a2 .sch-btn{position:relative}
+#a2 .sch-btn .n{position:absolute;top:1px;right:1px;font-size:9px;line-height:1;color:var(--muted)}
 #a2 .sch-btn .n:empty{display:none}
 #a2 .sch-btn .n.err{color:var(--err)}
 #a2 .schedules .sch-top{display:flex;align-items:baseline;gap:12px;margin-bottom:14px}
@@ -1961,7 +1963,7 @@ body{background:#000}
   #a2 .tabs .keys-btn.bell,#a2 .tabs .set-btn,#a2 .tabs .jr-btn,#a2 .tabs .help-btn{display:grid;place-items:center;background:none;border-color:transparent;margin:0 0 4px;padding:0}
   /* Files joins this row (#586): the 40 px targets stay, and the row gives up
      a pixel of each gap and most of its side padding instead. */
-  #a2 .tabs .set-btn,#a2 .tabs .jr-btn,#a2 .tabs .help-btn{min-width:40px}
+  #a2 .tabs .keys-btn.bell,#a2 .tabs .set-btn,#a2 .tabs .jr-btn,#a2 .tabs .help-btn{min-width:40px}
   #a2 .tabs{gap:1px;padding-left:2px;padding-right:2px}
   #a2 .tabs .tab.home,#a2 .tabs .tab.add{padding-left:8px;padding-right:8px}
   #a2 .tabs .servers{padding:0 2px}
