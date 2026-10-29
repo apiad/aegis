@@ -3085,6 +3085,7 @@ def test_spawn_completes_agents_here_and_on_a_link_then_flags_and_their_values(
     page.keyboard.type("op@b")
     page.keyboard.press("Tab")
     assert page.input_value("#input") == "/spawn opus@beta "
+    assert page.is_hidden("#cmd-menu"), "the free-text prompt has no completion"
     page.keyboard.type("--mo")
     page.keyboard.press("Enter")  # accepts the flag, sends nothing
     assert page.input_value("#input") == "/spawn opus@beta --model "

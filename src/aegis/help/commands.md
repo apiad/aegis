@@ -26,7 +26,7 @@ server's agents, its default first, then each linked server's that answers
 as `agent@server`; a word that starts with `-` lists the flags it has not
 used, and after `--model`, `--effort` or `--permission` the menu lists their
 values. `/announce` completes `--until` and `--critical` the same way. Text
-that is free, such as a prompt, completes nothing.
+that is free, such as a prompt, completes nothing and closes the inline menu.
 
 | command | what it does |
 |---|---|
