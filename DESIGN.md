@@ -945,7 +945,11 @@ cache named after the build and serves `/`, `/static/**` and the manifest from
 it, so aegis opens with no connection. The page and its scripts always come from
 the same build: a new build downloads beside the old one and waits, the page
 offers a reload (or takes it at once when the socket closes with 4400), and every
-tab the old build loaded reloads when the new worker takes over. Only a complete
+tab the old build loaded reloads when the new worker takes over. The page
+carries its build id (`<meta name="aegis-build">`, written in by `web.py`) and
+the socket's welcome names the server's; when they differ, as after an
+upgrade, the page takes the new build without asking, and without a worker it
+reloads once per build (#499). Only a complete
 build is served; a failed download never fails the worker's install, so
 notifications keep working, and the worker downloads again when a page asks,
 which every page does when it loads and reconnects. A sign-in

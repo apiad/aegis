@@ -57,6 +57,7 @@ export class Connection {
         this.open = true;
         this.backoff = 500;
         this.server = msg.server;
+        this.build = msg.build || ""; // the client the server serves now (#499)
         this.native = msg.native === true;
         // Who this browser is here, and whose a session with no owner is (tokens.py).
         this.me = msg.me || null;

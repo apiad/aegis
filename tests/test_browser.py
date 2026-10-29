@@ -4653,6 +4653,45 @@ def test_the_page_registers_the_service_worker(server, page):
     assert page.errors == []
 
 
+@pytest.mark.parametrize("workers", ["allow", "block"])
+def test_an_open_tab_takes_the_new_build_after_an_upgrade(server, browser, workers):
+    """#499: after an upgrade an open tab kept the old client, and new features
+    did nothing until a hard refresh. The welcome names the build the server
+    serves; a page of another build takes it by itself, once, with a service
+    worker or without one."""
+    import aegis.web
+
+    errors: list = []
+    ctx = browser.new_context(service_workers=workers)
+    page = ctx.new_page()
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    if workers == "allow":
+        page.wait_for_function("!!navigator.serviceWorker.controller")
+    old = page.get_attribute("meta[name=aegis-build]", "content")
+    assert re.fullmatch(r"[0-9a-f]{12}", old)
+    page.evaluate("window.__before = true")
+    # An upgrade: the server restarts serving another client. The build id
+    # hashes each file's mtime, so a newer mtime is a new build.
+    css = aegis.web.CLIENT_DIR / "css" / "base.css"
+    st = css.stat()
+    server.stop()
+    try:
+        os.utime(css, ns=(st.st_atime_ns, st.st_mtime_ns + 10**9))
+        server.start()
+        page.wait_for_function(
+            "old => !window.__before && document.querySelector('meta[name=aegis-build]').content !== old",
+            arg=old,
+            timeout=20000,
+        )
+    finally:
+        os.utime(css, ns=(st.st_atime_ns, st.st_mtime_ns))
+    page.wait_for_selector("#a2[data-view=fleet]")
+    assert errors == []
+    ctx.close()
+
+
 def test_the_title_favicon_and_a_notification_ping_when_a_session_needs_you(
     server, browser
 ):
