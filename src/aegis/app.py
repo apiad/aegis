@@ -1062,6 +1062,9 @@ class App:
             self.terminal_cgroups = self.sessions.cgroups.sibling(
                 "terminals", lambda: self.config.current().terminal_memory_max
             )
+            # One cgroup for every browser, capped only by the work's (#782).
+            if browsers := self.sessions.cgroups.sibling("browsers", lambda: "max"):
+                self.browsers.cgroup = browsers.create("chromium")
         # Before sessions.boot(), which records server_stopped for every session
         # whose turn the last run's end cut: the journal must see those records.
         self.journal.start()
