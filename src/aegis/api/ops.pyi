@@ -696,6 +696,12 @@ class _secret:
         """Hand the person a secret (a password, a token, a key) that only they can read, once. The server reads the file at path and you get back an id, never the content. The person sees a card with a Reveal button until ttl runs out, and the first reveal burns it. Write the secret into the file without printing it (umask 077; openssl rand -base64 18 > /tmp/pw), and pass delete_source when the file was made only to carry it."""
 
 class _server:
+    async def pause(self) -> Any:
+        """Pause every session: end their processes, hold all new work."""
+    async def paused(self) -> Any:
+        """The pause in force (pause.py), or null."""
+    async def resume(self) -> Any:
+        """Resume every session the pause held, and the work it held."""
     async def version(self) -> Any:
         """server.version"""
 

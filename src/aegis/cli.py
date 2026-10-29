@@ -72,6 +72,7 @@ def _root(
             origin=[],
             detach=False,
             name=None,
+            paused=False,
         )
 
 
