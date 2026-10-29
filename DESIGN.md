@@ -75,6 +75,14 @@ unit's `MemoryMax` still covers the whole tree and `KillMode` still kills every
 session when the unit stops. Without delegation every child lives in the
 server's cgroup, as before (`cgroups.py`, #360).
 
+**The sessions together cannot starve the server.** `sessions/memory.max`
+is the unit's lowest memory limit less a 512 MiB reserve that
+`server/memory.min` protects, so many sessions under their own caps end in
+an OOM kill among them, not in the unit's `memory.high` throttling the
+server with them. `server/cpu.weight` is 1000 against the sessions' 100, so
+the server runs first on a busy host and the sessions keep every idle core
+(`cgroups.SessionCgroups.shield`, #782).
+
 **In a host OOM, a session dies before the server.** The server raises each
 child's `oom_score_adj` to 500 right after the spawn
 (`harness.raise_oom_score`), so a runaway tree is killed instead of the server

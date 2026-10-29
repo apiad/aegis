@@ -330,6 +330,12 @@ under a cap gets no swap, so it is killed at the cap instead of paging the
 host into the ground. A new value applies to
 the next process a session starts.
 
+All sessions together are capped too, at the service's lowest memory limit
+less 512 MiB that stays the server's. When many sessions under their own caps
+fill the host, the kernel kills the largest process among them, and the
+server keeps answering. The server also runs before any session when every
+CPU is busy; an idle CPU is still the sessions'. Neither has a key.
+
 The cap needs a cgroup per session, which aegis makes only when it runs as a
 systemd service with `Delegate=yes`. Anywhere else, every session shares the
 server's cgroup, as before, and the key has no effect. A value that is not a
