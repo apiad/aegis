@@ -1648,6 +1648,12 @@ def test_the_running_build_and_the_latest_release_show_in_the_top_bar_and_sideba
     assert page.inner_text("#ver-latest").startswith("99.0.0")
     if not run["dev"]:
         assert "update" in page.inner_text("#ver-latest")
+        # #801: the line's gap and the marker's own margin added up to 12 px.
+        gap = page.evaluate(
+            """() => { const v = document.querySelector('#ver-line .v').getBoundingClientRect();
+              return document.querySelector('#ver-line .upd').getBoundingClientRect().x - v.right; }"""
+        )
+        assert abs(gap - 6) <= 1, gap
     assert page.errors == []
 
 
