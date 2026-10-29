@@ -60,6 +60,7 @@ from pydantic.json_schema import SkipJsonSchema
 
 from . import archive, attachments as att, commands, dictation, files, restarts, speech
 from . import feedback, harness_versions, multiuser, setup
+from . import layout as canvas
 from . import workflow_store
 from .agent_ops import (
     far_error,
@@ -145,7 +146,6 @@ from .member_view import MemberView
 from .users import MultiUser
 from .registry import Registry
 from .roots import Roots
-from .transcript.entries import _sent_file
 from .usage.ops import register_usage_ops
 from .session import PUBLISH_EVERY_S, SpawnSpec
 from .term_ops import register_term_ops
@@ -2640,7 +2640,18 @@ class App:
                 (rec,) = await files.store_as(self.roots.state_root, [path], run)
             except files.FileError as e:
                 raise OpError(e.code, e.message) from e
-            return [_sent_file(rec) | await root_path(path, caller)]
+            sent = {k: v for k, v in rec.items() if k != "kind"}
+            sent["pane_key"] = canvas.file_key(f"peek:{row['id']}:{index}")
+            s.record_peek(
+                {
+                    "kind": "peek",
+                    "entry": row["id"],
+                    "index": index,
+                    "files": [sent],
+                }
+            )
+            saved = s.fold().entry(row["id"])["detail"]["path_peeks"][str(index)]
+            return [saved["files"][0] | await root_path(path, caller)]
 
         @r.op("file.peek", PeekParams)
         async def file_peek(p: PeekParams, caller):
@@ -2664,6 +2675,7 @@ class App:
             except files.FileError as e:
                 raise OpError(e.code, e.message) from e
             sent = {k: v for k, v in rec.items() if k != "kind"}
+            sent["pane_key"] = canvas.file_key(f"peek:{p.entry_id}:tool")
             s.record_peek({"kind": "peek", "entry": p.entry_id, "files": [sent]})
             url = files.url(rec["file_id"], rec["name"])
             return [

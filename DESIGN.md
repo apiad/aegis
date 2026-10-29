@@ -1155,6 +1155,10 @@ names two different files, one in each place, opens neither: it answers
 `cwd`. Agents quote from their own cwd, so taking the root's copy of a
 `README.md` would open the wrong file. A linked
 server's replies draw no links: the file would be on the other machine (#323).
+The copied file is recorded back on the reply under that path's index, with a
+pane key derived from the reply and index, so Dock can keep it beside the
+transcript and a reload can rebuild that pane without adding a second card to
+the transcript. Opening the link again advances that pane's version in place.
 The mechanism stays for links in replies; it is not what keeps a person from a
 file, since the Files view opens any file under the root (next paragraph).
 
@@ -1248,8 +1252,10 @@ agent never sees them there; `session.send` checks every upload complete,
 moves each to `<state>/inbox/<log_id>/<YYYYMMDD-HHMMSS>-<name>`, copies it
 into the sent-files store (a copy, because the agent may edit its own), and sends the typed text with one line per file.
 The person's row shows the typed text and one card, never the paths. No
-operation for it is open to agents. Each harness is started with read access
-to its inbox, and a chunk's bytes never reach the log (`attachments.py`).
+operation for it is open to agents. Its stored copy has a file-id pane key, so
+its card can Dock and the canvas can recover it from the person's row after a
+reload. Each harness is started with read access to its inbox, and a chunk's
+bytes never reach the log (`attachments.py`).
 
 **An artifact is a sent page with a way back, and the way back is the bridge.**
 An agent's interactive page (`artifacts.py`, `artifact_ops.py`) is served and
@@ -1335,6 +1341,10 @@ state.
 **The canvas is a record, and a docked page still runs in one place.** A
 session's docked pages, files and workflows (`layout.py`) are a `layout` record that the
 fold keeps as standing state and the session's card carries to every browser.
+Files copied from input attachments use their immutable file id as the pane
+key; reply-path peeks use the reply and path index; `file_send` uses its
+source-path key. A later copy of either repeatable kind updates the existing
+pane.
 The person's moves and the agent's tools go through one placement rule, and a
 person's operation names the move (`layout.dock`, `undock`, `resize`), not the
 result, so a drop never overwrites what the agent docked while the pointer was
