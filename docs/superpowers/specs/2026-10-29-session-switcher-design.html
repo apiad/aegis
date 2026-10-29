@@ -164,7 +164,7 @@ kbd{font-family:var(--font-mono);font-size:11.5px;color:var(--strong);border:1px
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · session switcher</span>
-  <span class="st"><span class="pill acc">draft</span><span class="pill">2026-10-29</span><span class="pill">#781</span></span>
+  <span class="st"><span class="pill acc">approved</span><span class="pill">2026-10-29</span><span class="pill">#781</span></span>
 </div>
 
 <div class="wrap">
@@ -179,7 +179,7 @@ kbd{font-family:var(--font-mono);font-size:11.5px;color:var(--strong);border:1px
   <a href="#fits">How it fits</a>
   <a href="#testing">Testing</a>
   <a href="#nongoals">Non-goals</a>
-  <a href="#open">Open questions</a>
+  <a href="#open">Settled questions</a>
 </nav>
 
 <main>
@@ -203,7 +203,8 @@ kbd{font-family:var(--font-mono);font-size:11.5px;color:var(--strong);border:1px
 <tr><td>key <span class="who">maintainer</span></td><td>Alt+P opens and closes it; while open, Alt+P moves down and Alt+Shift+P moves up</td><td class="why">Alt+P is free in <code>keys.js</code> and in Chrome's Linux accelerator table, and Firefox has no Alt+P menu. Pressing it again to move works like Alt+Tab, without making the release of Alt mean anything.</td></tr>
 <tr><td>layout <span class="who">maintainer</span></td><td>wide, short rows: two lines each on a desktop, three on a phone</td><td class="why">About ten sessions fit on a laptop screen without scrolling. A full Fleet card is about 150 px tall; a row is about 40.</td></tr>
 <tr><td>grouping <span class="who">maintainer</span></td><td>one group per server: this server first, then the linked servers in the Fleet's order</td><td class="why">Same order as the Fleet's bands, so a person who knows one finds the other.</td></tr>
-<tr><td>quiet <span class="who">maintainer</span></td><td>included, in one group named Quiet after every server's group; each of its rows names its server</td><td class="why">The request says hidden sessions go "at the end". One group keeps the end in one place; the server tag says where each row comes from. See <a href="#open">open questions</a>.</td></tr>
+<tr><td>quiet <span class="who">maintainer</span></td><td>included, in one group named Quiet after every server's group; each of its rows names its server</td><td class="why">The request says hidden sessions go "at the end". One group keeps every visible session above every hidden one; the server tag says where each row comes from.</td></tr>
+<tr><td>a way in without Alt <span class="who">maintainer</span></td><td>the tab strip's overflow button (<code>#tab-more</code>, "N ▾") opens the switcher instead of its dropdown, at every width; on a phone it is always shown, and its count includes quiet sessions</td><td class="why">A phone has no Alt key and its header has no room for another button. The overflow button already means "every open session" and already sits on the phone's tab row; the dropdown it opened lists handles only, and the switcher shows all of that and more.</td></tr>
 <tr><td>order in a group</td><td>by attention: needs you, error, review, then working, waiting, then the rest; within the first three the longest-waiting first, within the rest the most recent first</td><td class="why">The first row is then the session Alt+J would open, and the Fleet's "Needs you first" order is the same.</td></tr>
 <tr><td>first selection</td><td>the first row that is not the session in view</td><td class="why">Enter right after Alt+P goes somewhere useful, usually the session that needs you most.</td></tr>
 <tr><td>filter</td><td>the command menu's <code>fuzzy</code> scorer over the handle, the title, the status line and the server name; the best score among them ranks the row</td><td class="why">One scorer for the palette, the file picker and this list, so typing behaves the same in all three.</td></tr>
@@ -244,7 +245,7 @@ kbd{font-family:var(--font-mono);font-size:11.5px;color:var(--strong);border:1px
 <tr><td>dimmed</td><td>a quiet session, a finished queue worker, a session on an offline link</td><td>an ended one</td></tr>
 </tbody>
 </table>
-<p>On a phone (below 640 px) the overlay fills the screen, as the file picker's does, and a row takes three lines: mark, handle and state; the title; the status line. The key hints at the bottom are hidden.</p>
+<p>On a phone (below 640 px) it opens from the "N ▾" button at the end of the tab row. The overlay fills the screen, as the file picker's does, and the filter field takes focus only when tapped, so the keyboard does not cover the list. A row takes three lines: mark, handle and state; the title; the status line. The key hints at the bottom are hidden.</p>
 <p>Model, cost, context and the plan's progress stay on the Fleet card. The row is for choosing where to go, not for reading a session's state in full.</p>
 
 <h2 id="order"><span class="n">05</span>Groups and order</h2>
@@ -304,6 +305,7 @@ kbd{font-family:var(--font-mono);font-size:11.5px;color:var(--strong);border:1px
 <tr><td>client/js/switcher.js</td><td>new: <code>class Switcher(box, {metas, here, links, current, open})</code>, built on the palette's shape (open, close, refresh, move, accept, onKey); a pure <code>switcherRows(metas, here, links, query)</code> that returns the groups and rows, so the order can be tested without a browser</td></tr>
 <tr><td>client/js/keys.js</td><td>one action, <code>sessions</code>, Alt+P, <code>nav: true</code>; Alt+Shift+P is handled inside the switcher only</td></tr>
 <tr><td>client/js/app.js</td><td>build the switcher over <code>#switcher</code>, pass it <code>ordered</code>, the links and <code>openCard</code>; call its <code>refresh()</code> from the sessions patch while it is open</td></tr>
+<tr><td>client/js/app.js, #tab-more</td><td>its click opens the switcher, replacing the <code>cmenu</code> dropdown and the <code>MARK_ICON</code> map only it used; <code>sizeTabMore</code> counts every open session, quiet ones included, and keeps the button shown at phone width</td></tr>
 <tr><td>client/index.html</td><td><code>&lt;div class="palette switcher" id="switcher" hidden&gt;</code> beside <code>#palette</code> and <code>#fpick</code></td></tr>
 <tr><td>client/css/base.css</td><td>the wider panel, the group header and the two-line row, on top of the palette's rules; the phone and coarse-pointer rules as <code>.fpick</code> has them</td></tr>
 <tr><td>help/sessions.md</td><td>a section "Switch between sessions" naming Alt+P, the groups and the quiet group</td></tr>
@@ -318,6 +320,7 @@ kbd{font-family:var(--font-mono);font-size:11.5px;color:var(--strong);border:1px
   <li>Browser, against a real <code>aegis serve</code> with the fake claude: three sessions, one quiet. Alt+P opens the list with three rows and the quiet one last; typing part of a handle leaves one row; Enter opens that tab; Esc returns focus to the composer.</li>
   <li>Browser: Enter on the quiet row brings its tab back to the bar and opens it.</li>
   <li>Browser, with a linked second server as the existing link tests start it: its group is second and its row opens its tab.</li>
+  <li>Browser, at 390 px: the "N ▾" button shows with two sessions open, its count includes a quiet one, a tap opens the switcher full screen with no focused field, and a tap on a row opens it.</li>
   <li>The palette (Ctrl+K) lists "Switch to a session" with Alt+P; the ? overlay lists it.</li>
   <li>Screenshots at desktop and at 390 px for the PR, from the real client.</li>
 </ul>
@@ -331,11 +334,11 @@ kbd{font-family:var(--font-mono);font-size:11.5px;color:var(--strong);border:1px
   <li>Sessions on a server that is linked but not trusted beyond its handle and state: they show with what the client has, nothing is fetched.</li>
 </ul>
 
-<h2 id="open"><span class="n">11</span>Open questions</h2>
+<h2 id="open"><span class="n">11</span>Settled questions</h2>
 <ol>
-  <li><strong>Where quiet sessions go.</strong> This spec puts them in one Quiet group at the very end. The other reading of the request is a quiet part at the end of each server's group. One group at the end is proposed because it keeps every visible session above every hidden one.</li>
-  <li><strong>A way in on a phone.</strong> A phone has no Alt key, and today no button opens the palette either. Proposed: a button in the top bar, beside the needs-you pill, that opens the switcher. Without it the switcher is desktop-only in this slice.</li>
-  <li><strong>Should Alt+[ and Alt+] stay?</strong> Yes in this spec: they are one keystroke for the next tab and the switcher does not replace that.</li>
+  <li><strong>Where quiet sessions go:</strong> one Quiet group at the very end, as proposed. <span class="who">maintainer</span></li>
+  <li><strong>A way in on a phone:</strong> the existing "N ▾" overflow button, not a new one. <span class="who">maintainer</span></li>
+  <li><strong>Alt+[ and Alt+] stay:</strong> one keystroke for the next tab; the switcher does not replace that.</li>
 </ol>
 </main>
 </div>
