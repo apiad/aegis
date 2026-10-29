@@ -5,4 +5,3 @@
   leave the server 512, so a fork bomb dies in its own session instead of
   leaving the server unable to start a thread. The server's disk requests
   now go first too. Chromium no longer runs in the server's own cgroup.
-  help: config#memory-per-session
