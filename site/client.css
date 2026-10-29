@@ -1936,15 +1936,18 @@ body{background:#000}
    side panel slides in as a drawer (data-side=open), the band stacks. */
 @media (max-width:760px){
   .a2 .tabs{flex-wrap:wrap;padding:4px 6px 0;padding-top:max(4px,env(safe-area-inset-top))}
-  /* Two rows (#631): the server and the buttons, then Fleet, the tabs, the
-     overflow menu and + on the tab row. The spacer is the line between. */
+  /* Two rows (#631, #752): Fleet, the server and the buttons, then the
+     session tabs, the overflow menu and + alone on theirs, so the sessions get
+     the whole width. The spacer is the line between. */
+  .a2 .tabs>*{order:2}
+  .a2 .tabs .tab.home{order:1;margin-bottom:4px}
   .a2 .tabs .gap{order:7;flex:1 0 100%;height:0;margin:2px -2px 0;border-top:1px solid var(--rule)}
-  .a2 .tabs .tab.home{order:8}
   .a2 .tablist{order:9;flex:1 1 0;padding:0 2px}
   .a2 .tabs .tab-more{order:10}
   .a2 .tabs .tab.add{order:11}
-  /* the name takes the row's free width with a zero basis, and shrinks first */
-  .a2 .tabs .servers{flex:1 1 0;justify-content:flex-start;padding:0 6px;margin-bottom:4px;min-width:0;overflow:hidden}
+  /* the name takes the row's free width with a zero basis, and shrinks first,
+     down to its connection dot */
+  .a2 .tabs .servers{flex:1 1 0;justify-content:flex-start;padding:0 6px;margin-bottom:4px;min-width:12px;overflow:hidden}
   /* the server's name gives way first, so the header's buttons keep their row */
   .a2 #conn-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .a2 .tabs .ver-top{display:none}
@@ -2046,6 +2049,8 @@ body{background:#000}
   .a2 .tab{min-height:40px}
   /* every header icon one size, so their icons share a line (#631) */
   .a2 .tabs :is(.keys-btn.bell,.set-btn,.jr-btn,.help-btn){min-width:40px;min-height:40px}
+  /* with Fleet on their row (#752), a 360 px phone has 36 px for each */
+  @media (max-width:760px){.a2 .tabs :is(.keys-btn.bell,.set-btn,.jr-btn,.help-btn){flex:1 0 34px;min-width:34px;max-width:40px}}
   .a2 .nav button{height:34px;min-width:36px}
   .a2 .nav button::before{content:"";position:absolute;inset:-5px 0}
   .a2 .tr{padding-bottom:66px}
