@@ -5,9 +5,11 @@ import pytest
 
 from .test_browser import (  # noqa: F401
     HOLD,
+    beta_session,
     browser,
     focused_id,
     hash_is,
+    linked,
     server,
     spawn,
     tab_ids,
@@ -166,4 +168,20 @@ def test_the_palette_and_the_key_list_offer_the_switcher(server, page):  # noqa:
     page.keyboard.press("Enter")
     page.wait_for_selector("#switcher", state="visible")
     page.wait_for_selector("#palette", state="hidden")
+    assert page.errors == []
+
+
+def test_a_linked_servers_sessions_are_their_own_group_and_open(linked, page):  # noqa: F811
+    lid = beta_session(linked, page.context.browser)
+    page.goto(linked.alpha.url)
+    page.wait_for_selector(f"#tablist .tab[data-id='beta/{lid}']")
+    page.keyboard.press("Alt+p")
+    page.wait_for_selector("#switcher", state="visible")
+    heads = page.eval_on_selector_all(
+        "#switcher .sw-gh .nm", "hs => hs.map(h => h.textContent)"
+    )
+    assert heads == ["beta"]  # alpha holds none itself: its group is dropped
+    assert selected(page) == f"beta/{lid}"
+    page.keyboard.press("Enter")
+    page.wait_for_function(f"location.hash === '#s=beta/{lid}'")
     assert page.errors == []
