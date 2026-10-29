@@ -45,6 +45,26 @@ with its tests, and the person would lose the turn that could have noticed.
 runaway at its cap would otherwise page into swap until the host thrashes, and
 the OOM the cap exists for would never come.
 
+The sessions are also capped together (#782). Each one's cap stops one
+runaway, but fifteen sessions under their caps still fill the unit up to its
+``MemoryHigh``, and the unit's ``memory.high`` throttles every process below
+it, the server too: the server stays up but stops answering, which to the
+person is aegis dying. So ``sessions/memory.max`` is the unit's lowest
+memory limit, or the host's RAM without one, less ``SERVER_RESERVE``. At it
+the kernel kills the largest process among all sessions, as at one
+session's cap, and the unit never reaches its own limit from sessions alone.
+``server/memory.min`` keeps that reserve out of any reclaim, the host's
+included. ``memory.max`` and not ``memory.high`` for the group, for the same
+reason as per session: without swap, ``high`` only throttles.
+
+CPU follows the same idea with ``cpu.weight``, not ``cpu.max``: the server
+gets ``SERVER_CPU_WEIGHT`` against the default 100 of ``sessions/`` and
+``terminals/``, so when every core is busy the server runs first, and when
+it idles the sessions use every core. A ``cpu.max`` would leave a core
+unused all day to protect a server that rarely needs one. The ``cpu``
+controller is enabled below the unit only, in a write of its own, so a
+kernel that refuses it still gets the memory caps.
+
 A session's cgroup is emptied (``cgroup.kill``) and removed when its process
 ends, by exit, Stop, Close or shutdown, so a background job the harness left
 does not outlive the session. Boot removes the empty ``sessions/*`` a crash
@@ -68,6 +88,8 @@ MOUNT = Path("/sys/fs/cgroup")
 PROC = Path("/proc")
 CONTROLLERS = ("memory", "pids")
 DEFAULT_MEMORY_MAX = "40%"
+SERVER_RESERVE = 512 * 1024**2
+SERVER_CPU_WEIGHT = 1000
 _SIZE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*([KMGT%]?)\s*$", re.IGNORECASE)
 _UNITS = {"": 1, "K": 1024, "M": 1024**2, "G": 1024**3, "T": 1024**4}
 # The join, then the harness: $0 is the cgroup, "$@" the harness's argv.
@@ -141,6 +163,25 @@ def _procs(d: Path) -> list[int]:
         return [int(x) for x in (d / "cgroup.procs").read_text().split()]
     except (OSError, ValueError):
         return []
+
+
+def _limit(f: Path) -> int | None:
+    try:
+        v = f.read_text().strip()
+    except OSError:
+        return None
+    return int(v) if v.isdigit() else None
+
+
+def group_cap(unit: Path, total: int) -> int | None:
+    """What every session together may hold: the unit's lowest memory limit,
+    or the host's RAM when it has none, less the server's reserve. None when
+    that would leave the sessions less than the reserve itself."""
+    limits = [
+        n for n in (_limit(unit / "memory.high"), _limit(unit / "memory.max")) if n
+    ]
+    cap = min(limits, default=total) - SERVER_RESERVE
+    return cap if cap > SERVER_RESERVE else None
 
 
 def wrap(cgroup: Path | None, argv: list[str]) -> list[str]:
@@ -225,9 +266,33 @@ class SessionCgroups:
         except OSError as e:
             log.warning("aegis: no cgroup per session: setting up %s: %s", unit, e)
             return None
+        self.shield()
         self.sweep()
         log.info("aegis: one cgroup per session under %s", self.sessions)
         return self
+
+    def shield(self) -> None:
+        """Keep the sessions together below the unit's limit, the server's
+        memory out of their reclaim, and the server first in line for a CPU,
+        so their pressure stays among them."""
+        cap = group_cap(self.unit, total_ram())
+        try:
+            (self.unit / "server" / "memory.min").write_text(str(SERVER_RESERVE))
+            if cap is not None:
+                (self.sessions / "memory.max").write_text(str(cap))
+        except OSError as e:
+            log.warning("aegis: the server shares the sessions' memory limit: %s", e)
+        try:
+            if "cpu" in (self.unit / "cgroup.controllers").read_text().split():
+                (self.unit / "cgroup.subtree_control").write_text("+cpu")
+                (self.unit / "server" / "cpu.weight").write_text(str(SERVER_CPU_WEIGHT))
+        except OSError as e:
+            log.warning("aegis: the server waits for a CPU like a session: %s", e)
+        log.info(
+            "aegis: sessions capped together at %s, server keeps %s",
+            cap,
+            SERVER_RESERVE,
+        )
 
     def sibling(
         self, name: str, memory_max: Callable[[], object]

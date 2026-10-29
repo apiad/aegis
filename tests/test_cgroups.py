@@ -154,7 +154,7 @@ def test_setup_leaves_the_unit_root_and_enables_the_controllers(tmp_path):
     assert cg is not None and cg.sessions == t.unit / "sessions"
     # The server and the uv that started it, so the unit root holds nothing.
     assert (t.unit / "server" / "cgroup.procs").read_text() == "90\n"  # the last write
-    assert (t.unit / "cgroup.subtree_control").read_text() == "+memory +pids"
+    assert (t.unit / "cgroup.subtree_control").read_text() == "+cpu"  # the last write
     assert (cg.sessions / "cgroup.subtree_control").read_text() == "+memory +pids"
 
 
@@ -171,6 +171,74 @@ def test_setup_moves_every_process_of_the_unit(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "write_text", spy)
     t.setup()
     assert moved == [100, 90]
+
+
+def test_sessions_are_capped_together_below_the_unit_limit(tmp_path, monkeypatch):
+    # #782: fifteen sessions under their own caps filled the unit to its
+    # MemoryHigh, and the unit's throttle stalled the server with them.
+    monkeypatch.setattr(cgroups, "total_ram", lambda: 10 * GB)
+    t = Tree(tmp_path)
+    (t.unit / "memory.high").write_text(str(6 * GB))
+    (t.unit / "memory.max").write_text(str(7 * GB))
+    cg = t.setup()
+    assert (cg.sessions / "memory.max").read_text() == str(
+        6 * GB - cgroups.SERVER_RESERVE
+    )
+    assert (t.unit / "server" / "memory.min").read_text() == str(cgroups.SERVER_RESERVE)
+
+
+def test_a_unit_without_limits_caps_the_sessions_below_the_host(tmp_path, monkeypatch):
+    monkeypatch.setattr(cgroups, "total_ram", lambda: 10 * GB)
+    t = Tree(tmp_path)
+    (t.unit / "memory.high").write_text("max")
+    cg = t.setup()
+    assert (cg.sessions / "memory.max").read_text() == str(
+        10 * GB - cgroups.SERVER_RESERVE
+    )
+
+
+def test_a_unit_too_small_for_the_reserve_leaves_the_sessions_uncapped(tmp_path):
+    t = Tree(tmp_path)
+    (t.unit / "memory.max").write_text(str(cgroups.SERVER_RESERVE + 1))
+    cg = t.setup()
+    assert not (cg.sessions / "memory.max").exists()
+
+
+def test_the_server_runs_first_when_every_cpu_is_busy(tmp_path, monkeypatch):
+    t = Tree(tmp_path)
+    enabled = []
+    real = Path.write_text
+
+    def spy(self, text, *a, **k):
+        if self == t.unit / "cgroup.subtree_control":
+            enabled.append(text)
+        return real(self, text, *a, **k)
+
+    monkeypatch.setattr(Path, "write_text", spy)
+    cg = t.setup()
+    # cpu in a write of its own: a kernel that refuses it keeps the memory caps.
+    assert enabled == ["+memory +pids", "+cpu"]
+    assert (t.unit / "server" / "cpu.weight").read_text() == str(
+        cgroups.SERVER_CPU_WEIGHT
+    )
+    # Only below the unit: sessions share one weight, as one group.
+    assert "cpu" not in (cg.sessions / "cgroup.subtree_control").read_text()
+
+
+def test_a_refused_cpu_controller_keeps_the_memory_caps(tmp_path, monkeypatch):
+    t = Tree(tmp_path)
+    real = Path.write_text
+
+    def refuse(self, text, *a, **k):
+        if text == "+cpu":
+            raise OSError("EBUSY")
+        return real(self, text, *a, **k)
+
+    monkeypatch.setattr(Path, "write_text", refuse)
+    cg = t.setup()
+    assert cg is not None
+    assert (t.unit / "server" / "memory.min").exists()
+    assert not (t.unit / "server" / "cpu.weight").exists()
 
 
 def test_boot_sweeps_empty_session_cgroups_and_keeps_busy_ones(tmp_path):
