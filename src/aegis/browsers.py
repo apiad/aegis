@@ -184,6 +184,9 @@ class Browsers:
         self.open: dict[str, Browser] = {}
         self._pw: Any = None
         self._background: set[asyncio.Task] = set()
+        # The browsers' cgroup in the work tree (cgroups.py), set at boot when
+        # the unit is delegated: Chromium joins it, not the server's.
+        self.cgroup: Path | None = None
 
     # -- what the server offers ------------------------------------------------
 
@@ -296,6 +299,26 @@ class Browsers:
         self._profile_free(b.meta["profile"], but=b)
         await self._start(b)
 
+    def _launcher(self) -> str | None:
+        """A script that moves Chromium into the browsers' cgroup, then execs
+        it; None to let Playwright start its own Chromium in the server's
+        cgroup. No OOM score: Chromium sets its own (0 for the browser, 200 to
+        300 for its children), all above the server's."""
+        if self.cgroup is None:
+            return None
+        import shlex
+
+        cg = shlex.quote(str(self.cgroup))
+        script = self.dir / "chromium-in-cgroup.sh"
+        script.parent.mkdir(parents=True, exist_ok=True)
+        script.write_text(
+            "#!/bin/sh\n"
+            f"echo $$ > {cg}/cgroup.procs || echo 'aegis: could not join {cg}' >&2\n"
+            f'exec {shlex.quote(self._pw.chromium.executable_path)} "$@"\n'
+        )
+        script.chmod(0o700)
+        return str(script)
+
     async def _start(self, b: Browser) -> None:
         async with b.starting:
             if b.running:
@@ -309,6 +332,7 @@ class Browsers:
                 prof.mkdir(parents=True, exist_ok=True, mode=0o700)
                 ctx = await self._pw.chromium.launch_persistent_context(
                     str(prof),
+                    executable_path=self._launcher(),
                     headless=True,
                     viewport={"width": b.meta["width"], "height": b.meta["height"]},
                     args=["--no-first-run", "--no-default-browser-check"],

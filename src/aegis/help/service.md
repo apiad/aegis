@@ -54,7 +54,9 @@ comments say why each line is there:
 - `OOMScoreAdjust=-500`: in a host-wide OOM the kernel picks the server last,
   and the agents' processes, raised to 500, first.
 - `Delegate=yes`: aegis gives each session a cgroup of its own, capped by
-  `session_memory_max:` in `.aegis.yaml`, so a runaway session is killed alone.
+  `session_memory_max:` in `.aegis.yaml`, so a runaway session is killed alone,
+  and caps all the work it starts together, below the unit's limits, with
+  memory, tasks, CPU and disk priority kept for the server (config#memory-per-session).
 
 Do not add `ManagedOOMMemoryPressure=kill`: systemd-oomd would choose among
 every cgroup in the unit, the server's included, or, without delegation, kill

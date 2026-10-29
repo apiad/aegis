@@ -151,10 +151,10 @@ def test_a_terminal_start_is_not_warned_about(tmp_path, caplog, monkeypatch):
 def test_setup_leaves_the_unit_root_and_enables_the_controllers(tmp_path):
     t = Tree(tmp_path)
     cg = t.setup()
-    assert cg is not None and cg.sessions == t.unit / "sessions"
+    assert cg is not None and cg.sessions == t.unit / "work" / "sessions"
     # The server and the uv that started it, so the unit root holds nothing.
     assert (t.unit / "server" / "cgroup.procs").read_text() == "90\n"  # the last write
-    assert (t.unit / "cgroup.subtree_control").read_text() == "+cpu"  # the last write
+    assert (t.unit / "cgroup.subtree_control").read_text() == "+io"  # the last write
     assert (cg.sessions / "cgroup.subtree_control").read_text() == "+memory +pids"
 
 
@@ -181,9 +181,7 @@ def test_sessions_are_capped_together_below_the_unit_limit(tmp_path, monkeypatch
     (t.unit / "memory.high").write_text(str(6 * GB))
     (t.unit / "memory.max").write_text(str(7 * GB))
     cg = t.setup()
-    assert (cg.sessions / "memory.max").read_text() == str(
-        6 * GB - cgroups.SERVER_RESERVE
-    )
+    assert (cg.work / "memory.max").read_text() == str(6 * GB - cgroups.SERVER_RESERVE)
     assert (t.unit / "server" / "memory.min").read_text() == str(cgroups.SERVER_RESERVE)
 
 
@@ -192,16 +190,14 @@ def test_a_unit_without_limits_caps_the_sessions_below_the_host(tmp_path, monkey
     t = Tree(tmp_path)
     (t.unit / "memory.high").write_text("max")
     cg = t.setup()
-    assert (cg.sessions / "memory.max").read_text() == str(
-        10 * GB - cgroups.SERVER_RESERVE
-    )
+    assert (cg.work / "memory.max").read_text() == str(10 * GB - cgroups.SERVER_RESERVE)
 
 
 def test_a_unit_too_small_for_the_reserve_leaves_the_sessions_uncapped(tmp_path):
     t = Tree(tmp_path)
     (t.unit / "memory.max").write_text(str(cgroups.SERVER_RESERVE + 1))
     cg = t.setup()
-    assert not (cg.sessions / "memory.max").exists()
+    assert not (cg.work / "memory.max").exists()
 
 
 def test_the_server_runs_first_when_every_cpu_is_busy(tmp_path, monkeypatch):
@@ -217,7 +213,7 @@ def test_the_server_runs_first_when_every_cpu_is_busy(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "write_text", spy)
     cg = t.setup()
     # cpu in a write of its own: a kernel that refuses it keeps the memory caps.
-    assert enabled == ["+memory +pids", "+cpu"]
+    assert enabled == ["+memory +pids", "+cpu", "+io"]
     assert (t.unit / "server" / "cpu.weight").read_text() == str(
         cgroups.SERVER_CPU_WEIGHT
     )
@@ -243,8 +239,8 @@ def test_a_refused_cpu_controller_keeps_the_memory_caps(tmp_path, monkeypatch):
 
 def test_boot_sweeps_empty_session_cgroups_and_keeps_busy_ones(tmp_path):
     t = Tree(tmp_path)
-    (t.unit / "sessions" / "gone").mkdir(parents=True)
-    busy = t.unit / "sessions" / "busy"
+    (t.unit / "work" / "sessions" / "gone").mkdir(parents=True)
+    busy = t.unit / "work" / "sessions" / "busy"
     busy.mkdir()
     (busy / "cgroup.procs").write_text("5\n")
     cg = t.setup()
@@ -481,3 +477,63 @@ async def test_a_real_session_cgroup_caps_its_child(tmp_path, fake_claude, monke
         await p.terminate()
     cg.release("log-real")
     await until(lambda: not d.exists(), timeout=3, what="the session cgroup removed")
+
+
+def test_all_the_work_lives_in_one_tree_beside_the_server(tmp_path):
+    # #782: terminals and browsers count against the same cap as sessions.
+    t = Tree(tmp_path)
+    cg = t.setup()
+    term = cg.sibling("terminals", lambda: "max")
+    assert cg.work == t.unit / "work"
+    assert cg.sessions.parent == term.sessions.parent == cg.work
+    assert (cg.work / "cgroup.subtree_control").read_text() == "+memory +pids"
+
+
+def test_the_work_leaves_the_server_tasks_and_each_session_has_a_ceiling(tmp_path):
+    # A fork bomb in one session would use up the unit's TasksMax, and the
+    # server could not start a thread.
+    t = Tree(tmp_path)
+    (t.unit / "pids.max").write_text("9255")
+    cg = t.setup()
+    assert (cg.work / "pids.max").read_text() == str(9255 - cgroups.SERVER_PIDS_RESERVE)
+    d = cg.create("a")
+    assert (d / "pids.max").read_text() == str(cgroups.SESSION_PIDS_MAX)
+
+
+def test_the_servers_disk_requests_go_first(tmp_path):
+    t = Tree(tmp_path)
+    t.setup()
+    assert (t.unit / "server" / "io.prio.class").read_text() == "promote-to-rt"
+
+
+def test_without_the_io_controller_the_server_has_no_io_class(tmp_path):
+    t = Tree(tmp_path)
+    (t.unit / "cgroup.controllers").write_text("cpu memory pids\n")
+    t.setup()
+    assert not (t.unit / "server" / "io.prio.class").exists()
+
+
+def test_chromium_joins_the_browsers_cgroup_before_it_runs(tmp_path):
+    from aegis.browsers import Browsers
+
+    cg = tmp_path / "work" / "browsers" / "chromium"
+    cg.mkdir(parents=True)
+    fake = tmp_path / "chrome"
+    fake.write_text('#!/bin/sh\necho "$$ $*"\n')
+    fake.chmod(0o755)
+    b = Browsers(tmp_path / "state", lambda *a: None, lambda c: 0, None)
+    assert b._launcher() is None  # no cgroup: Playwright's own Chromium
+    b.cgroup = cg
+
+    class Pw:
+        class chromium:
+            executable_path = str(fake)
+
+    b._pw = Pw
+    out = subprocess.run(
+        [b._launcher(), "--headless", "x y"], capture_output=True, text=True
+    )
+    pid, args = out.stdout.split(" ", 1)
+    # The shell execs Chromium, so the pid it wrote is Chromium's own.
+    assert (cg / "cgroup.procs").read_text().strip() == pid
+    assert args.strip() == "--headless x y"

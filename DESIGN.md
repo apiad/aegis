@@ -66,7 +66,7 @@ park would kill the task; that is why each of those blocks it.
 **A session's memory is its own, where the unit delegates.** When the server
 runs as a systemd service with `Delegate=yes`, it moves itself into
 `<unit>/server` at boot, before any session starts, and runs each harness
-child in `<unit>/sessions/<log_id>` with `memory.max` from
+child in `<unit>/work/sessions/<log_id>` with `memory.max` from
 `session_memory_max`. The child joins its cgroup before it execs, through a
 `/bin/sh` wrapper, so nothing it starts escapes the cap. When the process ends
 (exit, Sleep, Restart, Archive, shutdown) its cgroup is killed and removed, and boot
@@ -75,13 +75,17 @@ unit's `MemoryMax` still covers the whole tree and `KillMode` still kills every
 session when the unit stops. Without delegation every child lives in the
 server's cgroup, as before (`cgroups.py`, #360).
 
-**The sessions together cannot starve the server.** `sessions/memory.max`
-is the unit's lowest memory limit less a 512 MiB reserve that
-`server/memory.min` protects, so many sessions under their own caps end in
-an OOM kill among them, not in the unit's `memory.high` throttling the
-server with them. `server/cpu.weight` is 1000 against the sessions' 100, so
-the server runs first on a busy host and the sessions keep every idle core
-(`cgroups.SessionCgroups.shield`, #782).
+**Nothing the server starts can starve it.** Sessions, terminals and
+browsers all live in `<unit>/work/`. `work/memory.max` is the unit's lowest
+memory limit less a 512 MiB reserve that `server/memory.min` protects, so the
+work under its own caps ends in an OOM kill inside it, not in the unit's
+`memory.high` throttling the server with it. `work/pids.max` leaves the server
+512 tasks, and each cgroup in the work is capped at 4096, so a fork bomb dies
+in its session. `server/cpu.weight` is 1000 against the work's 100, and
+`server/io.prio.class` is `promote-to-rt`, so the server runs and reads first
+on a busy host while the work keeps every idle core and disk slot
+(`cgroups.SessionCgroups.shield`, #782). What a session starts outside the
+tree, through dockerd or `systemd-run`, has only the OOM scores against it.
 
 **In a host OOM, a session dies before the server.** The server raises each
 child's `oom_score_adj` to 500 right after the spawn
