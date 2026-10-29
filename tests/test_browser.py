@@ -8585,6 +8585,35 @@ def test_a_pasted_image_and_a_dropped_file_attach_and_a_message_of_files_alone_s
     assert page.errors == []
 
 
+def test_a_file_whose_provider_reports_size_0_arrives_whole(server, page):
+    """#697: an Android document provider reported File.size 0 for a 148 KB
+    file, slicing by that size read nothing, and an empty file reached the
+    inbox. Here a .trm file reports 0 and slices empty, as on that phone, while
+    reading it whole gives its bytes."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    lid = spawn(page)
+    page.evaluate(
+        """() => {
+          const size = Object.getOwnPropertyDescriptor(Blob.prototype, 'size').get;
+          const slice = Blob.prototype.slice;
+          const android = (b) => b instanceof File && b.name.endsWith('.trm');
+          Object.defineProperty(Blob.prototype, 'size', { get() { return android(this) ? 0 : size.call(this); } });
+          Blob.prototype.slice = function (...a) { return android(this) ? new Blob([]) : slice.apply(this, a); };
+          const drop = new DataTransfer();
+          drop.items.add(new File([new Uint8Array(150000).fill(7)], 'backup.trm'));
+          document.querySelector('#composer').dispatchEvent(
+            new DragEvent('drop', {dataTransfer: drop, bubbles: true, cancelable: true}));
+        }"""
+    )
+    page.wait_for_selector("#atts .chip.att.done", timeout=8000)
+    page.click("#send")
+    turns_done(page, 1)
+    (got,) = inbox_of(server, lid).glob("*-backup.trm")
+    assert got.read_bytes() == bytes([7]) * 150000
+    assert page.errors == []
+
+
 def test_removing_a_chip_forgets_its_upload(server, page, tmp_path):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")

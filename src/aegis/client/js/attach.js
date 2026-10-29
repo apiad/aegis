@@ -97,6 +97,12 @@ export class Attachments {
     it.state = "uploading";
     this.draw();
     try {
+      // Android's document providers can report 0 for a file that has bytes,
+      // and slicing by that size reads nothing (#697): read it whole once.
+      if (!it.size && !it.data) {
+        const buf = await it.file.arrayBuffer();
+        if (buf.byteLength) Object.assign(it, { data: new Blob([buf]), size: buf.byteLength });
+      }
       if (!it.upload_id) {
         const r = await this.call(it.key, "attachment.begin", { name: it.name, size: it.size });
         it.upload_id = r.upload_id;
@@ -104,7 +110,7 @@ export class Attachments {
       while (it.sent < it.size) {
         if (it.state === "removed") return;
         const end = Math.min(it.sent + CHUNK, it.size);
-        const data = base64(await it.file.slice(it.sent, end).arrayBuffer());
+        const data = base64(await (it.data || it.file).slice(it.sent, end).arrayBuffer());
         try {
           const r = await this.call(it.key, "attachment.put", { upload_id: it.upload_id, offset: it.sent, data });
           it.sent = r.size;
