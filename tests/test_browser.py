@@ -7039,6 +7039,37 @@ def test_dictation_puts_late_text_in_the_draft_the_textarea_no_longer_shows(
     assert got[1].startswith("draft of a [3.0s kw=2]")
 
 
+def test_dictation_downloads_the_model_once_and_boots_from_the_cache(dict_server, page):
+    """#751: a phone downloaded the 17.8 MB model on every use, because its
+    HTTP cache did not keep it. The files go to Cache Storage under their pin,
+    once for both workers; a later boot fetches nothing, and an older pin's
+    cache is dropped."""
+    from aegis.dictation import pin_id
+
+    fetched = []
+    page.on("request", lambda r: "/dictation/" in r.url and fetched.append(r.url))
+    page.goto(dict_server.url)
+    page.evaluate("caches.open('dictation:/dictation/old/')")
+    boot = """const d = new m.Dictation({ prepare });
+        await d.boot((await prepare()).base);
+        for (const w of d.workers) w.w.terminate();
+        return await caches.keys();"""
+    first = run_dictation(page, boot)
+    assert sorted(u.rsplit("/", 1)[1] for u in fetched) == [
+        "needle.js",
+        "needle.wasm",
+        "whistle.cact",
+    ], "each file downloaded once, not once per worker"
+    assert "dictation:/dictation/old/" not in first
+    assert f"dictation:/dictation/{pin_id()}/" in first
+    fetched.clear()
+    for f in (Path(dict_server.env["AEGIS_DICTATION_DIR"]) / pin_id()).iterdir():
+        f.unlink()  # the server has nothing left to give
+    page.reload()
+    run_dictation(page, boot)
+    assert fetched == [], "the second use downloads nothing"
+
+
 def test_dictation_says_why_when_the_browser_ends_the_capture(dict_server, page):
     page.goto(dict_server.url)
     got = run_dictation(

@@ -287,6 +287,29 @@ export function pick(queue) {
 // of the draft it holds (null for one that holds no session's draft), a
 // function naming the draft the textarea shows now, and one called when
 // dictated text lands.
+// The engine and model, 17.8 MB, are kept in Cache Storage under their pin:
+// the HTTP cache alone did not keep them (#751), since a phone's browser
+// evicts a large entry long before a year is up. A new pin is a new cache, and
+// the old pin's goes. The page fills it once, so the two workers read the
+// files from it instead of downloading them twice.
+const FILES = ["needle.js", "needle.wasm", "whistle.cact"];
+const STORE = "dictation:";
+
+export async function store(base) {
+  if (!globalThis.caches) return null; // plain http off localhost has no Cache Storage
+  const name = STORE + base;
+  try {
+    const cache = await caches.open(name);
+    const missing = [];
+    for (const f of FILES) if (!(await cache.match(base + f))) missing.push(base + f);
+    if (missing.length) await cache.addAll(missing);
+    for (const old of await caches.keys()) if (old.startsWith(STORE) && old !== name) await caches.delete(old);
+  } catch {
+    // Out of quota or a failed download: the workers fetch what is not stored.
+  }
+  return name;
+}
+
 export class Dictation {
   constructor({ prepare, onState = () => {}, onLevel = () => {}, onError = () => {} }) {
     Object.assign(this, { prepare, onState, onLevel, onError });
@@ -378,7 +401,7 @@ export class Dictation {
 
   boot(base) {
     if (this.ready) return this.ready;
-    this.ready = new Promise((resolve, reject) => {
+    this.ready = store(base).then((cache) => new Promise((resolve, reject) => {
       let ready = 0;
       this.workers = [0, 1].map(() => {
         const w = { w: new Worker(new URL("./dictation.worker.js", import.meta.url)), job: null };
@@ -392,10 +415,10 @@ export class Dictation {
           else this.answer(w, data);
         };
         w.w.onerror = (e) => reject(new Error(e.message || "the worker did not start"));
-        w.w.postMessage({ type: "load", base });
+        w.w.postMessage({ type: "load", base, cache });
         return w;
       });
-    }).catch((e) => {
+    })).catch((e) => {
       for (const w of this.workers || []) w.w.terminate();
       this.workers = null;
       this.ready = null;

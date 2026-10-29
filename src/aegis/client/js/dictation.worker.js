@@ -13,8 +13,13 @@ function cstr(s) {
   return p;
 }
 
-async function load(base) {
+// The page has put the files in the cache named after their pin (dictation.js,
+// store()); the network is the way only where Cache Storage is not (plain http
+// off localhost) or the page could not fill it.
+async function load(base, cacheName) {
   const get = async (name) => {
+    const hit = self.caches && cacheName && (await caches.match(base + name, { cacheName }));
+    if (hit) return hit;
     const r = await fetch(base + name);
     if (!r.ok) throw new Error(`${name}: HTTP ${r.status}`);
     return r;
@@ -36,7 +41,7 @@ async function load(base) {
 onmessage = async ({ data }) => {
   try {
     if (data.type === "load") {
-      await load(data.base);
+      await load(data.base, data.cache);
       postMessage({ type: "ready" });
       return;
     }
