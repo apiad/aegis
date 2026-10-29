@@ -14,6 +14,11 @@ from pathlib import Path
 
 import pytest
 
+# aegis serve imports fastmcp in a thread once it listens (#519). Imported
+# here, a worker pays for it at collection as it did before, not inside the
+# first test that starts a server, whose timing it would skew (#811).
+import aegis.mcp_tools  # noqa: E402, F401
+
 FAKE = Path(__file__).parent / "fake_claude.py"
 
 
