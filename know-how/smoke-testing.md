@@ -61,7 +61,7 @@ The prompt's rules, which the first tour showed work:
 - ask before anything that spends quota (an OpenCode session) or reaches
   another server;
 - for a CLI feature, run the build under test's CLI
-  (`uvx --from git+https://github.com/apiad/aegis@<commit> aegis …`), not the
+  (`uvx --from git+https://github.com/syalia-srl/aegis@<commit> aegis …`), not the
   `aegis` on PATH, which is the release;
 - end with one line per step and the maintainer's words for each failure, and file no
   issue without a yes.

@@ -4,6 +4,7 @@ read as that member and counted as its sessions (#737)."""
 import json
 import sqlite3
 import subprocess
+from datetime import UTC, datetime, timedelta
 
 from .conftest import MEMBERS, sudo
 
@@ -12,6 +13,8 @@ SID = "0b1c2d3e-0000-4000-8000-0000000000b1"
 
 
 def _lines(sid: str) -> str:
+    # A day ago, so the rows stay inside usage.read's default window ("4w").
+    at = (datetime.now(UTC) - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
     rows = [
         {"type": "user", "message": {"role": "user", "content": "go"}},
         {
@@ -25,10 +28,7 @@ def _lines(sid: str) -> str:
         },
     ]
     return "".join(
-        json.dumps(
-            {**r, "timestamp": "2026-10-01T10:00:00Z", "cwd": "/tmp", "sessionId": sid}
-        )
-        + "\n"
+        json.dumps({**r, "timestamp": at, "cwd": "/tmp", "sessionId": sid}) + "\n"
         for r in rows
     )
 

@@ -243,7 +243,13 @@ precedence. No model reads a transcript to guess what a turn meant. Past the
 `context:` block's `handoff_at`, `turn_end` answers with the session's context
 size, and the agent passes a `handoff` brief in a second call when its task is
 at a break; the answer is a tool result, not part of the system prompt, so it
-never breaks the prompt cache. The brief rides in the report, and
+never breaks the prompt cache. Below that, its answer says what the person has seen from the agent
+since the last send (`Fold.shown`, read from the stream, where text arrives
+before the call): nothing, or how many messages and how the last begins. A
+model that worked its answer out in its thinking believes it was shown, so it
+needs the fact; the opening, not a verdict, because a status line before a
+tool call is prose too and only the agent can tell it from its answer (#679).
+A queue worker hears `noted`, since its final message is its task's result. The brief rides in the report, and
 `session.handoff`, which only a person can call, starts the fresh session
 from it. The fold also
 times the plan from the records' `ts`: work is time inside a turn and after a
@@ -877,7 +883,10 @@ made typing cost grow with the transcript's length and the number of sessions
 
 **A sampler runs only while someone watches.** The host meters (`host.py`)
 and the network readings (`net/service.py`) read nothing while no browser
-subscribes to `host`; the network loop polls for a watcher once a second and
+subscribes to `host`. The one exception is each session's load (`load.py`,
+#762): the cpu and memory notices name a session's own share of the last
+minute, which needs samples nobody watched, so it walks `/proc` (or reads
+the session cgroups) every 5 s in a thread, about 80 ms for 400 processes. The network loop polls for a watcher once a second and
 refreshes the moment one arrives. The network readings reach the internet and
 the speed test downloads a megabyte, so a server nobody looks at must not pay
 for them. Both ride the one `host` snapshot, so a linked server's band shows

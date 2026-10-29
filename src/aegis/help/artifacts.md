@@ -24,9 +24,11 @@ runs in their browser, and their answer comes back to your inbox.
    your transcript open, runs it hidden in their browser first. A page that
    throws is refused as page_error, with the message, and nothing is shown:
    fix the draft and send again. The reply's `started` is true when the page
-   ran, and null when no browser was open or none answered within 3 seconds;
-   the page then lands untried, and a script error reaches your inbox when
-   someone opens it.
+   ran, and null when it landed untried; a script error then reaches your
+   inbox when someone opens it. `watching` says why it went untried: false
+   when no browser had your transcript on screen, so the person sees the card
+   when they open your tab, and true when a browser had it but did not answer
+   within 3 seconds.
 4. Only then write your message, which may refer to the card above it, and end
    the turn with `turn_end` and attention needs_you when the page asks
    something.

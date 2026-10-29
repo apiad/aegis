@@ -116,9 +116,9 @@ with `{action, notes}`. Keep the exact Markdown you will file in a file
 beside the page: that file, not the page, is what goes to GitHub.
 
 `artifact_send` it, then end your turn with `turn_end`, attention needs_you,
-and the replies "file it" and "change something". When `started` comes back
-null, no browser saw the page: also show the title and the body in one fenced
-block. Any answer other than a yes, from the page or the chat, is an edit:
+and the replies "file it" and "change something". Do not repeat the draft
+in your message: the card stays in the transcript, and a person who opens your
+tab later sees it there. Any answer other than a yes, from the page or the chat, is an edit:
 send the new draft as a new page and wait again.
 
 ## File it

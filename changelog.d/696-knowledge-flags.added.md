@@ -1,2 +1,0 @@
-- **Expired and stale memories are flagged.** A temporary memory past its day is flagged expired and leaves the block under messages. When a memory is saved, and once a day, aegis looks for the paths it quotes in backticks, as your Linux user on a shared server, and flags it stale with each path it cannot find; a stale memory stays in the block. Search results and `knowledge_stats` carry the flags, and `knowledge_stats flag=stale` lists only those.
-help: knowledge#expired-and-stale-memories

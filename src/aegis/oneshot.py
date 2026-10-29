@@ -21,6 +21,7 @@ from pydantic import BaseModel, ValidationError
 
 from . import launch
 from .agents import ConfigError, load_agents, read_config
+from .codex.config import split_model
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -102,12 +103,13 @@ def argv(
             "json",
         ]
     if harness == "codex":
+        _, model_id = split_model(model)
         return [
             binary,
             "exec",
             "--ephemeral",
             "--model",
-            model,
+            model_id,
             "--json",
             "--sandbox",
             "read-only",

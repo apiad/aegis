@@ -209,7 +209,24 @@ ACT = {
 }
 DISK_OTHER = "Free what this session created and no longer needs (your merged worktrees, build output, temporary files), re-measuring with df before you delete. Do not touch shared caches, another session's work or anything tracked by git. {mount} has {free_gb} GB free: as far as you can, put new large files there (clones, build output, caches, downloads) instead of on this disk, and move nothing another session or git owns."
 QUOTA_CRITICAL = " Tell the person before you enqueue anything."
-MEMORY_OWN = " Your session's processes hold {rss_gb} GB."
+# The session's own share (load.py, #762), and who holds the most. The
+# heaviest is named only above a floor: on a quiet host the top session may
+# hold a tenth of a core, and telling it to stop would be noise.
+OWN = {
+    "cpu": " Your session's processes used {own} cores over the last minute",
+    "memory": " Your session's processes hold {own} GB",
+}
+TOP_SELF = ", the most of any session here."
+TOP_OTHER = {
+    "cpu": "; {top_handle} uses the most, {top} cores.",
+    "memory": "; {top_handle} holds the most, {top} GB.",
+}
+ACT_TOP = {
+    "cpu": "Slow your own work first: stop a parallel test run or build you started, or run it with fewer workers. Re-run a timing failure or a make bench number before you trust it, and say the host was loaded when you report one.",
+    "memory": "Free your own first: stop the servers, watchers, test runs and builds you started and no longer use. Run no parallel test lane or build, and enqueue no more workers.",
+}
+FLOOR_CORES = 1.0
+FLOOR_RAM_SHARE = 0.1
 TAIL = {
     "asker": "If that is not enough, ask the person what to do, in the message that ends your current turn, naming the largest candidates and their sizes. Do not start a task of your own for it.",
     "person": "Another session is asking the person about the rest; do not ask.",
@@ -258,9 +275,16 @@ def body(kind: str, level: str, reading: dict, role: Role) -> str:
     if kind == "announce":
         return f"{ANNOUNCED.format(**r)}\n{ONCE}"
     lead = LEAD[kind].format(**r)
-    if kind == "memory" and reading.get("rss_gb") is not None:
-        lead += MEMORY_OWN.format(**r)
     act = ACT[kind]
+    if kind in OWN and reading.get("own") is not None:
+        lead += OWN[kind].format(**r)
+        if reading.get("is_top"):
+            lead += TOP_SELF
+            act = ACT_TOP[kind]
+        elif reading.get("top_handle"):
+            lead += TOP_OTHER[kind].format(**r)
+        else:
+            lead += "."
     if kind == "disk" and reading.get("other"):
         act = DISK_OTHER.format(**_shown(reading["other"]))
     if level == "critical":
@@ -748,14 +772,31 @@ class Notices:
             return "asker"
         return "person"
 
-    def _own_memory(self, s: Session) -> float | None:
-        d = self._app.sessions.cgroup_dir(s)
-        if d is None:
-            return None
-        try:
-            return round(int((d / "memory.current").read_text()) / host.GB, 1)
-        except (OSError, ValueError):
-            return None
+    def _own(self, s: Session, kind: str, reading: dict) -> dict:
+        """For a cpu or memory notice: the session's own figure as text, and
+        whether it or another session holds the most, above the floor."""
+        load = getattr(self._app, "load", None)
+        if load is None or (mine := load.of(s.log_id)) is None:
+            return {}
+        field = "cpu" if kind == "cpu" else "rss_gb"
+        floor = (
+            FLOOR_CORES
+            if kind == "cpu"
+            else FLOOR_RAM_SHARE * (reading.get("total_gb") or 0)
+        )
+        loads = load.all()
+        out: dict = {"own": f"{mine[field]:.1f}"}
+        top_id = max(loads, key=lambda k: loads[k][field])
+        top = loads[top_id][field]
+        if top < floor or top <= 0:
+            return out
+        if top_id == s.log_id or top <= mine[field]:
+            return out | {"is_top": True}
+        other = self._app.sessions.sessions.get(top_id)
+        return out | {
+            "top_handle": other.handle if other is not None else top_id,
+            "top": f"{top:.1f}",
+        }
 
     def pending(self, s: Session, at: Literal["send", "tool"] = "send") -> str:
         """The blocks ``s`` has not been told yet, and the clears it is owed,
@@ -779,8 +820,8 @@ class Notices:
             role = self.role(s, key)
             if role == "asker":
                 self._askers[(key, s.spec.owner)] = s.log_id
-            if key == "memory":
-                reading = reading | {"rss_gb": self._own_memory(s)}
+            if key in OWN:
+                reading = reading | self._own(s, key, reading)
             blocks.append(block(key, level, reading, role))
             s.notices_sent[key] = level
         for key in [k for k in s.notices_sent if k not in active]:

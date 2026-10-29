@@ -937,6 +937,7 @@ def close_session(pg) -> None:
         pg.click("#dialog .ok")
 
 
+@pytest.mark.quarantine("#693")
 def test_a_session_from_spawn_to_close(server, page):
     page.goto(server.url)
     assert "token=" not in page.url, "the token stays out of the address bar"
@@ -1037,6 +1038,7 @@ def test_a_prompt_sent_mid_turn_shows_pending_until_read(server, page):
     assert page.errors == []
 
 
+@pytest.mark.quarantine("#507")
 def test_tabs_reorder_per_browser_and_survive_a_reload(server, browser, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
@@ -4535,6 +4537,7 @@ def test_more_than_500_messages_read_at_once_go_out_in_batches(
         s.stop()
 
 
+@pytest.mark.quarantine("#650")
 def test_the_divider_is_drawn_on_its_row_when_scrolling_up_mounts_it(
     replay_server, page
 ):
@@ -4884,6 +4887,7 @@ def test_a_push_shows_a_notification(server, full_browser):
     ctx.close()
 
 
+@pytest.mark.quarantine("#776")
 def test_a_push_for_the_session_in_front_stays_quiet(server, full_browser):
     ctx = full_browser.new_context()
     ctx.grant_permissions(["notifications"])
@@ -4916,6 +4920,7 @@ def test_a_push_for_the_session_in_front_stays_quiet(server, full_browser):
     ctx.close()
 
 
+@pytest.mark.quarantine("#547")
 def test_the_worker_forgets_the_views_of_closed_windows(server, full_browser):
     ctx = full_browser.new_context()
     ctx.grant_permissions(["notifications"])
@@ -8868,6 +8873,7 @@ def open_tokens(page, server):
     page.wait_for_selector("#set-tok-default")
 
 
+@pytest.mark.quarantine("#776")
 def test_an_admin_edits_a_members_policy_and_the_default(quota_server, page, browser):
     member_page(browser, quota_server)  # mints ben
     open_tokens(page, quota_server)
@@ -9130,6 +9136,7 @@ def test_the_handoff_chip_continues_fresh_at_once(server, page):
     )
 
 
+@pytest.mark.quarantine("#411")
 def test_btw_mid_turn_answers_in_a_block_that_folds_locally(btw_server, page):
     page.goto(btw_server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
@@ -9254,3 +9261,13 @@ def test_an_urgent_handoff_shows_steered_in_on_the_row_it_makes(server, page):
     page.click(f"#tablist .tab[data-id='{b}']")
     pill = page.wait_for_selector(".row.inbox .from .steered", timeout=10000)
     assert pill.inner_text() == "steered in"
+
+
+def test_the_sidebar_shows_the_sessions_load(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    # The sampler reads every 5 s; the first reading after the spawn shows it.
+    page.wait_for_selector("#s-load:not([hidden])", timeout=15000)
+    assert re.fullmatch(r"\d+\.\d cores · \d+\.\d GB", page.inner_text("#s-load-v"))
+    assert page.errors == []

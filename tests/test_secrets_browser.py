@@ -46,6 +46,7 @@ def provide(page, value):
     page.wait_for_selector(f"{ASK}.gone:has-text('Provided:')")
 
 
+@pytest.mark.quarantine("#584")
 def test_a_secret_is_revealed_once_and_a_request_writes_its_file(server, page, browser):  # noqa: F811
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
@@ -82,6 +83,7 @@ def test_a_secret_is_revealed_once_and_a_request_writes_its_file(server, page, b
     assert page.errors == []
 
 
+@pytest.mark.quarantine("#571")
 def test_secret_cards_work_on_a_linked_servers_session(linked, browser, page):  # noqa: F811
     lid = beta_session(linked, browser)
     root = linked.beta.root

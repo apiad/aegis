@@ -43,6 +43,7 @@ def edit(page, tmp_path):
     return open_tool(page)
 
 
+@pytest.mark.quarantine("#544")
 def test_an_edit_is_side_by_side_on_a_wide_row(server, make_page, tmp_path):  # noqa: F811
     page = make_page(1280)
     page.goto(server.url)

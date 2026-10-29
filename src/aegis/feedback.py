@@ -12,7 +12,7 @@ from __future__ import annotations
 import platform
 from importlib.metadata import PackageNotFoundError, metadata, version
 
-ISSUES_FALLBACK = "https://github.com/apiad/aegis/issues"
+ISSUES_FALLBACK = "https://github.com/syalia-srl/aegis/issues"
 
 
 def issues_url() -> str:

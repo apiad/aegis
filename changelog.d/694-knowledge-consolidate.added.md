@@ -1,2 +1,0 @@
-- **`/consolidate` reviews your skills and memories with the agent.** It reads `knowledge_stats` and shows one page with a row per proposal: merge two duplicates, renew or drop an expired memory, fix a stale one, retire a skill nobody uses, mend a broken link. Each row has its evidence and a checkbox, and the agent applies only the rows you tick, each a commit with Undo on its card. A monthly schedule can start the review; you still tick the rows. Agents gain `skill_delete`.
-help: consolidate

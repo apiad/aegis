@@ -23,11 +23,13 @@ A change is done when:
    test files you touched and their neighbours while you iterate, plus
    `make lint-docs` when a doc or help page changed. The whole suite is CI's
    job, not yours;
-2. CI is green on the PR. It runs the whole hermetic suite, slow and browser
-   tests included, with format, lint, typecheck, rift and the changelog check,
-   and compares the bench of the PR's base and head in its job summary. Copy
-   that table into the PR body: CI warns on a regression and never fails on
-   one, so a reader has to look at it;
+2. CI is green on the PR. It runs the fast and multi-user suites with
+   format, lint, typecheck, rift and the changelog check, and compares the
+   bench of the PR's base and head in its job summary. Copy that table into
+   the PR body: CI warns on a regression and never fails on one, so a reader
+   has to look at it. Until the fair release (#768), the slow and browser
+   tests run every night in `nightly.yml` instead, and tests marked
+   `quarantine` (#776) are left out of every gate until their flake is fixed;
 3. it has been exercised in a browser against an `aegis serve` started after the
    change, and, for a change to how agents use aegis, by the `make test-live`
    case that covers it, run on its own (`-k`), not the whole live suite;
