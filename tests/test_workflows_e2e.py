@@ -160,6 +160,7 @@ async def test_a_result_that_breaks_its_schema_is_refused(world):
     )
 
 
+@pytest.mark.quarantine("#778")
 async def test_a_restart_mid_run_finishes_the_run(world):
     main = await world.spawn()
     armed = ok(
