@@ -3108,6 +3108,28 @@ def test_spawn_completes_agents_here_and_on_a_link_then_flags_and_their_values(
     assert page.errors == []
 
 
+def test_the_menu_shows_nothing_inside_spawns_prompt_and_comes_back(server, page):
+    """#764: once /spawn's prompt began, the menu stayed open with no rows,
+    an empty strip over the box. It hides, lets keys through, and shows again
+    when the line has something to offer."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    page.click("#input")
+    page.keyboard.type("/spawn o")
+    page.wait_for_selector("#cmd-menu .cmd-row", state="visible")
+    page.keyboard.press("Tab")
+    page.keyboard.type("fix the flaky test")
+    assert page.input_value("#input") == "/spawn opus fix the flaky test"
+    assert not page.is_visible("#cmd-menu")
+    page.keyboard.press("Tab")  # nothing to accept: the text stays as typed
+    assert page.input_value("#input") == "/spawn opus fix the flaky test"
+    page.fill("#input", "")
+    page.keyboard.type("/spawn ")
+    page.wait_for_selector("#cmd-menu .cmd-row", state="visible")
+    assert page.errors == []
+
+
 def test_the_chip_keeps_the_configured_model_and_the_panel_adds_the_resolved_id(
     server, page
 ):
