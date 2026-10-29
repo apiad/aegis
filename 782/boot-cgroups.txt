@@ -1,0 +1,13 @@
+$ systemd-run --user --unit=aegis782 -p Delegate=yes -p MemoryHigh=1536M -p MemoryMax=2G \
+    .venv/bin/aegis serve --root <scratch> --port 8799 --log-level info
+$ cat <unit>/cgroup.subtree_control
+cpu memory pids
+$ cat <unit>/sessions/memory.max
+1073741824            # 1536 MiB MemoryHigh - 512 MiB reserve
+$ cat <unit>/server/memory.min
+536870912
+$ cat <unit>/server/cpu.weight <unit>/sessions/cpu.weight
+1000
+100
+journal: aegis.cgroups INFO aegis: sessions capped together at 1073741824, server keeps 536870912
+journal: aegis.cgroups INFO aegis: one cgroup per session under <unit>
