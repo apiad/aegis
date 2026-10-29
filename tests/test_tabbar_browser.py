@@ -96,9 +96,10 @@ def test_the_panel_toggle_lives_in_the_nav_pill(server, page):  # noqa: F811
     assert page.errors == []
 
 
-def test_a_phone_header_is_one_row_above_fleet_and_the_tabs(server, browser):  # noqa: F811
+def test_a_phone_header_is_one_row_with_fleet_above_the_tabs(server, browser):  # noqa: F811
     # #631: the header wrapped, leaving ? alone on a second row, and Fleet and
-    # the panel toggle took width the tabs needed.
+    # the panel toggle took width the tabs needed. #752: Fleet joins the
+    # buttons, so the tabs get their row to themselves.
     pg = browser.new_page(viewport={"width": 390, "height": 844}, has_touch=True)
     pg.goto(server.url)
     pg.wait_for_selector("#a2[data-view=fleet]")
@@ -122,11 +123,26 @@ def test_a_phone_header_is_one_row_above_fleet_and_the_tabs(server, browser):  #
     assert len(sizes) == 1, row
     tops = {k: box(f"#{k}")["y"] for k in [*HEADER_ICONS, "bell", "help-btn"]}
     fleet, tabs = box("#tab-fleet"), box("#tablist")
-    assert abs(fleet["y"] - tabs["y"]) < 8 and fleet["x"] < tabs["x"]
-    assert fleet["y"] > max(tops.values())
+    assert abs(fleet["y"] - min(tops.values())) < 8
+    assert tabs["y"] >= fleet["y"] + fleet["height"]
     assert not pg.is_visible("#side-btn")
     pg.tap("#nav-side")
     pg.wait_for_function("document.getElementById('a2').dataset.side === 'open'")
+    pg.close()
+
+
+def test_a_narrow_window_keeps_the_header_buttons_on_one_row(server, browser):  # noqa: F811
+    # #807: #752 narrowed the buttons for touch only, so a 390 px window with a
+    # mouse wrapped ? onto a row of its own.
+    pg = browser.new_page(viewport={"width": 390, "height": 600})
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    box = lambda sel: pg.locator(sel).bounding_box()  # noqa: E731
+    tops = {
+        k: box(f"#{k}")["y"] for k in [*HEADER_ICONS, "bell", "help-btn", "tab-fleet"]
+    }
+    assert max(tops.values()) - min(tops.values()) < 8, tops
+    assert box("#tablist")["y"] >= box("#tab-fleet")["y"] + box("#tab-fleet")["height"]
     pg.close()
 
 
