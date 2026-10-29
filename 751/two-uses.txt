@@ -1,0 +1,16 @@
+aegis serve from fix/751-dictation-cache, real Whistle pin 3dd835f2b526,
+headless Chromium on the server, Dictation.boot() as the mic button calls it.
+
+First use (empty Cache Storage):
+  caches.keys()  -> ["aegis-1dc8896321c1", "dictation:/dictation/3dd835f2b526/"]
+  resource timing (transferSize):
+    needle.js        63,123 B
+    needle.wasm     903,955 B
+    whistle.cact 16,919,707 B
+  total 17.9 MB, each file once
+
+Server's model directory moved away (GET /dictation/... -> 404), page reloaded.
+
+Second use:
+  booted: true
+  /dictation/ resource entries: 0, bytes transferred: 0
