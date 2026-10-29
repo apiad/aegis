@@ -304,6 +304,25 @@ group, and any other member moves only inside its group. Alt+Shift+[ and
 Alt+Shift+] move the tab in front one place left or right by the same rules,
 from the message box too.
 
+## Switch between sessions
+
+Alt+P lists every open session: this server's at the top, then each linked
+server's in the Fleet's order, then the quiet ones from all of them, each
+named with its server. A row shows the session's mark, handle and title, its
+state and when it last changed, and the line it is on: what it asks you, its
+plan item, or what it is doing.
+
+- Within a server, the sessions that need you lead, then errors, then
+  results to review, the longest waiting on top, as Alt+J walks them. The
+  rest follow, the most recent on top.
+- Type to narrow the list by handle, title, that line or the server's name.
+  Arrows, Tab or Alt+P move; Alt+Shift+P moves back; Page Down and Page Up go
+  to the next or previous server. Enter opens the session; Esc closes the list.
+- Opening a quiet session brings its tab back, as a click on its Fleet card
+  does.
+- The "N ▾" button at the end of the tab bar opens the same list. It shows
+  while the tabs overflow, and always on a phone, where it is the way in.
+
 ## Quiet sessions
 
 A quiet session has no tab. Its card stays in the Fleet, dimmed and marked
@@ -317,6 +336,8 @@ until it is quieted again; a queue worker comes back only on an error.
 - `/quiet` in a session's box quiets that session, as Alt+Q does.
 - An agent calls `session_quiet` with a handle, its own included.
 - Clicking a quiet card in the Fleet brings the session back at once.
+- Opening it from the Alt+P list does the same (see
+  [Switch between sessions](#switch-between-sessions)).
 
 Quiet is about the tab, not the process: a quiet session keeps working, and
 sleeping one keeps it quiet. Wake, Continue and Restart leave it quiet too;

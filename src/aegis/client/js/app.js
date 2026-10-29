@@ -22,6 +22,7 @@ import { age, countdown, diskRows, elapsed, hostRow, hostSeverity, mbps, netRows
 import { closeCard, initSide, restState, toggleCollapsed } from "./side.js";
 import { installKeys, renderKeys } from "./keys.js";
 import { Palette } from "./palette.js";
+import { Switcher } from "./switcher.js";
 import { entryIcon, factIcon, glyph, gorgoneion, icon, iconText, installGlyphs, LABEL } from "./glyphs.js";
 import { CommandMenu } from "./commands.js";
 import * as cmenu from "./menu.js";
@@ -1036,6 +1037,8 @@ function flushSessions() {
   changed = new Set();
   if (!booted) return;
   ordered = ordered.map((m) => sessions.get(m.key)).filter(Boolean);
+  switcher.refresh();
+  sizeTabMore(); // its count includes quiet sessions, which have no tab
   // A session that went quiet or came back changes the set of tabs (#386).
   if (quietChanged()) {
     render();
@@ -1067,6 +1070,8 @@ function onSessions() {
   const since = (m) => m.created_at ?? m.started_at ?? 0;
   const ids = order.arrange([...sessions.values()].sort((a, b) => since(a) - since(b)).map((m) => m.key));
   ordered = ids.map((id) => sessions.get(id));
+  switcher.refresh();
+  sizeTabMore(); // its count includes quiet sessions, which have no tab
   render();
   drawNav(); // the needs count
   ping();
@@ -3366,6 +3371,14 @@ $("files-btn").addEventListener("click", () => go(filesView.path ? filesHash(fil
 $("schedules-btn").addEventListener("click", () => go("#schedules"));
 keymap.addEventListener("click", (ev) => ev.target === keymap && help(false));
 const palette = new Palette($("palette"), () => route().view);
+// Alt+P and the strip's "N ▾" button (#781): every open session, by server.
+const switcher = new Switcher($("switcher"), {
+  metas: () => ordered,
+  here: () => fleetStacks.here || "this server",
+  links: () => links,
+  current: () => tabFocus(route()),
+  open: (key) => openCard(key),
+});
 
 // Alt+J and the navigator's button. In byNeed's order, from the tab after this
 // one; from the top when this one is not in the list, as after reading a
@@ -3494,6 +3507,10 @@ installKeys(
       if (route().view === "session" && !b.disabled) b.click();
     },
     palette: () => palette.toggle(),
+    sessions: () => {
+      palette.close();
+      switcher.open();
+    },
   },
   () => (booted ? route().view : "boot"),
 );
@@ -4309,29 +4326,21 @@ new ResizeObserver(() => root.style.setProperty("--hdr", `${header.getBoundingCl
 new ResizeObserver(() => root.style.setProperty("--composer-h", `${$("composer").offsetHeight}px`)).observe($("composer"));
 $("side-btn").addEventListener("click", toggleSide);
 
-// The strip's menu (#586): while the tabs overflow, a button after them lists
-// every open session in bar order; a choice opens it, and the route's render
-// scrolls its tab into view.
-const MARK_ICON = { needs_you: "need", working: "work", waiting: "wait", error: "err", review: "rev", done: "done" };
+// The strip's button (#586, #781): while the tabs overflow, and always on a
+// phone, where the header has no room for another, it opens the session
+// switcher. Its count is every open session, quiet ones included, as the
+// switcher lists them. A tap opens it without the field's focus, so no
+// on-screen keyboard covers the list.
+const phoneHeader = matchMedia("(max-width:760px)"); // the two-row header (base.css)
 function sizeTabMore() {
   const list = $("tablist");
-  $("tab-more").hidden = list.scrollWidth <= list.clientWidth + 1;
-  $("tab-more").replaceChildren(`${tabbed().length} `, icon("caret-d"));
+  $("tab-more").hidden = !phoneHeader.matches && list.scrollWidth <= list.clientWidth + 1;
+  $("tab-more").replaceChildren(`${ordered.length} `, icon("caret-d"));
 }
 new ResizeObserver(sizeTabMore).observe($("tablist"));
 new MutationObserver(sizeTabMore).observe($("tablist"), { childList: true });
-$("tab-more").addEventListener("click", () => {
-  // In the bar's order, a group's members under its head (#586).
-  const items = blocksOf(tabbed(), tabActions.here).flatMap((b) =>
-    b.members.map((m, i) => ({
-      id: m.key,
-      label: `${i ? "↳ " : ""}${m.handle}${m.server ? ` · ${m.server}` : ""}`,
-      icon: MARK_ICON[m.mark] || "dot",
-      run: () => go(`#s=${m.key}`),
-    })),
-  );
-  cmenu.open({ groups: [items] }, { anchor: $("tab-more") }, $("tab-more"));
-});
+phoneHeader.addEventListener("change", sizeTabMore);
+$("tab-more").addEventListener("click", () => switcher.open({ focus: !matchMedia("(pointer:coarse)").matches }));
 $("nav-side").addEventListener("click", toggleSide);
 // The dimmed transcript is the session view's own ::after, so a tap on it
 // lands on the view itself and goes no further.

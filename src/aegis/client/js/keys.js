@@ -6,7 +6,7 @@
 // Chrome on Linux keeps Ctrl+T/W/N/Tab, Alt+1…9, Alt+←/→ and Alt+D/E/F for
 // itself (chrome/browser/ui/accelerator_table.cc); the chords here are the Alt
 // keys it leaves free. They match ev.code, because Alt can change ev.key.
-// Alt+↑/↓, Alt+U and Alt+J are not in Chrome's Linux accelerator table either.
+// Alt+↑/↓, Alt+U, Alt+J and Alt+P are not in Chrome's Linux accelerator table either.
 // Plain keys act only outside text fields, as in Gmail, and the view decides
 // what they do, so there is no mode to keep in your head.
 //
@@ -60,6 +60,7 @@ export const ACTIONS = [
   { id: "tabLeft", title: "Move this tab left", when: ["session", "term", "browser"], keys: [on("global", "Alt+Shift+[", altShift("BracketLeft"))] },
   { id: "tabRight", title: "Move this tab right", when: ["session", "term", "browser"], keys: [on("global", "Alt+Shift+]", altShift("BracketRight"))] },
   { id: "needs", title: "Next session that needs you, longest waiting first", nav: true, keys: [on("global", "Alt+J", alt("KeyJ"))] },
+  { id: "sessions", title: "Switch to a session", nav: true, keys: [on("global", "Alt+P", alt("KeyP"))] },
   { id: "spawn", title: "New session", nav: true, keys: [on("global", "Alt+N", alt("KeyN")), on("browse", "n", key("n"))] },
   { id: "settings", title: "Settings: .aegis.yaml", nav: true, keys: [on("global", "Alt+S", alt("KeyS"))] },
   { id: "journal", title: "Journal: what was done", nav: true, keys: [on("global", "Alt+L", alt("KeyL"))] },

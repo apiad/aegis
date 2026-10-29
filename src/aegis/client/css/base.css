@@ -102,6 +102,36 @@ body{background:#000}
 #a2 .palette kbd{font-family:var(--font-mono);font-size:11.5px;color:var(--faint);white-space:pre}
 #a2 .palette .cmd-row.on kbd{color:var(--muted)}
 #a2 .palette .empty{padding:6px 8px;color:var(--faint)}
+/* the session switcher (js/switcher.js, #781): the palette's backdrop, wider, two-line rows */
+#a2 .switcher .panel{width:min(760px,94vw);max-height:76vh}
+#a2 .switcher .panel:focus{outline:none}
+#a2 .switcher .sw-gh{display:flex;gap:8px;align-items:baseline;padding:8px 8px 3px;font-family:var(--font-mono);font-size:11px;color:var(--faint)}
+#a2 .switcher .sw-gh .nm{color:var(--muted)}
+#a2 .switcher .sw-gh .off{color:var(--err)}
+#a2 .switcher .sw-row{display:grid;grid-template-columns:14px minmax(0,auto) minmax(0,1fr) auto;grid-template-areas:"mk h t st" ". ln ln ln";column-gap:10px;row-gap:1px;padding:5px 8px;border-radius:4px;cursor:pointer;align-items:center}
+#a2 .switcher .sw-row.on{background:var(--accent-soft)}
+#a2 .switcher .sw-row.dim{opacity:.55}
+#a2 .switcher .sw-row.dim.on{opacity:1}
+#a2 .switcher .sw-row .mk{grid-area:mk;display:inline-flex;align-items:center}
+#a2 .switcher .sw-row .mk svg{width:12px;height:12px}
+#a2 .switcher .sw-row .h{grid-area:h;font-family:var(--font-mono);color:var(--strong);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#a2 .switcher .sw-row .h b{color:var(--accent);font-weight:inherit}
+#a2 .switcher .sw-row .h .at{color:var(--faint);font-size:11px;margin-left:6px}
+#a2 .switcher .sw-row .t{grid-area:t;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#a2 .switcher .sw-row .st{grid-area:st;font-family:var(--font-mono);font-size:11px;color:var(--faint);white-space:nowrap}
+#a2 .switcher .sw-row .st .here{color:var(--accent);margin-right:6px}
+#a2 .switcher .sw-row .ln{grid-area:ln;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#a2 .switcher .sw-row .ln:empty{display:none}
+#a2 .switcher .sw-row .ln.at-needs_you{color:var(--accent)}
+#a2 .switcher .sw-row .ln.at-error{color:var(--err)}
+#a2 .switcher .foot{display:flex;gap:14px;flex-wrap:wrap;padding:6px 8px 2px;border-top:1px solid var(--rule);margin-top:4px;font-family:var(--font-mono);font-size:10.5px;color:var(--faint)}
+@media (max-width:640px){
+  #a2 .switcher{padding-top:0}
+  #a2 .switcher .panel{width:100vw;height:100%;max-height:100%;border-radius:0}
+  #a2 .switcher .sw-row{grid-template-columns:14px minmax(0,1fr) auto;grid-template-areas:"mk h st" ". t t" ". ln ln"}
+  #a2 .switcher .foot{display:none}
+}
+@media (pointer:coarse){#a2 .switcher .sw-row{min-height:44px}}
 #a2 .dialog{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:rgba(0,0,0,.45);padding:16px}
 #a2 .dialog[hidden]{display:none}
 #a2 .dialog .panel{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r-lg);padding:18px 20px;max-width:420px;width:100%}
