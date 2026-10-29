@@ -1384,7 +1384,9 @@ a piece with under a second of voice is never transcribed alone. The server
 keeps the pinned engine and model, downloaded once from Hugging Face and checked
 against their sha256, serves them at `/dictation/<pin>/` with an immutable cache
 header, and answers `dictation.prepare` with that base and the keywords that bias
-the model toward names it knows (`dictation.py`). Nothing carries samples, so
+the model toward names it knows (`dictation.py`). The page keeps the files in
+Cache Storage under that pin and fills it once for both workers, because a
+phone's HTTP cache evicts 17.8 MB long before a year is up. Nothing carries samples, so
 dictation works through any proxy that serves the page, and the server pays
 nothing per word. A send from a box that got dictated text says so
 (`dictated`), and the server adds `dictation.NOTE` after the text for the
