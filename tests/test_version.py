@@ -42,7 +42,7 @@ def test_a_wheel_from_pypi_is_its_release_number(monkeypatch):
 
 def test_a_build_from_git_carries_its_commit_and_ref(monkeypatch):
     direct = {
-        "url": "https://github.com/apiad/aegis",
+        "url": "https://github.com/syalia-srl/aegis",
         "vcs_info": {
             "vcs": "git",
             "commit_id": "39d80a886fef55255bacf634da7a98d521fd4419",
