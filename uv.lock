@@ -56,7 +56,7 @@ requires-dist = [
     { name = "starlette", specifier = ">=0.46" },
     { name = "typer", specifier = ">=0.24.1" },
     { name = "uvicorn", specifier = ">=0.32" },
-    { name = "wayfind", specifier = ">=0.1.0" },
+    { name = "wayfind", specifier = ">=0.1.1" },
     { name = "websockets", specifier = ">=13.0" },
 ]
 provides-extras = ["browser", "embeddings"]
@@ -2166,16 +2166,16 @@ wheels = [
 
 [[package]]
 name = "wayfind"
-version = "0.1.0"
+version = "0.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "tree-sitter" },
     { name = "tree-sitter-language-pack" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/81/3e/d50df27b1652493e54dc77decb77d15043e09b59f5405898d9a2e1d28789/wayfind-0.1.0.tar.gz", hash = "sha256:bc11b1180e747375b636ffc3737ae415f262b6be09f3a3281d56aaca93fa9e35", size = 45935, upload-time = "2026-10-19T20:17:32.647Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2d/c8/b8ec1b4f86572f5815f57c4bf323a8cedd35aaea087e13b37abfb22dc9d7/wayfind-0.1.1.tar.gz", hash = "sha256:9c04e9a2ddbd4fdd1cd8a63feed7d8643f50d77e23452271de7a6be54e2e0de8", size = 47323, upload-time = "2026-10-29T21:16:05.633Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e8/d8/c10a8cf8aca799ea3085793b7d6e087d4ffeceaa40d004a635e9c2c1bc6e/wayfind-0.1.0-py3-none-any.whl", hash = "sha256:de29628112ef56306b6291b5ed34d68c96f730326755e72c061f85e4105a2bf0", size = 33870, upload-time = "2026-10-19T20:17:31.695Z" },
+    { url = "https://files.pythonhosted.org/packages/f8/ce/9132d3bacdf54c68b8335e69ddb7d689e18253dc53350e3e1d925ba1b48c/wayfind-0.1.1-py3-none-any.whl", hash = "sha256:5e5e98175d49edf5af74313c75ac2630de93b23cb5c91f5fa4cc2cbd9780e3e9", size = 34810, upload-time = "2026-10-29T21:16:04.746Z" },
 ]
 
 [[package]]
