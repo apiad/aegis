@@ -337,14 +337,16 @@ body{background:#000}
 .a2 .row.prose .body{font-family:var(--font-prose);font-size:var(--prose-size);line-height:1.55;color:var(--ink);overflow-wrap:anywhere}
 .a2 .row.prose .g{color:var(--ink)}
 /* reading: the margin mark on agent messages */
-.a2 .row.prose{grid-template-columns:var(--row-cols) 16px}
-.a2 .row.prose .rm{line-height:1.9;text-align:center}
+/* The read mark and the read-aloud chip side by side, centred on the first
+   line: stacked, they made a one-line reply's row taller than its text (#743). */
+.a2 .row.prose{grid-template-columns:var(--row-cols) 30px}
+.a2 .row.prose .rm{display:flex;align-items:center;gap:2px;height:calc(var(--prose-size) * 1.55)}
 .a2 .row.prose .rm .ic{width:12px;height:12px}
 .a2 .row.prose .rm .ic.i-unread{color:var(--accent)}
 .a2 .row.prose .rm .ic.i-read{color:var(--faint)}
-/* the read-aloud chip under the read mark (speak.js): shown on hover like a
+/* the read-aloud chip after the read mark (speak.js): shown on hover like a
    copy button, always on a touch screen, which has no hover */
-.a2 .row.prose .rm .speak{position:relative;display:grid;place-items:center;width:16px;height:18px;margin:2px auto 0;padding:0;border:none;background:none;color:var(--faint);cursor:pointer;opacity:0;transition:opacity .12s}
+.a2 .row.prose .rm .speak{position:relative;display:grid;place-items:center;width:16px;height:18px;margin:0;padding:0;border:none;background:none;color:var(--faint);cursor:pointer;opacity:0;transition:opacity .12s}
 .a2 .row.prose .rm .speak .ic{width:13px;height:13px}
 .a2 .row.prose:hover .rm .speak,.a2 .row.prose .rm .speak:focus-visible,.a2 .row.prose .rm .speak.on{opacity:1}
 .a2 .row.prose .rm .speak:hover{color:var(--strong)}
