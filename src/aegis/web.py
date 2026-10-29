@@ -44,6 +44,7 @@ from starlette.applications import Starlette
 import httpx
 from starlette.responses import (
     FileResponse,
+    HTMLResponse,
     JSONResponse,
     PlainTextResponse,
     RedirectResponse,
@@ -355,8 +356,12 @@ def build_web(
             if valid(given):
                 return signed_in(RedirectResponse("/", status_code=303), request, given)
             return RedirectResponse("/?refused=1", status_code=303)
-        return FileResponse(
-            CLIENT_DIR / "index.html", headers={"Cache-Control": "no-cache"}
+        # The build the page belongs to, which the welcome repeats: a page
+        # older than the server takes the new build by itself (#499).
+        html = (CLIENT_DIR / "index.html").read_text()
+        return HTMLResponse(
+            html.replace("__AEGIS_BUILD__", listing()["build"]),
+            headers={"Cache-Control": "no-cache"},
         )
 
     async def login(request):
@@ -707,6 +712,7 @@ def build_web(
                 "t": "welcome",
                 "proto": PROTO,
                 "server": app.server_name,
+                "build": listing()["build"],
                 # A spawn through a link may say its group (#586): a link
                 # sends it only to a server that says this.
                 "groups": True,

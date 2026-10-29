@@ -48,7 +48,7 @@ import { setToastOpener, toast } from "./toast.js";
 import { Speaker } from "./speak.js";
 import { closeTerm, drawCard, openTerm } from "./termview.js";
 import { browserSources, closeBrowser, drawBrowser, mountBrowser, openBrowser } from "./browserview.js";
-import { applyUpdate, checkForUpdate, setAutoApply, startWorker } from "./appworker.js";
+import { applyUpdate, checkForUpdate, setAutoApply, startWorker, takeBuild } from "./appworker.js";
 import { closeInstallDialog, startInstall } from "./install.js";
 import { checkRotation, closePushPanel, openPushPanel, pushSupported, setupPush } from "./pushpanel.js";
 import { clearDevice, loadFleet, loadTranscript, saveFleet, saveTranscript } from "./devicestore.js";
@@ -518,6 +518,9 @@ $("login").addEventListener("submit", async (ev) => {
 
 // -- the connection -----------------------------------------------------------
 let wasClosed = false; // a reconnect checks for a new build
+// The build this page is (web.py writes it in), against the one the server
+// names in each welcome: they differ after an upgrade (#499).
+const PAGE_BUILD = document.querySelector("meta[name=aegis-build]")?.content || "";
 
 // The banner while the connection is down: a state, so it stays at the top of
 // the page rather than a toast. A socket that comes back within 3 s never
@@ -617,7 +620,8 @@ const conn = new Connection(`${location.protocol === "https:" ? "wss" : "ws"}://
     }
     if (state === "closed") wasClosed = true;
     if (state === "open") {
-      if (wasClosed) checkForUpdate();
+      if (conn.build && PAGE_BUILD && !PAGE_BUILD.startsWith("__") && conn.build !== PAGE_BUILD) takeBuild(conn.build);
+      else if (wasClosed) checkForUpdate();
       wasClosed = false;
       setWho(conn.me, conn.owner);
       checkPush(); // after setWho: the rows are this token's

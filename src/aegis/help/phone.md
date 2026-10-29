@@ -30,7 +30,9 @@ this device keeps and its size. A browser that never offers it can still
 install it from its own menu.
 
 When a new version is served, the device downloads it in the background and a
-toast offers Reload. Every open tab moves to the new version together.
+toast offers Reload. After an upgrade of the server itself, an open tab takes
+the new version by itself as soon as it reconnects, so no tab keeps running the
+old client. Every open tab moves to the new version together.
 
 ## Without a connection
 

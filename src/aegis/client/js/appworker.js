@@ -3,7 +3,7 @@
 // downloads beside the one the page runs and waits; startWorker's onUpdate
 // says so, and applyUpdate tells the waiting worker to take over and reloads
 // once it has. A worker exists only in a secure context (https or
-// localhost); elsewhere every function here does nothing.
+// localhost); elsewhere every function here does nothing but takeBuild.
 
 const sw = navigator.serviceWorker;
 let reg = null;
@@ -103,4 +103,15 @@ export function setAutoApply() {
   // again until one is waiting, which announce() then applies.
   checkForUpdate();
   setInterval(checkForUpdate, 10000);
+}
+
+// The server serves a newer client than this page (#499): an upgrade restarted
+// it, and every open tab reconnects into this. With a worker, the new build
+// downloads and takes over by itself; without one, a reload fetches it, once
+// per build, so a server that keeps answering another build cannot loop it.
+export function takeBuild(build) {
+  if (sw?.controller) return setAutoApply();
+  if (sessionStorage.getItem("aegis.reloadedFor") === build) return;
+  sessionStorage.setItem("aegis.reloadedFor", build);
+  location.reload();
 }

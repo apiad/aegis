@@ -105,6 +105,7 @@ SERVER = {
         "dictation_file",
         "service_worker",
         "client_files",
+        "index",
     },
 }
 
