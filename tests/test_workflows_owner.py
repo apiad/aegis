@@ -3,7 +3,10 @@ standing ask, the run is something it waits on, and it is neither nudged nor
 kept up for it."""
 
 import asyncio
+import os
+import re
 import time
+from datetime import datetime, timezone
 
 import pytest
 
@@ -143,6 +146,29 @@ async def test_approving_tells_the_main_agent_what_comes_next(world):
     # Its reply is a turn after the click: still waiting on the run.
     await turn(main, mcp("turn_end", attention="review", line="It runs."))
     assert card(world, main)["attention"] == "waiting"
+
+
+async def test_a_workflow_header_is_stamped_in_utc(world):
+    # Off UTC, as on the smoke-test host of #758: local time without a zone
+    # put the header four hours away from the notice that followed it.
+    was = os.environ.get("TZ")
+    os.environ["TZ"] = "America/Caracas"
+    time.tzset()
+    try:
+        main, run = await armed(world, "{wait: 30s, say: Pause.}")
+        await world.app.registry.call("workflow.approve", {"run": run})
+        await until(lambda: approved(main), timeout=10)
+    finally:
+        if was is None:
+            del os.environ["TZ"]
+        else:
+            os.environ["TZ"] = was
+        time.tzset()
+    (md,) = approved(main)
+    m = re.search(r"· approved · (\S+)", md.splitlines()[0])
+    assert m and m[1].endswith("Z"), md.splitlines()[0]
+    at = datetime.strptime(m[1], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    assert abs((datetime.now(timezone.utc) - at).total_seconds()) < 60
 
 
 async def test_with_no_stop_on_the_way_the_next_call_is_the_end(world):
