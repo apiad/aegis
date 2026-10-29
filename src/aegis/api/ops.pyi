@@ -22,6 +22,8 @@ class Ops:
     @property
     def btw(self) -> _btw: ...
     @property
+    def claude(self) -> _claude: ...
+    @property
     def commands(self) -> _commands: ...
     @property
     def config(self) -> _config: ...
@@ -248,6 +250,10 @@ class _browser:
 class _btw:
     async def cancel(self, *, log_id: str, id: str) -> Any:
         """Cancel a running side note; its block keeps the question, folded."""
+
+class _claude:
+    async def token(self, *, log_id: str, id: str, secret: str) -> Any:
+        """The sign-in card's field (claude/login.py): check a setup-token, keep it, restart the sessions that failed to sign in."""
 
 class _commands:
     async def list(self, *, log_id: str) -> Any:
