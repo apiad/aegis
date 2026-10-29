@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 import os
 
 from ..harness import Launch, session_env
+from . import login
 from . import control
 from .control import Catalog
 from .process import (
@@ -67,7 +68,7 @@ class ClaudeSession:
             launch.stderr_path,
             launch.on_line,
             launch.on_exit,
-            env=env,
+            env=login.with_token(env, launch.user),
             cgroup=launch.cgroup,
             user=launch.user,
         )

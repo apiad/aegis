@@ -270,6 +270,10 @@ class QuotaService:
         self._last_attempt = 0.0
         self._backoff_until = 0.0
         self._task = None
+        # Readings come from the sessions' own stream too (observe). Once one
+        # has, the endpoint refusing our credential says nothing about the
+        # account: a setup-token cannot read it (claude/login.py).
+        self._streamed = False
 
     @property
     def started(self) -> bool:
@@ -325,8 +329,9 @@ class QuotaService:
 
         token = self._read_token()
         if not token:
-            self._snapshot = None
-            self._failure = "no_credentials"
+            if not self._streamed:
+                self._snapshot = None
+                self._failure = "no_credentials"
             return
 
         self._load_cache(now)
@@ -345,7 +350,8 @@ class QuotaService:
 
             snapshot = await asyncio.to_thread(self._fetch, token)
         except QuotaError as exc:
-            self._note_failure(exc.kind, now)
+            if not (self._streamed and exc.kind == "unauthorized"):
+                self._note_failure(exc.kind, now)
             return
         except Exception:  # noqa: BLE001 — a fetch must never break the caller
             self._note_failure("unreachable", now)
@@ -353,6 +359,14 @@ class QuotaService:
         self._snapshot = snapshot
         self._failure = ""
         self._backoff_until = 0.0
+        self._save_cache()
+
+    def observe(self, snapshot: QuotaSnapshot) -> None:
+        """A reading a session's stream carried: it is as good as a fetch,
+        and newer than any cached one."""
+        self._streamed = True
+        self._snapshot = snapshot
+        self._failure = ""
         self._save_cache()
 
     def _note_failure(self, kind: str, now: float) -> None:

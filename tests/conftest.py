@@ -133,6 +133,8 @@ def _no_real_quota(tmp_path_factory, monkeypatch):
     monkeypatch.setenv("CLAUDE_CONFIG", str(off / "claude.json"))
     monkeypatch.setenv("OPENCODE_AUTH", str(off / "opencode-auth.json"))
     monkeypatch.setenv("AEGIS_QUOTA_CACHE", str(off / "cache"))
+    # Nor the Claude token the machine's sessions sign in with (claude/login.py).
+    monkeypatch.setenv("AEGIS_CLAUDE_TOKEN_FILE", str(off / "claude-oauth-token"))
     monkeypatch.setenv("AEGIS_DICTATION_DIR", str(off / "dictation"))
     # The network probes need no credentials, so only a switch keeps a test's
     # `aegis serve` off the network (net/service.py).

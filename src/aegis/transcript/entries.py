@@ -1006,6 +1006,36 @@ class Fold:
                     detail=det,
                 )
             )
+        if kind == "claude_login":
+            # The Claude sign-in card (claude/login.py): a later record with the
+            # same id adds the sessions that failed since.
+            cid = str(rec.get("card_id"))
+            prev = self._entries.get(cid)
+            det = {
+                "handles": list(rec.get("handles") or []),
+                "path": rec.get("path"),
+                "restarted": None,
+            }
+            return self._upsert(
+                _entry(
+                    cid,
+                    "claude_login",
+                    "waiting",
+                    prev["ts"] if prev else ts,
+                    d.ERROR_GLYPH,
+                    title="Claude sign-in failed",
+                    summary="waiting",
+                    detail=det,
+                )
+            )
+        if kind == "claude_login_done":
+            e = self._entries.get(str(rec.get("card_id")))
+            if e is None:
+                return []
+            det = {**e["detail"], "restarted": list(rec.get("restarted") or [])}
+            return self._upsert(
+                {**e, "status": "renewed", "summary": "renewed", "detail": det}
+            )
         if kind in ("secret_gone", "secret_provided"):
             e = self._entries.get(str(rec.get("secret_id")))
             if e is None:
@@ -1508,7 +1538,11 @@ class Fold:
                 report = None  # made in an earlier turn; this one ended without one
             error = ""
             if ev.is_error and not interrupted:
-                error = f"turn failed ({ev.subtype or 'error'})"
+                error = (
+                    "Claude sign-in failed"
+                    if ev.auth_failed
+                    else f"turn failed ({ev.subtype or 'error'})"
+                )
             self._stand(report=report, turn_error=error)
             # A turn that handed back to the person starts idle; one that ended
             # to wait on a monitor or a queue task keeps working (spec
@@ -1534,11 +1568,7 @@ class Fold:
             if ev.turns == 0 and len(parts) == 1 and not ev.is_error:
                 return ops  # a local command that cost nothing: its own entry says it
             if ev.is_error:
-                head = (
-                    "interrupted"
-                    if interrupted
-                    else f"turn failed ({ev.subtype or 'error'})"
-                )
+                head = "interrupted" if interrupted else error
                 return ops + self._upsert(
                     _entry(
                         id,

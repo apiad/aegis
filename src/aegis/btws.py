@@ -67,6 +67,7 @@ class SideNotes:
                 btw.TIMEOUT_S,
                 self.app.sessions.user_for(s.spec),
                 oneshot.message(btw.SYSTEM, text, cfg["harness"]),
+                harness=cfg["harness"],
             )
         except (oneshot.OneshotError, PermissionError) as e:
             self._answer(s, {**base, "status": "failed", "why": str(e)})

@@ -214,6 +214,8 @@ FIRST = [
         "config#suggested-changes-applied-from-a-card",
     ),
     ("ask the person for an API token", "secrets"),
+    ("claude keeps logging me out", "claude-sign-in"),
+    ("a claude session failed to sign in with a 401", "claude-sign-in"),
     (
         "have a judge agent check before publishing",
         "workflow-recipes#let-a-judge-decide-before-going-on",
