@@ -3750,10 +3750,15 @@ function drawReplies(s) {
   if (box.dataset.key === key) return;
   box.dataset.key = key;
   box.hidden = !replies.length && !brief && !s.continued_by;
+  // A press keeps the focus where it is (#428): on a phone the focused box is
+  // two lines taller, and its blur moved the chip from under the finger
+  // before the click, so the first tap did nothing.
+  const keepFocus = (e) => e.preventDefault();
   const chips = replies.map((text) => {
     const b = document.createElement("button");
     b.className = "rp";
     b.textContent = text;
+    b.addEventListener("mousedown", keepFocus);
     b.addEventListener("click", () => sendLine(text, false));
     return b;
   });
@@ -3761,6 +3766,7 @@ function drawReplies(s) {
     const h = document.createElement("button");
     h.className = "rp hand";
     h.textContent = `continue fresh · ${fmtTokens(s.context_tokens)}`;
+    h.addEventListener("mousedown", keepFocus);
     h.addEventListener("click", () => handOff(s));
     chips.unshift(h);
   }

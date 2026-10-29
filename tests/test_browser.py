@@ -9209,6 +9209,38 @@ def test_the_handoff_chip_continues_fresh_at_once(server, page):
     )
 
 
+def test_the_handoff_chip_shows_and_taps_on_a_phone(server, browser):
+    """#428: on a phone the first tap on the handoff chip did nothing. The
+    focused message box is taller, and the tap's blur shrank it and moved the
+    chip from under the finger before the click."""
+    errors: list = []
+    page = phone(browser, errors)
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    old = spawn(page, "/ctx 342000")
+    args = {"attention": "done", "line": "Shipped.", "handoff": "Done: A. Next: B."}
+    page.fill("#input", f"/mcp turn_end {json.dumps(args)}")
+    page.tap("#send")  # Enter adds a line on a touch screen
+    turns_done(page, 2)
+    chip = page.locator("#replies .rp.hand")
+    chip.wait_for(state="visible")
+    box = chip.bounding_box()
+    assert box["x"] >= 0 and box["x"] + box["width"] <= 390, box
+    assert box["y"] >= 0 and box["y"] + box["height"] <= 844, box
+    # Nothing covers it: the tap lands on the chip itself.
+    hit = page.evaluate(
+        """([x, y]) => document.elementFromPoint(x, y)?.closest('.rp.hand') !== null""",
+        [box["x"] + box["width"] / 2, box["y"] + box["height"] / 2],
+    )
+    assert hit
+    # The box still has the focus from the send, as it would with the keyboard
+    # up: the first tap hands off.
+    assert page.evaluate("document.activeElement.id") == "input"
+    page.tap("#replies .rp.hand")
+    page.wait_for_function("k => location.hash.slice(3) !== k", arg=old)
+    assert errors == []
+
+
 @pytest.mark.quarantine("#411")
 def test_btw_mid_turn_answers_in_a_block_that_folds_locally(btw_server, page):
     page.goto(btw_server.url)
