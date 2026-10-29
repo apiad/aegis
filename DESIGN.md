@@ -1011,7 +1011,10 @@ the client offers by key (its id, title, keys and the views where it applies) an
 the one `keydown` listener that dispatches from it; app.js gives each id its run,
 and a missing or extra one throws at boot. The `?` list and the command palette
 (`js/palette.js`, Ctrl+K or ⌘K) are drawn from the same registry, so neither can
-name an action that does nothing, and a new action shows in all three at once. No
+name an action that does nothing, and a new action shows in all three at once. The session switcher
+(`js/switcher.js`, Alt+P, #781) lists the metas the client already holds, every
+server's, and opens through the Fleet card's path (`openCard`), so it never waits on
+the network and a quiet session gets its tab back the same way. No
 other module listens for keys on the document. Chrome binds Ctrl+K to its address
 bar search but does not reserve it, so the page's `preventDefault` wins; on a Mac
 it is ⌘K alone, because Ctrl+K there deletes to the end of a line. Chrome keeps Ctrl+T,
