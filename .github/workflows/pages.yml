@@ -1,5 +1,5 @@
 name: pages
-# The landing page at apiad.github.io/aegis is site/ on main, published from
+# The landing page at aegis.syalia.com is site/ on main, published from
 # Actions. Nothing is built: the folder is the artifact.
 on:
   push:

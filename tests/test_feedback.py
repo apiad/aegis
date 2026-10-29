@@ -13,7 +13,7 @@ def test_the_turn_carries_the_words_the_page_and_the_facts():
     header, body = feedback.turn(
         "the queue card should show the worker's model",
         "aegis 2.11.0 · Claude Code",
-        "https://github.com/apiad/aegis/issues",
+        "https://github.com/syalia-srl/aegis/issues",
         "2026-10-19T16:40:02Z",
     )
     assert header == "> from feedback · 2026-10-19T16:40:02Z"
@@ -23,7 +23,7 @@ def test_the_turn_carries_the_words_the_page_and_the_facts():
     )
     assert "help_read feedback" in body
     assert "file nothing\nuntil they say yes" in body
-    assert body.rstrip().endswith("issues: https://github.com/apiad/aegis/issues")
+    assert body.rstrip().endswith("issues: https://github.com/syalia-srl/aegis/issues")
 
 
 def test_a_bare_command_says_no_text_was_given():
@@ -41,7 +41,7 @@ def test_facts_leave_out_an_unknown_harness_version():
 
 
 def test_the_issues_url_comes_from_the_package_and_falls_back(monkeypatch):
-    assert feedback.issues_url() == "https://github.com/apiad/aegis/issues"
+    assert feedback.issues_url() == "https://github.com/syalia-srl/aegis/issues"
 
     def missing(name):
         raise PackageNotFoundError(name)

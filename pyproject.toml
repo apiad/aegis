@@ -42,9 +42,10 @@ browser = ["playwright>=1.63.0"]
 embeddings = ["fastembed>=0.4"]
 
 [project.urls]
-Repository    = "https://github.com/apiad/aegis"
-Issues        = "https://github.com/apiad/aegis/issues"
-Changelog     = "https://github.com/apiad/aegis/blob/main/CHANGELOG.md"
+Homepage      = "https://aegis.syalia.com"
+Repository    = "https://github.com/syalia-srl/aegis"
+Issues        = "https://github.com/syalia-srl/aegis/issues"
+Changelog     = "https://github.com/syalia-srl/aegis/blob/main/CHANGELOG.md"
 
 [project.scripts]
 aegis = "aegis.cli:main"
