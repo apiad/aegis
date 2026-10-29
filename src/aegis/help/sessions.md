@@ -486,22 +486,21 @@ load back: it continues every turn it cut. Pause every session instead.
 
 - **Settings, Sessions, Pause all**, on a running server. Every session's
   process ends, and with it whatever its agent left running: builds, test
-  runs, browsers it started. A turn this cuts shows `paused: the person
-  paused every session` in its transcript.
-- **`aegis serve --paused`**, to start or restart with every session paused:
-  the turns the stop cut stay cut. It works in a one-off run or a systemd
-  drop-in.
+  suites, browsers. A turn this cuts shows `paused: the person paused every
+  session` in its transcript.
+- **`aegis serve --paused`** starts or restarts with every session paused:
+  the turns the stop cut stay cut, in a one-off run or a systemd drop-in.
 
-While the pause lasts, nothing new runs. Messages from agents, monitors and
-schedules wait in each session's held list, queue tasks stay pending,
-workflow nodes and spawns wait, and each says why: `the person paused every
-session`. The pause lasts across a restart, until you lift it:
+While the pause lasts, nothing new starts. Messages from agents and monitors
+wait in each session's held list, queued tasks stay pending, and spawns
+wait, each saying why: `the person paused every session`. The pause lasts
+across a restart, until you lift it:
 
 - **Resume all**, in the same place, continues each cut turn with a note
   that the pause cut it, sends what each session held, and starts what
   waited.
-- **A message you write to one session** resumes that session alone, its cut
-  turn first. The others stay paused. An agent's message cannot resume one.
+- **A message you write to one session** resumes that session alone, with
+  its cut turn. The others stay paused. An agent's message cannot resume one.
 
 ## Load
 
