@@ -22,6 +22,7 @@
 // anything else offers its size, a download and the desktop's app for it.
 
 import { fuzzy } from "./commands.js";
+import { annotate } from "./annotations.js";
 import { Tray } from "./comments.js";
 import { ask, choose } from "./dialog.js";
 import { diffView } from "./diff.js";
@@ -670,6 +671,7 @@ export class Files {
     this.polling = false;
     this.kind = null; // the open file's kind, from fs.read
     this.tray = null; // the open file's comments
+    this.annotation = null; // the open image or PDF's drawing layer
     this.viewMode = null; // "view" or "src" for a kind with a rendered view
     box.innerHTML =
       '<div class="fbar"><button class="btn tbtn" type="button" title="Folders" aria-label="Folders"><svg class="ic i-folder" aria-hidden="true"><use href="#g-folder"/></svg></button>' +
@@ -797,6 +799,8 @@ export class Files {
   }
 
   close() {
+    this.annotation?.destroy();
+    this.annotation = null;
     this.shown = null;
     this.ed?.destroy();
     this.ed = null;
@@ -905,7 +909,15 @@ export class Files {
     this.hash = r.hash;
     this.stat = { size: r.size, mtime: r.mtime };
     this.kind = r.kind;
-    if (r.text === undefined) return pane.append(this.preview(r));
+    if (r.text === undefined) {
+      const stage = this.preview(r);
+      pane.append(stage);
+      if (this.point && ["image", "pdf"].includes(r.kind)) {
+        this.tray = new Tray(pane, `files:${path}:${r.hash}`, (text) => this.point.send(text), path);
+        this.annotation = annotate(stage, this.tray, { path, kind: r.kind });
+      }
+      return;
+    }
     this.readOnly = !!r.cut;
     if (r.cut) pane.append(el("p", "fnote", `Read-only: the first 2 MB of this ${size(r.size)} file.`));
     const rendered = ["markdown", "html", "image"].includes(r.kind);
@@ -983,6 +995,10 @@ export class Files {
   // Rendered or Source, for a kind that has both.
   mode(m) {
     this.viewMode = m;
+    if (m !== "view") {
+      this.annotation?.destroy();
+      this.annotation = null;
+    }
     for (const b of this.box.querySelectorAll(".fstrip .btn")) b.setAttribute("aria-pressed", String(b.dataset.mode === m));
     this.$(".fview").hidden = m !== "view";
     this.$(".fed").hidden = m === "view";
@@ -1006,7 +1022,11 @@ export class Files {
     }
     const r = await this.conn.call("fs.ticket", { path }).catch(() => null);
     if (!r || path !== this.path) return;
-    box.replaceChildren(this.stage(this.kind === "html" ? "html" : "image", r.url, path));
+    const kind = this.kind === "html" ? "html" : "image";
+    const stage = this.stage(kind, r.url, path);
+    box.replaceChildren(stage);
+    this.annotation?.destroy();
+    this.annotation = annotate(stage, this.tray, { path, kind });
     menu.dropDetached(); // a page's menu or bar over the page drawn before
   }
 

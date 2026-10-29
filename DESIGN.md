@@ -1344,6 +1344,16 @@ simply has no menu. Comments on files and pages live in
 the browser's storage until sent, and the server never sees them
 (`client/js/comments.js`).
 
+**Images and PDFs take normalized visual annotations.** Their preview stage
+adds a drawing layer only while the person turns Annotate on
+(`client/js/annotations.js`), so ordinary image and PDF controls keep working.
+A click is a point and a drag is a region; coordinates are fractions of the
+rendered media, independent of its current size. The native PDF viewer does not
+expose its current page, so the person names that page beside Annotate before
+drawing. The shared comment tray keeps the file, type, page when applicable,
+region and note in browser storage, and writes the structured fields as JSON in
+one message to the agent. The server still sees nothing until the person sends.
+
 **A card's Open shows its file or its page over the transcript, and a page
 runs in one place.** The viewer (`client/js/viewer.js`) covers the session's
 column, transcript and composer, and leaves the tabs and the panel in reach;

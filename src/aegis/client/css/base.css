@@ -2315,3 +2315,15 @@ body{background:#000}
 #a2 .ctray li .note:focus{border-color:var(--accent)}
 #a2 .pin{position:absolute;transform:translate(-110%,-20%);user-select:none;pointer-events:none}
 #a2 .pin::before{content:attr(data-n);display:block;min-width:16px;height:16px;border-radius:8px;background:var(--accent);color:var(--on-accent);text-align:center;font:600 10px/16px var(--font-chrome)}
+/* Image and PDF annotations (#780). The layer follows the rendered media;
+   only active drawing mode takes its pointer, so a PDF can still scroll. */
+#a2 .visual-annotations{position:relative}
+#a2 .visual-annotations .vatools{position:absolute;z-index:4;top:8px;left:8px;display:flex;align-items:center;gap:5px;padding:4px;background:color-mix(in srgb,var(--surface) 92%,transparent);border:1px solid var(--rule);border-radius:var(--r);box-shadow:0 3px 10px rgba(0,0,0,.18);font:12px var(--font-chrome)}
+#a2 .visual-annotations .vatools .btn[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+#a2 .visual-annotations .vapage{display:flex;align-items:center;gap:4px;color:var(--muted)}
+#a2 .visual-annotations .vapage input{width:44px;padding:3px 4px;border:1px solid var(--rule);border-radius:var(--r);background:var(--bg);color:var(--strong);font:12px var(--font-mono)}
+#a2 .visual-annotations .valayer{position:absolute;z-index:3;pointer-events:none;touch-action:none}
+#a2 .visual-annotations .valayer.active{pointer-events:auto;cursor:crosshair;background:color-mix(in srgb,var(--accent) 4%,transparent)}
+#a2 .visual-annotations .vadraft,#a2 .visual-annotations .vpin{position:absolute;box-sizing:border-box;border:2px solid var(--accent);background:color-mix(in srgb,var(--accent) 15%,transparent);transform:none;pointer-events:none}
+#a2 .visual-annotations .vpin.point{width:18px!important;height:18px!important;border-radius:50%;transform:translate(-50%,-50%)}
+#a2 .visual-annotations .vpin::before{position:absolute;left:-9px;top:-9px}
