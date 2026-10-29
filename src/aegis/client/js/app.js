@@ -275,6 +275,7 @@ $("bell").append(icon("bell"));
 $("settings-btn").prepend(icon("gear"));
 $("journal-btn").append(icon("book"));
 $("knowledge-btn").append(icon("knowledge"));
+$("usage-btn").append(icon("usage"));
 $("files-btn").append(icon("folder"));
 $("schedules-btn").prepend(icon("clock"));
 $("send").append(icon("send"));
@@ -1274,6 +1275,7 @@ function render() {
   $("journal-btn").classList.toggle("on", r.view === "journal");
   if (r.view !== "usage") usage.close();
   $("knowledge-btn").classList.toggle("on", r.view === "knowledge");
+  $("usage-btn").classList.toggle("on", r.view === "usage");
   $("files-btn").classList.toggle("on", r.view === "files");
   $("schedules-btn").classList.toggle("on", r.view === "schedules");
   if (r.view !== "schedules") schedules.close();
@@ -1536,6 +1538,9 @@ function ctxPct(s) {
 
 // The tiles and the card's context: on every patch of the session, rebuilt
 // only when what they show changed.
+// A session's load (load.py): cores over the last minute and RAM.
+const loadText = (l) => `${l.cpu.toFixed(1)} cores · ${l.rss_gb.toFixed(1)} GB`;
+
 function drawSideUsage(s) {
   const now = nowS();
   const p = sideProvider(s);
@@ -1543,6 +1548,8 @@ function drawSideUsage(s) {
   const pct = ctxPct(s);
   const tokens = s.context_tokens != null ? fmtTokens(s.context_tokens) : null;
   const cost = money(s.cost_usd);
+  $("s-load").hidden = !s.load;
+  if (s.load) $("s-load-v").textContent = loadText(s.load);
 
   $("s-tokens").textContent = tokens ?? "no turn yet";
   $("s-of").textContent = tokens == null ? "" : s.context_window ? `of ${fmtTokens(s.context_window)} · ${pct}%` : "tokens";
@@ -3354,6 +3361,7 @@ $("help-btn").addEventListener("click", () => go("#help"));
 $("settings-btn").addEventListener("click", () => go("#settings"));
 $("journal-btn").addEventListener("click", () => go("#journal"));
 $("knowledge-btn").addEventListener("click", () => go("#knowledge"));
+$("usage-btn").addEventListener("click", () => go("#usage"));
 $("files-btn").addEventListener("click", () => go(filesView.path ? filesHash(filesView.path) : "#files"));
 $("schedules-btn").addEventListener("click", () => go("#schedules"));
 keymap.addEventListener("click", (ev) => ev.target === keymap && help(false));

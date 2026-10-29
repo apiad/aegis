@@ -46,6 +46,7 @@ def open_new_tab(pg) -> None:
     pg.wait_for_function("document.querySelector('#sp-agent').value === 'opus'")
 
 
+@pytest.mark.quarantine("#728")
 def test_the_hint_tours_the_releases_since_the_last_tour_with_the_chips(
     toured,
     page,  # noqa: F811

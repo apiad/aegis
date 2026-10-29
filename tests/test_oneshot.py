@@ -72,6 +72,7 @@ def test_argv_uses_open_code_run_in_read_only_plan_mode():
 def test_argv_uses_codex_exec_in_a_read_only_ephemeral_session():
     a = oneshot.argv("/bin/codex", "openai/model", Out, "be brief", harness="codex")
     assert a[:2] == ["/bin/codex", "exec"]
+    assert a[a.index("--model") + 1] == "model"
     assert "--ephemeral" in a and "--json" in a
     assert a[a.index("--sandbox") + 1] == "read-only"
     assert a[-1] == "-" and "be brief" not in a

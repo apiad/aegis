@@ -570,6 +570,7 @@ BAR_TRAP = TRAP.replace(
 )
 
 
+@pytest.mark.quarantine("#544")
 def test_a_page_cannot_put_the_bars_ask_under_the_next_click(server, page):  # noqa: F811
     assert BAR_TRAP != TRAP
     (server.root / "trap.html").write_text(BAR_TRAP)

@@ -101,6 +101,7 @@ The buttons of the session panel and the menus of a tab or a card.
 | `g-gear` | Settings | the top bar |
 | `g-clock` | Schedules; a step's deadline | the top bar, workflows |
 | `g-knowledge` | Knowledge: your skills and memories | the top bar |
+| `g-usage` | Usage: what the work cost | the top bar |
 | `g-search` | Search; a search call | help, the journal, the transcript |
 
 ## Transcript

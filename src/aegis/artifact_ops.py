@@ -147,10 +147,9 @@ def register_artifact_ops(app: App) -> None:
             raise OpError(e.code, e.message) from e
         url = files.url(rec["file_id"], rec["name"])
         landed = False
+        watching = app.channels.subscribers(s.channel)
         try:
-            started = await s.artifacts.probe(
-                a, url, app.channels.subscribers(s.channel)
-            )
+            started = await s.artifacts.probe(a, url, watching)
             if a.status not in ("draft", "live"):
                 # The person answered the old page while the probe ran.
                 raise ArtifactError(
@@ -167,7 +166,7 @@ def register_artifact_ops(app: App) -> None:
                 shutil.rmtree(
                     app.roots.state_root / "files" / rec["file_id"], ignore_errors=True
                 )
-        return {"id": a.id, "url": url, "started": started}
+        return {"id": a.id, "url": url, "started": started, "watching": watching > 0}
 
     # -- agents ------------------------------------------------------------------
     @r.op("artifact.create", ArtifactCreate, agent=True)
@@ -208,9 +207,11 @@ def register_artifact_ops(app: App) -> None:
         the person's browser has this transcript open, run hidden there first:
         a page that throws is refused with `page_error` and the message, and
         nothing is shown, so edit the draft and send again. `started` is true
-        when the page ran, null when no browser was open, or none answered
-        within 3 s (it landed untried; a script error then reaches your inbox
-        when someone opens it). Only then write your message, which may refer to the card above
+        when the page ran, null when it landed untried (a script error then
+        reaches your inbox when someone opens it). `watching` says why: false
+        when no browser had your transcript on screen (the person will see
+        the card when they open your tab), true when one had it but did not
+        answer within 3 s. Only then write your message, which may refer to the card above
         it, and end the turn with turn_end(needs_you) when the page asks
         something. With dock, the page also opens beside the transcript."""
         s = own(caller)

@@ -1,2 +1,0 @@
-- **The Knowledge view.** The Knowledge button in the top bar, or Alt+I, lists your own memories and skills with a search box and an all, skills, memories and flagged filter, proposals first. Open one to edit its file, which saves it approved as one commit and refuses an edit of a file that changed since you opened it, to see its history and restore an earlier version, or to delete it. A proposal's card has an Edit button that opens it there. It works at phone width.
-help: knowledge#the-knowledge-view

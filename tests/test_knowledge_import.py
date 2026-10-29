@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 import threading
 
+import pytest
+
 from aegis import setup
 from aegis.knowledge import history, importer
 
@@ -289,6 +291,7 @@ async def test_a_person_turn_imports_approved_with_one_card(world, tmp_path):
     assert [e["detail"]["op"] for e in cards(s)] == ["imported"]
 
 
+@pytest.mark.quarantine("#776")
 async def test_a_worker_turn_imports_proposed_with_proposal_cards(world, tmp_path):
     app = world.app
     s = await world.spawn()

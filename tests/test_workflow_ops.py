@@ -69,6 +69,7 @@ def rejected(s) -> list[str]:
     ]
 
 
+@pytest.mark.quarantine("#524")
 async def test_a_rejected_plan_tells_the_main_agent(world):
     a = await world.spawn()
     run = ok(

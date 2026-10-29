@@ -269,6 +269,13 @@ export function card(m, onOpen, onClose) {
   bar.append(fill);
   const ft = el("div", "ft");
   ft.append(el("span", "when", ago(m.last_activity)), el("span", null, money(m.cost_usd)));
+  // Its load (load.py), only when there is some: a core or a GB.
+  const ld = m.load;
+  if (ld && (ld.cpu >= 1 || ld.rss_gb >= 1)) {
+    const sp = el("span", "load", `${ld.cpu.toFixed(1)} cores · ${ld.rss_gb.toFixed(1)} GB`);
+    sp.title = "CPU over the last minute and RAM, of this session and everything it started";
+    ft.append(sp);
+  }
   if (m.unread) ft.append(el("span", "unr", `${m.unread} unread`));
   const mons = (m.monitors || []).length;
   if (mons) ft.append(el("span", "mons", `${mons} monitor${mons > 1 ? "s" : ""}`));

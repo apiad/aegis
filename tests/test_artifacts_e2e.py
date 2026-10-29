@@ -52,8 +52,10 @@ async def test_create_send_read_update_close(world, tmp_path):
 
     path.write_text(PAGE)
     sent = ok(await turn(a, mcp("artifact_send", id=made["id"])))
-    assert sent["started"] is None and sent["url"].startswith(
-        "/files/"
+    assert (
+        sent["started"] is None
+        and sent["watching"] is False
+        and sent["url"].startswith("/files/")
     )  # nobody is watching
     (e,) = arts(a)
     assert (
@@ -170,6 +172,22 @@ async def test_a_failed_probe_deletes_the_snapshot_and_lands_nothing(
         )
         == "dropped"
     )
+
+
+async def test_a_probe_nobody_answers_says_a_browser_was_watching(
+    world, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(artifacts, "PROBE_TIMEOUT_S", 0.2)
+    a = await world.spawn()
+    made = ok(await turn(a, mcp("artifact_create", title="T")))
+    (
+        tmp_path / ".aegis" / "state" / "artifacts" / made["id"] / "index.html"
+    ).write_text(PAGE)
+    world.app.channels.subscribe(a.channel, lambda msg: None)  # never answers
+    sent = ok(await turn(a, mcp("artifact_send", id=made["id"])))
+    assert sent["started"] is None and sent["watching"] is True
+    (e,) = arts(a)
+    assert e["status"] == "live"
 
 
 async def landed(world, tmp_path, page=PAGE):

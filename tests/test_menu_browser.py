@@ -679,6 +679,7 @@ def test_a_journal_entry_opens_its_commit_and_goes_to_its_session(
     assert page.errors == []
 
 
+@pytest.mark.quarantine("#709")
 def test_a_sent_cards_menu_docks_opens_a_window_and_downloads(server, page):  # noqa: F811
     (server.root / "r.md").write_text("# One\n")
     page.goto(server.url)

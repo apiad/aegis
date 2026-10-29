@@ -1,2 +1,0 @@
-- **A workflow step shows how far along its wait is.** An `sh` step, or a `check` whose probe is `sh`, takes a `progress:` command that prints 0 to 100, as a monitor's does, and the workflow card draws its bar and percentage in Now and on the step's row. Before, a waiting step showed only its command and how long it had run, so a check nearly done looked the same as one that was stuck.
-help: workflows#commands-checks-and-pauses

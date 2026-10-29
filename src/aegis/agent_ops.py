@@ -42,8 +42,8 @@ TOAST_WINDOW_S = 60.0
 
 # What turn_end answers a session that still has the handle or the title aegis
 # gave it (#586): agents often set the handle and keep the drawn title.
-RENAME_NUDGE = (
-    "noted. This session still has the handle or title aegis gave it. Once the "
+RENAME_LINE = (
+    "This session still has the handle or title aegis gave it. Once the "
     "task is clear, call session_rename with both a handle and a title that say "
     "what this session works on."
 )
@@ -295,6 +295,36 @@ class TurnEnd(_Strict):
 # break the prompt cache. A turn reported done or review is at a break by
 # definition, so the line asks for the brief outright; a real Sonnet ignored
 # the conditional wording on a finished task in 2 of 3 runs.
+# What turn_end tells an agent about the person's view of this turn (#679). A
+# model that worked its answer out in its thinking believes it was shown, so a
+# reminder to "write your final message" is not enough: the reply states what
+# the transcript holds, counted from the stream, where text arrives before the
+# call (Claude Code writes its own log only after the tool returns).
+SEEN_NOTHING = (
+    "The person has seen nothing from you this turn: what you worked out in your "
+    "thinking is not shown to them. Write your full final message now, complete "
+    "on its own: what you found or did, and what you need from them."
+)
+SEEN_SOME = (
+    "This turn the person has seen {k} from you, {n} characters in all; the last "
+    'begins "{head}". If your answer is already there, close with one or two '
+    "lines and do not repeat it. If not, write your full final message now, "
+    "complete on its own."
+)
+
+
+def seen_line(shown: list[str]) -> str:
+    """What turn_end tells the agent the person has seen. The last message's
+    opening, not a verdict: a status line before a tool call is prose too, and
+    only the agent can tell it from an answer."""
+    if not shown:
+        return SEEN_NOTHING
+    head = " ".join(shown[-1].split())
+    head = head if len(head) <= 80 else head[:80].rstrip() + "…"
+    k = f"{len(shown)} message" + ("s" if len(shown) != 1 else "")
+    return SEEN_SOME.format(k=k, n=sum(map(len, shown)), head=head)
+
+
 CONTEXT_LINE = (
     "noted. Your context is {k} tokens, and every turn from here rereads all of it. "
 )
@@ -531,6 +561,7 @@ LISTED = (
     "plan_done",
     "plan_total",
     "plan_clock",
+    "load",
 )
 
 
@@ -1113,7 +1144,9 @@ def register_agent_ops(app: App) -> None:
         """The open sessions on this server, each with its state, what it needs
         (attention and its line, what it waits on), its plan and what it is
         doing now, its model (`model` as configured, `model_id` as the harness
-        resolved it, null until it has) and spend; then each linked server's by
+        resolved it, null until it has), spend, and `load`: the CPU in cores
+        over the last minute and the RAM in GB of it and everything it started,
+        null while it has no process; then each linked server's by
         handle and state alone, as `handle@server`: reach one with
         peer_handoff. A server linked with trust lists its sessions in full,
         with `server`."""
@@ -1498,16 +1531,22 @@ def register_agent_ops(app: App) -> None:
             )
             return (
                 f"noted. aegis archives this session{tree} when this turn ends; "
-                "your final message is the last thing in its tab."
+                "your final message is the last thing in its tab. "
+                + seen_line(s.fold().shown())
             )
         at = app.config.current().context["handoff_at"]
         n = s.context_tokens or 0
         unnamed = not s.worker and not (s.handle_set and s.title_set)
-        if s.worker or p.handoff or not at or n < at:
-            return RENAME_NUDGE if unnamed else "noted"
+        if s.worker:
+            # A worker's final message is its task's result, read by the
+            # enqueuer, not a reply to the person.
+            return "noted"
+        if p.handoff or not at or n < at:
+            said = f"noted. {seen_line(s.fold().shown())}"
+            return f"{said}\n{RENAME_LINE}" if unnamed else said
         then = BRIEF_IF if p.attention == "needs_you" else BRIEF_NOW
         line = CONTEXT_LINE.format(k=f"{round(n / 1000)}k") + then
-        return f"{line}\n{RENAME_NUDGE}" if unnamed else line
+        return f"{line}\n{RENAME_LINE}" if unnamed else line
 
     toasted: dict[str, list[float]] = {}
 

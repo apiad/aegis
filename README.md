@@ -62,8 +62,11 @@ On top of the three CLIs, aegis adds what none has on its own:
   Go's 5-hour, weekly and monthly ones. Each gauge shows how much of the window
   is spent, how much of its time has gone, and where it will land at the reset
   at the current pace. A session's panel shows the windows that session spends.
-- `aegis usage` reports what the work cost, by month, weekday, hour, session or
-  repo, from the transcripts aegis keeps.
+- The Usage page shows what the agents' work cost, live: spend per week by
+  purpose, repo, owner, mode or model, agent hours against time waiting on you,
+  the cost per merged pull request, and each subscription's fee shared over
+  what ran on it, across every linked server. `aegis usage` and the
+  `usage_read` tool answer the same questions from the shell and from agents.
 - Cascades: an agent can name an ordered list of models (`models:`). A session
   starts on the first one that is not cooling and whose quota is open, and a
   turn that fails on quota, a rate limit or an overload falls to the next
@@ -131,6 +134,23 @@ closes from here. An agent here hands work to one there with
 never reach the one that linked it, so a shared server cannot touch your laptop.
 Both servers need aegis 2.4.0 or newer; an older far server refuses the link
 with an HTTP 403, and `aegis link add` says so.
+
+Between two servers only you use, `aegis link add vps <url> --trusted` makes
+the link reach both ways over the same socket, so a laptop behind NAT can be
+reached from the server without a connection of its own. Agents on either side
+then read, spawn, enqueue on and wait on the other's sessions as at home.
+
+## Skills and memories every session finds
+
+aegis keeps each person's skills and memories on the server, as Markdown files
+with a git history, for every harness. Each message to a session carries a
+short block naming the three skills and three memories that may matter, and the
+agent loads one with `skill_read` or `memory_read`. A skill is also a
+`/<name>` command in the composer. What an agent saves without being asked
+waits as a card with Approve and Discard, the Knowledge view (Alt+I) edits
+everything and restores earlier versions, and `/consolidate` proposes merging
+duplicates and dropping what went stale. `/setup` moves in the skills and
+memory files a harness already keeps.
 
 ## Work that runs as a plan
 

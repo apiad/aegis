@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from aegis import notice_sources
+from aegis import notice_sources, notices
 from aegis.commands import parse_announce
 from aegis.config import NOTICES_DEFAULTS, notices_from
 from aegis.notice_ops import until_ts
@@ -278,15 +278,70 @@ def test_a_kind_set_false_never_fires(stub):
     assert stub.notices.pending(stub.a) == "" and not stub.toasts
 
 
-def test_memory_turns_on_under_pressure_and_names_the_sessions_own(stub, tmp_path):
-    (tmp_path / "memory.current").write_text(str(2 * 1024**3))
-    stub.sessions.cgroup_dir = lambda s: tmp_path
-    stub.reading = stub.reading | {
-        "memory": {"pct": 60, "avail_gb": 3.0, "total_gb": 7.6, "psi_full": 8.0}
-    }
+class FakeLoad:
+    def __init__(self, loads: dict[str, dict]):
+        self.loads = loads
+
+    def of(self, log_id):
+        return self.loads.get(log_id)
+
+    def all(self):
+        return dict(self.loads)
+
+
+MEMORY_60 = {"memory": {"pct": 60, "avail_gb": 3.0, "total_gb": 7.6, "psi_full": 8.0}}
+
+
+def test_memory_turns_on_under_pressure_and_names_the_sessions_own(stub):
+    stub.load = FakeLoad({stub.a.log_id: {"cpu": 0.1, "rss_gb": 2.0}})
+    stub.reading = stub.reading | MEMORY_60
     got = stub.notices.pending(stub.a)
     assert "Memory is 60% used: 3.0 GB available of 7.6 GB" in got
-    assert "Your session's processes hold 2.0 GB." in got
+    assert "Your session's processes hold 2.0 GB, the most of any session here." in got
+    assert notices.ACT_TOP["memory"] in got
+
+
+def test_the_heaviest_session_is_told_to_slow_its_own_work_first(stub):
+    stub.load = FakeLoad(
+        {
+            stub.a.log_id: {"cpu": 3.1, "rss_gb": 1.0},
+            stub.b.log_id: {"cpu": 0.2, "rss_gb": 0.5},
+        }
+    )
+    stub.reading = stub.reading | {"cpu": {"pct": 70.0}}
+    top = stub.notices.pending(stub.a)
+    assert (
+        "Your session's processes used 3.1 cores over the last minute, "
+        "the most of any session here." in top
+    )
+    assert notices.ACT_TOP["cpu"] in top and notices.ACT["cpu"] not in top
+    other = stub.notices.pending(stub.b)
+    assert (
+        "Your session's processes used 0.2 cores over the last minute; "
+        f"{stub.a.handle} uses the most, 3.1 cores." in other
+    )
+    assert notices.ACT["cpu"] in other
+
+
+def test_on_a_quiet_host_nobody_is_named_the_heaviest(stub):
+    stub.load = FakeLoad(
+        {
+            stub.a.log_id: {"cpu": 0.4, "rss_gb": 0.3},
+            stub.b.log_id: {"cpu": 0.2, "rss_gb": 0.2},
+        }
+    )
+    stub.reading = stub.reading | {"cpu": {"pct": 70.0}} | MEMORY_60
+    got = stub.notices.pending(stub.b)
+    assert "Your session's processes used 0.2 cores over the last minute." in got
+    assert "Your session's processes hold 0.2 GB." in got
+    assert "the most" not in got and notices.ACT["cpu"] in got
+
+
+def test_a_session_without_a_reading_reads_the_host_figure_alone(stub):
+    stub.load = FakeLoad({})
+    stub.reading = stub.reading | {"cpu": {"pct": 70.0}}
+    got = stub.notices.pending(stub.a)
+    assert "Your session" not in got and notices.ACT["cpu"] in got
 
 
 class Quota:

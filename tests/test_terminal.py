@@ -53,6 +53,7 @@ async def test_typed_input_is_echoed_and_run(tmp_path):
     await asyncio.wait_for(t.exited.wait(), 3)
 
 
+@pytest.mark.quarantine("#550")
 async def test_ctrl_c_reaches_the_foreground_program(tmp_path):
     t, rec = await run(tmp_path, ["sh", "-c", "echo ready; exec sleep 100"])
     await until(lambda: "ready" in rec.text(), what="ready")

@@ -91,6 +91,7 @@ from .doctor_watch import DoctorWatch
 from .confirm import Confirmations
 from .help_ops import register_help_ops
 from .host import HostSampler
+from .load import LoadSampler
 from .net.service import NetService
 from .links import LinkError, Links, probe
 from .mcp import PATH as MCP_PATH, Tokens, build_mcp
@@ -596,6 +597,14 @@ class App:
         self.sessions.nudges = self.nudges
         self.notices = Notices(self)
         self.sessions.notices = self.notices
+        self.load = LoadSampler(
+            lambda: {
+                s.log_id: (s.pid, self.sessions.cgroup_dir(s))
+                for s in self.sessions.open_sessions()
+            },
+            self.sessions.load_changed,
+        )
+        self.sessions.load = self.load
         self.watchers = Watchers()
         self.parker = Parker(
             self.sessions, lambda: self.config.current().park, self.watchers
@@ -1080,6 +1089,7 @@ class App:
         self.workflows.start()
         self.quota.start()
         self.host.start()
+        self.load.start()
         self.net.start()
         self.nudges.start()
         self.notices.start()
@@ -1150,6 +1160,7 @@ class App:
         await self.notices.stop()
         await self.quota.stop()
         await self.host.stop()
+        await self.load.stop()
         await self.net.stop()
         await self.monitors.shutdown()
         await self.recaps.shutdown()

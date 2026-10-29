@@ -1,2 +1,0 @@
-- **Autoclose: a session closes itself once its agent finishes.** Turn it on with the Autoclose button in the session panel, the card or tab menu, or `/autoclose`; while it is on, `turn_end` refuses done without `close`, so the agent ends done and closes, or ends with review or needs_you. Before, a session closed only when you remembered to tell its agent to close when done.
-help: sessions#autoclose

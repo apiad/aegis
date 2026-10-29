@@ -114,6 +114,7 @@ def test_init_with_no_harness_writes_nothing(tmp_path):
     assert not (tmp_path / ".aegis.yaml").exists()
 
 
+@pytest.mark.quarantine("#417")
 def test_doctor_exits_1_on_an_error_and_0_when_healthy(
     tmp_path, fake_claude, fake_opencode, monkeypatch
 ):

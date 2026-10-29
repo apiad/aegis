@@ -1,2 +1,0 @@
-- **The slash menu completes `/spawn`'s agent, its flags and their values.** `/spawn ` lists this server's agents, then each linked server's as `agent@server`; `-` lists the flags, and `--model`, `--effort` and `--permission` list their values. `/announce` completes its flags too. Before, every one of them had to be typed from memory, and a typo showed only as an error after sending.
-help: commands#slash-commands
