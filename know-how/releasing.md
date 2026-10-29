@@ -126,7 +126,10 @@ no user-facing doc.
 5. Bump `version` in `pyproject.toml`.
 6. **Bump the `aegis-harness` version line in `uv.lock`** (surgical edit),
    then verify with `uv sync --inexact --locked --group dev`.
-7. Run the canary on the commit you are about to tag:
+7. Read the last `nightly.yml` run on the commit you are about to tag (run
+   it by hand if it is older): its slow shards must be green, and its
+   quarantine summary names any flaky test to read before tagging (#776).
+   Run the canary on that commit:
    `gh workflow run canary.yml --ref main`, then read
    `gh issue list --label canary`. An open canary issue is a harness that
    does not work under this release; fix it or name it in the release notes.

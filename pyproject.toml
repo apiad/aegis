@@ -82,6 +82,7 @@ markers = [
     "canary: drives the published harnesses against a fake model; skipped unless `--run-canary` (`make canary`)",
     "browser: drives headless Chromium through Playwright; needs `playwright install chromium`",
     "multiuser: runs aegis as a service user with capabilities and real Linux users; skipped unless `--run-multiuser` (`make test-multiuser`)",
+    "quarantine(issue): a known flaky test, out of the PR gate, `make test` and the release run until its issue is fixed; nightly.yml and `make test-quarantine` run it (#776)",
     "slow: 1.5s or more serially, setup and teardown included; `make test` deselects it, `make test-slow` and `make test-all` run it",
 ]
 

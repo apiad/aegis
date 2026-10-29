@@ -116,6 +116,7 @@ root:
 
 
 @pytest.mark.slow
+@pytest.mark.quarantine("#561")
 async def test_a_restart_mid_map_keeps_its_items_and_its_cap(world):
     wf_text = f"""
 id: again

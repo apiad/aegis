@@ -48,6 +48,7 @@ def tap(page, x: int, y: int) -> None:
     page.mouse.click(r["l"] + x * r["sx"], r["t"] + y * r["sy"])
 
 
+@pytest.mark.quarantine("#583")
 def test_the_pane_streams_the_page_and_a_click_on_it_reaches_the_page(
     server,
     browser,  # noqa: F811
@@ -65,6 +66,7 @@ def test_the_pane_streams_the_page_and_a_click_on_it_reaches_the_page(
     )
 
 
+@pytest.mark.quarantine("#583")
 def test_the_pane_types_into_the_focused_field(server, browser, site):  # noqa: F811
     card = server.call("browser.spawn", {"url": site})
     page = browser.new_page()

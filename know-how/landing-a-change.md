@@ -110,7 +110,13 @@ per round of review fixes. In #506, a merged PR cost about 9 CI runs.
 ### What CI runs, and how long it should take
 
 `ci.yml` has four jobs: `gates`, the `fast` lane with coverage in its
-summary, `slow` in four shards, and `bench` on PRs. Each job's
+summary, `multiuser`, and `bench` on PRs. Until the fair release (#768) the
+`slow` shards run in `nightly.yml`, every night and by hand
+(`gh workflow run nightly.yml`), and no merge waits on them. A test that
+fails on a PR for a reason the PR did not touch is read in full first (#770
+was a fixed date, not a flake); if it is a flake, mark it
+`@pytest.mark.quarantine("#N")` with its issue and add it to #776, rather than
+re-running until it passes. Each job's
 `timeout-minutes` comment states how long the job should take. A job that
 keeps running past that time is a regression in the suite. Open an issue
 with the slowest tests (`--durations=20`) instead of raising the timeout. #353
