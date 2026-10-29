@@ -1,0 +1,61 @@
+"""Typed access to an aegis server from another program (help page ``library``)."""
+
+from .models import (
+    NodeInfo,
+    OpenItem,
+    RunInfo,
+    ScheduleInfo,
+    TaskInfo,
+    AnyEntry,
+    Entry,
+    ErrorNote,
+    Event,
+    OtherEntry,
+    PlanItem,
+    Prose,
+    SessionInfo,
+    SystemNote,
+    Thinking,
+    ToolCall,
+    Turn,
+    TurnEnded,
+    UserMessage,
+)
+from .queues import Queues, Task, TaskNotFound
+from .schedules import Schedule, ScheduleNotFound, Schedules
+from .sessions import Session, SessionNotFound, Sessions
+from .workflows import RunNotFound, WorkflowRun, Workflows
+
+__all__ = [
+    "AnyEntry",
+    "Entry",
+    "ErrorNote",
+    "Event",
+    "NodeInfo",
+    "OpenItem",
+    "OtherEntry",
+    "PlanItem",
+    "Prose",
+    "Queues",
+    "RunInfo",
+    "RunNotFound",
+    "Schedule",
+    "ScheduleInfo",
+    "ScheduleNotFound",
+    "Schedules",
+    "Session",
+    "SessionInfo",
+    "SessionNotFound",
+    "Sessions",
+    "SystemNote",
+    "Task",
+    "TaskInfo",
+    "TaskNotFound",
+    "Thinking",
+    "ToolCall",
+    "Turn",
+    "TurnEnded",
+    "UserMessage",
+    "WorkflowRun",
+    "Workflows",
+]

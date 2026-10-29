@@ -58,7 +58,7 @@ from . import files, fs_paths
 from .app import App
 from .as_user import Place
 from .channels import Sub
-from .links import PROTO
+from .links import PROTO, Backlink
 from .ops import Caller, OpError
 from .version import running
 from .tokens import load_or_create_token  # noqa: F401 — cli and tests import it from here
@@ -378,6 +378,19 @@ def build_web(
         "display": "standalone",
         "background_color": "#11100e",
         "theme_color": "#0b0a09",
+        # Android lists the installed app as a share target (#735). The service
+        # worker takes the POST (sw.js stash); share_fallback below when none runs.
+        "share_target": {
+            "action": "/share",
+            "method": "POST",
+            "enctype": "multipart/form-data",
+            "params": {
+                "title": "title",
+                "text": "text",
+                "url": "url",
+                "files": [{"name": "files", "accept": ["*/*"]}],
+            },
+        },
         "icons": [
             {
                 "src": "/static/icons/aegis-192.png",
@@ -407,6 +420,12 @@ def build_web(
         )
         doc["bytes"] = sum(f["bytes"] for f in doc["files"])
         return doc
+
+    async def share_fallback(request):
+        """A share that reached the server: no service worker took it, as when
+        the one running predates share targets. The body is never read, since
+        the route takes no token; the person gets an empty New session form."""
+        return RedirectResponse("/#new", status_code=303)
 
     async def files_list(request):
         """What the service worker downloads to open the client offline (sw.js)."""
@@ -499,7 +518,11 @@ def build_web(
         p = request.path_params
         host = request.headers.get("host", "")
         link = app.links.get(p["server"])
-        if link is None or not (host in allowed_hosts or host in public):
+        if (
+            link is None
+            or link.url is None
+            or not (host in allowed_hosts or host in public)
+        ):
             return PlainTextResponse("Not Found", status_code=404)
         download = request.query_params.get("download") == "1"
         # A download asks the far server for one too: its preview of a page
@@ -598,6 +621,19 @@ def build_web(
         out: asyncio.Queue[dict] = asyncio.Queue()
         # This socket's subscriptions forwarded down links: <bid>:<channel>.
         bid = secrets.token_hex(6)
+        # A link asking for trust (#684): granted, it is also this server's way
+        # back to the server that opened it (links.Backlink).
+        asked = isinstance(link, dict) and link.get("trusted") is True
+        refused = app.trust_refusal(principal, str(via)) if asked else None
+        back: Backlink | None = None
+        if asked and refused is None:
+
+            def still() -> str | None:
+                if app.principals.resolve(given) != principal:
+                    return "the link's token was revoked"
+                return app.trust_refusal(principal, str(via))
+
+            back = Backlink(str(via), out.put_nowait, still, app.links.detach)
 
         async def writer() -> None:
             while True:
@@ -684,7 +720,15 @@ def build_web(
                 # Whose a session with no owner is: the admin's (tokens.py).
                 "owner": app.principals.owner,
             }
+            | (
+                {"trusted": back is not None}
+                | ({"trust_refused": refused} if refused else {})
+                if asked
+                else {}
+            )
         )
+        if back is not None:
+            app.links.attach(back)
         write_task = asyncio.create_task(writer())
         subs: dict[str, Sub] = {}
         forwarded: dict[str, tuple] = {}  # sid -> (link, server, channel)
@@ -711,6 +755,8 @@ def build_web(
                     task = asyncio.create_task(handle_call(msg))
                     calls.add(task)
                     task.add_done_callback(calls.discard)
+                elif t == "rreply" and back is not None:
+                    back.resolve(msg)
                 elif t in ("sub", "unsub"):
                     ch = str(msg.get("channel"))
                     server = msg.get("server")
@@ -808,6 +854,9 @@ def build_web(
                     continue
                 if link is not None:
                     link.watch(f"{bid}:{server}", None)
+            if back is not None:
+                back.lost()
+                app.links.detach(back)
             write_task.cancel()
 
     @contextlib.asynccontextmanager
@@ -822,6 +871,7 @@ def build_web(
         routes=[
             Route("/", index),
             Route("/login", login, methods=["POST"]),
+            Route("/share", share_fallback, methods=["POST"]),
             Route("/manifest.webmanifest", webmanifest),
             Route("/sw.js", service_worker),
             Route("/client-files.json", files_list),

@@ -30,7 +30,7 @@ from aegis.doctor import detect
 URL = "https://artificialanalysis.ai/api/v2/language/models/free"
 OUT = Path(__file__).resolve().parents[1] / "src" / "aegis" / "data" / "models.json"
 HARNESSES = ("claude-code", "opencode")
-BINS = {"claude-code": "claude", "opencode": "opencode", "codex": "codex"}
+BINS = {"claude-code": "claude", "opencode": "opencode", "codex": "codex", "cursor": "cursor-agent"}
 
 # Catalog id -> Artificial Analysis slug, for names that do not normalize.
 ALIASES: dict[str, str] = {

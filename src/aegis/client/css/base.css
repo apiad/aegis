@@ -201,7 +201,7 @@ body{background:#000}
 #a2 .login input{background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:10px 12px;font-size:15px;color:var(--strong)}
 
 /* the new-tab composer */
-#a2 .spawn{width:min(640px,100%);display:grid;gap:10px;justify-items:center}
+#a2 .spawn{width:min(640px,100%);display:grid;grid-template-columns:minmax(0,1fr);gap:10px;justify-items:center}
 /* The brand, the same in every theme: the Gorgoneion in the accent, and ægis
    in Source Serif 4 whatever the theme's heading font. */
 #a2 .spawn .mark{display:flex;align-items:center;gap:12px;font-family:'SS4',serif;font-weight:600;font-size:30px;line-height:1;color:var(--strong)}
@@ -498,6 +498,9 @@ body{background:#000}
 #a2 :is(.composer,.spawn) .box.stacked{flex-wrap:wrap}
 #a2 :is(.composer,.spawn) .box.stacked textarea{flex:1 0 100%;padding-bottom:0}
 #a2 :is(.composer,.spawn) .box.stacked .acts{margin-left:auto;padding-top:4px}
+/* A touch screen opens the focused box two lines tall at once (#707): 16 px
+   of top padding over two 24 px lines. */
+@media (pointer:coarse){#a2 .composer .box.stacked textarea{min-height:64px}}
 #a2 .composer .acts .send{font-size:15px;line-height:1;padding:6px 12px;font-weight:600}
 #a2 .composer.sending .acts .send{position:relative;opacity:1;cursor:progress}#a2 .composer.sending .acts .send .ic{visibility:hidden}
 #a2 .composer.sending .acts .send::after{content:"";position:absolute;inset:0;margin:auto;width:13px;height:13px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:a2spin .8s linear infinite}
@@ -659,12 +662,17 @@ body{background:#000}
 /* the actions: one row of equal cells, labels dropped on a narrow panel */
 #a2 .side-acts{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:6px;margin-top:auto}
 #a2 .side-acts.read-only{grid-template-columns:minmax(0,1fr)}
+/* Six live actions: two rows of three, so each label fits (#691). */
+#a2 .side-acts.live-only{grid-auto-flow:row;grid-template-columns:repeat(3,minmax(0,1fr))}
 #a2 .act{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-width:0;padding:8px 4px 7px;border:1px solid var(--rule);border-radius:var(--r);background:var(--surface);color:var(--ink);font-size:11.5px;cursor:pointer}
 #a2 .act svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;color:var(--muted)}
 #a2 .act:hover:not(:disabled){border-color:var(--faint);color:var(--strong)}
 #a2 .act:hover:not(:disabled) svg{color:var(--strong)}
 #a2 .act.stop:hover:not(:disabled),#a2 .act.stop:hover:not(:disabled) svg{border-color:var(--err);color:var(--err)}
 #a2 .act:disabled{opacity:.4;cursor:default}
+/* A toggle that is on (Autoclose, #691): accent tile, accent icon. */
+#a2 .act[aria-pressed=true]{border-color:var(--accent);background:var(--accent-soft);color:var(--strong)}
+#a2 .act[aria-pressed=true] svg{color:var(--accent)}
 /* An archived session's one action: the same tile, its icon in the accent. */
 #a2 .act.reopen svg{color:var(--accent)}
 #a2 .side.narrow .side-acts .act{padding:9px 4px}
@@ -733,8 +741,13 @@ body{background:#000}
 #a2 .card.asleep.at-error{opacity:1}
 #a2 .card .hd{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px}
 #a2 .card .hd>*{white-space:nowrap}
+#a2 .card .hd .badge{max-width:100%;box-sizing:border-box;overflow:hidden;text-overflow:ellipsis}
+#a2 .card .hd .badge.wf{display:inline-flex;white-space:pre}
+#a2 .card .hd .badge.wf .t{min-width:0;overflow:hidden;text-overflow:ellipsis}
 #a2 .card .hd .h{font-family:var(--font-chrome);color:var(--strong);font-weight:500}
 #a2 .card .hd .s{color:var(--faint);font-family:var(--font-chrome);margin-left:auto}
+/* A card waiting on many sessions names them all here (#738): shrink and cut it, or it widens the Fleet past a phone. */
+#a2 .card .hd .s{min-width:0;overflow:hidden;text-overflow:ellipsis}
 #a2 .card .hd .btn.archive{padding:2px 9px;font-size:11.5px;font-family:var(--font-chrome);flex:none}
 #a2 .card .hd .btn.archive:hover{border-color:var(--faint)}
 #a2 .card .ttl{font-family:var(--font-head);color:var(--strong);font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -815,10 +828,19 @@ body{background:#000}
 #a2 .apcard .apcmds,#a2 .sch-wf .apcmds{margin:2px 12px 8px;font-size:12.5px;white-space:pre-wrap;overflow-wrap:anywhere}
 #a2 .apcard>.runs,#a2 .sch-wf>.runs{display:block;padding:2px 12px;font-size:12.5px;color:var(--muted)}
 #a2 .wfcard .wfwho{padding:6px 12px;color:var(--muted);font-size:12.5px;overflow-wrap:anywhere;border-bottom:1px solid var(--rule)}
-#a2 .wfcard .wfargs{display:grid;grid-template-columns:72px minmax(0,1fr);gap:4px 12px;margin:0;padding:8px 12px;font-size:12.5px;border-bottom:1px solid var(--rule)}
-#a2 .wfcard .wfargs dt{color:var(--muted);font-family:var(--font-mono);font-size:11.5px;overflow-wrap:anywhere}
-#a2 .wfcard .wfargs dd{margin:0;min-width:0;overflow-wrap:anywhere}
-@media (max-width:640px){#a2 .wfcard .wfargs{grid-template-columns:1fr}#a2 .wfcard .wfargs dt{margin-top:4px}}
+#a2 .wfcard .wfargs{margin:0;padding:6px 12px;font-size:12.5px;border-bottom:1px solid var(--rule)}
+#a2 .wfcard .wfarg{min-width:0}
+#a2 .wfcard .wfarg.inline,#a2 .wfcard .wfarg>summary{display:flex;gap:10px;align-items:baseline;padding:2px 0;min-width:0}
+#a2 .wfcard .wfarg>summary{cursor:pointer;list-style:none}
+#a2 .wfcard .wfarg>summary::-webkit-details-marker{display:none}
+#a2 .wfcard .wfarg>summary>svg{color:var(--muted);width:12px;height:12px;flex:none;align-self:center}
+#a2 .wfcard .wfarg.inline::before{content:"";width:12px;flex:none}
+#a2 .wfcard .wfarg .k{color:var(--muted);font-family:var(--font-mono);font-size:11.5px;flex:none;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#a2 .wfcard .wfarg .v{min-width:0;overflow-wrap:anywhere}
+#a2 .wfcard .wfarg>summary .v{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+#a2 .wfcard .wfarg>.text{white-space:pre-wrap;overflow-wrap:anywhere;margin:2px 0 8px 18px;max-height:24em;overflow:auto}
+#a2 .wfcard .wfarg>.md .fence{margin:2px 0 8px 18px}
+#a2 .wfcard .wfarg>.md .fence pre{max-height:24em;overflow:auto}
 #a2 .wfcard[data-status=armed]{border-color:var(--warn)}
 #a2 .wfcard .wflede{padding:8px 12px;font-family:var(--font-prose);font-size:14.5px;border-bottom:1px solid var(--rule)}
 #a2 .wfcard .story{padding:8px 12px;border-bottom:1px solid var(--rule);font-size:13px}
@@ -862,6 +884,7 @@ body{background:#000}
 #a2 .wfcard .wfhead{padding:6px 12px 8px;border-bottom:1px solid var(--rule);font-family:var(--font-mono);font-size:11.5px;color:var(--muted)}
 #a2 .wfcard .wfhead .bar{height:4px;background:var(--raised);border-radius:2px;margin-top:5px;overflow:hidden}
 #a2 .wfcard .wfhead .bar i{display:block;height:100%;background:var(--ok)}
+#a2 .wfcard .wfhead .eta{display:block;margin-top:5px}
 #a2 .wfcard .wfnow{padding:6px 12px;border-bottom:1px solid var(--rule)}
 #a2 .wfcard .wfnow h5{margin:0 0 4px;font:500 10.5px var(--font-mono);color:var(--faint)}
 #a2 .wfcard .nowline{display:flex;gap:8px;align-items:baseline;padding:2px 0;font-size:12.5px;min-width:0}
@@ -871,6 +894,10 @@ body{background:#000}
 #a2 .wfcard .nowline .dot.running{background:var(--accent);border-color:var(--accent)}
 #a2 .wfcard .nowline .dot.queued{border-style:dashed;border-color:var(--accent)}
 #a2 .wfcard .nowline .dur{padding-top:0}
+#a2 .wfcard .nowline{flex-wrap:wrap}
+#a2 .wfcard .nowline .pct{font-family:var(--font-mono);font-size:10.5px;color:var(--strong)}
+#a2 .wfcard .nowline .bar{flex-basis:100%;height:4px;margin:2px 0 4px 16px;--fill:var(--ok)}
+#a2 .wfcard .wfrow .out .bar{height:4px;margin:4px 0 0;max-width:240px;--fill:var(--ok)}
 #a2 .wfcard a.who{color:var(--comms);text-decoration:underline}
 #a2 .wfcard .tags .see{background:none;border:1px solid var(--accent-soft);border-radius:3px;padding:0 4px;font:inherit;color:var(--accent);cursor:pointer;overflow-wrap:anywhere;text-align:left}
 #a2 .wfcard .tags .see.bad{color:var(--err)}
@@ -919,6 +946,9 @@ body{background:#000}
 #a2 .ccard .cdiff .del{color:var(--err)}
 #a2 .ccard .cdiff .at,#a2 .ccard .cdiff .h{color:var(--faint)}
 #a2 .ccard .sbody.why{color:var(--ink)}
+#a2 .kcard .kbody{color:var(--ink);max-height:240px}
+#a2 .kcard .krow{display:flex;align-items:center;gap:8px;padding:6px 12px;border-top:1px solid var(--rule);background:var(--bg);font-size:13px}
+#a2 .kcard .krow .kwhat{flex:1;min-width:0;overflow-wrap:anywhere}
 @media (pointer:coarse){#a2 .scard .btn,#a2 .scard .sform input{min-height:44px}}
 #a2 .fcard .stage{border-top:1px solid var(--rule);background:var(--bg)}
 #a2 .fcard .stage.image{display:flex;justify-content:center;padding:12px}
@@ -1070,6 +1100,10 @@ body{background:#000}
 #a2 .row.inbox .from{font-family:var(--font-mono);font-size:11.5px;color:var(--comms);margin-bottom:4px}
 #a2 .row.inbox .from .steered{display:inline-block;margin-left:8px;font-size:10.5px;color:var(--accent);border:1px solid var(--rule);border-radius:999px;padding:0 7px}
 #a2 .row.inbox .md{font-size:14px;color:var(--ink)}
+#a2 .row.inbox.err .g,#a2 .row.inbox.err .from{color:var(--err)}
+#a2 .row.inbox.err .body{border-left-color:var(--err)}
+#a2 .row.inbox details>summary{cursor:pointer;font-family:var(--font-mono);font-size:11.5px;color:var(--faint);margin-top:4px}
+#a2 .row.inbox .outfile{font-family:var(--font-mono);font-size:11.5px;color:var(--faint);margin-top:4px;overflow-wrap:anywhere}
 #a2 .mon .kv>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* a monitor's row: ETA on the right, a broken check in red; its card opens on hover (js/monitors.js) */
 #a2 .mon{margin:0 -8px 4px;padding:4px 8px 6px;border-radius:var(--r);cursor:default;outline:none}
@@ -1260,6 +1294,7 @@ body{background:#000}
 #a2 .st .ic{width:13px;height:13px}
 #a2 .plan{display:grid;gap:5px;font-size:12.5px}
 #a2 .plan div{display:grid;grid-template-columns:16px 1fr auto;gap:6px;color:var(--muted)}
+#a2 .plan div>span{min-width:0;overflow-wrap:anywhere}
 #a2 .plan>.done{color:var(--faint)}#a2 .plan>.doing{color:var(--strong)}
 #a2 .plan .ic{width:12px;height:12px;margin-top:3px}#a2 .plan:not(.live) .ic.work{animation:none}
 #a2 .plan .t{color:var(--faint);font-family:var(--font-chrome);font-size:11.5px}
@@ -1435,7 +1470,7 @@ body{background:#000}
 #a2 .set-empty{width:min(520px,100%);margin:12vh auto 0;padding:0 24px;display:grid;gap:14px;justify-items:start;font-size:14px;line-height:1.55;color:var(--ink)}
 #a2 .set-empty p{margin:0}
 #a2 .set-empty code{font-family:var(--font-mono);font-size:12.5px;color:var(--strong)}
-#a2 #settings-btn.on,#a2 #journal-btn.on,#a2 #files-btn.on,#a2 #schedules-btn.on,#a2 #help-btn.on{color:var(--accent)}
+#a2 #settings-btn.on,#a2 #journal-btn.on,#a2 #knowledge-btn.on,#a2 #usage-btn.on,#a2 #files-btn.on,#a2 #schedules-btn.on,#a2 #help-btn.on{color:var(--accent)}
 @media (max-width:640px){#a2 .set-agent{grid-template-columns:1fr}#a2 .set-card-foot,#a2 .set-agent > .set-why{grid-column:1}#a2 .set-findings li{grid-template-columns:1fr;gap:2px}}
 
 /* the Files view (js/files.js): a bar with the path and Save, the folder tree
@@ -1536,6 +1571,148 @@ body{background:#000}
 #a2 .jcount:empty{display:none}
 #a2 .journal .empty{padding:36px 2px;text-align:center}
 #a2 .journal .jmore{display:block;margin:16px auto 0}
+/* usage: the usage page (js/usage.js). The server decides every number,
+   width and shade; colours c0..c7 are its series, l0..l4 its heat levels.
+   Below 640 px the panels stack in the spec's order and the heat grids
+   scroll inside their panel. */
+#a2[data-view=usage] .v-usage{display:flex;flex-direction:column;overflow:auto}
+#a2 .usage{--u0:var(--accent);--u1:var(--ok);--u2:var(--warn);--u3:var(--comms);--u4:var(--err);--u5:color-mix(in oklab,var(--accent) 50%,var(--ok));--u6:color-mix(in oklab,var(--warn) 50%,var(--err));--u7:var(--muted);max-width:1180px;width:100%;margin:0 auto;padding:18px 24px 32px;font-family:var(--font-ui);font-size:13px;box-sizing:border-box}
+#a2 .usage .c0{background:var(--u0)}#a2 .usage .c1{background:var(--u1)}#a2 .usage .c2{background:var(--u2)}#a2 .usage .c3{background:var(--u3)}
+#a2 .usage .c4{background:var(--u4)}#a2 .usage .c5{background:var(--u5)}#a2 .usage .c6{background:var(--u6)}#a2 .usage .c7{background:var(--u7)}
+#a2 .usage .l1{background:color-mix(in oklab,var(--accent) 18%,var(--bg))}#a2 .usage .l2{background:color-mix(in oklab,var(--accent) 38%,var(--bg))}
+#a2 .usage .l3{background:color-mix(in oklab,var(--accent) 62%,var(--bg))}#a2 .usage .l4{background:color-mix(in oklab,var(--accent) 88%,var(--bg));color:var(--on-accent)}
+#a2 .uhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+#a2 .uhead b{font:500 15px var(--font-mono);color:var(--strong)}
+#a2 .ulive{font:11px var(--font-mono);color:var(--ok);display:inline-flex;align-items:center;gap:6px}
+#a2 .ulive i{width:7px;height:7px;border-radius:50%;background:var(--ok);display:inline-block}
+#a2 .uctl{display:flex;flex-wrap:wrap;gap:10px 16px;padding:10px 0 12px}
+#a2 .uctl label{font:10.5px var(--font-mono);color:var(--faint);text-transform:uppercase;letter-spacing:.04em;display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
+#a2 .useg{display:inline-flex;flex-wrap:wrap}
+#a2 .useg button{font:11.5px var(--font-mono);background:var(--bg);color:var(--muted);border:1px solid var(--rule);padding:3px 9px;cursor:pointer;text-transform:none;letter-spacing:0;margin:0 -1px -1px 0}
+#a2 .useg button.on{color:var(--on-accent);background:var(--accent);border-color:var(--accent)}
+#a2 .uchips{display:inline-flex;gap:5px;flex-wrap:wrap}
+#a2 .uchip{font:11px var(--font-mono);border:1px solid var(--rule);border-radius:999px;padding:1px 8px;color:var(--faint);text-transform:none;letter-spacing:0;background:none;cursor:pointer}
+#a2 .uchip.on{color:var(--strong);border-color:var(--faint)}
+#a2 .utiles,#a2 .ugrid{display:grid;gap:1px;background:var(--rule);border:1px solid var(--rule);border-bottom:0}
+#a2 .utiles{grid-template-columns:repeat(5,minmax(0,1fr))}
+#a2 .ugrid{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)}
+#a2 .utile{background:var(--bg);padding:10px 14px;min-width:0}
+#a2 .utile .k{font:10.5px var(--font-mono);color:var(--faint);text-transform:uppercase;letter-spacing:.04em}
+#a2 .utile .v{font:500 20px var(--font-mono);color:var(--strong);margin:2px 0;white-space:nowrap}
+#a2 .utile .chg{font-size:12px;color:var(--muted)}
+#a2 .utile .d{font-size:11.5px;color:var(--muted);line-height:1.35}
+#a2 .usage .pane{background:var(--bg);padding:12px 14px;min-width:0}
+#a2 .usage>.pane{border:1px solid var(--rule);border-bottom:0}
+#a2 .usage .pane h5{margin:0 0 2px;font:500 12px var(--font-mono);color:var(--strong);display:flex;align-items:center;gap:8px}
+#a2 .usage .pane .h{font-size:11.5px;color:var(--faint);margin-bottom:8px}
+#a2 .uclose{margin-left:auto;background:none;border:0;color:var(--muted);font-size:16px;cursor:pointer;padding:0 4px}
+#a2 .ulegend{display:flex;flex-wrap:wrap;gap:4px 10px;font:11px var(--font-mono);color:var(--muted);margin:0 0 8px}
+#a2 .ulegend span{display:inline-flex;align-items:center;gap:5px;min-width:0}
+#a2 .ulegend i{width:9px;height:9px;border-radius:2px;display:inline-block;flex:none}
+#a2 .utrend{display:flex;gap:3px;height:140px;align-items:stretch}
+#a2 .ucol{flex:1;min-width:0;display:flex;flex-direction:column}
+#a2 .ubar{flex:1;display:flex;flex-direction:column-reverse;gap:1px;background:var(--surface);border-radius:3px 3px 0 0;overflow:hidden}
+#a2 .ulab{font:10px var(--font-mono);color:var(--faint);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:clip;margin-top:3px}
+#a2 .uhb{display:grid;grid-template-columns:180px minmax(0,1fr) 72px;gap:8px;align-items:center;margin:5px 0;font:11.5px var(--font-mono)}
+#a2 .uhb .nm{color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#a2 .uhb .vv{color:var(--strong);text-align:right;white-space:nowrap}
+#a2 .ustack{display:flex;height:12px;border-radius:3px;overflow:hidden;gap:1px;background:var(--surface)}
+#a2 .ustack div{height:100%}
+#a2 .usage table{width:100%;border-collapse:collapse;font:11.5px var(--font-mono)}
+#a2 .usage th{color:var(--faint);font-weight:400;text-align:right;padding:4px 6px;border-bottom:1px solid var(--rule);white-space:nowrap}
+#a2 .usage td{text-align:right;padding:4px 6px;border-bottom:1px solid var(--rule);white-space:nowrap;color:var(--ink)}
+#a2 .usage th:first-child,#a2 .usage td:first-child{text-align:left}
+#a2 .uheat td{text-align:center}
+#a2 .uheat td:first-child,#a2 .uheat td.tot{text-align:left}
+#a2 .uwhen{table-layout:fixed}
+#a2 .uwhen td{padding:0;height:14px;border:1px solid var(--bg)}
+#a2 .uwhen th{padding:2px;font-size:10px;border:0;text-align:left}
+#a2 .uwhen tr>th:first-child{width:32px}
+#a2 .uscroll{overflow-x:auto}
+#a2 .uhit,#a2 .qlink{cursor:pointer}
+#a2 .qlink:hover{color:var(--accent)}
+#a2 .uhit:hover,#a2 .uhit:focus-visible{outline:1px solid var(--accent);outline-offset:-1px}
+#a2 .ufoot{padding:8px 14px;font:11px var(--font-mono);color:var(--faint);border:1px solid var(--rule)}
+#a2 .unote{color:var(--faint);font-size:12px;margin:4px 0}
+#a2 .udrill{border:1px solid var(--accent)!important}
+#a2 .ulist{display:flex;flex-direction:column}
+#a2 .urow{display:flex;justify-content:space-between;gap:10px;padding:5px 2px;border-bottom:1px solid var(--rule);font:11.5px var(--font-mono);color:var(--ink);text-decoration:none}
+#a2 .urow:hover{color:var(--strong)}
+#a2 .urow .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+#a2 .urow .vv{white-space:nowrap;color:var(--muted)}
+#a2 .usage .urest{background:color-mix(in oklab,var(--muted) 70%,var(--bg))}
+#a2 .usub+.usub{margin-top:14px}
+#a2 .usub .uhd{display:flex;justify-content:space-between;gap:4px 10px;flex-wrap:wrap;font:11.5px var(--font-mono);color:var(--strong);margin-bottom:6px}
+#a2 .usub .ulegend{margin:6px 0 0}
+#a2 .ucx{display:flex;flex-direction:column;gap:2px;min-width:0}
+#a2 .ucx .ustack{height:6px}
+#a2 .uhb.mark .nm{color:var(--accent)}
+@media (max-width:640px){
+  #a2 .usage{padding:12px 10px 24px}
+  #a2 .utiles{grid-template-columns:1fr 1fr}
+  #a2 .utile:last-child:nth-child(odd){grid-column:1/-1}
+  #a2 .ugrid{grid-template-columns:1fr}
+  #a2 .uhb{grid-template-columns:86px minmax(0,1fr) 62px}
+  #a2 .useg button{min-height:34px;padding:6px 11px}
+  #a2 .uwhen th{font-size:9px;padding:1px}
+  #a2 .utile .v{font-size:17px}
+}
+
+/* The Knowledge view (js/knowledge.js): the Journal's box and chips, rows as
+   in the spec's mockup, and beside them the open item: its text in the
+   editor, Save and Delete, and its history. Below 640 px the rows drop the
+   usage column and the open item takes the list's place. */
+#a2[data-view=knowledge] .v-knowledge{display:flex;flex-direction:column;overflow:auto}
+#a2 .knowledge{max-width:1180px;width:100%;margin:0 auto;padding:22px 28px 32px;font-size:13px}
+#a2 .knowledge .kpanes{display:flex;gap:18px;align-items:flex-start;margin-top:14px}
+#a2 .knowledge .klist{flex:1 1 0;min-width:0;border:1px solid var(--rule);border-radius:var(--r-lg);overflow:hidden;background:var(--bg)}
+#a2 .knowledge .klist .empty{padding:24px 14px;color:var(--muted);text-align:center}
+#a2 .krow{display:grid;grid-template-columns:22px minmax(0,1fr) auto auto;gap:3px 12px;padding:9px 12px;border-bottom:1px solid var(--rule);align-items:baseline;cursor:pointer}
+#a2 .krow:last-child{border-bottom:0}
+#a2 .krow:hover,#a2 .krow:focus-visible{background:color-mix(in srgb,var(--ink) 5%,transparent);outline:none}
+#a2 .krow.on{background:var(--accent-soft)}
+#a2 .krow .ic{align-self:center;color:var(--faint);display:grid;place-items:center}
+#a2 .krow .ic .ic,#a2 .krow .ic svg{width:14px;height:14px}
+#a2 .krow .nm{font-family:var(--font-mono);color:var(--strong);overflow-wrap:anywhere}
+#a2 .krow .ds{grid-column:2 / -1;color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+#a2 .krow .use{font-family:var(--font-mono);font-size:11px;color:var(--muted);text-align:right;white-space:nowrap}
+#a2 .knowledge .fl{font-family:var(--font-mono);font-size:10.5px;text-align:right;white-space:nowrap}
+#a2 .knowledge .fl.ok{color:var(--ok)}
+#a2 .knowledge .fl.prop{color:var(--comms)}
+#a2 .knowledge .fl.stale{color:var(--warn)}
+#a2 .knowledge .fl.exp{color:var(--err)}
+#a2 .knowledge .kdetail{flex:1.4 1 0;min-width:0;display:flex;flex-direction:column;gap:8px;border:1px solid var(--rule);border-radius:var(--r-lg);background:var(--surface);padding:12px 14px}
+#a2 .knowledge .khead{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#a2 .knowledge .kback{display:none}
+#a2 .knowledge .kback .ic{width:14px;height:14px;margin-right:4px}
+#a2 .knowledge .ktitle{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;min-width:0}
+#a2 .knowledge .kname{font-family:var(--font-mono);font-size:14px;color:var(--strong);overflow-wrap:anywhere}
+#a2 .knowledge .kkind{font-family:var(--font-mono);font-size:11px;color:var(--faint)}
+#a2 .knowledge .kdesc{color:var(--ink)}
+#a2 .knowledge .kmeta{font-family:var(--font-mono);font-size:11px;color:var(--muted);overflow-wrap:anywhere}
+#a2 .knowledge .err{color:var(--err)}
+#a2 .knowledge .ked{height:340px;border:1px solid var(--rule);border-radius:var(--r);overflow:hidden}
+#a2 .knowledge .kacts{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#a2 .knowledge .kdel .ic{width:13px;height:13px;margin-right:4px}
+#a2 .knowledge .knote{font-size:12px;color:var(--muted)}
+#a2 .knowledge .knote.err{color:var(--err)}
+#a2 .knowledge .khist h4{margin:8px 0 4px;font-size:11px;font-family:var(--font-mono);font-weight:500;color:var(--faint);text-transform:uppercase;letter-spacing:.06em}
+#a2 .knowledge .kver{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--rule)}
+#a2 .knowledge .kvw{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+#a2 .knowledge .kvm{font-family:var(--font-mono);font-size:12px;color:var(--ink);overflow-wrap:anywhere}
+#a2 .knowledge .kvt{font-family:var(--font-mono);font-size:10.5px;color:var(--faint)}
+#a2 .knowledge .kvnow{font-family:var(--font-mono);font-size:10.5px;color:var(--ok)}
+@media (max-width:640px){
+  #a2 .knowledge{padding:12px 12px 24px}
+  #a2 .krow{grid-template-columns:18px minmax(0,1fr) auto}
+  #a2 .krow .use{display:none}
+  #a2 .knowledge[data-open="1"] .ktop,#a2 .knowledge[data-open="1"] .klist{display:none}
+  #a2 .knowledge[data-open="1"] .kpanes{margin-top:0}
+  #a2 .knowledge .kback{display:inline-flex;align-items:center}
+  #a2 .knowledge .kdetail{padding:10px}
+  #a2 .knowledge .ked{height:52vh}
+}
+@media (pointer:coarse){#a2 .krow{min-height:44px;align-content:center}#a2 .knowledge :is(.jkind,.btn){min-height:44px}#a2 .knowledge .jsearch .jq{min-height:32px}}
 /* The Schedules view (js/schedules.js): the list, a schedule's four layers and
    its runs, and the editor laid out as the same layers. */
 #a2[data-view=schedules] .v-schedules{display:flex;flex-direction:column;overflow:auto}
@@ -1628,7 +1805,7 @@ body{background:#000}
 #a2 .jent .pmore{color:var(--faint)}
 #a2 :is(.jent,.jpeek>div).k-commit .g,#a2 :is(.jent,.jpeek>div).k-plan .g{color:var(--ok)}
 #a2 :is(.jent,.jpeek>div).k-note .g{color:var(--accent)}
-#a2 :is(.jent,.jpeek>div).k-pr .g{color:var(--comms)}
+#a2 :is(.jent,.jpeek>div).k-pr .g,#a2 :is(.jent,.jpeek>div).k-issue .g{color:var(--comms)}
 #a2 :is(.jent,.jpeek>div).k-session .g{color:var(--faint)}
 
 /* the Help tab (js/help.js): the pages and the search box on the left, the
@@ -1903,8 +2080,12 @@ body{background:#000}
 #a2 .set-page>.notice{margin:0;text-align:left}
 #a2 .set-page>.set-empty{margin:4vh 0 0;padding:0}
 #a2 .set-page>.set-empty+.set-browser,#a2 .set-page>.notice+.set-browser{margin-top:36px}
-#a2 .set-browser h3,#a2 .set-servers h3{margin:0 0 4px;font-family:var(--font-head);font-weight:500;font-size:15px;color:var(--strong)}
+#a2 .set-knowledge h3,#a2 .set-browser h3,#a2 .set-servers h3{margin:0 0 4px;font-family:var(--font-head);font-weight:500;font-size:15px;color:var(--strong)}
 #a2 .set-browser-row{display:flex;align-items:center;gap:12px;margin:10px 0 8px}
+#a2 .set-knowledge{margin:0 0 26px}
+#a2 .set-native{cursor:pointer;font-size:14px;color:var(--ink)}
+#a2 .set-native input{width:16px;height:16px;flex:none;margin:0;accent-color:var(--accent)}
+#a2 #set-native-note.err{color:var(--err)}
 #a2 .set-browser-k{font-family:var(--font-chrome);font-size:12px;color:var(--muted);min-width:64px}
 #a2 .set-speak-line{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 8px}
 #a2 .set-speak-note{color:var(--muted);overflow-wrap:anywhere}
@@ -1919,6 +2100,7 @@ body{background:#000}
 #a2 .set-pill.ok{color:var(--ok)}
 #a2 .set-pill.bad{color:var(--err)}
 #a2 .set-linkrow{display:flex;gap:8px;margin-top:10px}
+#a2 .set-link-trust{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);white-space:nowrap}
 /* Whose a session is, when it is not this browser's (tokens.py). */
 #a2 .tab .who,#a2 .card .who{font-family:var(--font-mono);font-size:10.5px;color:var(--comms);border:1px solid var(--rule);border-radius:999px;padding:0 7px;margin-left:6px;white-space:nowrap}
 #a2 .set-once{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
@@ -1967,6 +2149,9 @@ body{background:#000}
   #a2 .set-tokens .set-linkrow{flex-wrap:wrap}
   #a2 .set-tokens .set-linkrow .set-in{flex-basis:100%}
   #a2 .set-tokens .set-linkrow .btn{flex:1}
+  #a2 .set-servers .set-linkrow{flex-wrap:wrap}
+  #a2 .set-servers .set-linkrow .set-in{flex-basis:100%}
+  #a2 .set-servers .set-linkrow .btn{flex:1}
   #a2 .set-tokens .poolnow{grid-template-columns:1fr 1fr;padding:8px 10px;gap:6px 16px}
   #a2 .set-tokens .poolrow{grid-template-columns:1fr;gap:4px}
   #a2 .set-tokens .poolrow .pl{padding-top:0}

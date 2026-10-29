@@ -151,8 +151,9 @@ function separator(text) {
 }
 
 // Open `text` in `parent`. onChange(dirty) runs when the buffer starts or stops
-// differing from what was last saved; onSave() on Mod-s.
-export async function open(parent, { text, path, readOnly = false, onChange, onSave }) {
+// differing from what was last saved; onSave() on Mod-s. `wrap` wraps long
+// lines, for prose such as a memory.
+export async function open(parent, { text, path, readOnly = false, wrap = false, onChange, onSave }) {
   const C = await cm();
   const lang = await language(langOf(path)).catch(() => []);
   const langSlot = new C.Compartment();
@@ -168,6 +169,7 @@ export async function open(parent, { text, path, readOnly = false, onChange, onS
     langSlot.of(lang),
     look(C),
     C.EditorState.readOnly.of(readOnly),
+    wrap ? C.EditorView.lineWrapping : [],
     C.EditorView.updateListener.of((u) => {
       if (!u.docChanged) return;
       const now = !u.state.doc.eq(saved);

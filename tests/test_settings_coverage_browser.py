@@ -69,3 +69,17 @@ def test_a_wrong_value_is_refused_on_its_block(full_server, page):
     page.wait_for_selector('[data-row="network"] .set-why.error')
     assert "network.interval" in page.text_content('[data-row="network"] .set-why')
     assert page.errors == []
+
+
+def test_the_embeddings_field_has_its_own_section(full_server, page):
+    """Its section's id is not the Skills and memory switch's."""
+    open_settings(page, full_server.url)
+    page.wait_for_selector("#set-embeddings")
+    dup = page.evaluate(
+        "() => { const ids = [...document.querySelectorAll('#a2 [id]')].map(e => e.id);"
+        " return ids.filter((x, i) => ids.indexOf(x) !== i); }"
+    )
+    assert dup == []
+    field = page.locator('#set-embeddings [data-key="knowledge.embeddings"]')
+    assert field.input_value() == "minishlab/potion-multilingual-128M"
+    assert page.errors == []

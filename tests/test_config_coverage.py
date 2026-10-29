@@ -53,8 +53,13 @@ network:
   anchors: ["9.9.9.9:443"]
 host: {hide_mounts: [/srv/scratch], add_mounts: [/tank]}
 workflows: {max_agents: {total: 6, opus: 3}}
+usage:
+  owners: {aegis: acme-co}
+  owner_names: {acme-co: Acme}
+  subscriptions: {a1b2: {name: claude-max, fee: 200, renews: 14}}
 harness_versions: {person: warn, agent: "off", startup: "off", accepted: {opencode: ["2.0.33"]}}
 nudges: {silent_s: false, plan_min: 20}
+knowledge: {embeddings: minishlab/potion-multilingual-128M}
 notices:
   disk: {on: 80, critical: 95, clear: 70}
   memory: {on: 85, critical: 92, clear: 80, psi_full: 10}
@@ -82,9 +87,11 @@ def reader_keys() -> list[str]:
         "terminals": [f"*.{k}" for k in PROFILE_KEYS],
         "park": ["*"],  # a harness's name
         "workflows": ["max_agents"],
+        "usage": list(config.USAGE_DEFAULTS),
         "harness_versions": list(config.HV_DEFAULTS),
         "context": list(config.CONTEXT_DEFAULTS),
         "nudges": list(config.NUDGES_DEFAULTS),
+        "knowledge": list(config.KNOWLEDGE_DEFAULTS),
         "network": list(NET_KEYS),
         "host": ["hide_mounts", "add_mounts"],
         "notices": notices,
@@ -111,9 +118,13 @@ def paths(node: object, prefix: str = "") -> set[str]:
     for k, v in node.items():
         named = prefix in ("agents", "queues", "terminals", "park")
         p = f"{prefix}.{'*' if named else k}" if prefix else str(k)
-        leaf = p in ("workflows.max_agents", "harness_versions.accepted") or (
-            p.startswith("terminals.*.") and p.count(".") == 2
-        )
+        leaf = p in (
+            "workflows.max_agents",
+            "harness_versions.accepted",
+            "usage.owners",
+            "usage.owner_names",
+            "usage.subscriptions",
+        ) or (p.startswith("terminals.*.") and p.count(".") == 2)
         out |= {p} if leaf else paths(v, p)
     return out
 

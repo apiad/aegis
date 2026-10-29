@@ -15,7 +15,14 @@ from .test_browser import (  # noqa: F401
 
 pytestmark = [pytest.mark.browser, pytest.mark.slow]
 
-HEADER_ICONS = ["schedules-btn", "settings-btn", "files-btn", "journal-btn"]
+HEADER_ICONS = [
+    "schedules-btn",
+    "settings-btn",
+    "files-btn",
+    "journal-btn",
+    "knowledge-btn",
+    "usage-btn",
+]
 
 
 @pytest.fixture
@@ -51,6 +58,18 @@ def test_the_header_buttons_are_bare_icons(server, page):  # noqa: F811
             "icon": True,
         }, id
         assert page.get_attribute(f"#{id}", "aria-label")
+    assert page.errors == []
+
+
+def test_the_usage_button_opens_the_usage_page(server, page):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.click("#usage-btn")
+    page.wait_for_selector("#a2[data-view=usage]")
+    assert "on" in page.get_attribute("#usage-btn", "class")
+    page.click("#journal-btn")
+    page.wait_for_selector("#a2[data-view=journal]")
+    assert "on" not in page.get_attribute("#usage-btn", "class")
     assert page.errors == []
 
 
@@ -215,4 +234,21 @@ def test_choosing_a_row_opens_its_session_and_scrolls_its_tab_into_view(
               return t.left >= l.left - 1 && t.right <= l.right + 1; }}"""
     )
     assert inside
+    pg.close()
+
+
+def test_the_more_menu_opens_under_its_button(server, browser):  # noqa: F811
+    # #680: the button itself was passed where open() takes {anchor}, so the
+    # menu's left and top came out NaN and it opened in the corner.
+    pg = browser.new_page(viewport={"width": 900, "height": 700})
+    pg.goto(server.url)
+    pg.wait_for_selector("#a2[data-view=fleet]")
+    for _ in range(6):
+        spawn(pg)
+    pg.click("#tab-more")
+    pg.wait_for_selector(".cmenu")
+    b = pg.locator("#tab-more").bounding_box()
+    m = pg.locator(".cmenu").bounding_box()
+    assert b["y"] + b["height"] <= m["y"] <= b["y"] + b["height"] + 8
+    assert m["x"] <= b["x"] + b["width"] and m["x"] + m["width"] >= b["x"]
     pg.close()

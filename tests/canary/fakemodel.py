@@ -260,6 +260,7 @@ class FakeModel:
     def __init__(self) -> None:
         self.rules: list[Rule] = []
         self.log: list[dict] = []
+        self.systems: list[str] = []  # each request's system text (_system)
 
     def script(self, *rules: Rule) -> None:
         self.rules = list(rules)
@@ -319,12 +320,34 @@ class FakeModel:
             ]
         )
 
+    def _system(self, body: dict) -> int:
+        """Anthropic's system, the Responses API's instructions or a system
+        message, kept in ``systems``; its index there."""
+        self.systems.append(
+            "\n".join(
+                [
+                    *_texts(body.get("system")),
+                    *_texts(body.get("instructions")),
+                    *(
+                        t
+                        for m in body.get("messages") or []
+                        if isinstance(m, dict) and m.get("role") == "system"
+                        for t in _texts(m.get("content"))
+                    ),
+                ]
+            )
+        )
+        return len(self.systems) - 1
+
     def _record(self, api: str, body: dict, c: Convo, r: Reply) -> None:
         self.log.append(
             {
                 "t": time.time(),
                 "api": api,
                 "model": body.get("model"),
+                # Where systems[] keeps what the harness put before the
+                # conversation, kept out of the log a failed run reports.
+                "system": self._system(body),
                 "stream": body.get("stream"),
                 "last_person": c.last_person[-400:],
                 "called": c.called,

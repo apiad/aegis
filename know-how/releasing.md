@@ -120,10 +120,16 @@ no user-facing doc.
    Read the diff and the `unmapped:` lines it printed. A catalog model that
    should be ranked and is not needs an entry in the script's `ALIASES`; run
    it again. Commit the file as `chore(ranking): refresh model scores`.
-4. Bump `version` in `pyproject.toml`.
-5. **Bump the `aegis-harness` version line in `uv.lock`** (surgical edit),
+4. Review the landing film against the release (*Keeping the landing film
+   current*, below). Commit a re-render, or file an issue for one, before
+   the tag; a release does not ship a film of a client it changed.
+5. Bump `version` in `pyproject.toml`.
+6. **Bump the `aegis-harness` version line in `uv.lock`** (surgical edit),
    then verify with `uv sync --inexact --locked --group dev`.
-6. Run the canary on the commit you are about to tag:
+7. Read the last `nightly.yml` run on the commit you are about to tag (run
+   it by hand if it is older): its slow shards must be green, and its
+   quarantine summary names any flaky test to read before tagging (#776).
+   Run the canary on that commit:
    `gh workflow run canary.yml --ref main`, then read
    `gh issue list --label canary`. An open canary issue is a harness that
    does not work under this release; fix it or name it in the release notes.
@@ -132,11 +138,11 @@ no user-facing doc.
    Run the full gates locally, once, here and not per PR: `make check`,
    `make test-slow` and `make bench`. A red run is a regression; do not
    re-roll it.
-7. Commit `chore(release): vX.Y.Z`, push `main`.
-8. `git tag -a vX.Y.Z -m "Release vX.Y.Z"` and `git push origin vX.Y.Z`.
-9. Watch the run: `gh run watch $(gh run list --workflow=release.yml --limit 1 --json databaseId --jq '.[0].databaseId') --exit-status`.
-10. `gh release create vX.Y.Z --generate-notes --title vX.Y.Z`.
-11. Verify PyPI by **installing it**, not by asking the JSON API:
+8. Commit `chore(release): vX.Y.Z`, push `main`.
+9. `git tag -a vX.Y.Z -m "Release vX.Y.Z"` and `git push origin vX.Y.Z`.
+10. Watch the run: `gh run watch $(gh run list --workflow=release.yml --limit 1 --json databaseId --jq '.[0].databaseId') --exit-status`.
+11. `gh release create vX.Y.Z --generate-notes --title vX.Y.Z`.
+12. Verify PyPI by **installing it**, not by asking the JSON API:
 
     ```bash
     uv venv /tmp/pypi-check -q
@@ -153,6 +159,45 @@ no user-facing doc.
     get this". Read its exit code directly: piping it through `tail` and
     then testing `$?` reports `tail`'s status and turns a failed install
     green.
+
+## Keeping the landing film current
+
+The film on the landing page (`site/video/aegis.mp4`) is recorded from the
+real client by `scripts/demo/director.py`, and its script is
+`scripts/demo/beats/film.py`: the narration in `L`, the beats that drive the
+client below it. At every release, read the script beside the release's
+changelog section and answer two questions.
+
+- **Does the script still tell the truth, and the whole of it?** A feature
+  the release adds that a new user would choose aegis for (a new rung, a new
+  way to work together, a new view) gets a line and a shot. A line that
+  names something the release renamed or removed changes with it.
+- **Does the film still show this client?** Open the film beside an
+  `aegis serve` of the release and compare the shots: the tab bar, the
+  Fleet cards, the composer, the side panels, the theme. A change a viewer
+  would notice (a moved control, a new panel, a restyle) is a re-render.
+  A change only a maintainer would see is not.
+
+Either answer yes means a re-render, in the release or in an issue filed
+before the tag. To render:
+
+```bash
+uv run python scripts/demo/director.py film --out ~/.cache/aegis-film/out \
+    --audio ~/.cache/aegis-film/audio --tts '<a command that speaks {yaml} into {out}>'
+ffmpeg -y -i ~/.cache/aegis-film/out/film.mp4 -c:v libx264 -preset slow -crf 30 \
+    -pix_fmt yuv420p -c:a aac -b:a 96k -movflags +faststart site/video/aegis.mp4
+cp ~/.cache/aegis-film/out/film.vtt site/video/aegis.vtt
+ffmpeg -y -ss 2.2 -i site/video/aegis.mp4 -frames:v 1 -q:v 3 site/video/aegis-poster.jpg
+```
+
+A line whose clip is not in `--audio` is spoken with `--tts`; without it, the
+film is captioned but silent there. The render takes about ten minutes and
+holds ffmpeg for all of them: on a host short of memory an OOM killer picks
+it first, and the run ends in `BrokenPipeError`. Keep `--out` off a tmpfs
+`/tmp`, which spends the same memory. The site encode keeps the film near
+17 MB. Watch the whole render before
+committing it: a beat that waited on a selector the release renamed fails
+the run, but a shot of the wrong element does not.
 
 ## Moving the tested harness range
 

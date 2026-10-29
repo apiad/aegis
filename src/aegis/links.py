@@ -13,6 +13,16 @@ of frame back: ``welcome``, ``reply`` to a call it made, ``snapshot`` and
 handler, so a ``call`` or ``sub`` arriving from the far side is dropped and
 logged, and nothing on this server runs because of it.
 
+A trusted link (#684) is the one exception, for two servers one person alone
+uses. This server asks for trust in its hello; the far server grants it only
+to its admin's token while it has no member tokens, and says so in
+``welcome``. Then, and only then, the link also answers ``rcall`` frames with
+``rreply``, running the far server's calls here as a person acting through a
+link, and a ``trust`` frame from the far side ends that again. The far server
+keeps a ``Backlink`` for the socket, so its agents address this server as
+``handle@<name>`` over the socket this server opened: a laptop behind NAT is
+reached without accepting a connection.
+
 Subscriptions forwarded for browsers carry a link-unique ``sid``, and the far
 server keys a link socket's subscriptions by it, so two browsers watching one
 channel each get their own numbered patches. None survive a drop: the
@@ -35,7 +45,7 @@ import logging
 import os
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -57,6 +67,8 @@ PROTO = 3
 
 # The release that first speaks links; both ends of one need it.
 LINKS_SINCE = "2.4.0"
+# The release that first grants trusted links.
+TRUSTED_SINCE = "2.17.0"
 
 HELLO_TIMEOUT_S = 10.0
 CALL_TIMEOUT_S = 15.0
@@ -64,6 +76,12 @@ BACKOFF_MIN_S = 1.0
 BACKOFF_MAX_S = 30.0
 WATCH_EVERY_S = 1.0
 ACCEPTED = ("welcome", "reply", "snapshot", "patch", "error")
+# Frames only a link the far server trusted accepts: its calls, and its word
+# that the trust ended.
+TRUSTED = ("rcall", "trust")
+# What a link answers an rcall with, given the far server's name, the op and
+# its params: the reply's ``result`` or ``error``.
+Answer = Callable[[str, str, Any], Awaitable[dict]]
 
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$")
 
@@ -92,7 +110,7 @@ def base_url(url: str) -> str:
 
 
 async def _hello(
-    url: str, token: str, own: str, user: str
+    url: str, token: str, own: str, user: str, trusted: bool = False
 ) -> tuple[ClientConnection, dict, float]:
     """Open the socket and say hello; the connection, its welcome and the
     round trip in ms. Raises LinkError for every way it can fail."""
@@ -120,7 +138,8 @@ async def _hello(
             "t": "hello",
             "token": token,
             "proto": PROTO,
-            "link": {"server": own, "user": user},
+            "link": {"server": own, "user": user}
+            | ({"trusted": True} if trusted else {}),
         }
         await ws.send(json.dumps(hello))
         first = json.loads(await asyncio.wait_for(ws.recv(), HELLO_TIMEOUT_S))
@@ -152,11 +171,27 @@ async def _hello(
     return ws, first, (time.monotonic() - t0) * 1000
 
 
-async def probe(url: str, token: str, own: str, user: str) -> dict:
-    """Connect once and return the far server's welcome; LinkError otherwise."""
-    ws, welcome, _ = await _hello(url, token, own, user)
+async def probe(
+    url: str, token: str, own: str, user: str, trusted: bool = False
+) -> dict:
+    """Connect once and return the far server's welcome; LinkError otherwise,
+    and a ``trust_refused`` one when trust was asked and not granted."""
+    ws, welcome, _ = await _hello(url, token, own, user, trusted)
     await ws.close()
+    if trusted and welcome.get("trusted") is not True:
+        raise LinkError("trust_refused", trust_refusal(welcome))
     return welcome
+
+
+def trust_refusal(welcome: dict) -> str:
+    """Why a welcome did not grant the trust a link asked for."""
+    why = welcome.get("trust_refused")
+    if isinstance(why, str) and why:
+        return why
+    return (
+        f"{welcome.get('server')} does not grant trusted links; "
+        f"both servers need aegis {TRUSTED_SINCE} or newer"
+    )
 
 
 class LinkStore:
@@ -212,10 +247,18 @@ class Link:
         own: str,
         user: str,
         on_change: Callable[[], None] = lambda: None,
+        trusted: bool = False,
+        answer: Answer | None = None,
     ) -> None:
         self.name, self.url, self.token = name, base_url(url), token
         self.own, self.user = own, user
         self.on_change = on_change
+        # Asked for in links.json; granted by the far server's welcome, for
+        # this socket only, and ended by its trust frame.
+        self.trusted, self.answer = trusted, answer
+        self.granted = False
+        self.trust_error = ""
+        self._answering: set[asyncio.Task] = set()
         self.state = "connecting"
         self.since = time.time()
         self.rtt_ms: int | None = None
@@ -236,11 +279,17 @@ class Link:
         self._task = asyncio.get_running_loop().create_task(self._run())
 
     async def stop(self) -> None:
+        ws = self._ws
         if self._task is not None:
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await self._task
         self._task = None
+        # Cancelling the reader leaves the socket open until it is collected;
+        # the far server must see it close, to drop a way back (Backlink).
+        if ws is not None:
+            with contextlib.suppress(Exception):
+                await ws.close()
 
     def _set(self, state: str, error: str = "") -> None:
         if state != self.state or error != self.error:
@@ -253,7 +302,7 @@ class Link:
             self.attempts += 1
             try:
                 ws, welcome, rtt = await _hello(
-                    self.url, self.token, self.own, self.user
+                    self.url, self.token, self.own, self.user, self.trusted
                 )
             except LinkError as e:
                 self._set(e.state, e.message)
@@ -272,8 +321,13 @@ class Link:
                 await asyncio.sleep(BACKOFF_MAX_S)
                 continue
             self._ws, self.remote, self.rtt_ms = ws, welcome, round(rtt)
+            self.granted = self.trusted and welcome.get("trusted") is True
+            self.trust_error = (
+                trust_refusal(welcome) if self.trusted and not self.granted else ""
+            )
             backoff = BACKOFF_MIN_S
             self._set("linked")
+            self.on_change()  # the trust may differ from the last socket's
             for sid, log_id in self._watches.items():
                 self._out.put_nowait(
                     {"t": "watch", "sid": sid, "session": log_id, "visible": True}
@@ -300,6 +354,10 @@ class Link:
 
     def _lost(self) -> None:
         """The socket went: every call fails, every subscription ends."""
+        self.granted = False
+        for task in self._answering:
+            task.cancel()
+        self._answering.clear()
         for fut in self._pending.values():
             if not fut.done():
                 fut.set_result(
@@ -332,6 +390,9 @@ class Link:
         except ValueError:
             msg = {}
         t = msg.get("t") if isinstance(msg, dict) else None
+        if t in TRUSTED and self.granted:
+            self._trusted_frame(msg)
+            return
         if t not in ACCEPTED:
             kind = t if isinstance(t, str) else "malformed"
             if kind not in self._dropped:
@@ -356,6 +417,30 @@ class Link:
                 self.name,
                 msg.get("message") or msg.get("error"),
             )
+
+    def _trusted_frame(self, msg: dict) -> None:
+        """A call from the far server, or its word that the trust ended."""
+        if msg["t"] == "trust":
+            if msg.get("trusted") is not True:
+                self.granted = False
+                why = msg.get("reason")
+                self.trust_error = why if isinstance(why, str) else "trust ended"
+                log.warning("linked server %s ended the trust: %s", self.name, why)
+                self.on_change()
+            return
+        task = asyncio.get_running_loop().create_task(self._rcall(msg))
+        self._answering.add(task)
+        task.add_done_callback(self._answering.discard)
+
+    async def _rcall(self, msg: dict) -> None:
+        reply: dict = {"t": "rreply", "id": msg.get("id")}
+        op = msg.get("op")
+        if self.answer is None or not isinstance(op, str):
+            reply["error"] = {"code": "bad_call", "message": "no such call"}
+        else:
+            reply.update(await self.answer(self.name, op, msg.get("params")))
+        if self.granted:  # an answer must not outlive the trust it ran under
+            self._out.put_nowait(reply)
 
     # -- what goes out ---------------------------------------------------------
     def describe(self) -> str:
@@ -456,11 +541,139 @@ class Link:
             "rtt_ms": self.rtt_ms,
             "proto": self.remote.get("proto"),
             "error": self.error,
+            "trusted": self.trusted,
+            "granted": self.granted,
+            "trust_error": self.trust_error,
         }
 
 
+class Backlink:
+    """The way back to a server that linked this one with trust: its calls go
+    down the socket that server opened, as ``rcall``, and come back as
+    ``rreply``. It has the face of a ``Link`` for calls, so agents and the
+    router find it by name; subscriptions are refused, since live views stay
+    one way. ``check`` says why the trust no longer holds, or None, and is
+    asked before every call: a member token minted here ends it at once."""
+
+    url = None  # nothing to fetch files from: the far server has no route here
+
+    def __init__(
+        self,
+        name: str,
+        send: Send,
+        check: Callable[[], str | None],
+        on_end: Callable[[Backlink], None] = lambda _: None,
+    ) -> None:
+        self.name = name
+        self.state = "linked"
+        self.since = time.time()
+        self.rtt_ms: int | None = None
+        self.remote: dict = {}
+        self.error = ""
+        self._send, self._check, self._on_end = send, check, on_end
+        self._ids = itertools.count(1)
+        self._pending: dict[int, asyncio.Future] = {}
+
+    def describe(self) -> str:
+        return f"{self.name} is {self.state}" + (
+            f": {self.error}" if self.error else ""
+        )
+
+    def end(self, reason: str) -> None:
+        """The trust no longer holds: tell the far server, fail every call."""
+        if self.state != "linked":
+            return
+        self.state, self.error, self.since = "ended", reason, time.time()
+        self._send({"t": "trust", "trusted": False, "reason": reason})
+        self._fail("trust_ended", f"the trust with {self.name} ended: {reason}")
+        self._on_end(self)
+
+    def lost(self) -> None:
+        """The socket went."""
+        if self.state == "linked":
+            self.state, self.since = "offline", time.time()
+        self._fail("server_offline", f"{self.name} went offline")
+
+    def _fail(self, code: str, message: str) -> None:
+        for fut in self._pending.values():
+            if not fut.done():
+                fut.set_result({"error": {"code": code, "message": message}})
+        self._pending.clear()
+
+    def resolve(self, msg: dict) -> None:
+        n = msg.get("id")
+        fut = self._pending.pop(n, None) if isinstance(n, int) else None
+        if fut is not None and not fut.done():
+            fut.set_result(msg)
+
+    async def call_raw(
+        self,
+        op: str,
+        params: Any,
+        server: str | None = None,
+        timeout: float = CALL_TIMEOUT_S,
+    ) -> dict:
+        if self.state == "linked" and (why := self._check()) is not None:
+            self.end(why)
+        if self.state != "linked":
+            code = "trust_ended" if self.state == "ended" else "server_offline"
+            return {"error": {"code": code, "message": self.describe()}}
+        n = next(self._ids)
+        fut: asyncio.Future = asyncio.get_running_loop().create_future()
+        self._pending[n] = fut
+        self._send({"t": "rcall", "id": n, "op": op, "params": params or {}})
+        try:
+            reply = await asyncio.wait_for(fut, timeout)
+        except TimeoutError:
+            self._pending.pop(n, None)
+            return {
+                "error": {
+                    "code": "timeout",
+                    "message": f"{self.name} did not answer {op} within {timeout:g} s",
+                }
+            }
+        return {k: reply[k] for k in ("result", "error") if k in reply}
+
+    async def call(
+        self, op: str, params: Any = None, timeout: float = CALL_TIMEOUT_S
+    ) -> Any:
+        reply = await self.call_raw(op, params, timeout=timeout)
+        if "error" in reply:
+            e = reply["error"] or {}
+            raise OpError(str(e.get("code", "error")), str(e.get("message", "")))
+        return reply.get("result")
+
+    def sub(
+        self, sid: str, channel: str, since: int | None, send: Send, merge: bool = False
+    ) -> None:
+        send(
+            {
+                "t": "error",
+                "sid": sid,
+                "error": {
+                    "code": "not_both_ways",
+                    "message": f"{self.name} linked this server: its sessions "
+                    "are reached by agents and calls, not watched from here",
+                },
+            }
+        )
+
+    def unsub(self, sid: str) -> None:
+        pass
+
+    def watch(self, sid: str, log_id: str | None) -> None:
+        pass
+
+    def drop(self, prefix: str) -> None:
+        pass
+
+    def wire(self) -> dict:
+        return {"name": self.name, "state": self.state, "since": self.since}
+
+
 class Links:
-    """Every link this server holds, following ``links.json``."""
+    """Every link this server holds, following ``links.json``, and the ways
+    back that servers linking this one with trust opened (``Backlink``)."""
 
     def __init__(
         self,
@@ -473,6 +686,9 @@ class Links:
         self.own, self.user = own, user
         self._publish = publish
         self._links: dict[str, Link] = {}
+        self._back: dict[str, Backlink] = {}
+        # Runs a trusted far server's call here (app.py sets it).
+        self.answer: Answer | None = None
         self._entries: dict[str, dict] = {}
         self._stamp: tuple[int, int] | None = None
         self._watch: asyncio.Task | None = None
@@ -504,7 +720,8 @@ class Links:
             if (
                 e is None
                 or old is None
-                or (e["url"], e["token"]) != (old["url"], old["token"])
+                or (e["url"], e["token"], e.get("trusted") is True)
+                != (old["url"], old["token"], old.get("trusted") is True)
             ):
                 link = self._links.pop(name)
                 self._entries.pop(name, None)
@@ -512,7 +729,16 @@ class Links:
         for name, e in wanted.items():
             if name in self._links or name == self.own:
                 continue
-            link = Link(name, e["url"], e["token"], self.own, self.user, self._changed)
+            link = Link(
+                name,
+                e["url"],
+                e["token"],
+                self.own,
+                self.user,
+                self._changed,
+                trusted=e.get("trusted") is True,
+                answer=self.answer,
+            )
             self._links[name], self._entries[name] = link, e
             link.start()
         self._changed()
@@ -520,14 +746,53 @@ class Links:
     def _changed(self) -> None:
         self._publish("links", [{"set": self.wire()}])
 
-    def get(self, name: str) -> Link | None:
+    def get(self, name: str) -> Link | Backlink | None:
+        """The link to ``name``, or the way back to it when it linked this
+        server with trust."""
+        return self._links.get(name) or self._back.get(name)
+
+    def outbound(self, name: str) -> Link | None:
         return self._links.get(name)
 
     def links(self) -> list[Link]:
         return list(self._links.values())
 
-    def up(self) -> list[Link]:
-        return [link for link in self._links.values() if link.state == "linked"]
+    def up(self) -> list[Link | Backlink]:
+        """Every server reachable now, through a link or a way back."""
+        return [
+            link
+            for link in [*self._links.values(), *self._back.values()]
+            if link.state == "linked"
+        ]
+
+    def trusted(self, name: str | None) -> bool:
+        """Whether this server and ``name`` trust each other right now: a
+        link the far server granted trust, or a way back it opened."""
+        if name is None:
+            return False
+        out = self._links.get(name)
+        if out is not None:
+            return out.state == "linked" and out.granted
+        back = self._back.get(name)
+        return back is not None and back.state == "linked"
+
+    def attach(self, back: Backlink) -> None:
+        """A server linked this one with trust; a newer socket replaces an
+        older one of the same server."""
+        old = self._back.get(back.name)
+        if old is not None and old is not back:
+            old.lost()
+        self._back[back.name] = back
+        self._changed()
+
+    def detach(self, back: Backlink) -> None:
+        if self._back.get(back.name) is back:
+            del self._back[back.name]
+            self._changed()
+
+    def incoming(self) -> list[dict]:
+        """The servers that linked this one with trust, for Settings."""
+        return [b.wire() for b in self._back.values()]
 
     def wire(self) -> list[dict]:
         return [link.wire() for link in self._links.values()]
@@ -545,7 +810,7 @@ class Links:
         except ValueError as e:
             raise OpError("bad_link", str(e)) from e
 
-    def add(self, name: str, url: str, token: str) -> None:
+    def add(self, name: str, url: str, token: str, trusted: bool = False) -> None:
         self.check(name, url)
         entries = self.store.load()
         entries.append(
@@ -555,7 +820,21 @@ class Links:
                 "token": token,
                 "added": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             }
+            | ({"trusted": True} if trusted else {})
         )
+        self.store.save(entries)
+        self._sync()
+
+    def trust(self, name: str, on: bool) -> None:
+        """Ask for trust on a link, or stop asking; the link reconnects."""
+        entries = self.store.load()
+        if not any(e["name"] == name for e in entries):
+            raise OpError("no_link", f"no link named {name}")
+        for e in entries:
+            if e["name"] == name:
+                e.pop("trusted", None)
+                if on:
+                    e["trusted"] = True
         self.store.save(entries)
         self._sync()
 

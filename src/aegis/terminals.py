@@ -324,7 +324,7 @@ class Terminals:
             await t.start(cmd, Path(t.meta["cwd"]), env, cgroup, user=user)
         except OSError as e:
             if cg is not None:
-                cg.release(t.id)
+                cg.release(t.id, user=t.meta.get("linux_user"))
             raise OpError("spawn_failed", f"terminal {t.meta['name']}: {e}") from e
         t.meta.update(state="running", code=None, reason=None, started_at=time.time())
         self._save(t)
@@ -339,7 +339,7 @@ class Terminals:
         if t.meta["state"] == "running":
             t.meta["state"] = "exited"
         if (cg := self._cgroups()) is not None:
-            cg.release(t.id)
+            cg.release(t.id, user=t.meta.get("linux_user"))
         t.store.close()
         self._save(t)
         if not t.meta["archived"]:

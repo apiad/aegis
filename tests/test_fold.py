@@ -1301,7 +1301,10 @@ def test_an_attached_send_shows_what_was_typed_and_one_card():
     (user,) = f.entries()
     assert (user["md"], user["status"]) == ("look", "ok")
     assert [x["name"] for x in user["detail"]["files"]] == ["a.png"]
-    assert user["detail"]["files"][0]["url"] == "/files/id-a.png/a.png"
+    attached = user["detail"]["files"][0]
+    assert attached["url"] == "/files/id-a.png/a.png"
+    assert (attached["key"], attached["version"]) == ("f-id-a.png", 1)
+    assert f.file_keys[attached["key"]] == attached
 
 
 def test_a_send_of_files_alone_has_no_text():
@@ -1645,3 +1648,91 @@ def test_an_approval_record_is_a_card_that_never_folds():
         "name": "nightly-tests",
         "action": "created",
     }
+
+
+def _task(task_id: str, status: str, summary: str, tail: str = "") -> str:
+    return (
+        f"<task-notification>\n<task-id>{task_id}</task-id>\n"
+        "<tool-use-id>toolu_01abc</tool-use-id>\n"
+        f"<output-file>/tmp/claude-1000/x/tasks/{task_id}.output</output-file>\n"
+        f"<status>{status}</status>\n<summary>{summary}</summary>\n{tail}"
+        "</task-notification>"
+    )
+
+
+def test_a_background_task_notice_is_an_inbox_row_not_the_persons_words():
+    r = Rec()
+    cmd = "# Smoke, then push\ncd repo &amp;&amp; make smoke &gt; log"
+    r.echo(_task("b1", "failed", f'Background command "{cmd}" failed with exit code 1'))
+    (e,) = run(r)[0].entries()
+    assert (e["kind"], e["status"], e["glyph"]) == ("inbox", "err", "swap")
+    assert e["title"] == "background · failed · exit 1"
+    assert e["md"] == "Smoke, then push"
+    assert e["detail"]["fold"] == "# Smoke, then push\ncd repo && make smoke > log"
+    assert e["detail"]["lang"] == "bash"
+    assert e["detail"]["output"] == "/tmp/claude-1000/x/tasks/b1.output"
+    assert "toolu_01abc" not in json.dumps(e)
+
+
+def test_a_completed_task_reads_ok_and_a_description_is_its_label():
+    r = Rec()
+    r.echo(
+        _task(
+            "b2",
+            "completed",
+            'Background command "Run "the" tests" completed (exit code 0)',
+        )
+    )
+    (e,) = run(r)[0].entries()
+    assert (e["status"], e["title"], e["md"]) == (
+        "ok",
+        "background · completed · exit 0",
+        'Run "the" tests',
+    )
+
+
+def test_a_task_stopped_at_its_time_limit_says_so():
+    note = "<note>If the work in progress still needs it, start it again.</note>\n"
+    r = Rec()
+    r.echo(
+        _task(
+            "b3",
+            "killed",
+            'Background command "sleep 999" was stopped after reaching its background time limit',
+            note,
+        )
+    )
+    (e,) = run(r)[0].entries()
+    assert (e["status"], e["title"], e["md"]) == (
+        "err",
+        "background · killed · time limit",
+        "sleep 999",
+    )
+
+
+def test_a_subagents_notice_folds_its_report():
+    result = "<result>**Verdict:** ready.\n\n- a &lt; b</result>\n"
+    r = Rec()
+    r.echo(_task("a1", "completed", 'Agent "Review the branch" finished', result))
+    (e,) = run(r)[0].entries()
+    assert (e["kind"], e["title"], e["md"]) == (
+        "inbox",
+        "subagent · completed",
+        "Review the branch",
+    )
+    assert e["detail"]["fold"] == "**Verdict:** ready.\n\n- a < b"
+    assert "lang" not in e["detail"]
+
+
+def test_several_notices_in_one_prompt_are_one_row_each():
+    r = Rec()
+    r.echo(
+        _task("b1", "completed", 'Background command "ls" completed (exit code 0)')
+        + "\n"
+        + _task("b2", "failed", 'Background command "false" failed with exit code 1')
+    )
+    a, b = run(r)[0].entries()
+    assert [(a["md"], a["status"]), (b["md"], b["status"])] == [
+        ("ls", "ok"),
+        ("false", "err"),
+    ]

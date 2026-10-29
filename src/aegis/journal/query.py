@@ -83,7 +83,8 @@ def matching(
     (fuzzy.py), newest first, each with the indices in its text that matched.
     SQL narrows by q; the words are matched here, BATCH entries at a time, so a
     caller that stops early reads no further. A field is the text, every handle
-    the session has had, a touched path as shown, the kind or the tag."""
+    the session has had, a touched path or the repo as shown, the kind or the
+    tag."""
     words = text.split()
     names: dict[str, list[str]] = {}
     q = dataclasses.replace(q, limit=BATCH, offset=0, before=None)
@@ -94,6 +95,8 @@ def matching(
         for h in hits:
             fields = [h.handle, *names[h.log_id], h.kind, h.tag]
             fields += [shown(p, root) for p in h.paths]
+            if h.repo:
+                fields.append(shown(h.repo, root))
             marks = fuzzy.match(words, h.text, fields)
             if marks is not None:
                 yield h, marks

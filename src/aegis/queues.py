@@ -31,6 +31,7 @@ import secrets
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 from .agents import ConfigError, read_config, resolve
@@ -69,6 +70,9 @@ class Task:
     # The principal the task and its worker belong to (tokens.py); None in a
     # log from before owners, which reads as the admin's.
     owner: str | None = None
+    # The agent on a server linked with trust that enqueued it, as
+    # {handle, server}: its result goes back over the link (#684).
+    far_enqueuer: dict | None = None
 
     def public(self) -> dict:
         d = asdict(self)
@@ -139,6 +143,9 @@ class Queues:
     def __init__(
         self, registry: Registry, monitors: Monitors, path: Path, config: Config
     ) -> None:
+        # Sends a task's result back to an agent on a server linked with
+        # trust (app.py sets it).
+        self.far_callback: Callable[[Task, str, str], Awaitable[None]] | None = None
         self._registry = registry
         self._monitors = monitors
         self._path = path
@@ -254,6 +261,7 @@ class Queues:
         enqueuer: str | None,
         cwd: str,
         owner: str | None = None,
+        far_enqueuer: dict | None = None,
     ) -> Task:
         t = Task(
             id=f"task-{secrets.token_hex(4)}",
@@ -263,6 +271,7 @@ class Queues:
             enqueuer=enqueuer,
             cwd=cwd,
             owner=owner,
+            far_enqueuer=far_enqueuer,
         )
         self.tasks[t.id] = t
         self._log(t, "enqueued")
@@ -491,6 +500,12 @@ class Queues:
         loop.create_task(self.dispatch())
 
     async def _callback(self, t: Task, outcome: str, body: str) -> None:
+        if t.callback and t.far_enqueuer and self.far_callback is not None:
+            try:
+                await self.far_callback(t, outcome, body)
+            except Exception:
+                log.exception("aegis: could not send the callback of %s back", t.id)
+            return
         if not t.callback or not t.enqueuer:
             return
         s = self._registry.sessions.get(t.enqueuer)

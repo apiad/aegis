@@ -26,6 +26,10 @@ while it waits for a slot, its position in the queue. With a slot free, the
 worker has already started, and the status says running.
 An unknown queue is refused with the names of the queues there are, and a
 queue whose entry in `.aegis.yaml` is broken is refused with what is wrong.
+Over a [trusted link](links#trusted-links), `queue@server` enqueues on the
+other server: the task id comes back as `task-id@server`, which
+`task_status`, `task_cancel` and `task_resume` take, and the result reaches
+your inbox headed `> from queue:<queue>@<server> · task#<id>@<server>`.
 
 Tasks wait first in, first out, for a free slot. A queue runs at most
 `max_parallel:` workers at once. A pending task also waits, without failing,
@@ -61,7 +65,9 @@ naming the first two workers and counting the rest (`+2`); a task still
 waiting for a slot has no worker yet and counts as `1 pending queue task`.
 The session panel has a Waiting on section with a row per task: the worker's
 handle, the queue and the task's status. A click on a row opens the worker,
-whose tab a quiet worker otherwise lacks. A session started with
+whose tab a quiet worker otherwise lacks. Hovering a row, or a long press on a
+phone, shows the same card a hover on that session's tab shows: its Fleet card
+with the tab menu's actions. A session started with
 `session_spawn` that is still working or waiting shows there the same way.
 `session_list` gives an agent the same names in each card's waiting line.
 

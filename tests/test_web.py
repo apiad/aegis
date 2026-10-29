@@ -1129,6 +1129,20 @@ def test_the_manifest_names_the_server_and_its_icons_load(project, fake_claude):
         assert '<link rel="manifest" href="/manifest.webmanifest">' in page
 
 
+def test_the_manifest_is_a_share_target_and_a_share_without_a_worker_opens_the_form(
+    project, fake_claude
+):
+    # The service worker takes a share (sw.js); one that reaches the server
+    # lands on an empty New session form, its body never read (#735).
+    with client_for(project, fake_claude) as c:
+        target = json.loads(c.get("/manifest.webmanifest").text)["share_target"]
+        assert target["action"] == "/share" and target["method"] == "POST"
+        assert target["enctype"] == "multipart/form-data"
+        assert target["params"]["files"][0]["name"] == "files"
+        r = c.post("/share", data={"text": "hi"}, follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == "/#new"
+
+
 def test_the_service_worker_is_served_from_the_root(project, fake_claude):
     # From the root, so its scope is the whole client; revalidated on every
     # update check, so a new client is never hidden behind an old worker.

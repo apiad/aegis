@@ -89,7 +89,10 @@ _NOW = (
     "standing",
     "continued_by",
     "quiet",
+    "autoclose",
     "workflow",
+    "skills",
+    "skill_runs",
 )
 _SOON = (
     "activity",
@@ -192,6 +195,16 @@ class Host:
         ``at`` is "send" for a prompt, "tool" for a tool result."""
         return ""
 
+    def knowledge_hint(self, session: "Session", text: str) -> str:
+        """The skills and memories that may matter to a send of ``text``
+        (knowledge/hint.py), or ""."""
+        return ""
+
+    def knowledge_native(self, owner: str | None) -> bool:
+        """Whether ``owner``'s knowledge setting is native now, read once at
+        a spawn (``SpawnSpec.knowledge_native``)."""
+        return False
+
     def compacted(self, session: "Session") -> None:
         """The harness compacted the session's context."""
 
@@ -262,6 +275,12 @@ class SpawnSpec:
     # fixed at creation, so a later change of the token's user reaches new
     # sessions only. None runs as the server's own user.
     linux_user: str | None = None
+    # The owner's knowledge setting when it was spawned (setup.Records):
+    # native starts every process of it without the harness's own skills and
+    # memory, and lets a store skill take a harness command's name. Fixed at
+    # spawn, so the menu and the process never disagree; the switch reaches
+    # new sessions.
+    knowledge_native: bool = False
 
     def record(self) -> dict:
         """The fields a spawn record and a meta carry."""
@@ -295,6 +314,8 @@ class SpawnSpec:
             d["cascade"] = list(self.cascade)
         if self.linux_user:
             d["linux_user"] = self.linux_user
+        if self.knowledge_native:
+            d["knowledge_native"] = True
         return d
 
     @classmethod
@@ -319,6 +340,7 @@ class SpawnSpec:
             keep_harness_tools=tuple(d.get("keep_harness_tools") or ()),
             cascade=_cascade_of(d.get("cascade")),
             linux_user=d.get("linux_user") or None,
+            knowledge_native=bool(d.get("knowledge_native")),
         )
 
 
@@ -367,6 +389,8 @@ class Session:
         quota_paused: str | None = None,
         notices_sent: dict[str, str] | None = None,
         items_sent: dict[str, str] | None = None,
+        skills: list[str] | None = None,
+        skill_runs: dict[str, int] | None = None,
         tool_calls: int = 0,
         parked_rss: int = 0,
         parked_idle_s: int = 0,
@@ -374,6 +398,7 @@ class Session:
         compactions: int = 0,
         continued_by: str | None = None,
         quiet: bool = False,
+        autoclose: bool = False,
         checked_version: str | None = None,
         cascade_exhausted: bool = False,
     ) -> None:
@@ -421,6 +446,11 @@ class Session:
         # Inbox messages waiting for this session's turn to end.
         self.held: list[dict] = list(held or [])
         self._flushing = False
+        # Whether a person's message began the current turn (a typed send, or
+        # a / line such as /remember), not an agent's, a queue's or aegis's
+        # delivery: memory_save honours asked only then (knowledge_ops.py).
+        # In memory only; a restart starts with it off.
+        self.person_turn = False
         # One start at a time: an OpenCode start takes seconds, and two sends
         # in that window must not start two children.
         self._starting = asyncio.Lock()
@@ -432,6 +462,9 @@ class Session:
         self.worker = worker
         # No tab until its turn ends (#386); a card in the Fleet meanwhile.
         self.quiet = quiet
+        # The person's word, ahead of time, to close once the agent ends done
+        # (#691): turn_end refuses done without close while it is on.
+        self.autoclose = autoclose
         # A schedule's run: {"name", "run", "spawn"}, inherited by its children
         # (schedules.py); None for any other session.
         self.schedule = schedule
@@ -465,6 +498,11 @@ class Session:
         # What per-session notice sources told it, apart from the host kinds
         # (notices.py): their restore reads every key in notices_sent.
         self.items_sent: dict[str, str] = dict(items_sent or {})
+        # The skills it loaded with skill_read or a /<skill> command, in the
+        # order loaded (knowledge_ops.py). In the meta, so the card keeps them.
+        self.skills: list[str] = list(skills or [])
+        # How many times skill_run ran each loaded skill's scripts.
+        self.skill_runs: dict[str, int] = dict(skill_runs or {})
         # What the cache did (cache.py): tool calls and compactions of the main
         # thread, and the last calls' [cache_read, total_input, at]. In the meta,
         # so the counters survive a restart.
@@ -547,6 +585,8 @@ class Session:
             "quota_paused": self.quota_paused,
             "notices_sent": self.notices_sent,
             "items_sent": self.items_sent,
+            "skills": self.skills,
+            "skill_runs": self.skill_runs,
             "tool_calls": self.tool_calls,
             "parked_rss": self.parked_rss,
             "parked_idle_s": self.parked_idle_s,
@@ -554,6 +594,7 @@ class Session:
             "compactions": self.compactions,
             "continued_by": self.continued_by,
             "quiet": self.quiet,
+            "autoclose": self.autoclose,
             "checked_version": self.checked_version,
             "cascade": self._cascade_meta(),
         }
@@ -595,6 +636,22 @@ class Session:
         m["cache_alarm"] = cache.alarm(self.cache_recent, self.spec.harness)
         m.update(self._host.card(self))
         return m
+
+    def load_skill(self, name: str) -> bool:
+        """Mark a skill loaded, once; publishes the card and writes the meta.
+        False when it was loaded already."""
+        if name in self.skills:
+            return False
+        self._set(skills=[*self.skills, name])
+        self._metas.write(self.meta())
+        return True
+
+    def ran_skill(self, name: str) -> None:
+        """Count one skill_run of ``name``; publishes the card."""
+        self._set(
+            skill_runs={**self.skill_runs, name: self.skill_runs.get(name, 0) + 1}
+        )
+        self._metas.write(self.meta())
 
     @property
     def busy(self) -> bool:
@@ -745,6 +802,7 @@ class Session:
                 log_id=self.log_id,
                 user=user,
                 keep_harness_tools=self.spec.keep_harness_tools,
+                knowledge_native=self.spec.knowledge_native,
             )
         )
         # Before the start: a harness can speak while it starts (OpenCode's
@@ -889,6 +947,7 @@ class Session:
         *,
         through_lock: bool = False,
         urgent: bool = False,
+        by_person: bool = False,
     ) -> Literal["sent", "held", "steered"]:
         """An inbox message. Idle or stopped: sent now (a stopped session is
         resumed to receive it). Mid-turn: held, and sent with any others when
@@ -896,16 +955,19 @@ class Session:
         the next tool boundary instead of waiting; ``urgent`` wants exactly
         that, and gets it from a harness that reads mid-turn input. When the
         owner's quota gate says no turn may start, held with ``held_for:
-        "quota"`` until it opens (app.on_quota). Returns what it did."""
+        "quota"`` until it opens (app.on_quota). ``by_person``: a person's
+        / line delivered it (``person_turn``). Returns what it did."""
         if self.archived:
             raise Archived(self.log_id)
         if not through_lock:
             self.check_lock()
         msg = {"header": header, "body": body, "ts": time.time()}
+        if by_person:
+            msg["by_person"] = True
         if urgent and self.status == "working" and self.harness.steers_mid_turn:
             # Steered in as a person's mid-turn message is: a user message at
             # the next tool boundary (Claude Code) or a turn/steer (Codex).
-            await self._send(_inbox_text([msg]), steered=True)
+            await self._send(_inbox_text([msg]), steered=True, by_person=by_person)
             return "steered"
         if self.status == "working" or self._flushing:
             self._hold(msg)
@@ -913,7 +975,7 @@ class Session:
         if self._host.quota_hold(self) is not None:
             self._hold(msg | {"held_for": "quota"})
             return "held"
-        await self._send(_inbox_text([msg]))
+        await self._send(_inbox_text([msg]), by_person=by_person)
         return "sent"
 
     def _hold(self, msg: dict) -> None:
@@ -929,7 +991,10 @@ class Session:
             if batch:
                 # Before the send gathers notices: the "held" warning ends here.
                 self._host.status_changed(self)
-                await self._send(_inbox_text(batch))
+                await self._send(
+                    _inbox_text(batch),
+                    by_person=any(m.get("by_person") for m in batch),
+                )
         finally:
             self._flushing = False
 
@@ -962,13 +1027,15 @@ class Session:
         attached: list[dict] | None = None,
         *,
         through_lock: bool = False,
+        by_person: bool = False,
     ) -> None:
         """Send ``text`` to the harness. With files ``attached``, ``text`` is
         the typed text plus their paths, and ``typed`` what the person wrote,
-        which their row shows (transcript/entries.py)."""
+        which their row shows (transcript/entries.py). ``by_person``: a
+        person typed it (``person_turn``)."""
         if not through_lock:
             self.check_lock()
-        await self._send(text, typed, attached)
+        await self._send(text, typed, attached, by_person=by_person)
 
     async def _send(
         self,
@@ -977,6 +1044,7 @@ class Session:
         attached: list[dict] | None = None,
         *,
         steered: bool = False,
+        by_person: bool = False,
     ) -> None:
         await self.ensure_running()
         assert self._proc is not None
@@ -985,17 +1053,25 @@ class Session:
             self._set(title=default_title(typed or text))
         if self.cascade_exhausted:
             self.cascade_exhausted = False  # a new turn starts
-        if not text.startswith("/") and (
-            blocks := self._host.notice_blocks(self, "send")
-        ):
-            # The record and the harness get the same text, so the fold pairs
-            # them; the fold splits the blocks off into their own rows.
-            text = f"{text}\n\n{blocks}"
+        if not text.startswith("/"):
+            # The hint first, then the notices. The record and the harness get
+            # the same text, so the fold pairs them; the fold splits the
+            # blocks off into their own rows.
+            blocks = [
+                self._host.knowledge_hint(self, text),
+                self._host.notice_blocks(self, "send"),
+            ]
+            if extra := "\n\n".join(b for b in blocks if b):
+                text = f"{text}\n\n{extra}"
         record: dict = {"kind": "send", "text": text}
         if attached:
             record |= {"typed": typed or "", "files": attached}
         if steered:
             record["steered"] = True  # an inbox message sent into a running turn
+        if by_person:
+            self.person_turn = True  # a person's words now steer this turn
+        elif not steered:
+            self.person_turn = False  # a turn someone else began
         self._record(record)
         # Working before the send returns: a harness can answer during it (an
         # OpenCode command refused before it starts a turn).
@@ -1123,6 +1199,10 @@ class Session:
 
     def record_config(self, record: dict) -> None:
         """A config suggestion's card or its outcome (config_suggest.py)."""
+        self._record(record)
+
+    def record_knowledge(self, record: dict) -> None:
+        """A knowledge card or its outcome (knowledge_ops.py)."""
         self._record(record)
 
     def record_card(self, record: dict) -> None:
@@ -1440,6 +1520,7 @@ class Session:
                 "code": code,
                 "stderr_tail": stderr_tail,
                 "harness": self.harness.label,
+                "status": self.last_exit["status"],
             }
         )
         self._set(status="asleep", asleep_why="exited")

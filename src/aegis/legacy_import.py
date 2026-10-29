@@ -29,7 +29,7 @@ from pathlib import Path
 
 from .claude.stream import Echo, Garbled, Ignored, parse
 from .meta import MetaStore
-from .names import default_title, mint_handle, valid_handle
+from .names import default_title, free_handle
 
 # `20260730T130711775955Z-placid-perlis`: birth time, then the handle.
 _STEM = re.compile(r"^(\d{8})T(\d{6})\d*Z-(.+)$")
@@ -290,19 +290,6 @@ def _cost(costs: list[float]) -> float | None:
     return round(total + prev, 6)
 
 
-def _free_handle(handle: str, taken: set[str]) -> str:
-    """``handle``, or ``handle-2``, ``handle-3``... when the legacy tree reused
-    it; a fresh one when no such form is a valid handle."""
-    if valid_handle(handle) and handle not in taken:
-        return handle
-    n = 2
-    while valid_handle(f"{handle}-{n}"):
-        if f"{handle}-{n}" not in taken:
-            return f"{handle}-{n}"
-        n += 1
-    return mint_handle(taken)
-
-
 def import_legacy(source: Path, state_root: Path) -> Report:
     """Write every log under ``source/sessions`` into ``state_root`` as an
     archived session, skipping the ones already there."""
@@ -331,7 +318,7 @@ def import_legacy(source: Path, state_root: Path) -> Report:
 
         m = _STEM.match(log.stem)
         handle = info["handle"] or (m.group(3) if m else "")
-        handle = _free_handle(handle, taken)
+        handle = free_handle(handle, taken)
         taken.add(handle)
 
         harness = "opencode" if info["provider"] == "opencode" else "claude-code"

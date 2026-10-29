@@ -10,6 +10,8 @@ prompts aegis adds around a message cannot confuse it.
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
 
 import pytest
 
@@ -659,3 +661,44 @@ async def test_a_notice_reaches_the_model_on_a_prompt_and_on_a_tool_result(canar
     assert any("bravo-9" in r for x in log for r in x["tool_results"]), (
         f"no tool result carried it: {[x['tool_results'] for x in log]}"
     )
+
+
+async def test_knowledge_native_starts_claude_without_its_skills_and_memory(canary):
+    """The person's knowledge switch (knowledge.setting): off, Claude Code
+    offers its Skill tool and its auto-memory; on, a new session has
+    neither. Pinned on Claude Code, whose switches were read from its
+    release; Codex's and OpenCode's are config keys (codex/config.py,
+    opencode/config.py)."""
+    if canary.harness != "claude-code":
+        pytest.skip("the switch is pinned on Claude Code")
+    # A skill of the harness's own, so its Skill tool has one to offer.
+    own = Path(os.environ["CLAUDE_CONFIG_DIR"]) / "skills" / "canary-own"
+    own.mkdir(parents=True)
+    (own / "SKILL.md").write_text(
+        "---\nname: canary-own\ndescription: Use for the canary\n---\nSay hi.\n"
+    )
+    canary.model.script(Rule("CANARY-NATIVE", [Say("CANARY-NATIVE-DONE")]))
+
+    async def ask(marker: str) -> dict:
+        s = await canary.spawn()
+        await canary.send(s, marker)
+        await until(
+            lambda: said(s, "CANARY-NATIVE-DONE") and s.status == "idle",
+            timeout=TURN,
+            what="the turn",
+        )
+        return last_request(canary, marker)
+
+    memory = "persistent file-based memory"  # its auto-memory section
+    before = await ask("CANARY-NATIVE-OFF")
+    system = canary.model.systems[before["system"]]
+    assert "Skill" in before["tools"], before["tools"]
+    assert memory in system and "canary-own" in system
+    await canary.app.registry.call("knowledge.setting", {"native": True})
+    after = await ask("CANARY-NATIVE-ON")
+    system = canary.model.systems[after["system"]]
+    assert "Skill" not in after["tools"], after["tools"]
+    assert memory not in system and "canary-own" not in system
+    assert "mcp__aegis__skill_read" in after["tools"] or any(
+        t in after["tools"] for t in ("ToolSearch", "tool_search")
+    ), after["tools"]

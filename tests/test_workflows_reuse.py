@@ -170,3 +170,26 @@ async def test_a_reused_session_names_the_step_running_in_it(world):
     await until(lambda: settled(wf, run), timeout=20)
     st = wf.runs[run]
     assert st.status == "done", {k: (n.status, n.error) for k, n in st.nodes.items()}
+
+
+async def test_a_spent_steps_session_names_the_step_that_may_continue_it(world):
+    from aegis.ops import OpError
+
+    # impl is done and fix waits behind a pause: impl's session is held for
+    # fix, and a person closing it is told so (#678).
+    fix = json.dumps(report(2, 0.2))
+    text = steps(
+        IMPL
+        + "    - {wait: 30s, id: hold, say: Hold.}\n"
+        + f"    - {{id: fix, say: Fix it., agent: {{session: impl, prompt: {fix}}}}}"
+    )
+    wf = world.app.workflows
+    run = await run_it(world, text)
+    await until(lambda: wf.runs[run].nodes.get("hold"), timeout=20, what="the hold")
+    lid = wf.runs[run].nodes["impl"].log_id
+    assert wf.runs[run].nodes["impl"].status == "done"
+    with pytest.raises(OpError) as e:
+        await world.app.registry.call("session.close", {"log_id": lid})
+    assert e.value.code == "in_workflow"
+    assert "which is done, but fix may still continue" in e.value.message
+    assert lid in world.app.sessions.sessions

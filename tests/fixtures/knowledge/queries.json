@@ -1,0 +1,422 @@
+[
+ {
+  "kind": "skill",
+  "query": "how do I cut a new version",
+  "relevant": [
+   "release"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "add a CNAME record for the docs domain",
+  "relevant": [
+   "managing-dns"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "check the build works before shipping it to users",
+  "relevant": [
+   "smoke-test"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "we lost yesterday's rows, get them back",
+  "relevant": [
+   "database-backup"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "a token leaked, we need new credentials",
+  "relevant": [
+   "rotate-secrets"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "give me a second opinion on ben's changes",
+  "relevant": [
+   "review-pr"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "someone joins next week, get them going",
+  "relevant": [
+   "onboarding"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "nobody can log in, the site returns 502",
+  "relevant": [
+   "incident-response"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "is the new parser slower than before",
+  "relevant": [
+   "benchmark"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "ship the bot to its server",
+  "relevant": [
+   "deploy-bot"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "add a required check to the pipeline",
+  "relevant": [
+   "configure-ci"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "translate this page of the documentation",
+  "relevant": [
+   "translate-docs"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "the postgres backup, how do I verify it",
+  "relevant": [
+   "database-backup"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "update the changelog and tag",
+  "relevant": [
+   "release"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "production outage, who writes the postmortem",
+  "relevant": [
+   "incident-response"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "cómo publico una nueva versión",
+  "relevant": [
+   "release"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "cambiar los registros DNS del dominio",
+  "relevant": [
+   "managing-dns"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "prueba de humo antes de publicar",
+  "relevant": [
+   "smoke-test"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "restaurar la base de datos desde un backup",
+  "relevant": [
+   "database-backup"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "rotar los tokens de la API",
+  "relevant": [
+   "rotate-secrets"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "revisar el pull request de ben",
+  "relevant": [
+   "review-pr"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "llega alguien nuevo al equipo el lunes",
+  "relevant": [
+   "onboarding"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "producción está caída, qué hacemos",
+  "relevant": [
+   "incident-response"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "traducir la documentación al español",
+  "relevant": [
+   "translate-docs"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "va más lento que antes, cómo lo mido",
+  "relevant": [
+   "benchmark"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "despliegue del asistente de chat",
+  "relevant": [
+   "deploy-bot"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "configurar los workflows de CI",
+  "relevant": [
+   "configure-ci"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "hacer un backup de postgres",
+  "relevant": [
+   "database-backup"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "publicar el changelog y la etiqueta de la versión",
+  "relevant": [
+   "release"
+  ]
+ },
+ {
+  "kind": "skill",
+  "query": "escribir el postmortem del incidente",
+  "relevant": [
+   "incident-response"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "where does the bot run",
+  "relevant": [
+   "bot-host"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "can we release this week",
+  "relevant": [
+   "release-freeze"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "the required checks passed, can I merge",
+  "relevant": [
+   "merge-after-green"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "which tests should I run before pushing",
+  "relevant": [
+   "test-gates-order"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "when is cara online",
+  "relevant": [
+   "cara-timezone"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "who needs to look at billing changes",
+  "relevant": [
+   "ana-reviews"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "which file holds the secret for postgres",
+  "relevant": [
+   "db-password-location"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "what language do the user docs start in",
+  "relevant": [
+   "spanish-docs"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "start the CI runner",
+  "relevant": [
+   "ci-costs"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "who hosts our DNS",
+  "relevant": [
+   "dns-provider"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "how far back can we recover data",
+  "relevant": [
+   "backup-schedule"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "rewrite the history of main",
+  "relevant": [
+   "no-force-push"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "deploy the bot to production",
+  "relevant": [
+   "bot-host"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "it's after 2pm UTC, will cara answer",
+  "relevant": [
+   "cara-timezone"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "merge the PR now",
+  "relevant": [
+   "merge-after-green"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "en qué servidor corre el bot",
+  "relevant": [
+   "bot-host"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "podemos publicar un release antes de la demo",
+  "relevant": [
+   "release-freeze"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "ya pasaron los checks requeridos, hago merge",
+  "relevant": [
+   "merge-after-green"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "qué tests corro antes de hacer push",
+  "relevant": [
+   "test-gates-order"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "a qué hora responde la diseñadora",
+  "relevant": [
+   "cara-timezone"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "quién revisa los cambios de billing",
+  "relevant": [
+   "ana-reviews"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "dónde está la contraseña de la base de datos",
+  "relevant": [
+   "db-password-location"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "en qué idioma escribimos la documentación",
+  "relevant": [
+   "spanish-docs"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "arrancar el runner de CI temporal",
+  "relevant": [
+   "ci-costs"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "dónde se gestiona el DNS de los dominios",
+  "relevant": [
+   "dns-provider"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "cada cuánto se guarda una copia de seguridad",
+  "relevant": [
+   "backup-schedule"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "hacer force push a la rama compartida",
+  "relevant": [
+   "no-force-push"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "desplegar el bot",
+  "relevant": [
+   "bot-host"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "cara está disponible ahora",
+  "relevant": [
+   "cara-timezone"
+  ]
+ },
+ {
+  "kind": "memory",
+  "query": "puedo hacer merge del PR",
+  "relevant": [
+   "merge-after-green"
+  ]
+ }
+]

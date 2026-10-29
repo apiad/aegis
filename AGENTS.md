@@ -23,11 +23,13 @@ A change is done when:
    test files you touched and their neighbours while you iterate, plus
    `make lint-docs` when a doc or help page changed. The whole suite is CI's
    job, not yours;
-2. CI is green on the PR. It runs the whole hermetic suite, slow and browser
-   tests included, with format, lint, typecheck, rift and the changelog check,
-   and compares the bench of the PR's base and head in its job summary. Copy
-   that table into the PR body: CI warns on a regression and never fails on
-   one, so a reader has to look at it;
+2. CI is green on the PR. It runs the fast and multi-user suites with
+   format, lint, typecheck, rift and the changelog check, and compares the
+   bench of the PR's base and head in its job summary. Copy that table into
+   the PR body: CI warns on a regression and never fails on one, so a reader
+   has to look at it. Until the fair release (#768), the slow and browser
+   tests run every night in `nightly.yml` instead, and tests marked
+   `quarantine` (#776) are left out of every gate until their flake is fixed;
 3. it has been exercised in a browser against an `aegis serve` started after the
    change, and, for a change to how agents use aegis, by the `make test-live`
    case that covers it, run on its own (`-k`), not the whole live suite;
@@ -66,6 +68,7 @@ would make it false.
 | `src/aegis/help/` | how to use aegis, for agents and people, shipped in the package | a tool, command, CLI subcommand or config key changes |
 | `changelog.d/*.md` | one release note per change, awaiting the next release | any user-visible change |
 | `CHANGELOG.md` | what shipped | a release collates the fragments |
+| the pinned `vision` issue | where aegis is going now: the goal, the current milestone, and one meta-issue per subsystem with the work under it, in order | a milestone closes, a release ships, a merge changes the picture |
 | GitHub issues | what is still to do: defects, features, ideas (`idea` marks a direction not yet decided) | work is found, decided or lands |
 | `know-how/` | how to do one job | a procedure changes |
 | `Makefile`, `.rift.yaml`, tests | every mechanical check | a gate is added or dropped |
@@ -96,13 +99,18 @@ what a local run cannot.
    colours `--help` only when `GITHUB_ACTIONS` is set, see #7). If CI is red,
    find out whether `main` is red the same way *before* concluding it is yours —
    `gh run view <id> --log-failed` on both, and diff the failure lists.
-4. **Merge on green, only on green.** The author merges its own PR once every
-   check passes, not only the required ones, without waiting to be asked; the
-   smoke test waits for the release, unless the person asks for one. Check the
-   merge landed. `gh pr merge` run from
+4. **Get it green, then ask.** The author works its PR until every check
+   passes, not only the required ones, then asks the person whether to merge
+   and stops. It merges unasked only when the person said so up front, or the
+   plan or workflow they approved says so. The smoke test waits for the
+   release, unless the person asks for one. Check the merge landed. `gh pr merge` run from
    inside a worktree prints `fatal: 'main' is already used by worktree` after
    the merge has already succeeded on GitHub; read `gh pr view <n> --json state`
-   rather than believing the error.
+   rather than believing the error. Once the issue closes, read the pinned
+   vision issue and its sub-issues and say whether the tree still holds:
+   close a finished meta-issue, reorder, attach new work; propose to the
+   person anything that changes the milestones, and at a release, an update
+   of the whole vision.
 5. **End the PR with screenshots that prove it.** Shoot the changed screens in
    the real client, at desktop and at phone width (390 px), and a terminal
    capture of the command and its output when nothing on screen changed. Push

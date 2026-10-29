@@ -1,6 +1,6 @@
 [project]
 name = "aegis-harness"
-version = "2.15.0"
+version = "2.17.1"
 description = "A web-native workplace for coding agents: Claude Code sessions in browser tabs, with monitors, queues and handoffs over MCP."
 readme = "README.md"
 authors = [
@@ -37,11 +37,15 @@ dependencies = [
 # Browsers the agent and the person share (browsers.py); also run
 # `playwright install chromium` once.
 browser = ["playwright>=1.63.0"]
+# Search fused with a text-embedding model (knowledge/embed.py), when
+# knowledge.embeddings names one in .aegis.yaml; about 1 GB resident.
+embeddings = ["fastembed>=0.4"]
 
 [project.urls]
-Repository    = "https://github.com/apiad/aegis"
-Issues        = "https://github.com/apiad/aegis/issues"
-Changelog     = "https://github.com/apiad/aegis/blob/main/CHANGELOG.md"
+Homepage      = "https://aegis.syalia.com"
+Repository    = "https://github.com/syalia-srl/aegis"
+Issues        = "https://github.com/syalia-srl/aegis/issues"
+Changelog     = "https://github.com/syalia-srl/aegis/blob/main/CHANGELOG.md"
 
 [project.scripts]
 aegis = "aegis.cli:main"
@@ -78,6 +82,7 @@ markers = [
     "canary: drives the published harnesses against a fake model; skipped unless `--run-canary` (`make canary`)",
     "browser: drives headless Chromium through Playwright; needs `playwright install chromium`",
     "multiuser: runs aegis as a service user with capabilities and real Linux users; skipped unless `--run-multiuser` (`make test-multiuser`)",
+    "quarantine(issue): a known flaky test, out of the PR gate, `make test` and the release run until its issue is fixed; nightly.yml and `make test-quarantine` run it (#776)",
     "slow: 1.5s or more serially, setup and teardown included; `make test` deselects it, `make test-slow` and `make test-all` run it",
 ]
 

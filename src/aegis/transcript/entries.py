@@ -233,6 +233,24 @@ class Fold:
         self.last_recap_upto: int | None = None
         self._btws: dict[str, str] = {}  # side note id -> entry id
 
+    def _dockable_copies(self, records: list[dict]) -> list[dict]:
+        """Stored copies that are not ``file_send`` records, with stable pane ids.
+
+        Attachments and peeked files are already copied into the sent-files
+        store. Attachments use the immutable copy id; peeks provide a stable key
+        for the row and advance its version when opened again.
+        """
+        out = []
+        for rec in records:
+            one = _sent_file(rec)
+            key = str(rec.get("pane_key") or f"f-{one['file_id']}")
+            latest = self.file_keys.get(key)
+            version = int(latest["version"]) + 1 if latest else 1
+            one |= {"key": key, "version": version}
+            self.file_keys[key] = one
+            out.append(one)
+        return out
+
     @property
     def rev(self) -> int:
         """The store index of the last record folded; -1 before the first."""
@@ -243,6 +261,19 @@ class Fold:
 
     def entry(self, id: str) -> dict | None:
         return self._entries.get(id)
+
+    def shown(self) -> list[str]:
+        """The prose the agent wrote since the last send, in order: what the
+        person can have read from it this turn. A subagent's text is never
+        prose, so it is not here (#679)."""
+        since = self._sent_at
+        return [
+            e["md"]
+            for e in self._entries.values()
+            if e["kind"] == "prose"
+            and e.get("md")
+            and (since is None or (e["ts"] or 0) >= since)
+        ]
 
     def snapshot(self, since: int | None = None) -> dict:
         """What a subscriber gets: every entry, or, given the ``rev`` it holds,
@@ -519,7 +550,7 @@ class Fold:
             self._pending.append(pid)
             text = str(rec.get("text", ""))
             head, notices = split_notices(text)
-            attached = [_sent_file(f) for f in rec.get("files") or []]
+            attached = self._dockable_copies(rec.get("files") or [])
             if attached or notices or without_note(head)[1]:
                 self._said[pid] = text
             return folded + self._upsert(
@@ -667,6 +698,20 @@ class Fold:
             self._stand(turn_error=line)
             return self._upsert(
                 _entry(f"e{i}", "error", "err", ts, d.ERROR_GLYPH, summary=line)
+            )
+        if kind == "exit" and rec.get("code") == 0 and rec.get("status") == "idle":
+            # A clean exit between turns cut nothing: the session is asleep
+            # and the next message wakes it, as a parked one (#678). A record
+            # from before "status" was kept reads as an error, as it did.
+            return self._upsert(
+                _entry(
+                    f"e{i}",
+                    "system",
+                    "ok",
+                    ts,
+                    d.SYSTEM_GLYPH,
+                    summary=f"asleep: {rec.get('harness') or 'claude'} exited between turns",
+                )
             )
         if kind == "exit":
             stderr = "\n".join(rec.get("stderr_tail") or [])
@@ -1038,20 +1083,85 @@ class Fold:
             return self._upsert(
                 {**e, "status": status, "summary": status, "detail": det}
             )
-        if kind == "peek":
-            # A file tool's file, copied because the person asked to see it:
-            # it opens inside that tool's row, the latest copy replacing any.
-            row = self._entries.get(str(rec.get("entry")))
-            if row is None or row["kind"] != "tool":
+        if kind == "knowledge_card":
+            # A memory or skill an agent proposed, or an approved one it
+            # changed or deleted (knowledge_ops.py). What the card shows and
+            # the commit Undo reverts live here, so it works after a restart.
+            det = {
+                k: rec.get(k)
+                for k in (
+                    "op",
+                    "item_kind",
+                    "name",
+                    "description",
+                    "body",
+                    "partial",
+                    "files",
+                    "type",
+                    "lifetime",
+                    "expires",
+                    "sha",
+                    "digest",
+                    "items",
+                )
+            }
+            det["by"] = None
+            op = str(rec.get("op"))
+            return self._upsert(
+                _entry(
+                    str(rec.get("card_id")),
+                    "knowledge",
+                    "pending",
+                    ts,
+                    d.KNOWLEDGE_GLYPH,
+                    title=f"imported {rec.get('name')}"
+                    if op == "imported"
+                    else f"{rec.get('item_kind')} {rec.get('name')}",
+                    summary="proposed" if op == "new" else op,
+                    detail=det,
+                )
+            )
+        if kind == "knowledge_card_item_done":
+            # One item of an import card undone: the card stays, its row
+            # says so (knowledge_ops.py, card_unimport).
+            e = self._entries.get(str(rec.get("card_id")))
+            if e is None:
                 return []
-            sent = [_sent_file(f) for f in rec.get("files") or []]
+            items = [
+                {**x, "outcome": rec.get("outcome"), "by": rec.get("by")}
+                if x.get("name") == rec.get("name")
+                else x
+                for x in e["detail"].get("items") or []
+            ]
+            return self._upsert({**e, "detail": {**e["detail"], "items": items}})
+        if kind == "knowledge_card_done":
+            e = self._entries.get(str(rec.get("card_id")))
+            if e is None:
+                return []
+            status = str(rec.get("outcome"))
+            det = {**e["detail"], "by": rec.get("by")}
+            return self._upsert(
+                {**e, "status": status, "summary": status, "detail": det}
+            )
+        if kind == "peek":
+            # A file copied because the person asked to see it. A tool's copy
+            # opens inside that row; a reply path's copy stays on the reply as
+            # hidden state, so a docked pane survives a reload.
+            row = self._entries.get(str(rec.get("entry")))
+            if row is None or row["kind"] not in ("tool", "prose"):
+                return []
+            sent = self._dockable_copies(rec.get("files") or [])
+            peek = {"ts": ts, "glyph": d.FILE_GLYPH, "files": sent}
+            if row["kind"] == "prose":
+                peeks = dict(row["detail"].get("path_peeks") or {})
+                peeks[str(rec.get("index"))] = peek
+                detail = {**row["detail"], "path_peeks": peeks}
+            else:
+                detail = {**row["detail"], "peek": peek}
             return self._upsert(
                 {
                     **row,
-                    "detail": {
-                        **row["detail"],
-                        "peek": {"ts": ts, "glyph": d.FILE_GLYPH, "files": sent},
-                    },
+                    "detail": detail,
                 }
             )
         if kind == "configure":
@@ -1169,6 +1279,24 @@ class Fold:
             self._clock(ts, "work")
             # The notices it carried follow it as their own rows.
             head, notices = split_notices(ev.text)
+            if tasks := d.task_notices(head):
+                # Claude Code's own wake for a background command or a
+                # subagent that ended: a row like aegis's wakes, never the
+                # person's words (#699).
+                for i, t in enumerate(tasks):
+                    ops += self._upsert(
+                        _entry(
+                            id if i == 0 else f"{id}:task:{i}",
+                            "inbox",
+                            t["status"],
+                            ts,
+                            d.COMMS_GLYPH,
+                            title=t["title"],
+                            md=t["md"],
+                            detail=t["detail"],
+                        )
+                    )
+                return ops + self._notice_rows(id, ts, notices)
             if head.startswith("> from "):
                 # An inbox message: a monitor wake, a queue result, a handoff.
                 header = head.splitlines()[0].removeprefix("> from ").strip()

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import os
+import signal
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -56,6 +58,46 @@ async def test_child_with_new_session_leads_its_own_session():
         await p.wait()
 
 
+async def test_child_with_die_with_parent_ends_when_its_parent_does(tmp_path):
+    """The parent starts a child that would sleep a minute, prints its pid and
+    exits at once without a word to it (#620)."""
+    parent = tmp_path / "parent.py"
+    parent.write_text(
+        "import asyncio, os\n"
+        "from aegis import launch\n"
+        "async def main():\n"
+        "    p = await launch.child(\n"
+        "        ['sleep', '60'], user=None, stdout=launch.DEVNULL, die_with_parent=True\n"
+        "    )\n"
+        "    print(p.pid, flush=True)\n"
+        "    os._exit(0)\n"
+        "asyncio.run(main())\n"
+    )
+    p = await launch.child([sys.executable, str(parent)], stdout=launch.PIPE, user=None)
+    out, _ = await p.communicate()
+    pid = int(out)
+    deadline = time.monotonic() + 5
+    while _alive(pid) and time.monotonic() < deadline:
+        await asyncio.sleep(0.05)
+    alive = _alive(pid)
+    if alive:
+        os.kill(pid, 9)
+    assert not alive
+
+
+async def test_child_with_die_with_parent_keeps_a_missing_binary_an_error():
+    with pytest.raises(FileNotFoundError):
+        await launch.child(["no-such-binary-aegis"], user=None, die_with_parent=True)
+
+
+def _alive(pid: int) -> bool:
+    """Running: an orphan's zombie, reaped by whoever adopted it, is not."""
+    try:
+        return "State:\tZ" not in Path(f"/proc/{pid}/status").read_text()
+    except OSError:
+        return False
+
+
 async def test_pty_gives_the_child_the_terminal(tmp_path):
     master, slave = os.openpty()
     try:
@@ -87,6 +129,52 @@ def test_run_captures_and_feeds_input():
 def test_run_timeout_raises_timeout_expired():
     with pytest.raises(subprocess.TimeoutExpired):
         launch.run(["sleep", "5"], timeout=0.2, user=None)
+
+
+def test_signal_process_retries_a_group_signal_as_its_owner(monkeypatch):
+    seen = []
+
+    def denied(pgid, sig):
+        raise PermissionError("the server cannot signal the member")
+
+    def run(argv, *, user, timeout, text):
+        seen.append((argv, user, timeout, text))
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(launch.os, "killpg", denied)
+    monkeypatch.setattr(launch, "run", run)
+
+    launch.signal_process(4321, signal.SIGTERM, user="ben", group=True)
+
+    assert seen == [(["kill", "-s", "TERM", "--", "-4321"], "ben", 5, True)]
+
+
+def test_signal_process_does_not_run_kill_when_the_process_is_gone(monkeypatch):
+    def gone(pid, sig):
+        raise ProcessLookupError
+
+    monkeypatch.setattr(launch.os, "kill", gone)
+    monkeypatch.setattr(
+        launch,
+        "run",
+        lambda *a, **kw: pytest.fail("a missing process needs no fallback"),
+    )
+
+    launch.signal_process(4321, signal.SIGTERM, user="ben")
+
+
+def test_signal_process_reports_a_failed_owner_fallback(monkeypatch):
+    def denied(pid, sig):
+        raise PermissionError("the server cannot signal the member")
+
+    def run(argv, **kwargs):
+        return subprocess.CompletedProcess(argv, 1, "", "kill: Operation not permitted")
+
+    monkeypatch.setattr(launch.os, "kill", denied)
+    monkeypatch.setattr(launch, "run", run)
+
+    with pytest.raises(PermissionError, match="Operation not permitted"):
+        launch.signal_process(4321, signal.SIGTERM, user="ben")
 
 
 def test_detach_starts_a_new_session_and_does_not_wait():

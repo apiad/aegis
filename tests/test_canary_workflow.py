@@ -45,13 +45,10 @@ def test_the_issues_step_runs_on_a_schedule_and_on_latest_only():
 
 
 def test_specs_install_latest_or_an_end_of_the_tested_range():
-    rs = ranges()
-    assert canary_versions.specs("latest") == [
-        f"{r.package}@latest" for r in rs.values()
-    ]
-    assert canary_versions.specs("max") == [
-        f"{r.package}@{r.max_s}" for r in rs.values()
-    ]
-    assert canary_versions.specs("min") == [
-        f"{r.package}@{r.min_s}" for r in rs.values()
-    ]
+    # Cursor's range is in the toml, but cursor-agent is not an npm package:
+    # npm 404s on its version and the min and max runs died installing it.
+    rs = [r for r in ranges().values() if r.harness in canary_versions.CANARY]
+    assert {r.harness for r in rs} == {"claude-code", "codex", "opencode"}
+    assert canary_versions.specs("latest") == [f"{r.package}@latest" for r in rs]
+    assert canary_versions.specs("max") == [f"{r.package}@{r.max_s}" for r in rs]
+    assert canary_versions.specs("min") == [f"{r.package}@{r.min_s}" for r in rs]

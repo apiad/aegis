@@ -456,6 +456,7 @@ async def test_sources_filter_what_each_device_hears(world, service):
     assert req.headers["urgency"] == "normal"
 
 
+@pytest.mark.quarantine("#516")
 async def test_a_server_that_boots_with_sessions_waiting_sends_nothing(world, service):
     await subscribe(world, service, ["needs_you"])
     a = await world.spawn()

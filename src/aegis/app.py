@@ -60,6 +60,7 @@ from pydantic.json_schema import SkipJsonSchema
 
 from . import archive, attachments as att, commands, dictation, files, restarts, speech
 from . import feedback, harness_versions, multiuser, setup
+from . import layout as canvas
 from . import workflow_store
 from .agent_ops import (
     far_error,
@@ -91,6 +92,7 @@ from .doctor_watch import DoctorWatch
 from .confirm import Confirmations
 from .help_ops import register_help_ops
 from .host import HostSampler
+from .load import LoadSampler
 from .net.service import NetService
 from .links import LinkError, Links, probe
 from .mcp import PATH as MCP_PATH, Tokens, build_mcp
@@ -106,6 +108,16 @@ from .push import register_push_ops
 from .queues import Queues
 from .journal.ops import register_journal_ops
 from .journal.service import Journal
+from .knowledge.service import Knowledge
+from .knowledge.items import NAME_RE, Item
+from .skill_mcp import SkillServers
+from .knowledge_ops import (
+    consolidate_turn,
+    offered,
+    register_knowledge_ops,
+    remember_turn,
+    skill_turn,
+)
 from .repos.service import Repos
 from .layout_ops import register_layout_ops
 from .fs_ops import register_fs_ops
@@ -128,13 +140,14 @@ from .btws import SideNotes
 from .recaps import Recaps
 from .ops import Caller, NoParams, OpError, Principal, Registry as Ops
 from . import as_user, launch
+from .opencode import sweep as opencode_sweep
 from .tokens import TokenStore
 from .as_user import Place
 from .member_view import MemberView
 from .users import MultiUser
 from .registry import Registry
 from .roots import Roots
-from .transcript.entries import _sent_file
+from .usage.ops import register_usage_ops
 from .session import PUBLISH_EVERY_S, SpawnSpec
 from .term_ops import register_term_ops
 from .browser_ops import register_browser_ops
@@ -143,6 +156,11 @@ from .browsers import Browsers
 from .version import Versions
 
 log = logging.getLogger("aegis.app")
+# How often every principal's memories are checked for expiry and staleness.
+KNOWLEDGE_CHECK_S = 86400
+# The most one principal's staleness check may take: a hung mount must not
+# hold the pass, or the others, forever.
+KNOWLEDGE_CHECK_TIMEOUT_S = 30.0
 # A log id as registry.new_log_id mints it, checked on what a link answers.
 LOG_ID = re.compile(r"^\d{8}-\d{6}-[0-9a-f]{6}$")
 # How many nonced sends the server remembers, across every session.
@@ -301,6 +319,10 @@ def _held(owner: str, why: str) -> str:
     return f"{owner}'s quota gate holds this session: {why}. It continues when the gate opens."
 
 
+class AutocloseParams(LogParams):
+    on: bool
+
+
 class RestartParams(LogParams):
     untested: Literal["once", "always"] | None = None
 
@@ -356,6 +378,16 @@ class LinkAdd(_Strict):
     name: str | None = Field(
         None, description="What it must call itself; omitted: whatever it does."
     )
+    trusted: bool = Field(
+        False,
+        description="Ask for a trusted link: both ways, agents unrestricted. "
+        "Refused unless the far server is used by its admin alone.",
+    )
+
+
+class LinkTrust(_Strict):
+    name: str
+    trusted: bool
 
 
 class LinkName(_Strict):
@@ -477,6 +509,9 @@ class App:
         self.config = Config(roots.config_root, self._on_config)
         self._config_task: asyncio.Task | None = None
         self._versions_task: asyncio.Task | None = None
+        self._knowledge_task: asyncio.Task | None = None
+        # Checks a save started in the background, held so none is collected.
+        self._knowledge_soon: set[asyncio.Task] = set()
         self._background: set[asyncio.Task] = set()
         self.queues = Queues(
             self.sessions, self.monitors, roots.state_root / "tasks.jsonl", self.config
@@ -513,9 +548,26 @@ class App:
             lambda text, s: self.toast(text, "error", source=s),
         )
         self.journal = Journal(
-            roots.state_root, self.publish, user_of=self._linux_user_of_session
+            roots.state_root,
+            self.publish,
+            user_of=self._linux_user_of_session,
+            meta_of=self._meta_of_session,
+            accounts=lambda: {
+                p["harness"]: f"{p['name']}:{p['account']}"
+                for p in self.quota.snapshot()["providers"]
+                if p["account"]
+            },
         )
         reg.journal = self.journal
+        # knowledge.embeddings is read once, here: a change needs a restart.
+        self.knowledge = Knowledge(
+            roots.state_root, self.config.current().knowledge["embeddings"]
+        )
+        reg.knowledge = self.knowledge
+        self.skill_servers = SkillServers()
+        reg.skill_servers = self.skill_servers
+        reg.principal_of = lambda s: s.spec.owner or self.user
+        reg.native_of = lambda owner: self.knowledge_native(owner or self.user)
         self.repos = Repos(
             self.journal.path,
             self.publish,
@@ -551,6 +603,14 @@ class App:
         self.sessions.nudges = self.nudges
         self.notices = Notices(self)
         self.sessions.notices = self.notices
+        self.load = LoadSampler(
+            lambda: {
+                s.log_id: (s.pid, self.sessions.cgroup_dir(s))
+                for s in self.sessions.open_sessions()
+            },
+            self.sessions.load_changed,
+        )
+        self.sessions.load = self.load
         self.watchers = Watchers()
         self.parker = Parker(
             self.sessions, lambda: self.config.current().park, self.watchers
@@ -569,10 +629,14 @@ class App:
                 linux_user,
             )
         self.links = Links(roots.state_root, server_name, self.user, self.publish)
+        self.links.answer = self.answer_link
+        self.queues.far_callback = self._far_callback
+        self.monitors.far_list = self._far_list
         # Sessions a pause or a continue is under way for, so a reading that
         # lands before it finishes does not start a second one.
         self._quota_busy: set[str] = set()
         self.quota.listeners.append(self.on_quota)
+        self.quota.listeners.append(self.journal.quota)
         reg.gate = self.gate
         # Who each session's processes run as, in multi-user mode (users.py).
         reg.multi_user = multi_user is not None
@@ -609,13 +673,90 @@ class App:
         register_browser_ops(self)
         self.push = register_push_ops(self)
         register_journal_ops(self)
+        register_usage_ops(self)
         register_help_ops(self)
+        register_knowledge_ops(self)
         register_notice_ops(self)
         register_schedule_ops(self)
         register_workflow_ops(self)
         self.mcp_server, self.mcp_app = build_mcp(
             self.registry, self.tokens, self.sessions
         )
+
+    def trust_refusal(self, principal: Principal, server: str) -> str | None:
+        """Why this server will not trust ``server``'s link, or None: trust is
+        for two servers one person alone uses, so the link must hold the
+        admin's own token and nobody else may hold one (links.py, #684)."""
+        me = self.server_name
+        if principal.name != self.principals.owner or not principal.is_admin:
+            return f"the link does not hold {me}'s admin token"
+        if self.principals.has_members():
+            return (
+                f"{me} has tokens besides its admin's; a trusted link needs "
+                "a server only its admin uses"
+            )
+        if self.links.outbound(server) is not None:
+            return (
+                f"{me} links a server named {server} itself; remove that "
+                "link to trust this one"
+            )
+        return None
+
+    async def answer_link(self, server: str, op: str, params) -> dict:
+        """Run a call a trusted linked server sent back down its link: as this
+        server's admin acting through that link, the same caller a link socket
+        is on the far server, so every op keeps one rule for linked calls."""
+        caller = Caller(
+            "user", link=server, principal=Principal(self.principals.owner, "admin")
+        )
+        log.info("call %s from linked server %s", op, server)
+        try:
+            return {"result": await self.registry.call(op, params, caller)}
+        except OpError as e:
+            error = {"code": e.code, "message": e.message}
+            if e.data is not None:
+                error["data"] = e.data
+            return {"error": error}
+        except Exception as e:  # an operation bug must not kill the link
+            log.exception("call %s from %s failed", op, server)
+            return {
+                "error": {"code": "internal", "message": f"{type(e).__name__}: {e}"}
+            }
+
+    async def _far_callback(self, t, outcome: str, body: str) -> None:
+        """A task an agent on a server linked with trust enqueued here
+        finished: its result goes back to that agent over the link."""
+        far = t.far_enqueuer or {}
+        server = str(far.get("server"))
+        link = self.links.get(server)
+        if link is None or not self.links.trusted(server):
+            log.warning("the result of %s has no trusted link to %s", t.id, server)
+            return
+        try:
+            await link.call(
+                "queue.deliver",
+                {
+                    "target": far.get("handle"),
+                    "queue": t.queue,
+                    "task_id": t.id,
+                    "outcome": outcome,
+                    "body": body,
+                },
+            )
+        except OpError as e:
+            log.warning("%s refused the result of %s: %s", server, t.id, e.message)
+
+    async def _far_list(self, server: str) -> list | None:
+        """A trusted server's open sessions, for a monitor here; None when
+        they cannot be read now."""
+        link = self.links.get(server)
+        if link is None or not self.links.trusted(server):
+            return None
+        try:
+            listed = await link.call("session.list")
+        except OpError:
+            return None
+        return listed if isinstance(listed, list) else None
 
     def who(self, caller: Caller) -> Principal:
         """The principal a caller acts as. An agent acts as its session's
@@ -909,6 +1050,9 @@ class App:
         }.get(harness, self.claude_bin)
 
     async def boot(self) -> None:
+        # Before any session starts its own: the OpenCode servers a server or
+        # test that is gone left behind (#620).
+        opencode_sweep.sweep()
         self._config_task = asyncio.create_task(self.config.watch())
         # Before any session starts, so every harness child gets its cgroup.
         self.sessions.cgroups = SessionCgroups.setup(
@@ -951,6 +1095,7 @@ class App:
         self.workflows.start()
         self.quota.start()
         self.host.start()
+        self.load.start()
         self.net.start()
         self.nudges.start()
         self.notices.start()
@@ -962,6 +1107,8 @@ class App:
         # In the background: a harness that hangs on --version must not hold
         # the server's start (harness_versions.py, spec §08).
         self._versions_task = asyncio.create_task(self._startup_versions())
+        # The knowledge flags, at boot and then daily, off the loop.
+        self._knowledge_task = asyncio.create_task(self._knowledge_checks())
         # In the background too, for the new tab's doctor row (doctor_watch.py).
         self.doctor_watch.start()
 
@@ -1004,6 +1151,10 @@ class App:
         self.queues.shutdown()
         if self._versions_task is not None:
             self._versions_task.cancel()
+        if self._knowledge_task is not None:
+            self._knowledge_task.cancel()
+        for task in list(self._knowledge_soon):
+            task.cancel()
         await self.doctor_watch.stop()
         if self._config_task is not None:
             self._config_task.cancel()
@@ -1015,6 +1166,7 @@ class App:
         await self.notices.stop()
         await self.quota.stop()
         await self.host.stop()
+        await self.load.stop()
         await self.net.stop()
         await self.monitors.shutdown()
         await self.recaps.shutdown()
@@ -1022,10 +1174,24 @@ class App:
         await self.browsers.shutdown()
         await self.side_notes.shutdown()
         await self.sessions.shutdown()
+        try:
+            await self.skill_servers.shutdown()
+        except Exception:
+            log.exception("aegis: the skill servers did not stop")
         await self.repos.stop()
         await asyncio.to_thread(self.journal.stop)
+        await asyncio.to_thread(self.knowledge.usage.stop)
         self.runners.shutdown()
         restarts.stopped(self.roots.state_root, stopping_at)
+
+    def _meta_of_session(self, log_id: str) -> dict:
+        """A session's meta, live or archived; {} when it has none (an old
+        store, a crash before the meta was written)."""
+        try:
+            meta = json.loads(self.sessions.metas.path(log_id).read_text())
+        except (OSError, ValueError):
+            return {}
+        return meta if isinstance(meta, dict) else {}
 
     def _linux_user_of_session(self, log_id: str) -> str | None:
         """The Linux user a session runs as (users.py): the live session's,
@@ -1071,6 +1237,70 @@ class App:
         spec = self.sessions.open(log_id).spec
         member = self.principals.role_of(spec.owner or self.user) != "admin"
         return self._place(self.sessions.user_for(spec), member)
+
+    def knowledge_reader(self, principal: str) -> tuple[as_user.Runner, list[str]]:
+        """What a staleness check of ``principal``'s memories reads with: the
+        runner that opens files as their Linux user (the server's own for
+        the owner, or outside multi-user mode), and the roots a quoted path
+        is looked for under, their Files root then their home. Raises
+        PermissionError for a member with no user."""
+        user = self.principals.acts_for(principal)
+        place = self._place(user, self.principals.role_of(principal) != "admin")
+        home = pwd.getpwnam(user).pw_dir if user else str(Path.home())
+        return place.run, list(dict.fromkeys([str(place.root), home]))
+
+    async def knowledge_check(
+        self, principal: str, items: list[Item] | None = None
+    ) -> None:
+        """Flag ``principal``'s memories (knowledge/checks.py), all of them
+        when ``items`` is None. A principal nothing may read for is skipped
+        and logged."""
+        try:
+            run, roots = self.knowledge_reader(principal)
+        except PermissionError as e:
+            log.warning("aegis: knowledge of %s not checked: %s", principal, e)
+            return
+        whole = items is None
+        some = await self.knowledge.items(principal) if items is None else items
+        await self.knowledge.check(principal, some, run, roots, everything=whole)
+
+    async def bounded_check(self, principal: str, items: list[Item] | None) -> None:
+        """knowledge_check within ``KNOWLEDGE_CHECK_TIMEOUT_S``; a timeout or
+        an error is logged, never raised. A file read already in a thread
+        runs on to its end, but nothing waits for it."""
+        try:
+            await asyncio.wait_for(
+                self.knowledge_check(principal, items), KNOWLEDGE_CHECK_TIMEOUT_S
+            )
+        except TimeoutError:
+            log.warning(
+                "aegis: the knowledge check of %s took over %ss; skipped",
+                principal,
+                KNOWLEDGE_CHECK_TIMEOUT_S,
+            )
+        except Exception:
+            log.exception("aegis: the knowledge check of %s failed", principal)
+
+    def knowledge_check_soon(self, principal: str, items: list[Item]) -> None:
+        """Check ``items`` in the background, as a save does: the save has
+        already committed, so nothing the check does may fail or hold it."""
+        task = asyncio.create_task(self.bounded_check(principal, items))
+        self._knowledge_soon.add(task)
+        task.add_done_callback(self._knowledge_soon.discard)
+
+    async def _knowledge_checks(self) -> None:
+        """The daily pass: every principal's memories flagged once at boot,
+        then every ``KNOWLEDGE_CHECK_S``. Never fails the server, and one
+        principal's failure never skips the others."""
+        while True:
+            try:
+                names = await asyncio.to_thread(self.knowledge.store.principals)
+            except Exception:
+                log.exception("aegis: the knowledge check could not list stores")
+                names = []
+            for name in names:
+                await self.bounded_check(name, None)
+            await asyncio.sleep(KNOWLEDGE_CHECK_S)
 
     def _place(self, user: str | None, member: bool) -> Place:
         root, state = self.roots.config_root, self.roots.state_root
@@ -1170,6 +1400,8 @@ class App:
             return self.host.snapshot
         if name == "journal":
             return self.journal.snapshot
+        if name == "usage":
+            return self.journal.usage_snapshot
         if name.startswith("repos:"):
             log_id = name.removeprefix("repos:")
             return lambda: self.repos.snapshot(log_id)
@@ -1265,6 +1497,67 @@ class App:
             raise _dead(e) from e
         return s.wire()
 
+    async def _offered_skills(self, principal: str) -> list[tuple[str, str]]:
+        """The (name, description) of the skills ``principal`` is offered as
+        commands. A store that cannot be read offers none: the menu outlives it."""
+        try:
+            items = await self.knowledge.items(principal)
+        except Exception:
+            log.exception("aegis: the skills of %s could not be listed", principal)
+            return []
+        return [(it.name, it.description) for it in items if offered(it)]
+
+    def knowledge_native(self, principal: str) -> bool:
+        """Whether ``principal``'s knowledge setting is native: their
+        sessions start without the harness's own skills and memory, and a
+        store skill takes the name of a harness command. Set from Settings
+        (``knowledge.setting``) or by /setup (``setup_record``)."""
+        return self.setup_records.native(principal)
+
+    async def _skill_command(self, s, name: str):
+        """The store skill ``/name`` runs in ``s``, or None. ``skill:<name>``
+        reaches one named like an aegis command, or like a harness command
+        the skill does not shadow because the session was not spawned native
+        (SpawnSpec.knowledge_native)."""
+        bare = name.removeprefix("skill:")
+        if not NAME_RE.match(bare):
+            return None
+        owner = s.spec.owner or self.user
+        it = self.knowledge.store.get(owner, bare)
+        if it is None or not offered(it):
+            return None
+        if bare == name and not s.spec.knowledge_native:
+            cat = await self.catalogs.get(s)
+            if cat is not None and cat.has(name):
+                return None
+        return it
+
+    async def _run_skill(
+        self, s, it, arg: str, caller: Caller, untested: str | None
+    ) -> dict:
+        """Deliver a skill's text as one turn, mark it loaded and write an
+        ``invoked`` row. aegis delivers it, so every harness runs it alike.
+        Gated as a typed message is: refused behind a closed quota gate, and
+        a resume asks the version gate; mid-turn it is held, and says so."""
+        if (why := self.sessions.quota_hold(s)) is not None:
+            raise OpError("quota_closed", _held(s.spec.owner or self.user, why))
+        not_saved = None
+        if not s.running and s.asleep_why != "idle":
+            not_saved = await self._version_gate(caller, s.spec.harness, untested, s)
+            s.launch_by = "agent" if caller.is_agent else "person"
+        try:
+            did = await s.deliver(
+                *skill_turn(it.name, it.body, arg, iso_now()), by_person=True
+            )
+        finally:
+            s.launch_by = "agent"
+        s.load_skill(it.name)
+        self.knowledge.usage.add(
+            s.spec.owner or self.user, s.log_id, "skill", it.name, "invoked"
+        )
+        out = {"status": "held" if did == "held" else "delivered"}
+        return out | {"not_saved": not_saved} if not_saved else out
+
     async def _command(
         self,
         s,
@@ -1357,7 +1650,31 @@ class App:
                 ver, found, [a.name for a in cfg.agents], list(cfg.queues)
             )
             rec = self.setup_records.get(self.who(caller).name)
-            await s.deliver(*setup.turn(arg, line, rec, iso_now()))
+            await s.deliver(*setup.turn(arg, line, rec, iso_now()), by_person=True)
+            return {"status": "delivered"}
+        if name == "remember":
+            # The agent saves the text as a memory the person asked for
+            # (knowledge_ops.py), in their own store. An agent with read
+            # permission cannot call memory_save, so the turn would only fail.
+            if s.spec.permission == "read":
+                raise OpError(
+                    "read_only",
+                    "this session has read permission, so its agent cannot save"
+                    " a memory; use /remember in a session that can write",
+                )
+            await s.deliver(*remember_turn(arg, iso_now()), by_person=True)
+            return {"status": "delivered"}
+        if name == "consolidate":
+            # The agent reviews the person's store from the help page
+            # consolidate. The person began the turn, as with /setup, so what
+            # the turn applies after their submit saves approved, with Undo.
+            if s.spec.permission == "read":
+                raise OpError(
+                    "read_only",
+                    "this session has read permission, so its agent cannot apply"
+                    " what you tick; use /consolidate in a session that can write",
+                )
+            await s.deliver(*consolidate_turn(arg, iso_now()), by_person=True)
             return {"status": "delivered"}
         if name in ("workflow", "loop"):
             # A person's line launches a saved workflow: the only path, beside
@@ -1378,6 +1695,14 @@ class App:
         if name == "sleep":
             await s.stop()
             return s.wire()
+        if name == "quiet":
+            return reg.set_quiet(s.log_id, True)
+        if name == "autoclose":
+            if arg not in ("", "on", "off"):
+                raise OpError("bad_params", "usage: /autoclose [on|off]")
+            return reg.set_autoclose(
+                s.log_id, not s.autoclose if not arg else arg == "on"
+            )
         if name == "restart":
             return await self._launch(s, caller, untested, s.restart)
         if name == "spawn":
@@ -1528,7 +1853,7 @@ class App:
         try:
             listed = await link.call("agents.list", {})
         except OpError as e:
-            raise far_error(e, far) from None
+            raise far_error(e, far, trusted=self.links.trusted(far)) from None
         # What the far server says of its agents only lowers the permission.
         presets = listed.get("agents") if isinstance(listed, dict) else None
         agent = name or (listed.get("default") if isinstance(listed, dict) else None)
@@ -1566,7 +1891,7 @@ class App:
                 "session.spawn", {k: v for k, v in params.items() if v is not None}
             )
         except OpError as e:
-            raise far_error(e, far) from None
+            raise far_error(e, far, trusted=self.links.trusted(far)) from None
         if not isinstance(r, dict):
             raise OpError("far_error", f"{far} answered the spawn with something else")
         handle, log_id = r.get("handle"), r.get("log_id")
@@ -1632,8 +1957,10 @@ class App:
             yield self.server_name, local
         if member:
             return
-        for link in self.links.up():
-            if only not in (None, link.name):
+        # Links this server opened: a way back is reached by calls, and its
+        # archive rows could not be read from here (links.Backlink).
+        for link in self.links.links():
+            if link.state != "linked" or only not in (None, link.name):
                 continue
 
             async def far(query, limit, after, workers, link=link):
@@ -1783,7 +2110,7 @@ class App:
                 ) from e
             if p.prompt:
                 try:
-                    await s.send(p.prompt)
+                    await s.send(p.prompt, by_person=person)
                 except (BrokenPipeError, ConnectionResetError, FileNotFoundError) as e:
                     raise OpError(
                         "send_failed",
@@ -1819,6 +2146,12 @@ class App:
                 name, arg = cmd
                 if name in commands.AEGIS:
                     return await self._command(s, name, arg, caller, p.untested)
+                if (sk := await self._skill_command(s, name)) is not None:
+                    return await self._run_skill(s, sk, arg, caller, p.untested)
+                if name.startswith("skill:"):
+                    raise OpError(
+                        "unknown_command", f"no skill {name[6:]!r} to run as /{name}"
+                    )
                 cat = await self.catalogs.get(s)
                 if cat is not None and cat.commands and not cat.has(name):
                     raise OpError(
@@ -1858,7 +2191,12 @@ class App:
                         )
                     except files.FileError as e:
                         raise OpError(e.code, e.message) from e
-                await s.send(att.message(text, sent), typed=text, attached=sent)
+                await s.send(
+                    att.message(text, sent),
+                    typed=text,
+                    attached=sent,
+                    by_person=not caller.is_agent,
+                )
                 if not_saved:
                     return {"not_saved": not_saved}
             except FileNotFoundError as e:
@@ -2056,20 +2394,29 @@ class App:
         @r.op("commands.list", LogParams)
         async def commands_list(p: LogParams, caller):
             """What the composer's menu offers this session."""
-            return listing(await self.catalogs.get(reg.open(p.log_id)), caller)
+            s = reg.open(p.log_id)
+            owner = s.spec.owner or self.user
+            skills = await self._offered_skills(owner)
+            cat = await self.catalogs.get(s)
+            return listing(cat, caller, skills, s.spec.knowledge_native)
 
         @r.op("commands.preview", PreviewParams)
         async def commands_preview(p: PreviewParams, caller):
             """What the new tab's menu offers before its session exists (#632):
             aegis's commands, and the harness's when a session in that
             directory has already listed them."""
+            owner = self.who(caller).name
+            skills = await self._offered_skills(owner)
+            # The session about to start takes the setting as it is now.
+            native = self.knowledge_native(owner)
             try:
                 cwd = self._resolve_cwd(p.cwd)
             except OpError:
-                return listing(None, caller)
-            return listing(self.catalogs.cached(p.harness, cwd), caller)
+                return listing(None, caller, skills, native)
+            cat = self.catalogs.cached(p.harness, cwd)
+            return listing(cat, caller, skills, native)
 
-        def listing(cat, caller) -> dict:
+        def listing(cat, caller, skills: list[tuple[str, str]], native: bool) -> dict:
             try:
                 saved = self.saved.listing(self.workflows._agents())
             except Exception:
@@ -2078,11 +2425,25 @@ class App:
                 saved = []
             # /doctor only for an admin while the doctor finds a problem.
             doctor = bool(self.doctor_watch.problems()) and self.who(caller).is_admin
+            # A harness command keeps its name beside a skill of that name
+            # unless the session is native (SpawnSpec.knowledge_native).
+            taken = (
+                {c["name"] for c in cat.commands}.difference(commands.AEGIS)
+                if cat and not native
+                else set()
+            )
             return {
                 "commands": [
                     c for c in commands.aegis_wire() if doctor or c["name"] != "doctor"
                 ]
-                + (cat.wire_commands(shadowed=commands.AEGIS) if cat else []),
+                + commands.skills_wire(skills, taken)
+                + (
+                    cat.wire_commands(
+                        shadowed={*commands.AEGIS, *(n for n, _ in skills)} - taken
+                    )
+                    if cat
+                    else []
+                ),
                 "models": cat.wire_models() if cat else [],
                 "permissions": list(PERMISSION_MODE),
                 # What /workflow completes: the saved workflows that lint.
@@ -2172,6 +2533,11 @@ class App:
             if (why := reg.workflow_lock(reg.open(p.log_id))) is not None:
                 raise OpError("in_workflow", f"{why}; it gets a tab when the run ends")
             return reg.set_quiet(p.log_id, False)
+
+        # The person's, never an agent's: autoclose is their word to close (#691).
+        @r.op("session.autoclose", AutocloseParams, owned="log_id")
+        async def autoclose(p: AutocloseParams, caller):
+            return reg.set_autoclose(p.log_id, p.on)
 
         @r.op("session.reopen", LogParams, owned="log_id")
         async def reopen(p: LogParams, caller):
@@ -2280,7 +2646,18 @@ class App:
                 (rec,) = await files.store_as(self.roots.state_root, [path], run)
             except files.FileError as e:
                 raise OpError(e.code, e.message) from e
-            return [_sent_file(rec) | await root_path(path, caller)]
+            sent = {k: v for k, v in rec.items() if k != "kind"}
+            sent["pane_key"] = canvas.file_key(f"peek:{row['id']}:{index}")
+            s.record_peek(
+                {
+                    "kind": "peek",
+                    "entry": row["id"],
+                    "index": index,
+                    "files": [sent],
+                }
+            )
+            saved = s.fold().entry(row["id"])["detail"]["path_peeks"][str(index)]
+            return [saved["files"][0] | await root_path(path, caller)]
 
         @r.op("file.peek", PeekParams)
         async def file_peek(p: PeekParams, caller):
@@ -2304,6 +2681,7 @@ class App:
             except files.FileError as e:
                 raise OpError(e.code, e.message) from e
             sent = {k: v for k, v in rec.items() if k != "kind"}
+            sent["pane_key"] = canvas.file_key(f"peek:{p.entry_id}:tool")
             s.record_peek({"kind": "peek", "entry": p.entry_id, "files": [sent]})
             url = files.url(rec["file_id"], rec["name"])
             return [
@@ -2338,7 +2716,9 @@ class App:
             """Link another aegis server: connect once with its token, take the
             name it gives itself, and keep the link in links.json."""
             try:
-                welcome = await probe(p.url, p.token, self.server_name, self.user)
+                welcome = await probe(
+                    p.url, p.token, self.server_name, self.user, p.trusted
+                )
             except LinkError as e:
                 raise OpError("link_refused", e.message) from e
             name = str(welcome.get("server"))
@@ -2346,12 +2726,24 @@ class App:
                 raise OpError(
                     "bad_link", f"that server calls itself {name}, not {p.name}"
                 )
-            self.links.add(name, p.url, p.token)
+            self.links.add(name, p.url, p.token, p.trusted)
             return {"name": name}
 
         @r.op("link.remove", LinkName, admin=True)
         async def link_remove(p: LinkName, caller):
             self.links.remove(p.name)
+
+        @r.op("link.trust", LinkTrust, admin=True)
+        async def link_trust(p: LinkTrust, caller):
+            """Ask a link for trust (both ways, agents unrestricted), or stop
+            asking. The link reconnects; the far server decides."""
+            self.links.trust(p.name, p.trusted)
+
+        @r.op("link.incoming")
+        async def link_incoming(_, caller):
+            """The servers that linked this one with trust, so their agents
+            reach this one over their link."""
+            return self.links.incoming()
 
         @r.op("token.list", admin=True)
         async def token_list(_, caller):

@@ -4,6 +4,10 @@ A line that starts with ``/`` names an aegis command, which runs an operation
 and sends nothing to ``claude``, or one of the session's harness commands, which
 goes to ``claude`` as typed. ``//rest`` is a prompt: it is sent as `` /rest``,
 because Claude Code runs a line as a command only when the slash comes first.
+A skill in the session owner's knowledge store whose ``aegis.command`` is
+not false is a command too, after aegis's own: aegis delivers its text as a
+turn, so it works the same in every harness, and it hides a harness command
+of the same name. A skill named like an aegis command is ``/skill:<name>``.
 Any other ``/`` line is refused before it costs a turn: Claude answers an
 unknown command with the model. Without a catalog to check against, harness
 names pass through.
@@ -17,6 +21,7 @@ to disk, so an upgraded CLI never meets a stale list.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -34,7 +39,8 @@ class Command:
     doc: str
     args: str = (
         ""  # what the menu completes: "models", "efforts", "permissions",
-        # "tutorials" or "workflows"
+        # "tutorials" or "workflows"; "spawn" and "announce" walk their own
+        # words and flags (client/js/commands.js)
     )
 
 
@@ -57,6 +63,12 @@ AEGIS: dict[str, Command] = {
             "sleep", "", "End the process and keep the session; a message wakes it"
         ),
         Command("stop", "", "Alias of /sleep"),
+        Command("quiet", "", "Hide this tab until the turn ends, as Alt+Q"),
+        Command(
+            "autoclose",
+            "[on|off]",
+            "Close this session when its agent ends done; alone, toggle it",
+        ),
         Command("restart", "", "A fresh process on the same conversation"),
         Command("btw", "<question>", "Ask a side question; the agent never sees it"),
         Command(
@@ -77,6 +89,16 @@ AEGIS: dict[str, Command] = {
             "proposes, you tick, it applies",
         ),
         Command(
+            "remember",
+            "<text>",
+            "Save a memory every later session can find; the agent writes it",
+        ),
+        Command(
+            "consolidate",
+            "[text]",
+            "Review your skills and memories with the agent: merge, renew, retire",
+        ),
+        Command(
             "workflow",
             "[id] [text]",
             "Run a saved workflow now, its args made from your text; alone, list them",
@@ -92,11 +114,13 @@ AEGIS: dict[str, Command] = {
             "<agent>[@server] [prompt]",
             "Start a session, here or on a linked server; flags: --quiet, "
             "--model, --effort, --permission, --cwd",
+            "spawn",
         ),
         Command(
             "announce",
             "<text> [--until HH:MM] [--critical]",
             "Tell every agent on this server something, once",
+            "announce",
         ),
         Command("archive", "", "Archive the session; Reopen brings it back"),
         Command("close", "", "Alias of /archive"),
@@ -213,6 +237,30 @@ def aegis_wire() -> list[dict]:
             "args": c.args,
         }
         for c in AEGIS.values()
+    ]
+
+
+def skill_command(name: str, taken: Iterable[str] = ()) -> str:
+    """The name a store skill is offered under: its own, or ``skill:<name>``
+    when an aegis command or one of ``taken`` already holds it."""
+    return f"skill:{name}" if name in AEGIS or name in taken else name
+
+
+def skills_wire(skills: list[tuple[str, str]], taken: Iterable[str] = ()) -> list[dict]:
+    """The menu's rows for the store skills offered as commands, given as
+    (name, description), after aegis's own. ``taken`` are the harness's
+    names a skill does not shadow."""
+    taken = set(taken)
+    return [
+        {
+            "name": skill_command(name, taken),
+            "hint": "[args]",
+            "doc": description,
+            # Apart from "skill", a harness's own (claude/control.py).
+            "source": "aegis skill",
+            "args": "",
+        }
+        for name, description in skills
     ]
 
 

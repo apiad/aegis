@@ -116,7 +116,9 @@ queued while offline, goes without the line.
 ## Rename it
 
 A session has a handle, two or three lowercase words joined by hyphens, unique
-on this server, and an optional title of one line. Click either at the top of
+among the open sessions on this server, and an optional title of one line. An
+archived session's handle is free to take: reopening that session then gives it
+the handle with a number added (`docs-sweep-2`) when an open session holds it. Click either at the top of
 the session panel (Alt+B) to edit it, or type `/rename <handle>` or
 `/title <text>`. An agent renames its own session with `session_rename`, setting
 both a handle and a title in one call; until it has set both, `turn_end`
@@ -160,7 +162,10 @@ Two calls keep the person informed without reading the transcript:
   message asks something, review when it gives something to read or reports
   a step while work remains, done only when the whole task is over, with a
   one-line summary and up to three replies
-  the person can click to answer. Past 300k tokens of context its answer
+  the person can click to answer. Its answer says what the person has
+  seen from the agent this turn: nothing yet, and the agent writes its whole
+  message after the call; or how many messages and how the last begins, so
+  the agent closes in a line when its answer is already there. Past 300k tokens of context its answer
   names the size, and at a break the agent calls it again with `handoff`: a
   brief that lets a fresh session continue the work. A done card offers an
   Archive button, so aegis refuses done while the plan has items not done,
@@ -175,6 +180,16 @@ has gone stale after a stretch of work, or two seconds after a turn ended
 without `turn_end` when nothing explains the silence (a live monitor or queue
 task does). The `nudges:` block in `.aegis.yaml` sets both (see the config
 page).
+
+## When a background task ends
+
+Claude Code wakes the agent with a message of its own when a background
+command or a subagent it started ends. The transcript draws it as an inbox
+row, not as your message: a header such as `background · failed · exit 1`
+(red when the task failed or was stopped), the command's
+opening comment or the subagent's name under it, and the command, or the
+subagent's report, and the file its output went to, folded below. Click the
+fold to open it.
 
 ## Toasts
 
@@ -208,6 +223,12 @@ Free what this session created and no longer needs (your merged worktrees, ...
 The transcript shows it as an aegis row under the message or the tool call
 that carried it; your own row shows only what you typed.
 
+When the host has another disk that is below the disk's `clear:` level, that
+aegis's user can write to and that has more room, the disk notice names it
+(`/mnt/data has 65.0 GB free`) and asks the agent to put new large files
+there, in place of starting no large download or build. The disks are the
+ones the host meters list, so a mount the `host:` block hides is never named.
+
 Each session is told once per episode. An episode starts when a reading
 reaches `on:`, is told again when it reaches `critical:`, and ends only when
 the reading falls below `clear:`, so a disk hovering at the line is not
@@ -222,6 +243,9 @@ clear. A notice at critical also shows you a toast, once per episode.
 | quota | the account's quota windows, for sessions that draw on that account: warning when a window is on pace to run out before its reset with half of it spent, critical at 90% spent | warning, critical, normal |
 | announce | what a person or an admin's agent wrote | as written |
 
+The memory and cpu notices also say what the reading session itself holds,
+and which session holds the most (see [Load](#load)). The heaviest session is
+told to slow or free its own work first; the others read the usual advice.
 The text tells an agent to free or cut back only what its own session
 created and never to touch shared caches or another session's work. Only
 one session asks you about the rest: per kind and per owner, the first
@@ -271,6 +295,15 @@ written by ops-agent, not measured by aegis.", naming the agent's handle or
 your name as the author; the agent that wrote it is not told its own. Announcing is for an admin and an admin's agents; a member gets
 not_for_members.
 
+## Order the tabs
+
+The tab bar's order is this browser's own, and a reload keeps it. A session
+started from another one sits in that one's group, a block headed by the
+session that started it. Drag a tab to move it: a group's head moves the whole
+group, and any other member moves only inside its group. Alt+Shift+[ and
+Alt+Shift+] move the tab in front one place left or right by the same rules,
+from the message box too.
+
 ## Quiet sessions
 
 A quiet session has no tab. Its card stays in the Fleet, dimmed and marked
@@ -281,12 +314,34 @@ until it is quieted again; a queue worker comes back only on an error.
 - The Quiet button in the session panel, beside Sleep, quiets a session that
   is working or waiting. Alt+Q does the same for the session in front, from
   the message box too.
+- `/quiet` in a session's box quiets that session, as Alt+Q does.
 - An agent calls `session_quiet` with a handle, its own included.
 - Clicking a quiet card in the Fleet brings the session back at once.
 
 Quiet is about the tab, not the process: a quiet session keeps working, and
 sleeping one keeps it quiet. Wake, Continue and Restart leave it quiet too;
 Reopen clears it.
+
+## Autoclose
+
+Autoclose is your word, given ahead of time, that a session should close
+once its agent finishes. While it is on, the agent can end a turn in three
+ways only: done with `close`, which archives the session as soon as nothing
+it started still runs; review; or needs_you. A `turn_end` with done and no
+`close` is refused with a message that says so, and the agent picks one of
+the three. You no longer have to tell it "close when you are done".
+
+- The Autoclose button in the session panel turns it on and off; it shows
+  in the accent colour while on.
+- The menu of a session's card or tab has Autoclose on and Autoclose off.
+- `/autoclose` in a session's box toggles it; `/autoclose on` and
+  `/autoclose off` set it.
+
+Only a person turns it on or off: no agent tool does. It stays on across a
+sleep, a restart and a reopen. Everything that refuses `close` still
+refuses it: a live monitor, a queue task, a workflow run, or a session it
+started that has not ended done. The agent waits for those, or cancels
+them, before it ends done.
 
 ## Menus
 
@@ -326,7 +381,8 @@ An asleep session's card is marked `zz` with the reason it has no process:
 - `slept`: someone slept it (Sleep, `/sleep`, or an agent through
   `session.stop`);
 - `idle`: aegis parked it (see below);
-- `exited`: the harness ended on its own;
+- `exited`: the harness ended on its own. Mid-turn or with a non-zero code
+  the card also shows the error; between turns with code 0 it does not;
 - `server`: the server restarted under it.
 
 - The archive is the list at the bottom of the Fleet. Filter it by title,
@@ -402,6 +458,31 @@ leaves it waiting for you, with a note saying so. After a crash, a harness
 the dead server left running is ended first. A harness that failed on its own
 is not restarted.
 
+## Load
+
+aegis measures every session's CPU and RAM every 5 seconds: what its agent
+and everything the agent started use, test runs and builds included. The
+CPU is in cores over the last minute, so 2.0 means two cores busy; the RAM
+is the resident memory, in GB.
+
+- The sidebar's Usage row shows a `load` line, `2.0 cores · 3.1 GB`.
+- A Fleet card shows the same in its footer while the session holds at least
+  one core or 1 GB, so an idle session's card stays quiet.
+- `session_list` gives each session here its `load`, `{"cpu": 2.0,
+  "rss_gb": 3.1}`, or null while it has no process, so an agent can see who
+  loads the host before it starts a build.
+- The memory and cpu notices name the reading session's own figure and the
+  session that holds the most, when that one holds at least a core, or a
+  tenth of the RAM.
+
+With a cgroup per session (see the config page's Memory per session), the
+kernel counts each session's processes. Without one, aegis follows each
+process up to the agent that started it, and a process that left that tree,
+such as a background test run whose shell ended, is counted by the
+`AEGIS_SESSION` it inherited. Memory shared between processes is counted
+once per process, so the figure ranks sessions; it does not add up to the
+host's.
+
 ## Context and the cache
 
 The Usage row's card shows the session's context and, under it, three
@@ -434,10 +515,14 @@ files agents read.
 ## The journal, quota and the rest
 
 - `journal_search` asks what was done on this server, by day, words, path,
-  session, repo or kind; commits, pull requests, finished plan items and turns
-  that changed files are recorded without anyone writing them down.
+  session, repo or kind; commits, pull requests, closed issues, finished plan
+  items and turns that changed files are recorded without anyone writing them
+  down. A pull request merged with `gh pr merge --repo owner/name` is filed
+  under the local checkout whose `origin` is that repo, and a merge closes the
+  issues its `gh pr create --body` named with Closes, Fixes or Resolves #N.
   `journal_note` records a decision, a blocker or a milestone aegis cannot
-  see. People open the Journal with Alt+L.
+  see. People open the Journal with Alt+L; its search box matches an entry's
+  text, session, kind, paths and repo.
 - `quota_read` returns how much of each subscription window is left, from the
   last reading, at no cost.
 - `meta` returns the primer every agent gets at spawn and the list of aegis's

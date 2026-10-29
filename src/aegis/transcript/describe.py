@@ -8,6 +8,7 @@ never computes any of it (DESIGN.md, "Python decides, the browser draws").
 from __future__ import annotations
 
 import difflib
+import html
 import json
 import re
 
@@ -52,6 +53,7 @@ COMMS_GLYPH = "swap"
 FILE_GLYPH = "file"
 ARTIFACT_GLYPH = "artifact"
 SECRET_GLYPH = "lock"
+KNOWLEDGE_GLYPH = "book"
 COMMAND_GLYPH = "slash"
 RECAP_GLYPH = "sparkle"
 BTW_GLYPH = "btw"
@@ -410,3 +412,53 @@ def inline_paths(md: str) -> list[str]:
 
 def money(usd: float) -> str:
     return f"${usd:.2f}" if usd >= 0.005 else f"${usd:.4f}"
+
+
+_TASK_NOTICE = re.compile(r"<task-notification>(.*?)</task-notification>", re.S)
+_TASK_SUMMARY = re.compile(r'^(Background command|Agent) "(.*)" ([^"]*)$', re.S)
+_EXIT_CODE = re.compile(r"exit code (-?\d+)")
+TASK_FAILED = ("failed", "killed")
+
+
+def _tag(block: str, name: str) -> str:
+    m = re.search(rf"<{name}>(.*?)</{name}>", block, re.S)
+    return html.unescape(m.group(1)).strip() if m else ""
+
+
+def task_notices(text: str) -> list[dict]:
+    """The notices Claude Code sends as a prompt when a background command or
+    a subagent ends, one dict each, or none when the text is not only that.
+    Its ids are kept out: they name nothing the person can act on."""
+    blocks = _TASK_NOTICE.findall(text)
+    if not blocks or _TASK_NOTICE.sub("", text).strip():
+        return []
+    out = []
+    for block in blocks:
+        status = _tag(block, "status") or "ended"
+        summary = _tag(block, "summary")
+        m = _TASK_SUMMARY.match(summary)
+        source = "subagent" if m and m.group(1) == "Agent" else "background"
+        what, tail = (m.group(2), m.group(3)) if m else (summary, summary)
+        header = [source, status]
+        if code := _EXIT_CODE.search(tail):
+            header.append(f"exit {code.group(1)}")
+        elif "time limit" in tail:
+            header.append("time limit")
+        detail: dict = {"output": _tag(block, "output-file")}
+        if source == "subagent":
+            detail["fold"] = _tag(block, "result")
+            label = what
+        else:
+            detail |= {"fold": what, "lang": "bash"}
+            label = _bash_comment(what) or what.split("\n", 1)[0]
+            if label == what:  # a description, or a one-line command
+                detail = {"output": detail["output"]}
+        out.append(
+            {
+                "status": "err" if status in TASK_FAILED else "ok",
+                "title": " · ".join(header),
+                "md": label,
+                "detail": {k: v for k, v in detail.items() if v},
+            }
+        )
+    return out

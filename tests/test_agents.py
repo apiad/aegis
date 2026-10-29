@@ -97,14 +97,14 @@ def mcp(tool: str, **args) -> str:
     return f"/mcp {tool} {json.dumps(args)}"
 
 
-async def turn(s, text: str, timeout: float = 8) -> str:
+async def turn(s, text: str, timeout: float = 8, by_person: bool = False) -> str:
     """Send a prompt, wait for the session's next idle, return the reply to it.
 
     The reply is the first prose after the prompt, not the last: a fast queue
     worker's callback can arrive and end a second turn before the idle is
     seen, and its prose would be read as this turn's answer (#375)."""
     before = len([e for e in s.entries() if e["kind"] == "prose"])
-    await s.send(text)
+    await s.send(text, by_person=by_person)
     await until(
         lambda: (
             s.status == "idle"
@@ -938,6 +938,8 @@ async def test_a_path_in_a_reply_opens_by_its_index_root_first_then_cwd(
     assert f["name"] == "r.md" and f["preview"] == "markdown"
     assert f["root_path"] == "docs/r.md"
     assert f["url"].startswith("/files/") and f["download"] == f["url"] + "?download=1"
+    (newer,) = await call("file.peek", {**ask, "index": 0})
+    assert newer["key"] == f["key"] and newer["version"] == 2
     (g,) = await call("file.peek", {**ask, "index": 1})
     assert g["name"] == "here.py", "found under the session's cwd"
     assert g["root_path"] == "sub/pkg/here.py"
@@ -947,9 +949,12 @@ async def test_a_path_in_a_reply_opens_by_its_index_root_first_then_cwd(
     with pytest.raises(OpError) as e:
         await call("file.peek", {**ask, "index": 3})
     assert e.value.code == "no_path"
-    assert "peek" not in s.fold().entry(reply["id"])["detail"], (
-        "a path link records nothing"
-    )
+    peeks = s.fold().entry(reply["id"])["detail"]["path_peeks"]
+    assert peeks["0"]["files"][0] == {
+        k: v for k, v in newer.items() if k != "root_path"
+    }
+    assert peeks["1"]["files"][0]["key"] == g["key"]
+    assert s.dockable(f["key"]) and s.dockable(g["key"])
 
 
 async def test_a_path_in_both_the_root_and_the_cwd_asks_which_one(world, tmp_path):

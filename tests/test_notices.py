@@ -7,11 +7,19 @@ from types import SimpleNamespace
 
 import pytest
 
-from aegis import notice_sources
+from aegis import notice_sources, notices
 from aegis.commands import parse_announce
 from aegis.config import NOTICES_DEFAULTS, notices_from
 from aegis.notice_ops import until_ts
-from aegis.notices import Announcements, Notices, cpu_pct, next_level, psi, read_signals
+from aegis.notices import (
+    Announcements,
+    Notices,
+    cpu_pct,
+    elsewhere,
+    next_level,
+    psi,
+    read_signals,
+)
 from aegis.ops import Caller, OpError, Principal
 from aegis.transcript.entries import NOTICE_HEADER, split_notices
 from aegis.transcript.store import read_store
@@ -270,15 +278,70 @@ def test_a_kind_set_false_never_fires(stub):
     assert stub.notices.pending(stub.a) == "" and not stub.toasts
 
 
-def test_memory_turns_on_under_pressure_and_names_the_sessions_own(stub, tmp_path):
-    (tmp_path / "memory.current").write_text(str(2 * 1024**3))
-    stub.sessions.cgroup_dir = lambda s: tmp_path
-    stub.reading = stub.reading | {
-        "memory": {"pct": 60, "avail_gb": 3.0, "total_gb": 7.6, "psi_full": 8.0}
-    }
+class FakeLoad:
+    def __init__(self, loads: dict[str, dict]):
+        self.loads = loads
+
+    def of(self, log_id):
+        return self.loads.get(log_id)
+
+    def all(self):
+        return dict(self.loads)
+
+
+MEMORY_60 = {"memory": {"pct": 60, "avail_gb": 3.0, "total_gb": 7.6, "psi_full": 8.0}}
+
+
+def test_memory_turns_on_under_pressure_and_names_the_sessions_own(stub):
+    stub.load = FakeLoad({stub.a.log_id: {"cpu": 0.1, "rss_gb": 2.0}})
+    stub.reading = stub.reading | MEMORY_60
     got = stub.notices.pending(stub.a)
     assert "Memory is 60% used: 3.0 GB available of 7.6 GB" in got
-    assert "Your session's processes hold 2.0 GB." in got
+    assert "Your session's processes hold 2.0 GB, the most of any session here." in got
+    assert notices.ACT_TOP["memory"] in got
+
+
+def test_the_heaviest_session_is_told_to_slow_its_own_work_first(stub):
+    stub.load = FakeLoad(
+        {
+            stub.a.log_id: {"cpu": 3.1, "rss_gb": 1.0},
+            stub.b.log_id: {"cpu": 0.2, "rss_gb": 0.5},
+        }
+    )
+    stub.reading = stub.reading | {"cpu": {"pct": 70.0}}
+    top = stub.notices.pending(stub.a)
+    assert (
+        "Your session's processes used 3.1 cores over the last minute, "
+        "the most of any session here." in top
+    )
+    assert notices.ACT_TOP["cpu"] in top and notices.ACT["cpu"] not in top
+    other = stub.notices.pending(stub.b)
+    assert (
+        "Your session's processes used 0.2 cores over the last minute; "
+        f"{stub.a.handle} uses the most, 3.1 cores." in other
+    )
+    assert notices.ACT["cpu"] in other
+
+
+def test_on_a_quiet_host_nobody_is_named_the_heaviest(stub):
+    stub.load = FakeLoad(
+        {
+            stub.a.log_id: {"cpu": 0.4, "rss_gb": 0.3},
+            stub.b.log_id: {"cpu": 0.2, "rss_gb": 0.2},
+        }
+    )
+    stub.reading = stub.reading | {"cpu": {"pct": 70.0}} | MEMORY_60
+    got = stub.notices.pending(stub.b)
+    assert "Your session's processes used 0.2 cores over the last minute." in got
+    assert "Your session's processes hold 0.2 GB." in got
+    assert "the most" not in got and notices.ACT["cpu"] in got
+
+
+def test_a_session_without_a_reading_reads_the_host_figure_alone(stub):
+    stub.load = FakeLoad({})
+    stub.reading = stub.reading | {"cpu": {"pct": 70.0}}
+    got = stub.notices.pending(stub.a)
+    assert "Your session" not in got and notices.ACT["cpu"] in got
 
 
 class Quota:
@@ -770,3 +833,44 @@ async def test_an_urgent_message_is_steered_into_the_running_turn(world):  # noq
     assert said.startswith("done: > from agent:peer") and "stop now" in said
     (row,) = [e for e in a.entries() if e["kind"] == "inbox"]
     assert row["detail"] == {"steered": True}
+
+
+def test_elsewhere_names_the_freest_writable_disk_below_clear(tmp_path):
+    full = {"pct": 94, "free_gb": 0.01, "total_gb": 75, "mount": "/"}
+    disks = [
+        {"mount": "/", "pct": 94},
+        {"mount": str(tmp_path / "gone"), "pct": 10},  # not there: not writable
+        {"mount": str(tmp_path), "pct": 30},
+    ]
+    got = elsewhere(full, disks, clear=85)
+    assert got["mount"] == str(tmp_path) and got["free_gb"] > full["free_gb"]
+    assert elsewhere(full, [{"mount": str(tmp_path), "pct": 85}], clear=85) is None
+    assert elsewhere(full | {"free_gb": 1e9}, disks, clear=85) is None
+
+
+def test_a_disk_notice_points_to_another_disk_with_room(stub):
+    n = stub.notices
+    stub.reading = stub.reading | {
+        "disk": {
+            "pct": 94,
+            "free_gb": 4.8,
+            "total_gb": 75,
+            "other": {"mount": "/mnt/data", "free_gb": 65},
+        }
+    }
+    got = n.pending(stub.a)
+    assert "/mnt/data has 65.0 GB free" in got
+    assert "Start no large download or build." not in got
+    stub.disk(98)  # the plain reading keeps the plain advice
+    assert "Start no large download or build." in n.pending(stub.a)
+
+
+def test_the_reading_asks_the_host_for_another_disk(stub, tmp_path):
+    stub.host = SimpleNamespace(
+        disks=lambda: [{"mount": "/", "pct": 94}, {"mount": str(tmp_path), "pct": 30}]
+    )
+    stub.reading = stub.reading | {
+        "disk": {"pct": 94, "free_gb": 0.01, "total_gb": 75, "mount": "/"}
+    }
+    got = stub.notices.pending(stub.a)
+    assert f"{tmp_path} has " in got and " GB free" in got

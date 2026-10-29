@@ -222,7 +222,15 @@ export function card(m, onOpen, onClose) {
   const owner = shownOwner(m);
   if (owner) hd.append(el("span", "who", owner));
   if (m.worker) hd.append(el("span", "badge", `worker · ${m.worker.queue}`));
-  if (m.workflow) hd.append(el("span", "badge", `workflow · ${workflowTitle(m.workflow.run) || m.workflow.run} · ${m.workflow.node}`));
+  if (m.workflow) {
+    // A run's title can be a sentence: it gives way, the node that tells
+    // steps apart stays, and the tooltip has it whole (#670).
+    const title = workflowTitle(m.workflow.run) || m.workflow.run;
+    const b = el("span", "badge wf");
+    b.title = `workflow · ${title} · ${m.workflow.node}`;
+    b.append("workflow · ", el("span", "t", title), ` · ${m.workflow.node}`);
+    hd.append(b);
+  }
   // Two axes, two marks: quiet hides the tab, asleep has no process (#479).
   if (m.quiet) {
     const q = el("span", "quiet");
@@ -241,10 +249,16 @@ export function card(m, onOpen, onClose) {
   const sub = el("div", "ln");
   sub.append(factIcon("h", m.harness), el("b", null, `${m.agent}${(m.overridden || []).length ? "*" : ""}`), document.createTextNode(`${modelLine(m)} · ${cwdTail(m.cwd)}`));
   parts.push(sub);
-  if (m.plan_now || m.plan_did) {
+  const skills = m.skills || [];
+  if (m.plan_now || m.plan_did || skills.length) {
     const pl = el("div", "pl");
     if (m.plan_now) pl.append(planRow("now", m.plan_now, "now", el("span", "t")));
     if (m.plan_did) pl.append(planRow("did", m.plan_did, ""));
+    // The skills it loaded, in order: which worker follows which procedure,
+    // and how many times it ran each one's scripts.
+    const runs = m.skill_runs || {};
+    const named = skills.map((n) => (runs[n] ? `${n} (${runs[n]} run${runs[n] > 1 ? "s" : ""})` : n));
+    if (skills.length) pl.append(planRow("skills", named.join(" · "), "skills"));
     parts.push(pl);
   }
   if (m.attention === "working") parts.push(el("div", "act", m.activity || ""));
@@ -255,6 +269,13 @@ export function card(m, onOpen, onClose) {
   bar.append(fill);
   const ft = el("div", "ft");
   ft.append(el("span", "when", ago(m.last_activity)), el("span", null, money(m.cost_usd)));
+  // Its load (load.py), only when there is some: a core or a GB.
+  const ld = m.load;
+  if (ld && (ld.cpu >= 1 || ld.rss_gb >= 1)) {
+    const sp = el("span", "load", `${ld.cpu.toFixed(1)} cores · ${ld.rss_gb.toFixed(1)} GB`);
+    sp.title = "CPU over the last minute and RAM, of this session and everything it started";
+    ft.append(sp);
+  }
   if (m.unread) ft.append(el("span", "unr", `${m.unread} unread`));
   const mons = (m.monitors || []).length;
   if (mons) ft.append(el("span", "mons", `${mons} monitor${mons > 1 ? "s" : ""}`));

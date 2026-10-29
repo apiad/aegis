@@ -653,7 +653,7 @@ def test_an_unknown_kind_is_a_usage_error_not_a_traceback(tmp_path):
     assert out.exit_code == 2, out.output
     assert "Traceback" not in out.output, out.output
     assert isinstance(out.exception, SystemExit), out.exception
-    for k in ("turn", "commit", "pr", "plan", "note", "session"):
+    for k in ("turn", "commit", "pr", "issue", "plan", "note", "session"):
         assert f"'{k}'" in out.output, out.output
 
 
@@ -682,3 +682,29 @@ async def test_a_read_session_notes_and_searches_the_journal(world):
     world.app.journal.flush()
     said = await turn(s, mcp("journal_search", pattern="lacks a test"))
     assert "1 entries" in said and "the diff lacks a test" in said, said
+
+
+async def test_a_schema_2_file_is_rebuilt_with_issue_rows(tmp_path):
+    """A complete journal from before issue rows is rebuilt once, so history
+    gains them."""
+    from .test_fold import Rec
+
+    state = tmp_path / "state"
+    (state / "transcripts").mkdir(parents=True)
+    r = Rec()
+    r.own("spawn", agent="opus", model="opus", cwd=str(tmp_path), handle="h")
+    r.call("t1", "Bash", {"command": "gh issue close 5"})
+    r.output("t1", "✓ Closed issue #5")
+    r.result()
+    store = state / "transcripts" / "20260101-000000-abcdef.jsonl"
+    store.write_text("".join(json.dumps(x) + "\n" for x in r.records))
+    con, _ = db.connect(state / "journal.db")
+    con.execute("PRAGMA user_version=2")
+    con.execute(f"PRAGMA application_id={COMPLETE}")
+    con.close()
+    j = Journal(state, None)
+    j.start()
+    j.flush()
+    j.stop()
+    kinds = [row[6] for row in dump(j.path)[0]]
+    assert kinds.count("issue") == 1

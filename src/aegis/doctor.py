@@ -45,6 +45,7 @@ from .config import (
 )
 from .harness import harness_for
 from .harness_versions import OUTSIDE, VERSION_TIMEOUT_S, judge
+from .knowledge import embed
 from .ranking import annotate, ranking
 from .recap import load_recap
 from .roots import CONFIG_FILE, Roots, legacy_state
@@ -715,6 +716,8 @@ async def doctor(
         out.append(Finding("error", "terminal_memory_max", snap.terminal_memory_error))
     out += _recap(roots)
     out.append(_context(snap.context))
+    if "error" in snap.usage:
+        out.append(Finding("error", "usage", snap.usage["error"]))
     out += _notices(snap.notices)
     if "error" in snap.nudges:
         out.append(Finding("error", "nudges", snap.nudges["error"]))
@@ -727,6 +730,8 @@ async def doctor(
     out.append(_workflows(snap.workflows, tuple(a.name for a in snap.agents)))
     out.append(_session_memory(snap))
     out.append(_state(roots))
+    out += _knowledge(roots)
+    out += _embeddings(snap.knowledge)
     if snap.multi_user_error:
         out.append(Finding("error", "multi_user", snap.multi_user_error))
     elif snap.multi_user is not None:
@@ -767,6 +772,42 @@ def _claude_token(now: float) -> Finding | None:
         "claude.token",
         f"{path}, written {day(written)}, expires about {day(expires)}",
     )
+
+
+def _knowledge(roots: Roots) -> list[Finding]:
+    """A warning when someone keeps skills or memories and git is missing:
+    every save and delete is a commit, so each one would fail."""
+    kn = roots.state_root / "knowledge"
+    if not kn.is_dir() or not any(kn.iterdir()) or shutil.which("git"):
+        return []
+    return [
+        Finding(
+            "warn",
+            "knowledge",
+            "git is not on PATH: saving or deleting a skill or memory fails"
+            " until it is installed",
+        )
+    ]
+
+
+def _embeddings(block: dict) -> list[Finding]:
+    """The knowledge: block. A model named without the extra installed is a
+    warning, not an error: search goes on with BM25 alone."""
+    if "error" in block:
+        return [Finding("error", "knowledge", block["error"])]
+    model = block["embeddings"]
+    if model == "off":
+        return []
+    if not embed.available():
+        return [
+            Finding(
+                "warn",
+                "knowledge.embeddings",
+                f"{model} is set but fastembed is not installed, so search uses"
+                " keywords alone; install aegis-harness[embeddings]",
+            )
+        ]
+    return [Finding("ok", "knowledge.embeddings", f"{model}, fused with BM25")]
 
 
 def render(findings: Iterable[Finding]) -> str:

@@ -47,7 +47,7 @@ from typing import TYPE_CHECKING
 from . import layout as canvas
 from . import launch, refs, restarts
 from .agents import PERMISSION_ORDER, resolve
-from .monitors import CONDITION_LIMIT_S
+from .monitors import CONDITION_LIMIT_S, _percent
 from .ops import OpError
 from .workflow_lang import (
     MAX_ROUNDS,
@@ -89,6 +89,7 @@ CUT = "cut by restart: it may have run in part; rerun or skip?"
 NUL = "the command holds a NUL byte, which bash cannot take"
 SH_LIMIT_S = 1800.0  # an sh with no deadline over it
 CHECK_LIMIT_S = 3600.0  # a check with no deadline over it, a monitor's default
+SH_PROGRESS_EVERY_S = 15.0  # an sh's progress command runs this often (#682)
 TELL_RETRY_S = 1.0  # a failed wake is tried again after this, doubling to 30 s
 
 
@@ -165,17 +166,28 @@ async def run_sh(
         )
         await proc.wait()
     except asyncio.CancelledError:
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(proc.pid, signal.SIGTERM)
+        await _signal_group(proc.pid, signal.SIGTERM, user)
         end = time.monotonic() + 2
         while time.monotonic() < end and restarts.group_alive(proc.pid):
             await asyncio.sleep(0.05)
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(proc.pid, signal.SIGKILL)
+        await _signal_group(proc.pid, signal.SIGKILL, user)
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(asyncio.shield(proc.wait()), 2)
         raise
     return proc.returncode or 0, out, err
+
+
+async def _signal_group(pgid: int, sig: signal.Signals, user: str | None) -> None:
+    try:
+        await launch.signal_process_async(pgid, sig, user=user, group=True)
+    except OSError as e:
+        log.warning(
+            "workflow: could not send %s to group %s as %s: %s",
+            sig.name,
+            pgid,
+            user,
+            e,
+        )
 
 
 def _news(o: dict) -> bool:
@@ -328,6 +340,9 @@ class Workflows:
         self._seen_out: dict[tuple[str, str], dict[str, bytes]] = {}
         # A probe's last reading, for the card; never logged.
         self._readings: dict[tuple[str, str], str] = {}
+        # A progress command's last number, 0 to 100, for the card's bar;
+        # never logged, so a restart reads it again.
+        self._percent: dict[tuple[str, str], int] = {}
         # An if's or an until's sh probe outcome, by (run, instance, round),
         # until a pass reads it; a restart loses it and the probe runs again.
         self._probed: dict[tuple[str, str, str], dict] = {}
@@ -361,7 +376,7 @@ class Workflows:
                 # any pass, so a cut sh is never still running (spec §05).
                 for n in st.nodes.values():
                     if n.status == "running" and n.pid:
-                        restarts.end_group(n.pid, n.pstart)
+                        restarts.end_group(n.pid, n.pstart, user=self.linux_user(st))
                 try:
                     wf, errors = parse(st.text, self._agents())
                 except Exception as e:  # one run's text never stops the boot
@@ -439,6 +454,62 @@ class Workflows:
         st = self.runs.get(run)
         return st is not None and st.status in LIVE
 
+    def lock(self, s: Session) -> str | None:
+        """Why nobody but the engine may steer ``s``, a node's session, or
+        None. It is the run's while the run is live. Once its step is done
+        and a later step may still continue in it (``session:``), the reason
+        names those steps and says the run closes it once none can (#678)."""
+        ref = s.workflow
+        if not ref or not self.live(ref["run"]):
+            return None
+        run, inst = ref["run"], ref["node"]
+        st, wf = self.runs.get(run), self.defs.get(run)
+        n = st.nodes.get(inst) if st is not None else None
+        head = f"{s.handle} is node {inst} of workflow {run}"
+        if (
+            st is None
+            or wf is None
+            or n is None
+            or ref.get("probe")
+            or n.status not in ("done", "skipped")
+        ):
+            return f"{head}; stop the workflow to talk to it"
+        later = self._may_continue(st, wf, inst, s.log_id)
+        if not later:
+            return f"{head}; stop the workflow to talk to it"
+        return (
+            f"{head}, which is done, but {', '.join(later)} may still continue "
+            "in its session, so the run keeps it open and closes it once none "
+            "can; stop the workflow to talk to it or close it sooner"
+        )
+
+    def _may_continue(
+        self, st: RunState, wf: Workflow, inst: str, log_id: str
+    ) -> list[str] | None:
+        """The ids of the steps that may still run in the session ``log_id``
+        that step ``inst`` ran in, as _close_spent decides them; None when
+        its owner's instance is not found."""
+        key = template_key(inst)
+        owner = wf.by_key.get(wf.session_of.get(key, key))
+        if owner is None:
+            return None
+        oinst = next(
+            (
+                i
+                for i, x in st.nodes.items()
+                if template_key(i) == owner.key and x.log_id == log_id
+            ),
+            None,
+        )
+        if oinst is None:
+            return None
+        prefix = oinst[: -len(owner.id)]
+        return [
+            u.id
+            for u in (wf.by_key[k] for k in wf.users.get(owner.key, []))
+            if self._may_run(st, wf, owner, u, prefix)
+        ]
+
     def of_owner(self, log_id: str) -> RunState | None:
         return next(
             (
@@ -463,6 +534,22 @@ class Workflows:
                 nxt = (self._reg.archived.get(lid) or {}).get("continued_by")
             lid = nxt if nxt != "starting" else None
         return last
+
+    def linux_user(self, st: RunState) -> str | None:
+        """The Linux user whose process group a persisted run may still own."""
+        lid, user, seen = st.owner, None, set()
+        while lid and lid not in seen:
+            seen.add(lid)
+            s = self._reg.sessions.get(lid)
+            if s is not None:
+                user, nxt = s.spec.linux_user, s.continued_by
+            else:
+                meta = self._reg.archived.get(lid)
+                if meta is None:
+                    break
+                user, nxt = meta.get("linux_user"), meta.get("continued_by")
+            lid = nxt if nxt != "starting" else None
+        return user
 
     def owns(self, log_id: str | None, st: RunState) -> bool:
         o = self.owner(st)
@@ -618,6 +705,7 @@ class Workflows:
             if sh or probe:
                 g = groups.setdefault(self._per(args, wf, n), {"sh": 0, "probes": 0})
                 g["sh" if sh else "probes"] += 1
+                g["probes"] += "progress" in n.body
         return {
             "sh": sum(g["sh"] for g in groups.values()),
             "probes": sum(g["probes"] for g in groups.values()),
@@ -667,9 +755,17 @@ class Workflows:
                 row["say"] = render(row["say"], self._scope(st, wf, prefix))
         if n is not None:
             h = self._reg.sessions.get(n.log_id or "")
+            # What the step's session has cost so far, open or archived, for
+            # the card's spent and estimated total (#712).
+            cost = (
+                h.cost_usd
+                if h
+                else (self._reg.archived.get(n.log_id or "") or {}).get("cost_usd")
+            )
             row |= {
                 "log_id": n.log_id,
                 "handle": h.handle if h else None,
+                "cost": cost,
                 "started": n.started,
                 "ended": n.ended,
                 "summary": n.summary,
@@ -692,6 +788,8 @@ class Workflows:
                 row["by"] = "main"  # it opens as the main agent's
         if (reading := self._readings.get((st.run, inst))) is not None:
             row["reading"] = reading
+        if (percent := self._percent.get((st.run, inst))) is not None:
+            row["percent"] = percent
         if node.after:
             row["after"] = [
                 {
@@ -2135,6 +2233,7 @@ class Workflows:
             try:
                 cmd, env = shell_command(node.body["sh"], scope)
                 shown = render(node.body["sh"], scope)
+                progress = self._progress_command(node, scope)
             except RENDER_ERRORS as e:
                 self._fail(
                     st,
@@ -2145,7 +2244,9 @@ class Workflows:
                 )
                 return "failed"
             self._begin(st, wf, node, prefix, cmd=shown)
-            self._tasks[key] = asyncio.create_task(self._run_sh(st, inst, cmd, env))
+            self._tasks[key] = asyncio.create_task(
+                self._run_sh(st, inst, cmd, env, progress)
+            )
             return "running"
         if key not in self._tasks:
             # Running in the log with no task in this process: the server
@@ -2155,7 +2256,12 @@ class Workflows:
         return "running"
 
     async def _run_sh(
-        self, st: RunState, inst: str, cmd: str, env: dict[str, str]
+        self,
+        st: RunState,
+        inst: str,
+        cmd: str,
+        env: dict[str, str],
+        progress: tuple[str, dict[str, str]] | None = None,
     ) -> None:
         def pid(p: int) -> None:
             self._log(
@@ -2163,9 +2269,13 @@ class Workflows:
                 {"ev": "pid", "node": inst, "pid": p, "start": restarts.started_at(p)},
             )
 
+        values = [*env.values(), *(progress[1].values() if progress else ())]
+        watch = None
         try:
-            if any("\0" in v for v in env.values()):
+            if any("\0" in v for v in values):
                 raise ValueError(NUL)
+            if progress:
+                watch = asyncio.create_task(self._watch_progress(st, inst, *progress))
             seen = self._seen_out[(st.run, inst)] = {}
             code, out, err = await run_sh(
                 cmd, self._cwd(st), pid, env, seen, user=self._user(st)
@@ -2176,6 +2286,8 @@ class Workflows:
         except OSError as e:
             code, out, err = None, "", str(e)
         finally:
+            if watch:
+                watch.cancel()
             self._drop((st.run, inst))
             self._seen_out.pop((st.run, inst), None)
         n = st.nodes.get(inst)
@@ -2277,6 +2389,9 @@ class Workflows:
             if "sh" in probe:
                 try:
                     cmd = render(probe["sh"], scope)  # shown, never run
+                    # Its progress reads the same values: one missing fails
+                    # the check here, never inside the polling task.
+                    shown_progress = render(node.body.get("progress", ""), scope)
                 except RENDER_ERRORS as e:
                     self._fail(
                         st,
@@ -2286,7 +2401,7 @@ class Workflows:
                         retry=False,
                     )
                     return "failed"
-                if "\0" in cmd:
+                if "\0" in cmd + shown_progress:
                     say = self._say(st, wf, node, prefix)
                     self._fail(st, inst, NUL, say, retry=False)
                     return "failed"
@@ -2307,8 +2422,9 @@ class Workflows:
             # A restart lost the task: the probe simply runs again (spec §05).
             if key not in self._tasks:
                 cmd, env = shell_command(probe["sh"], scope)
+                progress = self._progress_command(node, scope)
                 self._tasks[key] = asyncio.create_task(
-                    self._poll(st, inst, cmd, env, probe["every"])
+                    self._poll(st, inst, cmd, env, probe["every"], progress)
                 )
             return "running"
         return await self._check_judge(st, wf, node, prefix)  # task 7
@@ -2341,7 +2457,13 @@ class Workflows:
             return None, "", str(e)
 
     async def _poll(
-        self, st: RunState, inst: str, cmd: str, env: dict[str, str], every: float
+        self,
+        st: RunState,
+        inst: str,
+        cmd: str,
+        env: dict[str, str],
+        every: float,
+        progress: tuple[str, dict[str, str]] | None = None,
     ) -> None:
         try:
             while True:
@@ -2354,14 +2476,46 @@ class Workflows:
                 if st.status != "running" or n is None or n.status != "running":
                     return
                 if rc == 0:
+                    if progress:
+                        self._percent[(st.run, inst)] = 100
                     self._done(
                         st, inst, {"code": 0, "out": out[-TAIL:]}, "The check passed."
                     )
                     self.changed()
                     return
+                if progress:
+                    await self._read_progress(st, inst, *progress)
                 await asyncio.sleep(every)
         finally:
             self._drop((st.run, inst))
+
+    def _progress_command(
+        self, node: Node, scope: dict
+    ) -> tuple[str, dict[str, str]] | None:
+        """A step's progress command with its values as env, or None."""
+        if "progress" not in node.body:
+            return None
+        return shell_command(node.body["progress"], scope)
+
+    async def _read_progress(
+        self, st: RunState, inst: str, cmd: str, env: dict[str, str]
+    ) -> None:
+        """Run a progress command once and keep its number for the card. A
+        reading that is no number keeps the last one: progress is for the
+        person, and never fails the step (spec 2026-10-23, #682)."""
+        rc, out, _ = await self._probe_sh(cmd, self._cwd(st), env, st)
+        value = _percent(out) if rc == 0 else None
+        if value is not None and value != self._percent.get((st.run, inst)):
+            self._percent[(st.run, inst)] = value
+            self._publish(st.run)
+
+    async def _watch_progress(
+        self, st: RunState, inst: str, cmd: str, env: dict[str, str]
+    ) -> None:
+        """Read an sh's progress until its command ends and cancels this."""
+        while True:
+            await self._read_progress(st, inst, cmd, env)
+            await asyncio.sleep(SH_PROGRESS_EVERY_S)
 
     async def _check_judge(
         self, st: RunState, wf: Workflow, node: Node, prefix: str

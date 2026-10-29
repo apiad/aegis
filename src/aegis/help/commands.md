@@ -19,6 +19,15 @@ survives a restart, where the harness's would end with its process.
 Type / in a session's box to open the menu of every command, aegis's first;
 Tab or Enter picks one. Alt+/ opens the same menu over a draft.
 
+After the command, the menu completes every argument that comes from a list:
+the model, effort and permission, the tutorial page, the saved workflow, and
+for `/spawn` the agent, the flags and their values. `/spawn ` lists this
+server's agents, its default first, then each linked server's that answers
+as `agent@server`; a word that starts with `-` lists the flags it has not
+used, and after `--model`, `--effort` or `--permission` the menu lists their
+values. `/announce` completes `--until` and `--critical` the same way. Text
+that is free, such as a prompt, completes nothing.
+
 | command | what it does |
 |---|---|
 | `/model <name>` | switch this session's model |
@@ -28,10 +37,14 @@ Tab or Enter picks one. Alt+/ opens the same menu over a draft.
 | `/title <text>` | set this session's title |
 | `/sleep` | end the process and keep the session, asleep; your next message wakes it |
 | `/stop` | alias of `/sleep` |
+| `/quiet` | hide this session's tab until its turn ends, as Alt+Q does; only a working or waiting session can be quiet |
+| `/autoclose [on\|off]` | close this session once its agent ends done: `turn_end` done without `close` is refused while it is on; alone, it toggles. See sessions#autoclose |
 | `/restart` | end the process and start a fresh one on the same conversation; nothing is sent. Use it after a change to the agent's MCP config or when the harness hangs |
 | `/btw <question>` | ask a side question about this session, even while the agent works. aegis answers it from the transcript with the agent `btw:` names in `.aegis.yaml`, in one call with no tools, and shows the answer as a block you can fold. The agent never sees the question or the answer. One runs at a time per session; the block's cancel stops it |
 | `/feedback [text]` | report a bug, ask for a feature or point out a docs gap in aegis. The agent reads the help page feedback, asks what it still needs and shows you a draft issue; nothing is filed until you say yes. Claude Code's own /feedback, which reports to Anthropic, is hidden in aegis. The /feedback row under the new tab's chips starts a new session with the chips you picked there, and the agent asks you what to report |
 | `/multiuser [text]` | set this server up for several people, each signed in with their own token and running as their own Linux user. An admin only; the agent reads the help page multi-user, looks at the host, asks who the people are and shows every command before it runs one. On a server already in the mode it starts at adding a person |
+| `/remember <text>` | save a memory every later session can find. The agent writes it with `memory_save` in your own store and says what it saved (help page knowledge) |
+| `/consolidate [text]` | review your skills and memories with the agent. It reads `knowledge_stats`, shows one page with a row per proposal (merge two duplicates, renew or drop an expired memory, fix a stale one, retire an unused skill, mend a broken link), each with its evidence and a checkbox, and applies only the rows you tick, each a commit with Undo on its card (help page consolidate) |
 | `/workflow [id] [text]` | run a saved workflow now: the agent makes its args from your text and starts it, with no card to approve. Alone, it opens the menu of saved workflows |
 | `/loop <prompt>` | repeat a prompt in this session until the agent says it is done, at a fixed interval when the prompt gives one ("every 5m") or at the agent's pace; Stop on its card ends it |
 | `/spawn <agent>[@server] [prompt]` | start a session, here or on a linked server; flags `--quiet` (no tab until its turn ends; needs a prompt), `--model`, `--effort`, `--permission` and `--cwd` go before the prompt |
@@ -42,6 +55,10 @@ Tab or Enter picks one. Alt+/ opens the same menu over a draft.
 | `/tutorial [page]` | start a guide session in a new tab that walks you through a help page, one step per turn. With no page it runs `getting-started`; after the space, the menu lists the tutorial pages. Typed in a session, the guide runs on the agent `default_agent:` names, in that session's directory, and nothing is sent to the session you typed it in. The hint under the new tab's chips does the same with the agent and chips you picked there. |
 | `/whats-new` | start a guide session in a new tab that walks you through what changed in aegis since your last tour, one change per turn, opening each change's help page to show you how to use it. It covers the releases after the last one you toured, up to the version you run, from the release notes that ship with it; if you have toured this version already, it tours it again. Typed in a session, the guide runs on the agent `default_agent:` names, in that session's directory. The hint under the new tab's chips does the same with the chips you picked there, and its × marks this version toured without starting a guide. |
 | `/doctor` | an admin's, listed only while `aegis doctor` finds a warning or an error. It runs the doctor again and starts a session in a new tab, on the agent `default_agent:` names, in the config root, whose first message is the report; the agent works through each problem with you and asks before it edits `.aegis.yaml`, installs or upgrades anything. When nothing is wrong any more it refuses. The new tab's doctor row has the same button, which uses the chips you picked there |
+
+Your skills come after aegis's commands in the menu, marked aegis skill:
+`/<name> [args]` sends the session the skill's text and your arguments, in
+any harness (help page knowledge, Skills as commands).
 
 A line that starts with // is sent as text, its first slash turned into a
 space so the harness does not read a command, for when you mean the text. When
@@ -57,17 +74,19 @@ and no aegis command is refused before it costs a turn.
 | `aegis init` | write a first `.aegis.yaml` from the harnesses installed here; `--yes` takes every proposal |
 | `aegis doctor` | check `.aegis.yaml`, the harnesses it names and the state directory, and warn where an installed aegis systemd unit differs from what `aegis service install` writes; exits 1 on an error |
 | `aegis service install` | write a systemd unit for `aegis serve` with the recommended settings and print the `sudo` commands that install it; `--yes` takes every default, `--dry-run` prints the unit, `--output` names the file. See the systemd page |
-| `aegis link add <name> <url>` | link another aegis server, reading its token from standard input; `--as` names this server there |
-| `aegis link list` | the linked servers, by name and URL |
+| `aegis link add <name> <url>` | link another aegis server, reading its token from standard input; `--as` names this server there, `--trusted` asks for a [trusted link](links#trusted-links) |
+| `aegis link list` | the linked servers, by name and URL, and which ask for trust |
+| `aegis link trust <name>` | ask an existing link for trust, or stop asking with `--off` |
 | `aegis link remove <name>` | end a link |
 | `aegis token add <name>` | make a token for a person, a linked server or a job; `--role member` (the default) or `--role admin`. The token is printed once |
 | `aegis token list` | the tokens, their roles and quota policies |
 | `aegis token revoke <name>` | end a token; revoking the server's own admin token, the one in `.aegis/state/token`, prints its replacement |
 | `aegis journal search [pattern]` | search what was done: `--since`, `--until`, `--path`, `--session`, `--kind`, `--limit` |
 | `aegis journal rebuild` | rebuild the journal from every transcript |
-| `aegis usage` | what the agents' work cost: `--by` month, dow or hour, `--sessions`, `--tools`, `--since` |
+| `aegis usage` | what the agents' work cost, from the usage rows aegis counts as each turn ends: `--since`, `--until`, `--split`, `--by`, `--measure`, `--where`, `--json`, `--sessions`, `--tools`; see the usage page |
 | `aegis usage repo <path>` | the cost of one git repository's work |
 | `aegis usage repos <dir>` | the cost of every repository directly under a directory |
+| `aegis usage import` | count older work once: `--claude-projects` reads Claude Code's own session files, `--legacy <path>` a legacy tree; safe to run again |
 | `aegis map` | a map of the git repository holding the current directory, or `--repo`, less `--exclude` paths, for an agent learning its code; see the code map page |
 | `aegis map repo [path]` | its folders and files, with definition counts and each module's first doc line; `--depth` |
 | `aegis map deps [path]` | which files use which, with how many uses |

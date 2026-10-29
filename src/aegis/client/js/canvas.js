@@ -46,7 +46,7 @@
 
 import { browserCard } from "./browserview.js";
 import { drawArtifact, drawFile } from "./viewer.js";
-import { DOCKED, fileUrl, fillWorkflow, hold, inWindow, popButton, workflowTitle } from "./entries.js";
+import { DOCKED, entryFiles, fileUrl, fillWorkflow, hold, inWindow, popButton, workflowTitle } from "./entries.js";
 import { icon, iconText } from "./glyphs.js";
 import * as menu from "./menu.js";
 
@@ -605,8 +605,9 @@ export class Canvas {
   // key lands, in place (a frame or an image gets the new URL, text is fetched
   // again).
   onEntry(e) {
-    if (e.kind === "file") {
-      for (const f of e.detail?.files || []) {
+    const files = entryFiles(e);
+    if (files.length) {
+      for (const f of files) {
         const node = f.key && !f.replaced && this.panes.get(f.key);
         if (!node) continue;
         if ("loading" in node.dataset) this.draw(f.key, f);
@@ -615,7 +616,7 @@ export class Canvas {
           this.mark(f.key);
         }
       }
-      return;
+      if (e.kind !== "artifact") return;
     }
     const node = this.panes.get(e.id);
     if (!node || e.kind !== "artifact") return;

@@ -7,6 +7,11 @@ and the permission rules. aegis has no approval prompt, so no rule asks: the
 send. The four permissions deny strictly less from ``read`` to ``full``, so a
 session an agent spawns still has at most the agent's power.
 
+Under the owner's ``knowledge: native`` (setup.py) a rule denies the
+``skill`` action. In OpenCode 2.1.2 that both lists no skill in the
+instructions (SkillInstructions lists the skills a ruleset does not deny)
+and refuses the skill tool. OpenCode keeps no memory of its own to turn off.
+
 OpenCode 2 runs MCP tools through "code mode" by default: the model writes a
 script that calls them, and no ``aegis_*`` call reaches the stream. aegis turns
 it off for its own server, so its tools are called, and shown, by name.
@@ -33,11 +38,18 @@ PERMISSIONS: dict[str, dict[str, str]] = {
     "full": {"*": "allow"},
 }
 ALWAYS = {"aegis_*": "allow", "question": "deny", "doom_loop": "deny"}
+NATIVE = {"skill": "deny"}
 
 
-def rules(permission: str, read_dirs: tuple[Path, ...] = ()) -> dict[str, Any]:
+def rules(
+    permission: str, read_dirs: tuple[Path, ...] = (), native: bool = False
+) -> dict[str, Any]:
     """Action -> effect, or for a path rule resource -> effect."""
-    out: dict[str, Any] = {**PERMISSIONS[permission], **ALWAYS}
+    out: dict[str, Any] = {
+        **PERMISSIONS[permission],
+        **ALWAYS,
+        **(NATIVE if native else {}),
+    }
     if read_dirs and out.get("external_directory") == "deny":
         # The inbox lives outside the cwd; reading it must not trip the deny.
         # OpenCode applies the last matching rule, so "*" goes first.
@@ -48,10 +60,12 @@ def rules(permission: str, read_dirs: tuple[Path, ...] = ()) -> dict[str, Any]:
     return out
 
 
-def ruleset(permission: str, read_dirs: tuple[Path, ...] = ()) -> list[dict]:
+def ruleset(
+    permission: str, read_dirs: tuple[Path, ...] = (), native: bool = False
+) -> list[dict]:
     """The rules as OpenCode 2 lists them, in the order they apply."""
     out = []
-    for action, effect in rules(permission, read_dirs).items():
+    for action, effect in rules(permission, read_dirs, native).items():
         by_resource = effect if isinstance(effect, dict) else {"*": effect}
         for resource, e in by_resource.items():
             out.append({"action": action, "resource": resource, "effect": e})
@@ -59,9 +73,12 @@ def ruleset(permission: str, read_dirs: tuple[Path, ...] = ()) -> list[dict]:
 
 
 def child_config(
-    mcp: tuple[str, str] | None, permission: str, read_dirs: tuple[Path, ...] = ()
+    mcp: tuple[str, str] | None,
+    permission: str,
+    read_dirs: tuple[Path, ...] = (),
+    native: bool = False,
 ) -> dict[str, Any]:
-    cfg: dict[str, Any] = {"permissions": ruleset(permission, read_dirs)}
+    cfg: dict[str, Any] = {"permissions": ruleset(permission, read_dirs, native)}
     if mcp is not None:
         from ..mcp import HEADER
 

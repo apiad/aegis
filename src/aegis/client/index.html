@@ -41,6 +41,8 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
     <button class="keys-btn set-btn" id="settings-btn" title="Settings (Alt+S)" aria-label="Settings"><span class="lbl">Settings</span></button>
     <button class="jr-btn" id="files-btn" title="Files (Alt+O)" aria-label="Files"></button>
     <button class="jr-btn" id="journal-btn" title="Journal (Alt+L)" aria-label="Journal"></button>
+    <button class="jr-btn" id="knowledge-btn" title="Knowledge: skills and memories (Alt+I)" aria-label="Knowledge"></button>
+    <button class="jr-btn" id="usage-btn" title="Usage: what the work cost" aria-label="Usage"></button>
     <button class="keys-btn bell" id="bell" title="Turn on desktop notifications"></button>
     <button class="side-btn" id="side-btn" title="Session panel (Alt+B)" aria-label="Session panel"><svg class="ic i-panel" aria-hidden="true"><use href="#g-panel"/></svg></button>
     <button class="keys-btn help-btn" id="help-btn" title="Help: how to use aegis" aria-label="Help">?</button>
@@ -65,7 +67,7 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
       <div class="band-mark" id="band-mark"></div>
       <div><h5><span class="band-server" id="band-server">server</span><span class="band-link"></span></h5><div class="counts band-counts" id="band-counts"></div></div>
       <div><h5>Host</h5><div class="band-host" id="band-host"></div></div>
-      <div class="q band-quota-col" id="band-quota-col" hidden><h5><span>Quota</span><span class="age band-quota-age" id="band-quota-age"></span></h5><div class="band-quota" id="band-quota"></div></div>
+      <div class="q band-quota-col" id="band-quota-col" hidden><h5><span class="qlink" id="band-quota-link" title="Usage: what work cost">Quota</span><span class="age band-quota-age" id="band-quota-age"></span></h5><div class="band-quota" id="band-quota"></div></div>
     </section>
     <div class="order"><h3>Sessions</h3>
       <div class="seg" id="fleet-order">
@@ -132,6 +134,8 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
 
   <main class="view v-settings"><section class="settings" id="settings"></section></main>
   <main class="view v-journal"><section class="journal" id="journal"></section></main>
+  <main class="view v-usage"><section class="usage" id="usage"></section></main>
+  <main class="view v-knowledge"><section class="knowledge" id="knowledge"></section></main>
   <main class="view v-files"><section class="files" id="files"></section></main>
   <main class="view v-schedules"><section class="schedules" id="schedules"></section></main>
   <main class="view v-help"><section class="helpv" id="help"></section></main>
@@ -201,6 +205,7 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
           <div class="pcard"><div class="csec"><h5 id="s-plan-card-h">Plan</h5><div class="plan" id="s-plan-all"></div></div></div>
         </div>
       </div>
+      <div class="sec" id="s-skills-sec" hidden><h4>Skills loaded</h4><div class="plan" id="s-skills"></div></div>
       <div class="sec" id="s-repos-sec" hidden><h4><span>Repos</span><span class="aside" id="s-repos-n"></span></h4>
         <div class="prow" id="p-repos" tabindex="0">
           <div id="s-repos"></div>
@@ -226,6 +231,7 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
         <div class="prow" id="p-usage" tabindex="0">
           <div class="tiles" id="s-tiles"></div>
           <div class="foot" id="s-foot"><span id="s-foot-l"></span><span id="s-foot-r"></span></div>
+          <div class="foot" id="s-load" hidden title="CPU over the last minute and RAM, of this session and everything it started"><span>load</span><span id="s-load-v"></span></div>
           <div class="pcard">
             <div class="csec"><h5><span>Context</span><span>this session</span></h5>
               <div class="big"><span class="p" id="s-tokens">no turn yet</span><span class="of" id="s-of"></span><span class="c" id="s-cost">$0.00</span></div>
@@ -233,7 +239,7 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
               <p class="cnote" id="s-ctxnote"></p>
               <p class="cnote" id="s-counters" hidden></p>
             </div>
-            <div class="csec" id="s-quota-sec"><h5><span id="s-quota-head">Quota</span><span id="s-quota-age"></span></h5><div id="s-quota"></div></div>
+            <div class="csec" id="s-quota-sec"><h5><span class="qlink" id="s-quota-head" title="Usage: what work cost">Quota</span><span id="s-quota-age"></span></h5><div id="s-quota"></div></div>
           </div>
         </div>
       </div>
@@ -252,6 +258,7 @@ document.documentElement.dataset.theme = localStorage.getItem("aegis.theme") || 
       <div class="side-acts live-only">
         <button class="act stop needs-net" id="stop-session" title="Sleep: end the process and keep the conversation; the next message wakes it"><svg class="ic i-sleep" aria-hidden="true"><use href="#g-sleep"/></svg><span>Sleep</span></button>
         <button class="act" id="quiet-session" title="Quiet: hide the tab until the turn ends; its card stays in the Fleet"><svg class="ic i-quiet" aria-hidden="true"><use href="#g-quiet"/></svg><span>Quiet</span></button>
+        <button class="act needs-net" id="autoclose-session" aria-pressed="false" title="Autoclose: once on, the agent must end done with close, so the session closes when it finishes"><svg class="ic i-archive" aria-hidden="true"><use href="#g-archive"/></svg><span>Autoclose</span></button>
         <button class="act needs-net" id="continue" title="Continue: send “Continue” to the agent"><svg class="ic i-play" aria-hidden="true"><use href="#g-play"/></svg><span>Continue</span></button>
         <button class="act needs-net" id="restart" title="Restart: a fresh process on the same conversation; nothing is sent"><svg class="ic i-restart" aria-hidden="true"><use href="#g-restart"/></svg><span>Restart</span></button>
         <button class="act needs-net" id="close" title="Archive: the tab goes away in every browser; Reopen brings it back"><svg class="ic i-archive" aria-hidden="true"><use href="#g-archive"/></svg><span>Archive</span></button>

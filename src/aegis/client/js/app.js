@@ -8,14 +8,14 @@
 
 import { Connection } from "./protocol.js";
 import { Transcript } from "./transcript.js";
-import { artifactStage, btwFolds, fadeTables, fileUrl, refreshApprovals, refreshWorkflows, setApprovals, setDocker, setFileBase, setOpener, setSecrets, setSpeaker, setWorkflows, syncDock, tickWorkflows, workflowLocked, workflowTitle } from "./entries.js";
+import { artifactStage, btwFolds, entryFiles, fadeTables, fileUrl, refreshApprovals, refreshWorkflows, setApprovals, setDocker, setFileBase, setOpener, setSecrets, setSpeaker, setWorkflows, syncDock, tickWorkflows, workflowLocked, workflowTitle } from "./entries.js";
 import { setScroller } from "./highlight.js";
 import { Viewer, peekRoots } from "./viewer.js";
 import { Canvas } from "./canvas.js";
 import { copyRow, installCopy, rowText } from "./copy.js";
 import { Find } from "./find.js";
 import * as artifacts from "./artifacts.js";
-import { TabOrder, patchTab, renderTabs } from "./tabs.js";
+import { TabOrder, patchTab, renderTabs, stepMove } from "./tabs.js";
 import { linesOf, mine, ownerOf, setWho } from "./me.js";
 import { ago, byNeed, modelLine, money, patchCard, renderArchive, renderBand, renderBandQuota, renderCards, tickPlan, card as fleetCard } from "./fleet.js";
 import { age, countdown, diskRows, elapsed, hostRow, hostSeverity, mbps, netRows, providerFor, quotaSideRow, quotaTile, tile } from "./gauges.js";
@@ -31,6 +31,8 @@ import { clampToRow, insertIntoComposer, quoted, rangeText } from "./quote.js";
 import { closeMonitorCard, renderMonitors, tickMonitors } from "./monitors.js";
 import { Settings } from "./settings.js";
 import { entry, Journal, opens } from "./journal.js";
+import { Usage } from "./usage.js";
+import { Knowledge } from "./knowledge.js";
 import { FilePicker, Files, filesHash, parseTarget } from "./files.js";
 import { Schedules } from "./schedules.js";
 import { Help } from "./help.js";
@@ -91,6 +93,8 @@ function setTheme(name) {
 const sessions = new Map(); // key -> meta, from every server's `sessions` channel
 let links = []; // the home server's links, from the `links` channel
 let linksLoaded = false; // the first `links` snapshot has arrived
+let linksArrived;
+const linksReady = new Promise((ok) => (linksArrived = ok)); // resolves with it
 let linksSig = ""; // the links' names and states the archive was last read for
 const remote = new Map(); // linked server -> {unsubs, quota, host, unsubHost, loaded, state}
 
@@ -173,13 +177,13 @@ setOpener((item) => {
   if (away) openWindow(shown, away);
   else if (!(id && canvas.flash(id))) viewer.open(item);
 });
-// The newest sent file with a key, for its pane: the last file entry that
-// holds it unreplaced. Walked on a pane's draw only.
+// The newest stored file with a key, for its pane: sent files, input
+// attachments, and files opened from tool rows or reply paths. Walked only
+// when a pane draws.
 function latestFile(key) {
   const es = [...transcript.entries.values()];
   for (let i = es.length - 1; i >= 0; i--) {
-    if (es[i].kind !== "file") continue;
-    const f = (es[i].detail?.files || []).find((x) => x.key === key && !x.replaced);
+    const f = entryFiles(es[i]).find((x) => x.key === key && !x.replaced);
     if (f) return f;
   }
   return undefined;
@@ -270,6 +274,8 @@ $("jump").append(icon("latest"));
 $("bell").append(icon("bell"));
 $("settings-btn").prepend(icon("gear"));
 $("journal-btn").append(icon("book"));
+$("knowledge-btn").append(icon("knowledge"));
+$("usage-btn").append(icon("usage"));
 $("files-btn").append(icon("folder"));
 $("schedules-btn").prepend(icon("clock"));
 $("send").append(icon("send"));
@@ -424,7 +430,7 @@ for (const b of document.querySelectorAll("#fleet-order button"))
     render();
   });
 
-// -- routing: #fleet, #new, #settings, #journal, #files[=<path>[:line]], #schedules, #help[=<page>], #s=<key>, #t=<key>, #read=<key>, #w=<n>:<key> --
+// -- routing: #fleet, #new[?<fill>], #settings, #journal, #usage, #knowledge[=<name>], #files[=<path>[:line]], #schedules, #help[=<page>], #s=<key>, #t=<key>, #read=<key>, #w=<n>:<key> --
 // A help ref is URI-encoded; a hand-typed malformed one is a page name nobody has.
 const unhash = (s) => {
   try {
@@ -446,9 +452,14 @@ function route(hash = location.hash) {
   // Window n of a session's canvas, a browser tab of its own (js/canvas.js).
   const w = /^w=(\d+):(.+)$/.exec(h);
   if (w) return { view: "window", id: w[2], n: Number(w[1]) };
+  // A link or a share that fills the New session form (#735): the query after
+  // "new?" is read once by render, which drops it from the URL.
   if (h === "new") return { view: "spawn" };
+  if (h.startsWith("new?")) return { view: "spawn", fill: new URLSearchParams(h.slice(4)) };
   if (h === "settings") return { view: "settings" };
   if (h === "journal") return { view: "journal" };
+  if (h === "usage") return { view: "usage" };
+  if (h === "knowledge" || h.startsWith("knowledge=")) return { view: "knowledge", id: unhash(h.slice(10)) };
   if (h === "files" || h.startsWith("files=")) return { view: "files", id: unhash(h.slice(6)) };
   if (h === "schedules") return { view: "schedules" };
   if (h === "help" || h.startsWith("help=")) return { view: "help", id: unhash(h.slice(5)) };
@@ -634,6 +645,12 @@ const journal = new Journal(conn, $("journal"), {
     go(r.open ? `#s=${r.log_id}` : `#read=${r.log_id}`);
   },
 });
+// The Knowledge view routes its rows and Back through the URL, so the
+// browser's Back closes an open item.
+const knowledgeView = new Knowledge(conn, $("knowledge"), {
+  onOpen: (name) => go(`#knowledge=${encodeURIComponent(name)}`),
+  onBack: () => go("#knowledge"),
+});
 // Alt+O's picker opens a file in the Files view; Shift+Enter in a new browser tab.
 filePicker = new FilePicker($("fpick"), conn, (path, line, newTab) => {
   const hash = filesHash(path, line);
@@ -693,6 +710,14 @@ const sideJournalChanged = () => {
   sideJournalTimer = setTimeout(() => drawSideJournal(sideJournalFor, true), 300);
 };
 conn.subscribe("journal", sideJournalChanged, sideJournalChanged);
+// The usage page (usage.js): the channel says a turn was counted, the page
+// asks again while it is shown.
+const usage = new Usage(conn, $("usage"), {
+  onOpen: (r) => go(r.open ? `#s=${r.session}` : `#read=${r.session}`),
+});
+const usageChanged = () => usage.changed();
+conn.subscribe("usage", usageChanged, usageChanged);
+for (const id of ["band-quota-link", "s-quota-head"]) $(id).addEventListener("click", () => go("#usage"));
 // The Schedules view (schedules.js); its button counts them, red while one is
 // paused by errors.
 const schedules = new Schedules(conn, $("schedules"), {
@@ -856,6 +881,7 @@ conn.subscribe("sessions", ...sessionHandlers(null));
 function onLinks(list) {
   links = list || [];
   linksLoaded = true;
+  linksArrived();
   settings.onLinks(links, conn.server);
   drawServerPick();
   const names = new Set(links.map((l) => l.name));
@@ -1196,6 +1222,11 @@ function render() {
     history.replaceState(null, "", `#s=${r.id}`);
     landEntry = { key: r.id, id: r.at };
   }
+  // A fill is read once too, so a reload or Back never fills the form again.
+  if (r.fill) {
+    history.replaceState(null, "", "#new");
+    fillSpawn(r.fill);
+  }
   // A menu or the selection bar is about the view it opened in. go() moves
   // with pushState, which fires no hashchange, so the change is caught here.
   const at = `${r.view}:${r.id ?? ""}`;
@@ -1242,6 +1273,9 @@ function render() {
   $("tab-add").classList.toggle("on", r.view === "spawn");
   $("settings-btn").classList.toggle("on", r.view === "settings");
   $("journal-btn").classList.toggle("on", r.view === "journal");
+  if (r.view !== "usage") usage.close();
+  $("knowledge-btn").classList.toggle("on", r.view === "knowledge");
+  $("usage-btn").classList.toggle("on", r.view === "usage");
   $("files-btn").classList.toggle("on", r.view === "files");
   $("schedules-btn").classList.toggle("on", r.view === "schedules");
   if (r.view !== "schedules") schedules.close();
@@ -1283,6 +1317,18 @@ function render() {
     show("journal");
     if (newView) journal.open();
     setTitle("Journal · aegis");
+  } else if (r.view === "usage") {
+    watchHost(null);
+    follow(null);
+    show("usage");
+    if (newView) usage.open();
+    setTitle("Usage · aegis");
+  } else if (r.view === "knowledge") {
+    watchHost(null);
+    follow(null);
+    show("knowledge");
+    if (newView) knowledgeView.show(r.id);
+    setTitle(`${r.id || "Knowledge"} · aegis`);
   } else if (r.view === "files") {
     watchHost(null);
     follow(null);
@@ -1492,6 +1538,9 @@ function ctxPct(s) {
 
 // The tiles and the card's context: on every patch of the session, rebuilt
 // only when what they show changed.
+// A session's load (load.py): cores over the last minute and RAM.
+const loadText = (l) => `${l.cpu.toFixed(1)} cores · ${l.rss_gb.toFixed(1)} GB`;
+
 function drawSideUsage(s) {
   const now = nowS();
   const p = sideProvider(s);
@@ -1499,6 +1548,8 @@ function drawSideUsage(s) {
   const pct = ctxPct(s);
   const tokens = s.context_tokens != null ? fmtTokens(s.context_tokens) : null;
   const cost = money(s.cost_usd);
+  $("s-load").hidden = !s.load;
+  if (s.load) $("s-load-v").textContent = loadText(s.load);
 
   $("s-tokens").textContent = tokens ?? "no turn yet";
   $("s-of").textContent = tokens == null ? "" : s.context_window ? `of ${fmtTokens(s.context_window)} · ${pct}%` : "tokens";
@@ -1754,7 +1805,7 @@ function follow(id) {
         const fresh = ops.some((op) => op.upsert?.unread && !transcript.entries.has(op.upsert.id));
         transcript.apply(ops);
         if (fresh) canvas.mark("transcript");
-        for (const op of ops) if (op.upsert?.kind === "artifact" || op.upsert?.kind === "file") canvas.onEntry(op.upsert);
+        for (const op of ops) if (op.upsert) canvas.onEntry(op.upsert);
         keepTranscript();
       },
       undefined,
@@ -1810,6 +1861,25 @@ function drawPlan(s) {
     drawPlanRows(plan);
   }
   tickSidePlan(s);
+}
+
+// The skills the session loaded, one row each in the order read, with how
+// many times skill_run ran its scripts.
+function drawSkills(s) {
+  const skills = s.skills || [];
+  const runs = s.skill_runs || {};
+  $("s-skills-sec").hidden = !skills.length;
+  const key = JSON.stringify([skills, runs]);
+  if ($("s-skills").dataset.key === key) return;
+  $("s-skills").dataset.key = key;
+  $("s-skills").replaceChildren(
+    ...skills.map((n) => {
+      const d = document.createElement("div");
+      const r = runs[n] || 0;
+      d.append(span("", ""), span("", n), span("t", r ? `${r} run${r > 1 ? "s" : ""}` : ""));
+      return d;
+    }),
+  );
 }
 
 // The panel keeps the two items done last and everything still to do; the
@@ -2155,6 +2225,7 @@ function renderMeta(s) {
   $("s-ask").textContent = s.attention_line || "";
   $("s-ask").className = `askbox at-${s.attention}`;
   drawPlan(s);
+  drawSkills(s);
   if (s.key === shown) showCanvas(s);
   drawSideJournal(s.key);
   followRepos(s.key);
@@ -2184,6 +2255,8 @@ function renderMeta(s) {
   $("working").hidden = !working;
   $("stop-session").disabled = s.state === "asleep" || theirs || held;
   $("quiet-session").disabled = !["working", "waiting"].includes(s.attention) || theirs || held;
+  $("autoclose-session").disabled = theirs || held;
+  $("autoclose-session").setAttribute("aria-pressed", String(!!s.autoclose));
   $("interrupt").disabled = theirs || held;
   $("close").disabled = theirs || held;
   if (working && workingSince == null) workingSince = Date.now();
@@ -2198,8 +2271,9 @@ function renderMeta(s) {
 }
 
 // The sessions this one waits on (registry._waiting_for): a queue task's
-// worker or a spawned child, a row each; a click opens it. A task still
-// pending has no worker yet, so its row names the queue and opens nothing.
+// worker or a spawned child, a row each; a click opens it, and a hover or a
+// long press shows its tab card (#667). A task still pending has no worker
+// yet, so its row names the queue and opens nothing.
 function drawWaiting(s) {
   const list = s.waiting_for || [];
   $("s-wait-sec").hidden = !list.length;
@@ -2211,8 +2285,8 @@ function drawWaiting(s) {
       const where = w.kind === "task" ? `queue ${w.queue} · ${w.status}` : w.status;
       row.append(span("", w.handle || "no worker yet"), span("r", where));
       if (key) {
+        row.dataset.id = key;
         row.tabIndex = 0;
-        row.title = `Open ${w.handle}`;
         row.addEventListener("click", () => openSession(key));
         row.addEventListener("keydown", (ev) => ev.key === "Enter" && openSession(key));
       }
@@ -2244,7 +2318,7 @@ function drawComposerHint(s) {
       : s.state === "asleep"
       ? "Asleep; your next message wakes it."
       : touch.matches
-        ? "Message the agent"
+        ? ""
         : "Message the agent. Enter sends, Shift+Enter adds a line, / for commands, Esc interrupts.";
   if (input.placeholder !== placeholder) {
     input.placeholder = placeholder;
@@ -3023,7 +3097,8 @@ async function loadPreview() {
       Promise.all([
         conn.call("commands.preview", params, spServer),
         conn.call("help.pages", {}, spServer).catch(() => []),
-      ]).then(([cat, pages]) => ({ ...cat, tutorials: pages.filter((pg) => pg.kind === "tutorial") })),
+        spawnAgents(spServer),
+      ]).then(([cat, pages, agents]) => ({ ...cat, agents, tutorials: pages.filter((pg) => pg.kind === "tutorial") })),
     );
   }
   try {
@@ -3285,6 +3360,8 @@ const help = (open = keymap.hidden) => (keymap.hidden = !open);
 $("help-btn").addEventListener("click", () => go("#help"));
 $("settings-btn").addEventListener("click", () => go("#settings"));
 $("journal-btn").addEventListener("click", () => go("#journal"));
+$("knowledge-btn").addEventListener("click", () => go("#knowledge"));
+$("usage-btn").addEventListener("click", () => go("#usage"));
 $("files-btn").addEventListener("click", () => go(filesView.path ? filesHash(filesView.path) : "#files"));
 $("schedules-btn").addEventListener("click", () => go("#schedules"));
 keymap.addEventListener("click", (ev) => ev.target === keymap && help(false));
@@ -3336,6 +3413,8 @@ installKeys(
     needs: nextNeed,
     tabPrev: () => cycle(-1),
     tabNext: () => cycle(1),
+    tabLeft: () => stepTab(-1),
+    tabRight: () => stepTab(1),
     next: onTranscript(() => transcript.move(1)),
     prev: onTranscript(() => transcript.move(-1)),
     turnNext: onTranscript(() => transcript.moveTurn(1)),
@@ -3372,6 +3451,8 @@ installKeys(
     },
     settings: () => go("#settings"),
     journal: () => go("#journal"),
+    usage: () => go("#usage"),
+    knowledge: () => go("#knowledge"),
     files: () => filePicker.open(),
     save: () => route().view === "files" && filesView.save(),
     schedules: () => go("#schedules"),
@@ -3422,6 +3503,13 @@ function cycle(d) {
   const all = ["#fleet", ...tabbed().map((m) => hashOf(m.key))];
   const i = all.indexOf(location.hash || "#fleet");
   go(all[i < 0 ? (d > 0 ? 0 : all.length - 1) : (i + d + all.length) % all.length]);
+}
+
+// Alt+Shift+[ and Alt+Shift+]: the tab in front one place over (#661).
+function stepTab(d) {
+  const id = tabFocus(route());
+  const step = id && stepMove($("tablist"), id, d);
+  if (step) tabActions.onMove(...step);
 }
 
 // -- composer ---------------------------------------------------------------
@@ -3569,9 +3657,10 @@ if (touch.matches) $("sp-text").placeholder = "What should the agent do?";
 // The buttons sit beside one line of text and drop under a longer one, so its
 // lines get the box's whole width (#575). It measures at the narrow width every
 // time: measured wide, a text that fits there would flip back and forth. A
-// placeholder never stacks: an empty box keeps its height. The measure is a
-// hidden copy: resizing the box itself to measure lays out the whole transcript
-// again, seconds for a long message.
+// placeholder never stacks: an empty box keeps its height. On a touch screen a
+// focused box stacks at once, so the first line typed has the whole width
+// (#707). The measure is a hidden copy: resizing the box itself to measure lays
+// out the whole transcript again, seconds for a long message.
 const ruler = document.createElement("textarea");
 ruler.ariaHidden = "true";
 ruler.tabIndex = -1;
@@ -3579,7 +3668,9 @@ ruler.style.cssText = "position:absolute;left:-9999px;top:0;visibility:hidden;he
 document.body.append(ruler);
 function stackActs(t) {
   const box = t.closest(".box");
-  if (!t.value || !box.clientWidth) return box.classList.remove("stacked");
+  if (!box.clientWidth) return box.classList.remove("stacked");
+  if (touch.matches && document.activeElement === t) return box.classList.add("stacked");
+  if (!t.value) return box.classList.remove("stacked");
   const css = getComputedStyle(t);
   for (const k of ["fontFamily", "fontSize", "fontWeight", "lineHeight", "letterSpacing", "paddingLeft", "paddingRight"]) ruler.style[k] = css[k];
   ruler.style.width = `${box.clientWidth - box.querySelector(".acts").offsetWidth}px`;
@@ -3590,16 +3681,25 @@ function stackActs(t) {
 function autosize() {
   stackActs(input);
   input.style.height = "auto";
-  input.style.height = `${Math.min(input.scrollHeight, window.innerHeight * 0.4)}px`;
+  const room = window.innerHeight * 0.4;
+  input.style.height = `${Math.min(input.scrollHeight, room)}px`;
+  // A scroll bar only once the text outgrows the room (#707).
+  input.style.overflowY = input.scrollHeight > room ? "auto" : "hidden";
 }
-// A pane docked beside the transcript narrows the message box: its lines
-// wrap again, so it measures again. Width only, so its own height is no loop.
+input.addEventListener("focus", autosize);
+input.addEventListener("blur", autosize);
+// A tap on the box's buttons leaves the focus in the text: a blur would unstack
+// the box and move the button out from under the finger (#707).
+$("composer").querySelector(".acts").addEventListener("mousedown", (ev) => touch.matches && ev.preventDefault());
+// A pane docked beside the transcript, or a button appearing beside the text,
+// narrows the message box: its lines wrap again, so it measures again. Width
+// only, so its own height is no loop.
 let composerWidth = 0;
 new ResizeObserver(([e]) => {
   if (Math.round(e.contentRect.width) === composerWidth) return;
   composerWidth = Math.round(e.contentRect.width);
   autosize();
-}).observe($("tr-pane"));
+}).observe(input);
 
 function focused() {
   const r = route();
@@ -3975,11 +4075,28 @@ const catalogs = new Map();
 // A session's menu: its commands, and the tutorial pages /tutorial completes.
 // A linked server without help.pages offers none.
 async function loadCommands(key) {
-  const [cat, pages] = await Promise.all([
+  const [cat, pages, agents] = await Promise.all([
     callFor(key, "commands.list"),
     conn.call("help.pages", {}, forKey(key).server).catch(() => []),
+    spawnAgents(forKey(key).server),
   ]);
-  return { ...cat, tutorials: pages.filter((p) => p.kind === "tutorial") };
+  return { ...cat, agents, tutorials: pages.filter((p) => p.kind === "tutorial") };
+}
+// What /spawn completes (#352): the agents of `server`, its default first,
+// and on the home server each linked server's as `agent@server`. A link that
+// is down, or refuses the call (a member's), offers none.
+async function spawnAgents(server) {
+  const roster = async (srv, far) => {
+    const r = await conn.call("agents.list", {}, srv).catch(() => null);
+    if (!r) return [];
+    const on = far ? ` · on ${srv}` : "";
+    return r.agents
+      .filter((a) => a.enabled)
+      .sort((a, b) => (b.name === r.default) - (a.name === r.default))
+      .map((a) => ({ v: far ? `${a.name}@${srv}` : a.name, model: a.model, doc: `${a.harness} · ${a.model}${on}`, source: "" }));
+  };
+  const far = server ? [] : links.filter((l) => l.state === "linked").map((l) => roster(l.name, true));
+  return (await Promise.all([roster(server, false), ...far])).flat();
 }
 async function loadCatalog() {
   const s = focused();
@@ -4047,6 +4164,17 @@ async function quietKey(key, on) {
   if (offline() || !sessions.has(key)) return;
   try {
     await callFor(key, on ? "session.quiet" : "session.unquiet");
+  } catch (e) {
+    failed(key, e);
+  }
+}
+
+// Autoclose (#691): the agent may then end only done with close, review or
+// needs_you, so a session it finishes closes itself.
+async function autocloseKey(key, on) {
+  if (offline() || !sessions.has(key)) return;
+  try {
+    await callFor(key, "session.autoclose", { on });
   } catch (e) {
     failed(key, e);
   }
@@ -4146,6 +4274,7 @@ $("interrupt").addEventListener("click", interrupt);
 $("continue").addEventListener("click", () => focused() && continueKey(focused().key));
 $("restart").addEventListener("click", () => focused() && restartKey(focused().key));
 $("quiet-session").addEventListener("click", () => focused() && quietKey(focused().key, true));
+$("autoclose-session").addEventListener("click", () => focused() && autocloseKey(focused().key, !focused().autoclose));
 $("stop-session").addEventListener("click", () => focused() && sleepKey(focused().key));
 
 $("close").addEventListener("click", () => {
@@ -4195,7 +4324,7 @@ $("tab-more").addEventListener("click", () => {
       run: () => go(`#s=${m.key}`),
     })),
   );
-  cmenu.open({ groups: [items] }, $("tab-more"), $("tab-more"));
+  cmenu.open({ groups: [items] }, { anchor: $("tab-more") }, $("tab-more"));
 });
 $("nav-side").addEventListener("click", toggleSide);
 // The dimmed transcript is the session view's own ::after, so a tap on it
@@ -4292,14 +4421,15 @@ function sessionMenu(key) {
   if (!s.old) life.push({ id: "restart", label: "Restart", icon: "restart", disabled: why, run: () => restartKey(key) });
   if (!s.worker) life.push({ id: "handoff", label: "Hand off", icon: "handoff", disabled: why, run: () => handOff(s) });
   const rename = [{ id: "rename", label: "Rename…", icon: "pencil", disabled: why, run: () => renameKey(key) }];
+  rename.push({ id: "autoclose", label: s.autoclose ? "Autoclose off" : "Autoclose on", icon: "archive", disabled: why, run: () => autocloseKey(key, !s.autoclose) });
   return { title, groups: [opening, life, rename, close] };
 }
 // The menu of a card or tab pressed; none on the space around them.
 function cardMenu(t) {
-  return t.dataset?.id && t.matches(".card, .tab") ? sessionMenu(t.dataset.id) : null;
+  return t.dataset?.id && t.matches(".card, .tab, .wait") ? sessionMenu(t.dataset.id) : null;
 }
 function attachCardMenu(box, opts = {}) {
-  cmenu.attach(box, cardMenu, { selector: ".card[data-id], .tab[data-id]", ...opts });
+  cmenu.attach(box, cardMenu, { selector: ".card[data-id], .tab[data-id], .wait[data-id]", ...opts });
 }
 attachCardMenu($("cards"));
 // The tab card (#586): a session tab's Fleet card on hover, with the tab menu's
@@ -4311,6 +4441,19 @@ const tabCard = attachTabCard($("tablist"), {
   items: sessionMenu,
 });
 attachCardMenu($("tablist"), { touch: (t) => t.matches(".tab[data-id]") && tabCard.sheet(t) });
+// The same card for a session the shown one waits on (#667), to the left of
+// the panel and level with its row, where the panel's own cards open.
+const waitCard = attachTabCard($("s-waiting"), {
+  meta: (key) => sessions.get(key),
+  card: (m) => fleetCard(m, openCard, (k) => sessions.get(k) && closeSession(sessions.get(k))),
+  items: sessionMenu,
+  item: ".wait",
+  place: (box, r) => {
+    box.style.left = `${Math.max(8, $("side").getBoundingClientRect().left - box.offsetWidth - 12)}px`;
+    box.style.top = `${Math.max(12, Math.min(r.top - 8, innerHeight - box.offsetHeight - 12))}px`;
+  },
+});
+attachCardMenu($("s-waiting"), { touch: (t) => t.matches(".wait[data-id]") && waitCard.sheet(t) });
 
 // The New session form filled from a source session: its server, agent,
 // model and folder, and a prompt the person goes on writing. The picks come
@@ -4334,6 +4477,39 @@ async function openSpawnWith({ server = null, agent, model, cwd, prompt, from = 
     markDiffs();
   }
   $("sp-cwd").value = cwd || "";
+}
+
+// The New session form filled from a link or a share (#735), never sent: the
+// prompt goes before what the form held, shared files become its chips, and
+// the server and folder are picked once the links and roster have loaded. A
+// server that is not linked is refused aloud rather than swapped for this one
+// with the person none the wiser.
+async function fillSpawn(q) {
+  const shared = q.get("share") && self.caches ? await takeShare(q.get("share")) : { text: "", files: [] };
+  const prompt = [q.get("prompt") || "", shared.text].filter(Boolean).join("\n\n");
+  const t = $("sp-text");
+  t.value = prompt + (prompt && t.value ? "\n\n" : "") + t.value;
+  spawnGrow();
+  if (shared.files.length) spAtts.add(shared.files, "spawn");
+  const server = q.get("server") || "";
+  if (server && server !== conn.server) {
+    await linksReady;
+    if (linkOf(server)?.state !== "linked") return toast(`${server} is not a linked server: the session would start on this one`, { kind: "error" });
+    await setSpServer(server);
+  }
+  await agentsLoading;
+  if (q.get("cwd")) $("sp-cwd").value = q.get("cwd");
+}
+
+// What the service worker kept of a share (sw.js stash), taken out once.
+async function takeShare(id) {
+  const cache = await caches.open("aegis.share");
+  const meta = await cache.match(`/share/${id}`);
+  if (!meta) return { text: "", files: [] }; // taken already, or replaced by a newer share
+  const { text, files } = await meta.json();
+  const blobs = await Promise.all(files.map((_, i) => cache.match(`/share/${id}/${i}`).then((r) => r?.blob())));
+  await caches.delete("aegis.share");
+  return { text, files: files.flatMap((f, i) => (blobs[i] ? [new File([blobs[i]], f.name, { type: f.type })] : [])) };
 }
 
 // What a selection in the transcript offers (spec 05). The text is taken now:

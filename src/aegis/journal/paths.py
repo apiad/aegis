@@ -13,7 +13,9 @@ git refuses a repository another user owns.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
+from collections.abc import Iterable
 
 from .. import launch
 
@@ -152,3 +154,29 @@ def commit_files(
         return None
     # Split on null bytes and decode UTF-8, dropping empty strings
     return [name.decode("utf-8") for name in out.split(b"\0") if name]
+
+
+# The owner/name at the end of a remote URL, SSH or HTTPS, without .git.
+SLUG = re.compile(r"[:/]([^/:\s]+)/([^/:\s]+?)(?:\.git)?/?$")
+_slug_cache: dict[tuple[str, str | None], str | None] = {}
+
+
+def remote_slug(directory: str, user: str | None = None) -> str | None:
+    """The owner/name of a checkout's origin, or None when it has none."""
+    if (directory, user) in _slug_cache:
+        return _slug_cache[(directory, user)]
+    out = _git(["remote", "get-url", "origin"], directory, user)
+    m = SLUG.search(out.strip()) if out else None
+    slug = f"{m[1]}/{m[2]}" if m else None
+    _slug_cache[(directory, user)] = slug
+    return slug
+
+
+def checkout_of(slug: str, tops: Iterable[str], user: str | None) -> str | None:
+    """The first of the tops whose origin is the owner/name slug, any case."""
+    want = slug.lower()
+    for top in tops:
+        got = remote_slug(top, user)
+        if got and got.lower() == want:
+            return top
+    return None

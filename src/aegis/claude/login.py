@@ -34,6 +34,8 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .. import launch
+
 if TYPE_CHECKING:
     from ..session import Session
 
@@ -163,17 +165,20 @@ async def probe(
         }
         env |= {VAR: token, "CLAUDE_CONFIG_DIR": scratch}
         try:
-            proc = await asyncio.create_subprocess_exec(
-                binary,
-                "-p",
-                "--model",
-                PROBE_MODEL,
-                "--output-format",
-                "json",
-                "--tools",
-                "",
-                "--setting-sources",
-                "",
+            proc = await launch.child(
+                [
+                    binary,
+                    "-p",
+                    "--model",
+                    PROBE_MODEL,
+                    "--output-format",
+                    "json",
+                    "--tools",
+                    "",
+                    "--setting-sources",
+                    "",
+                ],
+                user=None,
                 cwd=scratch,
                 env=env,
                 stdin=asyncio.subprocess.PIPE,

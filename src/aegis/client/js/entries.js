@@ -129,6 +129,18 @@ export function swipe(node, step) {
   );
 }
 
+// Every stored file an entry can keep: a file_send card, the person's input
+// attachments, a file-tool peek, or a local path opened from a reply. The last
+// two live inside their row instead of adding another transcript card.
+export function entryFiles(e) {
+  const detail = e?.detail || {};
+  return [
+    ...(detail.files || []),
+    ...(detail.peek?.files || []),
+    ...Object.values(detail.path_peeks || {}).flatMap((p) => p.files || []),
+  ];
+}
+
 // A set of sent files as one card: a bar with the name and the actions, the
 // preview below. A set pages in place (‹ ›, or a swipe on a touch screen),
 // round from the last file to the first, and a preview is built only when
@@ -520,6 +532,107 @@ function fillConfig(card, e) {
   card.replaceChildren(...kids);
 }
 
+// A memory or skill an agent saved (knowledge_ops.py): a proposal with
+// Approve and Discard, or with Undo a change to an approved item or an item
+// saved approved because the person asked. The card
+// is a transcript record, so its buttons work after a restart; the outcome
+// comes back as the folded entry.
+const KNOWLEDGE_VERB = { new: "proposed", changed: "changed", deleted: "deleted", saved: "saved as you asked" };
+const KNOWLEDGE_DONE = {
+  approved: "Approved. It is hinted from now on; the agent was told.",
+  discarded: "Discarded. It was deleted; the agent was told.",
+  undone: "Undone. The change was reverted; the agent was told.",
+  stale: "It changed since this card was drawn. Nothing was done; the agent was told.",
+  gone: "It no longer exists. Nothing was done; the agent was told.",
+  conflict: "It changed again since, so this change cannot be undone by itself. Nothing was done; the agent was told.",
+};
+
+function fileSize(n) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+// What /setup moved into aegis (knowledge.import): a row per item, each with
+// its own Undo, which reverts that item's import commit.
+const IMPORT_DONE = { undone: "undone: no longer in aegis", conflict: "changed since, not undone" };
+
+function fillImported(card, e) {
+  const d = e.detail || {};
+  const items = d.items || [];
+  const bar = el("div", "fbar");
+  bar.append(entryIcon(e.glyph), el("span", "fn", `imported ${items.length === 1 ? "1 item" : `${items.length} items`}`), el("span", "fs", "approved"));
+  const hint = el("span", "hint");
+  const rows = items.map((x) => {
+    const r = el("div", "krow");
+    r.dataset.name = x.name;
+    const what = el("span", "kwhat");
+    what.append(el("b", null, x.name), el("span", "dim", ` ${x.kind} · from ${x.source}`));
+    r.append(what);
+    if (x.outcome) r.append(el("span", "dim", IMPORT_DONE[x.outcome] || x.outcome));
+    else {
+      const b = el("button", "btn", "Undo");
+      b.type = "button";
+      b.onclick = async () => {
+        b.disabled = true;
+        try {
+          await secretCall("knowledge.card.unimport", { id: e.id, name: x.name });
+        } catch (err) {
+          b.disabled = false;
+          hint.textContent = String(err?.message || err);
+          hint.classList.add("err");
+        }
+      };
+      r.append(b);
+    }
+    return r;
+  });
+  const about = el("div", "sbody dim", "Moved in from /setup, as you ticked. Undo takes one out of aegis; it does not put back an original that was removed.");
+  card.replaceChildren(bar, about, ...rows, hint);
+}
+
+function fillKnowledge(card, e) {
+  const d = e.detail || {};
+  if (d.op === "imported") return fillImported(card, e);
+  const pending = e.status === "pending";
+  card.classList.toggle("gone", !pending);
+  const bar = el("div", "fbar");
+  const acts = el("span", "acts");
+  bar.append(entryIcon(e.glyph), el("span", "fn", d.name || ""), el("span", "fs", pending ? KNOWLEDGE_VERB[d.op] || d.op : e.status), acts);
+  const about = [d.op === "saved" ? `${d.item_kind} saved by the agent, as you asked` : `${d.item_kind} ${KNOWLEDGE_VERB[d.op] || d.op} by the agent`, d.type, d.lifetime === "temporary" && d.expires ? `until ${d.expires}` : d.lifetime];
+  const kids = [bar, el("div", "sbody dim", about.filter(Boolean).join(" · ")), el("div", "sbody why", d.description || "")];
+  if (d.body) kids.push(el("pre", "cdiff kbody", d.body));
+  if (d.partial) kids.push(el("div", "sbody dim", "Shown in part: the first 4,000 characters of the text."));
+  // A skill's every file, so a script that changed is not hidden behind its text.
+  if (d.files?.length) kids.push(el("div", "sbody dim", "files: " + d.files.map((f) => `${f.name} (${fileSize(f.size)})`).join(" · ")));
+  if (!pending) {
+    kids.push(el("div", "sbody dim", KNOWLEDGE_DONE[e.status] || e.status));
+  } else {
+    const hint = el("span", "hint");
+    const press = (op, label, primary) => {
+      const b = el("button", primary ? "btn primary" : "btn", label);
+      b.type = "button";
+      b.onclick = async () => {
+        for (const x of acts.querySelectorAll("button")) x.disabled = true;
+        try {
+          await secretCall(op, { id: e.id });
+        } catch (err) {
+          for (const x of acts.querySelectorAll("button")) x.disabled = false;
+          hint.textContent = String(err?.message || err);
+          hint.classList.add("err");
+        }
+      };
+      return b;
+    };
+    // Edit opens the item in the Knowledge view, where a saved edit approves it.
+    const edit = Object.assign(el("a", "btn", "Edit"), { href: `#knowledge=${encodeURIComponent(d.name || "")}` });
+    if (d.op === "new") acts.append(press("knowledge.card.approve", "Approve", true), edit, press("knowledge.card.discard", "Discard"));
+    else acts.append(press("knowledge.card.undo", "Undo", true));
+    kids.push(hint);
+  }
+  card.replaceChildren(...kids);
+}
+
 // The workflow a schedule fires, as it is now: its steps, who saved it, and
 // what changed since the version a person approved (schedules.py). The
 // approval card and the Schedules view draw the same, so a Resume in either
@@ -583,6 +696,8 @@ export function tickWorkflows() {
     const host = hostOf(c, `wf-${w.run}`);
     const fs = (host?.querySelector(".pbar, .vbar") || c).querySelector(".fs");
     if (fs) fs.textContent = workflowStatus(w);
+    const eta = c.querySelector(".wfhead .eta");
+    if (eta) eta.textContent = etaLine(w);
     for (const r of w.tree) {
       if (r.state !== "running") continue;
       // The tree's row and its Now line.
@@ -624,6 +739,15 @@ function kindTag(r) {
 
 // The command or expression a row runs, never folded: a person approves the
 // action itself. An sh's is rendered once it has started.
+// A step's progress reading (#682) as a thin bar, the client's .bar.
+function progressBar(r) {
+  const bar = el("div", "bar thin");
+  const fill = el("i");
+  fill.style.width = `${r.percent}%`;
+  bar.append(fill);
+  return bar;
+}
+
 function commandOf(r) {
   if (r.kind === "sh") return `$ ${r.cmd}`;
   if (r.probe?.sh) return `$ ${r.cmd || r.probe.sh}`;
@@ -710,6 +834,8 @@ function headLine(w) {
   fill.style.width = `${t.total ? Math.round((100 * t.done) / t.total) : 0}%`;
   bar.append(fill);
   box.append(bar);
+  const eta = etaLine(w);
+  if (eta) box.append(el("span", "eta", eta));
   return box;
 }
 
@@ -758,7 +884,10 @@ function nowSection(w) {
     const line = el("div", "nowline");
     line.dataset.node = r.id;
     const what = r.kind === "agent" ? stepLink(r) : el("span", "w", commandOf(r) || r.reading || kindTag(r));
-    line.append(el("span", "dot running"), el("span", "say", r.say), what, el("span", "dur", since(r.started, r.ended)));
+    line.append(el("span", "dot running"), el("span", "say", r.say), what);
+    if (r.percent != null) line.append(el("span", "pct", `${r.percent}%`));
+    line.append(el("span", "dur", since(r.started, r.ended)));
+    if (r.percent != null) line.append(progressBar(r));
     box.append(line);
   }
   for (const r of next) {
@@ -858,6 +987,78 @@ function hostOf(card, id) {
   return card.closest(`.pane[data-pane="${id}"]`) || card.closest("#viewer");
 }
 
+// A run's input (#712): a short scalar on one line; anything longer folded to
+// its name and a preview until a person opens it, then a list or an object
+// (or a string holding one) as coloured JSON, and other text with its line
+// breaks. A person's choice is kept per run and input.
+const openArgs = new Set(); // "run/name" a person unfolded
+const ARG_INLINE = 60;
+function argRow(run, k, v) {
+  let data = v !== null && typeof v === "object" ? v : null;
+  if (typeof v === "string" && /^\s*[[{]/.test(v)) {
+    try {
+      data = JSON.parse(v);
+    } catch {
+      data = null;
+    }
+  }
+  const text = typeof v === "string" ? v : JSON.stringify(v);
+  if (data === null && (text.length <= ARG_INLINE && !text.includes("\n"))) {
+    const row = el("div", "wfarg inline");
+    row.append(el("span", "k", k), el("span", "v", text));
+    return row;
+  }
+  const preview = Array.isArray(data)
+    ? `${data.length} item${data.length === 1 ? "" : "s"}`
+    : data
+      ? `{ ${Object.keys(data).join(", ")} }`
+      : text.replace(/\s+/g, " ").trim();
+  const key = `${run}/${k}`;
+  const row = el("details", "wfarg");
+  row.open = openArgs.has(key);
+  const sum = el("summary");
+  const caret = () => icon(CARET_ICON[row.open ? "open" : "shut"]);
+  sum.append(caret(), el("span", "k", k), el("span", "v", preview));
+  row.append(sum);
+  let body;
+  if (data !== null) {
+    body = el("div", "md"); // the transcript's fence styles
+    body.innerHTML = fenceHtml(JSON.stringify(data, null, 2), "json");
+  } else body = el("div", "text", text);
+  row.append(body);
+  const fence = body.querySelector(".fence");
+  const show = () => fence && paint(fence);
+  if (row.open) show();
+  row.addEventListener("toggle", () => {
+    row.open ? openArgs.add(key) : openArgs.delete(key);
+    sum.firstElementChild.replaceWith(caret());
+    if (row.open) show();
+  });
+  return row;
+}
+
+// The run's clock and cost (#712), under its progress bar: time elapsed, then
+// while running an estimate of what is left from the pace so far (finished
+// steps over wall time, so parallel steps count), and what its steps' sessions
+// have cost, with an estimated total from the cost of each finished step.
+function etaLine(w) {
+  if (!w.started) return "";
+  const t = tally(w);
+  const end = w.ended || Date.now() / 1000;
+  const took = end - w.started;
+  const parts = [`${since(w.started, end)} elapsed`];
+  const live = w.status === "running" && t.done > 0 && t.done < t.total;
+  if (live) parts.push(`~${fmtSecs(Math.round(((took / t.done) * (t.total - t.done)) / 60) * 60 || 60)} left`);
+  const rows = w.tree.filter((r) => !r.each && LEAF_KINDS.has(r.kind));
+  const spent = rows.reduce((a, r) => a + (r.cost || 0), 0);
+  if (rows.some((r) => r.cost != null)) {
+    parts.push(`${money(spent)} spent`);
+    const doneCost = rows.filter((r) => r.state === "done").reduce((a, r) => a + (r.cost || 0), 0);
+    if (live) parts.push(`~${money(Math.max(spent, (doneCost / t.done) * t.total))} total`);
+  }
+  return parts.join(" · ");
+}
+
 export function fillWorkflow(card) {
   const w = workflows.get(card.dataset.run);
   const id = `wf-${card.dataset.run}`;
@@ -906,9 +1107,9 @@ export function fillWorkflow(card) {
   }
   const args = Object.entries(w.args || {});
   if (args.length) {
-    const kv = el("dl", "apkv wfargs");
-    for (const [k, v] of args) kv.append(el("dt", null, k), el("dd", null, typeof v === "string" ? v : JSON.stringify(v)));
-    kids.push(kv);
+    const box = el("div", "wfargs");
+    for (const [k, v] of args) box.append(argRow(w.run, k, v));
+    kids.push(box);
   }
   kids.push(headLine(w), el("div", "wflede", w.say));
   const waits = w.status === "running" ? openLine(w) : null;
@@ -960,8 +1161,13 @@ export function fillWorkflow(card) {
     main.append(tags);
     const cmd = commandOf(r);
     if (cmd) main.append(el("pre", "cmd", cmd));
+    if (r.progress) main.append(el("pre", "cmd progress", `progress $ ${r.progress}`));
     if (prompt && openPrompts.has(key)) main.append(el("pre", null, prompt));
-    if (r.reading) main.append(el("div", "out", r.reading));
+    if (r.reading || r.percent != null) {
+      const out = el("div", "out", [r.reading, r.percent != null && `${r.percent}%`].filter(Boolean).join(" · "));
+      if (r.percent != null) out.append(progressBar(r));
+      main.append(out);
+    }
     const counted = r.rounds ? el("div", "out", `round ${r.rounds.round} of ${r.rounds.max}`) : r.count ? el("div", "out", countLine(r.count)) : null;
     if (counted) {
       if (foldable(r)) counted.append(" · ", foldButton(w, r));
@@ -1589,7 +1795,17 @@ const RENDERERS = {
     body.append(from);
     const text = (e.md || "").split("\n").filter((l) => !l.startsWith("> from ")).join("\n");
     body.append(markdown(text));
-    return row(e, "inbox", body);
+    // A background command's or a subagent's notice: the command or the
+    // report, and where its output went, folded under the label (#699).
+    const det = e.detail || {};
+    if (det.fold || det.output) {
+      const d = el("details");
+      d.append(el("summary", null, det.lang ? "command" : det.fold ? "report" : "output"));
+      if (det.fold) d.append(det.lang ? argsView(det.fold, det.lang) : markdown(det.fold));
+      if (det.output) d.append(el("div", "outfile", det.output));
+      body.append(d);
+    }
+    return row(e, `inbox ${e.status}`, body);
   },
 
   file(e) {
@@ -1645,6 +1861,16 @@ const RENDERERS = {
     fillLogin(card, e);
     body.append(card);
     return row(e, "claude_login", body);
+  },
+
+  knowledge(e) {
+    // A memory or skill an agent saved, waiting for a person (fillKnowledge).
+    // Never folded.
+    const body = el("div", "body");
+    const card = el("div", "fcard scard ccard kcard");
+    fillKnowledge(card, e);
+    body.append(card);
+    return row(e, "knowledge", body);
   },
 
   secret_request(e) {

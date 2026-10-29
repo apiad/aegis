@@ -61,7 +61,7 @@ The buttons of the session panel and the menus of a tab or a card.
 | Icon | Means | Where |
 |---|---|---|
 | `g-panel` | Show or hide the session panel | the bar above the transcript, the navigator |
-| `g-play` | Continue: send "Continue" to the agent | session panel, tab menu |
+| `g-play` | Continue: send "Continue" to the agent; a skill | session panel, tab menu, the Knowledge view |
 | `g-stop` | Stop the turn in progress | the composer's stop button |
 | `g-interrupt` | Interrupt a working agent | tab menu |
 | `g-sleep` | Sleep: end the process, keep the conversation | session panel, tab menu |
@@ -100,6 +100,8 @@ The buttons of the session panel and the menus of a tab or a card.
 | `g-bell` | Notifications | the top bar |
 | `g-gear` | Settings | the top bar |
 | `g-clock` | Schedules; a step's deadline | the top bar, workflows |
+| `g-knowledge` | Knowledge: your skills and memories | the top bar |
+| `g-usage` | Usage: what the work cost | the top bar |
 | `g-search` | Search; a search call | help, the journal, the transcript |
 
 ## Transcript
@@ -110,7 +112,7 @@ The gutter of each row names what the row is.
 |---|---|---|
 | `g-dot` | The agent's prose; a tool aegis has no kind for | the transcript, the journal, toasts |
 | `g-think` | The agent thinking; a subagent | the transcript |
-| `g-book` | A read call; read a page | the transcript, menus |
+| `g-book` | A read call; read a page; a memory | the transcript, menus, the Knowledge view |
 | `g-terminal` | A shell call; a terminal | the transcript, tabs, Fleet cards, the Files view |
 | `g-globe` | A fetch call; a browser; a link with no known host | the transcript, tabs, Fleet cards |
 | `g-swap` | A call to aegis itself; move a pane | the transcript, the canvas |
@@ -129,6 +131,7 @@ The gutter of each row names what the row is.
 | `g-window` | Open in a new window; a session in the journal | cards, menus, the journal |
 | `g-open` | Open in a new tab | cards, menus, the journal |
 | `g-arrow-up` | A pull request | the journal |
+| `g-issue` | A closed issue | the journal |
 
 ## Files
 

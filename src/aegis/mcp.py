@@ -232,7 +232,9 @@ Sessions on another aegis server this one links are addressed `handle@server` \
 (session_list shows them). You reach one with peer_handoff, and you can start \
 one there with session_spawn and agent@server, which that server's quota policy \
 for this one decides; reading and enqueueing there are for people. Nothing on a \
-linked server can reach you.
+linked server can reach you, unless the link is trusted: then its agents reach \
+you the same way, and you read, wait on, close and enqueue there by \
+handle@server and queue@server as at home.
 
 To wait on a long process (tests, a build, a download), never sleep or poll: call \
 monitor_start with a bash `done` condition and a `progress` command echoing 0 to \
@@ -334,8 +336,9 @@ answer a question whose answer has structure, or play with an explanation, \
 show them a page instead of asking in prose: artifact_create writes a working \
 skeleton and returns its path; edit it with your Edit tool; artifact_send lands \
 it in the transcript after running it hidden in their browser (when they have \
-the transcript open; `started: null` when no browser was open, or none answered \
-within 3 s, and it landed untried), and refuses a \
+the transcript open; `started: null` when it landed untried, with `watching` \
+false when no browser had it on screen and true when one did not answer within \
+3 s), and refuses a \
 page that throws, so edit and send again until it lands. Lay every page out \
 for a desktop and a phone alike: the person sees it at both widths, on a phone \
 or through the Phone width button on its bar. Only then write your \

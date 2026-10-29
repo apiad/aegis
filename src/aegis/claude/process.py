@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import signal
 import time
 from collections import deque
 from collections.abc import Callable
@@ -68,6 +69,13 @@ REPLACED_TOOLS = {
     "TaskList": "plan_update",
     "TaskUpdate": "plan_update",
 }
+# Under the owner's ``knowledge: native`` (setup.py), Claude Code's own skill
+# loader is off too, and aegis's knowledge tools replace it. Its auto-memory
+# is turned off by the variable, which on 2.1.306 wins over every setting but
+# a managed policy (it reads CLAUDE_CODE_DISABLE_AUTO_MEMORY before
+# autoMemoryEnabled); the canary pins both (tests/canary).
+NATIVE_TOOLS = {"Skill": "skill_read, skill_search"}
+NO_AUTO_MEMORY = {"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"}
 # aegis decides which of its own tools a session may call (ops.Registry.call),
 # so Claude Code lets each one through in every mode. Measured on 2.1.291:
 # plan mode refuses an MCP call even when --allowedTools or a settings rule
@@ -295,11 +303,13 @@ class ClaudeProcess:
         if proc is None:
             return
         if proc.returncode is None:
-            proc.terminate()
+            await launch.signal_process_async(proc.pid, signal.SIGTERM, user=self.user)
             try:
                 await asyncio.wait_for(proc.wait(), TERM_GRACE_S)
             except TimeoutError:
-                proc.kill()
+                await launch.signal_process_async(
+                    proc.pid, signal.SIGKILL, user=self.user
+                )
                 await proc.wait()
         for t in self._tasks:
             if not t.done():

@@ -18,6 +18,8 @@ stdout. The text of a prompt picks a script:
     /notice        three system notices and nothing else.
     /big           a Read whose result is 2 MB on one line.
     /exit N        a few stderr lines, then exit with code N.
+    /quit N        a reply and a result, then N seconds later exit with code 0,
+                   between turns.
     /recall        text listing the prompts this session id received before.
     /stream N      N words of text, one every 0.25 s, then a result. With
                    --include-partial-messages each word is a stream_event delta
@@ -26,7 +28,8 @@ stdout. The text of a prompt picks a script:
     /mcp T JSON    call tool T of the aegis MCP server named in --mcp-config with
                    arguments JSON, as a tool call and its result, then a result.
     /script JSON   a list of steps in one turn: ["sleep", N] waits N seconds
-                   (an interrupt ends the turn, as /busy's does); [T, {args}]
+                   (an interrupt ends the turn, as /busy's does); ["say", TEXT]
+                   writes TEXT as its own text block; [T, {args}]
                    calls aegis tool T as /mcp does. Then text naming each
                    call's outcome, and a result.
     /bgtask N      start a background task (task_started) and end the turn; N
@@ -153,6 +156,7 @@ SCRIPTS = (
     "notice",
     "big",
     "exit",
+    "quit",
     "recall",
     "mcp",
     "bgtask",
@@ -835,6 +839,9 @@ def run(text: str) -> None:
                     result(is_error=True, subtype="error_during_execution")
                     return
                 continue
+            if step[0] == "say":
+                assistant({"type": "text", "text": step[1]})
+                continue
             tool, args = step
             tid = tool_id()
             assistant(
@@ -878,7 +885,11 @@ def run(text: str) -> None:
 
         threading.Thread(target=finish, daemon=True).start()
     elif word == "/stream":
-        stream_text(" ".join(f"chunk{k}" for k in range(1, int(arg or 3) + 1)))
+        n, _, tall = arg.partition(" ")
+        # `/stream N tall`: one paragraph per delta, a reply taller than the view.
+        sep = " \n\n" if tall == "tall" else " "
+        stem = "para" if tall == "tall" else "chunk"
+        stream_text(sep.join(f"{stem}{k}" for k in range(1, int(n or 3) + 1)))
         result()
     elif word == "/argv":
         assistant({"type": "text", "text": "argv: " + json.dumps(sys.argv[1:])})
@@ -886,6 +897,14 @@ def run(text: str) -> None:
     elif word == "/recall":
         assistant({"type": "text", "text": "earlier: " + " | ".join(before)})
         result()
+    elif word == "/quit":
+        assistant({"type": "text", "text": "bye"})
+        result()
+        threading.Timer(float(arg or 0.2), os._exit, (0,)).start()
+    elif word == "spend":
+        # A turn that costs ``arg`` dollars, by Claude's running total.
+        assistant({"type": "text", "text": f"cost {arg}"})
+        result(cost=float(arg))
     elif word == "/exit":
         sys.stderr.write("fatal: something broke\nsecond line\n")
         sys.stderr.flush()

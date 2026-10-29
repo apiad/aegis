@@ -291,6 +291,13 @@ class TokenStore:
             self._doc["default_policy"] = policy
         self._save()
 
+    def has_members(self) -> bool:
+        """Whether any token but the admin's own exists, a second admin's
+        included: a trusted link is refused while anyone else may use this
+        server (links.py)."""
+        self._fresh()
+        return bool(self._entries())
+
     def admin_token(self) -> str:
         self._fresh()
         return self._admin

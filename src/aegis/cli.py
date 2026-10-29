@@ -277,34 +277,16 @@ def serve(
     )
 
     from .app import App
-    from .roots import make_roots
+    from .server import StartError, allowed_hosts, prepare
     from .web import build_web, load_or_create_token, ws_protocol
 
-    from .roots import legacy_state
-
-    roots = make_roots(start=Path.cwd(), root=root)
-    if found := legacy_state(roots.state_root):
-        typer.echo(
-            f"{roots.state_root} holds the state of aegis before 2.0 ({', '.join(found)}).\n"
-            f"Move it aside, then start again:\n"
-            f"  mv {roots.state_root} {roots.state_root.parent / 'legacy-state'}",
-            err=True,
-        )
+    try:
+        prepared = prepare(Path.cwd(), root)
+    except StartError as e:
+        for line in e.lines:
+            typer.echo(line, err=True)
         raise typer.Exit(1)
-    from .config import Config
-
-    snap = Config(roots.config_root).current()
-    if snap.multi_user_error:
-        typer.echo(snap.multi_user_error, err=True)
-        raise typer.Exit(1)
-    if snap.multi_user is not None:
-        from .users import boot_problems
-
-        if problems := boot_problems(roots.state_root, snap.multi_user):
-            for line in problems:
-                typer.echo(line, err=True)
-            raise typer.Exit(1)
-        roots.state_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    roots = prepared.roots
     local = "127.0.0.1" if host in ("127.0.0.1", "0.0.0.0", "localhost") else host
     if not _port_free(host, port):
         if window and _open_running(roots.state_root, local, port, browser):
@@ -336,12 +318,7 @@ def serve(
 
             open_window(url, browser)
         return
-    allowed = {
-        f"127.0.0.1:{port}",
-        f"localhost:{port}",
-        f"[::1]:{port}",
-        f"{host}:{port}",
-    }
+    allowed = allowed_hosts(host, port)
     import socket as _socket
 
     app = App(
@@ -352,7 +329,7 @@ def serve(
         cursor_bin=cursor,
         base_url=f"http://{local}:{port}",
         server_name=name or _socket.gethostname(),
-        multi_user=snap.multi_user,
+        multi_user=prepared.multi_user,
     )
     web = build_web(app, token, allowed, origin)
     typer.echo(f"aegis serving {roots.config_root}")
@@ -600,7 +577,7 @@ def _open_running(state_root: Path, host: str, port: int, browser: str | None) -
 link_app = typer.Typer(
     add_completion=False,
     help="Link other aegis servers: this one becomes their client, and they "
-    "can never reach it.",
+    "can never reach it, unless the link is trusted (--trusted).",
 )
 app.add_typer(link_app, name="link")
 
@@ -624,9 +601,17 @@ def link_add(
     server: str | None = typer.Option(
         None, "--as", help="This server's name, if serve runs with --name."
     ),
+    trusted: bool = typer.Option(
+        False,
+        "--trusted",
+        help="Both ways, agents unrestricted: only for a server you alone use.",
+    ),
 ) -> None:
     """Link the server at URL. Reads its token from stdin, so it stays out of
-    the shell history: `ssh far cat .aegis/state/token | aegis link add far URL`."""
+    the shell history: `ssh far cat .aegis/state/token | aegis link add far URL`.
+    With --trusted, the far server also reaches this one over the link, and
+    agents on both act across it as at home; it grants that only to its admin
+    token while nobody else holds one."""
     import getpass
     import sys
 
@@ -640,7 +625,7 @@ def link_add(
     store = _link_store(root)
     own = server or socket.gethostname()
     try:
-        welcome = asyncio.run(probe(url, token, own, getpass.getuser()))
+        welcome = asyncio.run(probe(url, token, own, getpass.getuser(), trusted))
     except LinkError as e:
         typer.echo(f"not linked: {e.message}", err=True)
         raise typer.Exit(1) from e
@@ -664,9 +649,36 @@ def link_add(
             "token": token,
             "added": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }
+        | ({"trusted": True} if trusted else {})
     )
     store.save(entries)
-    typer.echo(f"linked {name} at {url}; a running server picks it up within a second")
+    how = "trusted, both ways" if trusted else "one way"
+    typer.echo(
+        f"linked {name} at {url}, {how}; a running server picks it up within a second"
+    )
+
+
+@link_app.command("trust")
+def link_trust(
+    name: str = typer.Argument(...),
+    off: bool = typer.Option(False, "--off", help="Stop asking for trust."),
+    root: Path | None = _ROOT_OPTION,
+) -> None:
+    """Ask an existing link for trust (both ways, agents unrestricted), or stop
+    with --off. The link reconnects; the far server decides, and Settings
+    shows whether it granted it."""
+    store = _link_store(root)
+    entries = store.load()
+    if not any(e["name"] == name for e in entries):
+        typer.echo(f"no link named {name}", err=True)
+        raise typer.Exit(1)
+    for e in entries:
+        if e["name"] == name:
+            e.pop("trusted", None)
+            if not off:
+                e["trusted"] = True
+    store.save(entries)
+    typer.echo(f"{name}: {'one way' if off else 'trust asked'}")
 
 
 @link_app.command("remove")
@@ -688,7 +700,8 @@ def link_list(root: Path | None = _ROOT_OPTION) -> None:
     """The links this server holds: names and URLs, never tokens."""
     entries = _link_store(root).load()
     for e in entries:
-        typer.echo(f"{e['name']:<16} {e['url']}")
+        trust = "  trusted" if e.get("trusted") is True else ""
+        typer.echo(f"{e['name']:<16} {e['url']}{trust}")
     typer.echo(f"{len(entries)} links")
 
 

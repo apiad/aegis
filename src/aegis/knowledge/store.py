@@ -1,0 +1,522 @@
+"""The per-principal store: ``<state>/knowledge/<principal>/`` with
+``memories/<name>.md`` and ``skills/<name>/SKILL.md``.
+
+Parsed items are cached per principal, keyed by each file's path, mtime_ns
+and size, so a scan stats every file and parses only the ones that changed,
+whether through aegis or by hand; ``version`` moves on every change through
+the store, so the service rescans at once after one. A file whose frontmatter
+does not parse is skipped and logged once per path and mtime, so one bad hand
+edit or import never hides the rest. Saves, edits, restores and deletes
+hold one lock per principal, so two sessions saving at once both land as
+two commits; the file write and the git commit run in a thread, off the
+event loop.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import posixpath
+import shutil
+import subprocess
+from collections.abc import Callable
+from pathlib import Path
+
+from . import history
+from .items import Item, Kind, check_name, dump, parse_memory, parse_skill
+from ..ops import OpError
+
+log = logging.getLogger("aegis.knowledge")
+
+# A check of the item as it is, run under the lock before a change.
+Expect = Callable[[Item | None], None]
+
+
+class Store:
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self._locks: dict[str, asyncio.Lock] = {}
+        self._versions: dict[str, int] = {}
+        self._item_versions: dict[tuple[str, str], int] = {}
+        self._logged: set[tuple[str, float]] = set()
+        # principal -> path -> ((mtime_ns, size), the item or None if bad)
+        self._parsed: dict[str, dict[Path, tuple[tuple[int, int], Item | None]]] = {}
+        self.parses = 0  # files parsed, for the tests
+
+    def dir(self, principal: str) -> Path:
+        if not principal or "/" in principal or principal.startswith("."):
+            raise OpError("bad_params", f"no knowledge for {principal!r}")
+        return self.root / principal
+
+    def principals(self) -> list[str]:
+        """Every principal with a store. Blocking: lists a directory."""
+        if not self.root.is_dir():
+            return []
+        return sorted(
+            p.name
+            for p in self.root.iterdir()
+            if p.is_dir() and not p.name.startswith(".")
+        )
+
+    def items(self, principal: str) -> list[Item]:
+        """Every memory and skill of ``principal``, memories first, by name."""
+        return self.scan(principal)[0]
+
+    def scan(self, principal: str) -> tuple[list[Item], bool]:
+        """``items``, and whether any file changed since the last scan. Stats
+        every file; parses only new or changed ones. Blocking: the service
+        runs it in a thread."""
+        base = self.dir(principal)
+        held = self._parsed.get(principal, {})
+        fresh: dict[Path, tuple[tuple[int, int], Item | None]] = {}
+        changed = False
+        found = [
+            (p, parse_memory, p.stem) for p in sorted((base / "memories").glob("*.md"))
+        ] + [
+            (p, parse_skill, p.parent.name)
+            for p in sorted((base / "skills").glob("*/SKILL.md"))
+        ]
+        for p, parse, name in found:
+            try:
+                st = p.stat()
+            except OSError:
+                changed = True
+                continue
+            key = (st.st_mtime_ns, st.st_size)
+            got = held.get(p)
+            if got is None or got[0] != key:
+                changed = True
+                got = (key, self._read(p, parse, name))
+            fresh[p] = got
+        changed = changed or fresh.keys() != held.keys()
+        self._parsed[principal] = fresh
+        return [it for _, it in fresh.values() if it is not None], changed
+
+    def _read(self, path: Path, parse, name: str) -> Item | None:
+        self.parses += 1
+        try:
+            return parse(path.read_text(encoding="utf-8"), name, path)
+        except (OSError, UnicodeDecodeError, ValueError) as e:
+            try:
+                key = (str(path), path.stat().st_mtime)
+            except OSError:
+                return None
+            if key not in self._logged:
+                self._logged.add(key)
+                log.warning("knowledge: skipping %s: %s", path, e)
+            return None
+
+    def get(self, principal: str, name: str) -> Item | None:
+        base = self.dir(principal)
+        check_name(name)
+        p = base / "memories" / f"{name}.md"
+        if p.is_file():
+            return self._read(p, parse_memory, name)
+        p = base / "skills" / name / "SKILL.md"
+        if p.is_file():
+            return self._read(p, parse_skill, name)
+        return None
+
+    def _skill_dir(self, principal: str, name: str) -> Path:
+        folder = self.dir(principal) / "skills" / check_name(name)
+        if not (folder / "SKILL.md").is_file():
+            raise OpError("not_found", f"no skill named {name!r}")
+        return folder
+
+    def files(self, principal: str, name: str) -> list[str]:
+        """The files of a skill's folder, relative and sorted. A symlink is
+        left out, since ``read_file`` would refuse it."""
+        folder = self._skill_dir(principal, name)
+        return sorted(
+            p.relative_to(folder).as_posix()
+            for p in folder.rglob("*")
+            if p.is_file() and not p.is_symlink()
+        )
+
+    def read_file(
+        self, principal: str, name: str, rel: str, max_bytes: int | None = None
+    ) -> bytes:
+        """One file of a skill's folder. A path that leaves the folder, by
+        ``..``, an absolute path or a symlink, is ``bad_params``; a file over
+        ``max_bytes`` is ``too_large``, refused before it is read."""
+        folder = self._skill_dir(principal, name)
+        norm = posixpath.normpath(rel) if rel else ""
+        p = folder / norm
+        if (
+            not norm
+            or posixpath.isabs(norm)
+            or norm == ".."
+            or norm.startswith("../")
+            or any(q.is_symlink() for q in [p, *p.parents] if q.is_relative_to(folder))
+        ):
+            raise OpError("bad_params", f"{rel!r} is not a file of the skill")
+        if not p.is_file():
+            raise OpError("not_found", f"the skill {name!r} has no file {rel!r}")
+        if max_bytes is not None and (size := p.stat().st_size) > max_bytes:
+            raise OpError(
+                "too_large", f"{rel!r} holds {size} bytes; at most {max_bytes} are read"
+            )
+        return p.read_bytes()
+
+    def version(self, principal: str) -> int:
+        return self._versions.get(principal, 0)
+
+    def item_version(self, principal: str, name: str) -> int:
+        """Moves on every save or delete of that one item through the store."""
+        return self._item_versions.get((principal, name), 0)
+
+    def _changed(self, principal: str, item: Item) -> None:
+        """A change through the store: bump the version and forget the cached
+        parse, which a rewrite of the same size in the same clock tick would
+        otherwise keep."""
+        self._versions[principal] = self.version(principal) + 1
+        key = (principal, item.name)
+        self._item_versions[key] = self._item_versions.get(key, 0) + 1
+        f = self._path(self.dir(principal), item.kind, item.name)
+        self._parsed.get(principal, {}).pop(
+            f if item.kind == "memory" else f / "SKILL.md", None
+        )
+
+    def _lock(self, principal: str) -> asyncio.Lock:
+        return self._locks.setdefault(principal, asyncio.Lock())
+
+    def _path(self, base: Path, kind: str, name: str) -> Path:
+        """A memory's file, or a skill's folder."""
+        if kind == "memory":
+            return base / "memories" / f"{name}.md"
+        return base / "skills" / name
+
+    def _rel(self, item: Item) -> str:
+        if item.kind == "memory":
+            return f"memories/{item.name}.md"
+        return f"skills/{item.name}"
+
+    async def save(
+        self,
+        principal: str,
+        item: Item,
+        author: str,
+        extra: dict[str, bytes] | None = None,
+        verb: str | None = None,
+        fresh: bool = False,
+    ) -> str:
+        """Write ``item`` (and, for a skill, ``extra`` files in its folder) and
+        commit; the commit's sha, "" when nothing changed. Refused with
+        ``name_taken`` when the other kind holds the name; an item of the
+        same kind is replaced, unless ``fresh`` (an import), which refuses
+        it too. ``verb`` names the change in the commit message
+        (``approve``), else ``save`` or ``update``."""
+        base = self.dir(principal)
+        check_name(item.name)
+        files = {}
+        for rel, data in (extra or {}).items():
+            norm = posixpath.normpath(rel)
+            if (
+                item.kind != "skill"
+                or posixpath.isabs(norm)
+                or norm in (".", "..", "SKILL.md")
+                or norm.startswith("../")
+            ):
+                raise OpError("bad_params", f"{rel!r} is not a file of the skill")
+            files[norm] = data
+        async with self._lock(principal):
+            other = "skill" if item.kind == "memory" else "memory"
+            if self._path(base, other, item.name).exists():
+                raise OpError("name_taken", f"{item.name!r} already names another item")
+            held = self._path(base, item.kind, item.name).exists()
+            if held and fresh:
+                raise OpError("name_taken", f"{item.name!r} already names an item")
+            verb = verb or ("update" if held else "save")
+            sha = await asyncio.to_thread(self._write, base, item, files, verb, author)
+            self._changed(principal, item)
+        return sha
+
+    def _write(
+        self, base: Path, item: Item, files: dict, verb: str, author: str
+    ) -> str:
+        try:
+            history.ensure_repo(base)
+        except (OSError, subprocess.CalledProcessError) as e:
+            raise _history_failed(e) from None
+        if item.kind == "memory":
+            path = base / "memories" / f"{item.name}.md"
+        else:
+            path = base / "skills" / item.name / "SKILL.md"
+        # A replaced skill keeps only the extra files of the new save.
+        stale = [
+            p
+            for p in (sorted(path.parent.rglob("*")) if item.kind == "skill" else [])
+            if p.is_file()
+            and p != path
+            and p.relative_to(path.parent).as_posix() not in files
+        ]
+        before = _snapshot([path, *stale, *(path.parent / rel for rel in files)])
+        try:
+            for p in stale:
+                p.unlink()
+            _prune_dirs(path.parent, [p.parent for p in stale])
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(dump(item), encoding="utf-8")
+            for rel, data in files.items():
+                (path.parent / rel).parent.mkdir(parents=True, exist_ok=True)
+                (path.parent / rel).write_bytes(data)
+            return history.commit(
+                base, [self._rel(item)], f"{verb} {item.kind} {item.name}", author
+            )
+        except (OSError, subprocess.CalledProcessError) as e:
+            _restore(base, before, [self._rel(item)])
+            raise _history_failed(e) from None
+
+    async def set_status(
+        self,
+        principal: str,
+        name: str,
+        status: str,
+        author: str,
+        verb: str,
+        expect: Expect | None = None,
+    ) -> str:
+        """Set an item's ``status`` and commit, rewriting only its own file,
+        so a skill keeps the other files of its folder; the commit's sha.
+        ``expect`` runs in a thread under the lock with the item as it is
+        (None when it is gone) and raises to stop the change, so nothing
+        lands between its check and the write."""
+        base = self.dir(principal)
+        check_name(name)
+        async with self._lock(principal):
+            item = self.get(principal, name)
+            if expect is not None:
+                await asyncio.to_thread(expect, item)
+            if item is None:
+                raise OpError("not_found", f"no item named {name!r}")
+            new = Item(
+                item.kind,
+                item.name,
+                item.description,
+                item.body,
+                {**item.meta, "status": status},
+            )
+            sha = await asyncio.to_thread(self._rewrite, base, new, verb, author)
+            self._changed(principal, new)
+        return sha
+
+    def _rewrite(self, base: Path, item: Item, verb: str, author: str) -> str:
+        path = self._path(base, item.kind, item.name)
+        if item.kind == "skill":
+            path = path / "SKILL.md"
+        before = _snapshot([path])
+        try:
+            history.ensure_repo(base)  # a store filled by hand has none yet
+            path.write_text(dump(item), encoding="utf-8")
+            return history.commit(
+                base, [self._rel(item)], f"{verb} {item.kind} {item.name}", author
+            )
+        except (OSError, subprocess.CalledProcessError) as e:
+            _restore(base, before, [self._rel(item)])
+            raise _history_failed(e) from None
+
+    async def delete(
+        self,
+        principal: str,
+        name: str,
+        author: str,
+        verb: str = "delete",
+        expect: Expect | None = None,
+    ) -> str:
+        """Delete an item and commit; the commit's sha, "" when git never
+        tracked it. ``expect`` as for set_status."""
+        base = self.dir(principal)
+        check_name(name)
+        async with self._lock(principal):
+            item = self.get(principal, name)
+            if expect is not None:
+                await asyncio.to_thread(expect, item)
+            if item is None:
+                raise OpError("not_found", f"no item named {name!r}")
+            sha = await asyncio.to_thread(self._remove, base, item, author, verb)
+            self._changed(principal, item)
+        return sha
+
+    async def revert(
+        self,
+        principal: str,
+        sha: str,
+        kind: Kind,
+        name: str,
+        author: str,
+        expect: Callable[[], None] | None = None,
+    ) -> str:
+        """Undo the commit ``sha``, which changed the item ``kind``/``name``,
+        with a new commit; its sha. A revert git refuses (a later change to
+        the same lines) leaves the store as it was and is ``conflict``.
+        ``expect`` runs first under the lock, off the loop, and may refuse."""
+        base = self.dir(principal)
+        check_name(name)
+        async with self._lock(principal):
+            if expect is not None:
+                await asyncio.to_thread(expect)
+            try:
+                new = await asyncio.to_thread(history.revert, base, sha, author)
+            except subprocess.CalledProcessError as e:
+                raise OpError(
+                    "conflict",
+                    f"{name!r} changed again since; the change cannot be undone"
+                    f" by itself ({(e.stderr or '').strip() or e})",
+                ) from None
+            except OSError as e:
+                raise _history_failed(e) from None
+            self._changed(principal, Item(kind, name, "", ""))
+        return new
+
+    async def replace(
+        self,
+        principal: str,
+        item: Item,
+        author: str,
+        verb: str = "edit",
+        expect: Expect | None = None,
+    ) -> str:
+        """Rewrite an existing item's own file with ``item`` and commit, so a
+        skill keeps the other files of its folder; the commit's sha.
+        ``expect`` as for set_status."""
+        base = self.dir(principal)
+        check_name(item.name)
+        async with self._lock(principal):
+            held = await asyncio.to_thread(self.get, principal, item.name)
+            if expect is not None:
+                await asyncio.to_thread(expect, held)
+            if held is None or held.kind != item.kind:
+                raise OpError("not_found", f"no {item.kind} named {item.name!r}")
+            sha = await asyncio.to_thread(self._rewrite, base, item, verb, author)
+            self._changed(principal, item)
+        return sha
+
+    def _logged_as(self, principal: str, name: str) -> list[tuple[Kind, dict]]:
+        base = self.dir(principal)
+        if not (base / ".git").exists():
+            return []
+        rows: list[tuple[Kind, dict]] = []
+        kinds: tuple[Kind, Kind] = ("memory", "skill")
+        for kind in kinds:
+            rel = self._rel(Item(kind, name, "", ""))
+            rows += [(kind, r) for r in history.log(base, rel)]
+        return sorted(rows, key=lambda kr: int(kr[1]["at"]), reverse=True)
+
+    def history(self, principal: str, name: str) -> list[dict]:
+        """The commits that changed the item ``name``, newest first, a
+        deleted one's included: sha, at, message, by and kind. Blocking."""
+        check_name(name)
+        return [{**r, "kind": k} for k, r in self._logged_as(principal, name)]
+
+    async def restore(self, principal: str, name: str, sha: str, author: str) -> str:
+        """Put the item ``name`` back as it was at ``sha``, one of its own
+        commits, and commit; the new sha. A version where it did not exist
+        is ``bad_params``; a name the other kind holds now is ``name_taken``."""
+        base = self.dir(principal)
+        check_name(name)
+        async with self._lock(principal):
+            kind, sha = await asyncio.to_thread(
+                self._restore_check, principal, name, sha
+            )
+            item = Item(kind, name, "", "")
+            new = await asyncio.to_thread(self._put_back, base, item, sha, author)
+            self._changed(principal, item)
+        return new
+
+    def _restore_check(self, principal: str, name: str, sha: str) -> tuple[Kind, str]:
+        base = self.dir(principal)
+        found = [
+            (k, r["sha"])
+            for k, r in self._logged_as(principal, name)
+            if r["sha"].startswith(sha)
+        ]
+        if not found:
+            raise OpError("not_found", f"{sha!r} is not a version of {name!r}")
+        kind, sha = found[0]
+        rel = self._rel(Item(kind, name, "", ""))
+        own = f"{rel}/SKILL.md" if kind == "skill" else rel
+        if history.show(base, own, sha) is None:
+            raise OpError(
+                "bad_params", f"{name!r} did not exist at {sha[:12]}; pick an older one"
+            )
+        other = "skill" if kind == "memory" else "memory"
+        if self._path(base, other, name).exists():
+            raise OpError("name_taken", f"{name!r} already names another item")
+        return kind, sha
+
+    def _put_back(self, base: Path, item: Item, sha: str, author: str) -> str:
+        target = self._path(base, item.kind, item.name)
+        held = [target] if item.kind == "memory" else sorted(target.rglob("*"))
+        before = _snapshot([p for p in held if p.is_file()])
+        try:
+            return history.restore(
+                base,
+                self._rel(item),
+                sha,
+                f"restore {item.kind} {item.name} {sha[:12]}",
+                author,
+            )
+        except (OSError, subprocess.CalledProcessError) as e:
+            if target.is_dir():
+                shutil.rmtree(target)
+            else:
+                target.unlink(missing_ok=True)
+            _restore(base, before, [self._rel(item)])
+            raise _history_failed(e) from None
+
+    def _remove(self, base: Path, item: Item, author: str, verb: str) -> str:
+        target = self._path(base, item.kind, item.name)
+        held = [target] if item.kind == "memory" else sorted(target.rglob("*"))
+        before = _snapshot([p for p in held if p.is_file()])
+        try:
+            history.ensure_repo(base)
+            if item.kind == "memory":
+                target.unlink()
+            else:
+                shutil.rmtree(target)
+            return history.commit(
+                base, [self._rel(item)], f"{verb} {item.kind} {item.name}", author
+            )
+        except (OSError, subprocess.CalledProcessError) as e:
+            _restore(base, before, [self._rel(item)])
+            raise _history_failed(e) from None
+
+
+def _snapshot(paths: list[Path]) -> dict[Path, bytes | None]:
+    """Each path's bytes, None for one that does not exist yet."""
+    return {p: p.read_bytes() if p.is_file() else None for p in paths}
+
+
+def _restore(base: Path, before: dict[Path, bytes | None], rels: list[str]) -> None:
+    """Put the files back as ``_snapshot`` found them, after a change git did
+    not record, so the store and its history never drift apart."""
+    for p, data in before.items():
+        if data is None:
+            p.unlink(missing_ok=True)
+        else:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(data)
+    _prune_dirs(base, [q.parent for q in before])
+    history.unstage(base, rels)
+
+
+def _prune_dirs(top: Path, dirs: list[Path]) -> None:
+    """Remove each of ``dirs`` that is empty, and its empty parents, up to
+    but not including ``top``."""
+    for p in sorted(set(dirs), key=lambda q: -len(q.parts)):
+        while (
+            p != top and p.is_relative_to(top) and p.is_dir() and not any(p.iterdir())
+        ):
+            p.rmdir()
+            p = p.parent
+
+
+def _history_failed(e: Exception) -> OpError:
+    why = (
+        (e.stderr or "").strip() if isinstance(e, subprocess.CalledProcessError) else ""
+    )
+    return OpError(
+        "history_failed",
+        f"the change was not kept, since git could not record it ({why or e});"
+        " the store is as it was",
+    )

@@ -64,6 +64,42 @@ the GitHub CLI:
 as one failed or was cancelled, so the wake says which. Each run checks `done`
 before `fail`, so write the two so that they can never both pass.
 
+## Wait on CI again after a re-run or a push
+
+For a few seconds after you push or re-run a job, `gh pr checks` still
+reports the last attempt. A monitor armed then reads that old result: `fail`
+passes on the failure you just re-ran, or `done` on the green run of the
+commit before. Make each condition see only the new attempt.
+
+After a push, require the pull request's head to be the commit you pushed.
+Until GitHub moves the head, the conditions fail and the monitor keeps
+waiting:
+
+```json
+{
+  "description": "CI on pull request 42 after the push",
+  "done": "test \"$(gh pr view 42 --json headRefOid --jq .headRefOid)\" = <sha> && gh pr checks 42 --json bucket --jq 'length > 0 and all(.[]; .bucket == \"pass\" or .bucket == \"skipping\")' | grep -qx true",
+  "fail": "test \"$(gh pr view 42 --json headRefOid --jq .headRefOid)\" = <sha> && gh pr checks 42 --json bucket --jq 'any(.[]; .bucket == \"fail\" or .bucket == \"cancel\")' | grep -qx true",
+  "progress": "gh pr checks 42 --json bucket --jq '(map(select(.bucket != \"pending\")) | length) * 100 / ([length, 1] | max) | floor'"
+}
+```
+
+`<sha>` is `git rev-parse HEAD` after the push. A re-run keeps the commit, so
+note the time instead (`date -u +%FT%TZ`) and count only the checks you re-ran
+that started after it:
+
+```json
+{
+  "description": "the re-run of slow (2/4) on pull request 42",
+  "done": "gh pr checks 42 --json name,bucket,startedAt --jq 'map(select(.name == \"slow (2/4)\" and .startedAt > \"<time>\")) | length > 0 and all(.[]; .bucket == \"pass\")' | grep -qx true",
+  "fail": "gh pr checks 42 --json name,bucket,startedAt --jq 'any(.[]; .name == \"slow (2/4)\" and .startedAt > \"<time>\" and (.bucket == \"fail\" or .bucket == \"cancel\"))' | grep -qx true",
+  "progress": "gh pr checks 42 --json name,bucket,startedAt --jq 'if any(.[]; .name == \"slow (2/4)\" and .startedAt > \"<time>\" and .bucket != \"pending\") then 100 else 10 end'"
+}
+```
+
+Watch the pull request, never a job id: a re-run is a new job with a new id,
+so a monitor on `gh api .../actions/jobs/<id>` waits on the old one.
+
 ## Wait on other sessions
 
 `monitor_sessions` waits for sessions on this server to finish. Give it a
@@ -82,7 +118,10 @@ for as long as it waits. One that went idle after a turn that ended without
 `turn_end`, waiting on nothing, counts as running for two minutes, the moment
 a finished task takes to reach it; past that, the wait ends `blocked`. You
 cannot wait on your own session. A watched session is followed
-through a rename and a close. Sessions on a linked server cannot be watched.
+through a rename and a close. Sessions on a linked server cannot be watched,
+unless the link is [trusted](links#trusted-links): then `handle@server` is
+read from that server's session list at each interval, and a link that drops
+keeps the last reading rather than ending the wait.
 
 ## The wake
 

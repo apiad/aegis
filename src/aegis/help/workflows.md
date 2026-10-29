@@ -115,6 +115,23 @@ an agent once for a yes or a no, with each of `inputs` (references such as
 `impl` or `review.verdict`) given to it as JSON. A judge counts in the same
 limits as an agent node. Without a deadline above it, a check gives up after
 an hour and a command after 30 minutes. `wait: 20m` pauses on wall time.
+An `sh` step, or a `check` whose probe is `sh`, can carry `progress:` beside
+it: a command that prints a number from 0 to 100, as a monitor's does. The
+card draws it as a bar on the step's line in Now and on its row, so the person
+can tell a step nearly done from one that is stuck. A check reads it after each
+probe that does not pass, and an `sh` every 15 seconds while its command runs.
+The last line of its output is the number; anything else keeps the last
+reading and never fails the step. It takes values as any command does, the
+person approves it with the rest, and a restart loses the reading until the
+next one.
+
+```yaml
+- check: {sh: "test -f build/done", every: 1m}
+  progress: "ls build/*.o | wc -l | awk '{print int($1 * 100 / 120)}'"
+  deadline: 2h
+  say: Wait for the build, counting its objects.
+```
+
 A wait whose length is filled in at run time can carry `between: [1m, 1h]`
 beside it, and the length is clamped into those bounds, so a value an agent
 gives never waits longer than the definition allows.
@@ -276,8 +293,16 @@ waits for your answer.
 
 ## What the person sees
 
+The run's args sit at the top of the card, each folded to its name and a
+short preview (`3 items`, an object's keys, a string's opening words) until
+the person opens it; a list or an object opens as coloured JSON. A short
+value shows whole on its line.
+
 The card's header counts the steps done, failed and the questions open over
-a progress bar; before approval it says how many steps there are. While the
+a progress bar; before approval it says how many steps there are. Under the
+bar it says how long the run has gone and what its steps' sessions have cost.
+While it runs it adds an estimate of how long is left, from the pace so far,
+and of the total cost, from what each finished step cost. While the
 run goes on, Now lists each working step, with its session or its command
 and how long it has run, then up to three steps that come next. Under it the
 story tells what happened, and under that the plan, one row per step. A map

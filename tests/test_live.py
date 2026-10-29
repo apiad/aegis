@@ -646,7 +646,7 @@ async def test_real_claude_gives_a_countable_wait_a_progress_command(tmp_path: P
         # October waited on GitHub checks or runs, all of them countable. Before
         # #165 this prompt got a progress command in 1 of 6 runs.
         await s.send(
-            "CI is running on pull request 12 of the GitHub repo apiad/aegis. Wait "
+            "CI is running on pull request 12 of the GitHub repo syalia-srl/aegis. Wait "
             "for its checks to finish with the aegis monitor_start tool, then end "
             "your turn. Do not run any command yourself first."
         )
@@ -799,6 +799,142 @@ async def test_real_claude_searches_the_help_before_answering_how(tmp_path: Path
         await asyncio.wait_for(task, 30)
 
 
+async def test_a_real_agent_uses_a_knowledge_memory_from_the_hint(tmp_path: Path):
+    """The knowledge hint, followed by a real model (#694): a memory the agent
+    was never told about is named in the hint on the message, and the agent
+    reads it with memory_read to answer. The description leaves the host out,
+    so only a read gives the answer."""
+    import asyncio
+
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.knowledge.items import Item
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  sonnet: {{harness: claude-code, model: {SONNET}, effort: low, permission: full}}\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        claude_bin=claude,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+    try:
+        await app.knowledge.store.save(
+            app.user,
+            Item(
+                "memory",
+                "quill-staging",
+                "Which host project quill deploys to for staging",
+                "The staging host for project quill is ben-staging-2.\n",
+                {"type": "project"},
+            ),
+            "test",
+        )
+        r = await app.registry.call("session.spawn", {"agent": "sonnet"})
+        s = app.sessions.sessions[r["log_id"]]
+        await s.send("which host do I deploy quill to? answer with the host only")
+        await until(
+            lambda: s.status == "idle" and s.cost_usd,
+            timeout=180,
+            what="the answer",
+        )
+        said = " ".join(e.get("md") or "" for e in s.entries() if e["kind"] == "prose")
+        assert "ben-staging-2" in said, said
+        events = [
+            r["event"] for r in app.knowledge.usage.rows(app.user, "quill-staging")
+        ]
+        assert "hinted" in events and "read" in events, events
+        assert events.index("hinted") < events.index("read"), events
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)
+
+
+async def test_a_real_agent_calls_a_skill_tool(tmp_path: Path):
+    """A skill's MCP server, used by a real model (#695): the agent loads a
+    skill that brings a server, learns its tool from skill_read, and calls it
+    through skill_tool. The usage log shows the call."""
+    import asyncio
+
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.knowledge.items import Item
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  sonnet: {{harness: claude-code, model: {SONNET}, effort: low, permission: full}}\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        claude_bin=claude,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+    echo = Path(__file__).parent / "fixtures" / "skill_mcp_echo.py"
+    try:
+        await app.knowledge.store.save(
+            app.user,
+            Item(
+                "skill",
+                "echoer",
+                "Use when asked to echo a text through the echoer skill's tool",
+                "1. Call the skill's echo tool with the text.\n"
+                "2. Answer with what it returned, word for word.\n",
+                {"aegis": {"mcp": {"command": ["python3", "server.py"]}}},
+            ),
+            "test",
+            extra={"server.py": echo.read_bytes()},
+        )
+        r = await app.registry.call("session.spawn", {"agent": "sonnet"})
+        s = app.sessions.sessions[r["log_id"]]
+        await s.send(
+            "Use the echoer skill to echo the text pineapple-42, and answer with "
+            "exactly what its tool returned"
+        )
+        await until(
+            lambda: s.status == "idle" and s.cost_usd,
+            timeout=180,
+            what="the answer",
+        )
+        said = " ".join(e.get("md") or "" for e in s.entries() if e["kind"] == "prose")
+        assert "echo: pineapple-42" in said, said
+        rows = app.knowledge.usage.rows(app.user, "echoer")
+        assert ("ran", "tool=echo") in [(r["event"], r["detail"]) for r in rows], rows
+        assert s.skills == ["echoer"]
+    finally:
+        await app.skill_servers.shutdown()
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)
+
+
 async def test_real_claude_reports_its_turns_with_turn_end(tmp_path: Path):
     """A real Sonnet primed by aegis calls turn_end: needs_you with replies after
     laying out two options, done without needs_you after finished work. Sonnet,
@@ -856,6 +992,91 @@ async def test_real_claude_reports_its_turns_with_turn_end(tmp_path: Path):
             what="the work turn",
         )
         assert (s.standing.get("report") or {}).get("attention") == "done", s.standing
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)
+
+
+async def test_real_claude_writes_its_answer_after_turn_end_once(tmp_path: Path):
+    """turn_end says what the person has seen (#679). A status line before the
+    work is not the answer, so the answer follows the call; an answer written
+    before the call is not repeated after it. The current Sonnet at medium:
+    claude-sonnet-5 at low effort skipped turn_end in 1 of 1 runs."""
+    import asyncio
+    import difflib
+
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / "geom.py").write_text(
+        "def area(r):\n    return 3.14 * r * r\n\n"
+        "def volume(r):\n    return 4/3 * 3.14 * r ** 2\n"
+    )
+    (tmp_path / ".aegis.yaml").write_text(
+        "agents:\n  sonnet: {harness: claude-code, model: sonnet, effort: medium, permission: full}\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        claude_bin=claude,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+
+    def split(s, since: int) -> tuple[str, str]:
+        # The prose of this turn before the last turn_end, and after it.
+        es = s.entries()[since:]
+        ends = [
+            i
+            for i, e in enumerate(es)
+            if e["kind"] == "tool" and e["title"] == "turn_end"
+        ]
+        assert ends, [
+            (e["kind"], e["title"], (e.get("md") or e.get("summary") or "")[:80])
+            for e in es
+        ]
+        prose = lambda part: " ".join(e["md"] for e in part if e["kind"] == "prose")  # noqa: E731
+        return prose(es[: ends[-1]]), prose(es[ends[-1] + 1 :])
+
+    try:
+        r = await app.registry.call("session.spawn", {"agent": "sonnet"})
+        s = app.sessions.sessions[r["log_id"]]
+        app.sessions.rename(s.log_id, "seen-live", "Live turn_end test")
+        mark = len(s.entries())
+        await s.send(
+            "First tell me in one line what you are about to do. Then read geom.py "
+            "and tell me whether it has bugs. Do not change anything."
+        )
+        await until(lambda: s.status == "idle" and s.cost_usd, 180, "the review turn")
+        before, after = split(s, mark)
+        assert "volume" in after and len(after) > len(before), (before, after)
+
+        mark = len(s.entries())
+        await s.send(
+            "Explain in a paragraph why r ** 3 is right. Write your full answer "
+            "first and call turn_end as the very last thing you do."
+        )
+        await until(
+            lambda: s.status == "idle" and len(s.entries()) > mark + 2,
+            180,
+            "the answer-first turn",
+        )
+        before, after = split(s, mark)
+        assert len(before) > 200 and len(after) < len(before) / 2, (before, after)
+        assert difflib.SequenceMatcher(None, before, after).ratio() < 0.5
     finally:
         server.should_exit = True
         await asyncio.wait_for(task, 30)
@@ -1283,6 +1504,53 @@ async def test_a_real_agent_hands_off_across_a_link(tmp_path: Path, fake_claude)
     finally:
         await alpha.stop()
         await beta.stop()
+
+
+async def test_a_real_agent_reaches_back_over_a_trusted_link(
+    tmp_path: Path, fake_claude
+):
+    """A real Haiku on beta, which alpha links with trust, finds alpha's session
+    in session_list, hands off to it as handle@alpha over the link alpha opened,
+    and reads it back with peer_read (#684)."""
+    from .test_links import Node, inbox
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    alpha = await Node(tmp_path / "alpha", "alpha", fake_claude).start()
+    beta = Node(tmp_path / "beta", "beta", claude)
+    (beta.root / ".aegis.yaml").write_text(
+        f"agents:\n  haiku: {{harness: claude-code, model: {HAIKU}, effort: low, permission: full}}\n"
+    )
+    await beta.start()
+    try:
+        alpha.app.links.add("beta", beta.base, beta.token, trusted=True)
+        await until(
+            lambda: beta.app.links.get("alpha") is not None,
+            timeout=10,
+            what="the way back",
+        )
+        near = await alpha.spawn()
+        r = await beta.app.registry.call("session.spawn", {"agent": "haiku"})
+        s = beta.app.sessions.sessions[r["log_id"]]
+        await s.send(
+            f"Hand the message 'ping from beta' to the session {near.handle}@alpha "
+            "with the aegis peer_handoff tool, then read that session with "
+            "peer_read and reply with the single word DONE."
+        )
+        await until(lambda: inbox(near), timeout=120, what="the handoff on alpha")
+        (msg,) = inbox(near)
+        assert "@beta (" in msg["md"] and "ping from beta" in msg["md"]
+        await until(
+            lambda: any(
+                e["kind"] == "tool" and "peer_read" in json.dumps(e)
+                for e in s.entries()
+            ),
+            timeout=120,
+            what="the read back",
+        )
+    finally:
+        await beta.stop()
+        await alpha.stop()
 
 
 CODEX_FREE = "openrouter/nvidia/nemotron-3-super-120b-a12b:free"

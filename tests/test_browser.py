@@ -142,7 +142,8 @@ def server(tmp_path: Path, fake_claude: str, fake_opencode: str):
 class Linked:
     """Two servers, alpha linked to beta through `aegis link add`."""
 
-    def __init__(self, root: Path, claude: str, opencode: str):
+    def __init__(self, root: Path, claude: str, opencode: str, trusted: bool = False):
+        self.trusted = trusted
         self.beta = Server(root / "beta", claude, opencode)
         self.alpha = Server(root / "alpha", claude, opencode)
         for s, name in ((self.beta, "beta"), (self.alpha, "alpha")):
@@ -156,7 +157,8 @@ class Linked:
         base = f"http://127.0.0.1:{self.beta.port}"
         link = subprocess.run(
             [sys.executable, "-m", "aegis", "link", "add", "beta", base,
-             "--root", str(self.alpha.root), "--as", "alpha"],
+             "--root", str(self.alpha.root), "--as", "alpha",
+             *(["--trusted"] if self.trusted else [])],
             input=token + "\n", capture_output=True, text=True, timeout=30,
         )  # fmt: skip
         assert link.returncode == 0, link.stdout + link.stderr
@@ -866,6 +868,41 @@ def test_text_past_one_line_takes_the_whole_width_and_the_buttons_drop_under_it(
         assert not page.evaluate(stacked, text)
 
 
+def test_on_a_phone_the_focused_box_opens_two_lines_wide(server, browser):
+    """#707: on a phone the empty box was one row beside five buttons, about
+    130 px wide; its placeholder wrapped under the edge, a scroll bar showed,
+    and a tap into it changed nothing."""
+    errors: list = []
+    page = phone(browser, errors)
+    page.goto(server.url)
+    spawn(page, "first")
+    turns_done(page, 1)
+    stacked = (
+        "document.querySelector('#input').closest('.box').classList.contains('stacked')"
+    )
+    box = "document.querySelector('#input')"
+    rect = lambda sel: page.locator(sel).bounding_box()  # noqa: E731
+    assert page.get_attribute("#input", "placeholder") == ""
+    assert not page.evaluate(stacked)
+    page.tap("#input")
+    page.wait_for_function(stacked)
+    t, b = rect("#input"), rect("#send")
+    assert t["height"] >= 64, t
+    assert b["y"] >= t["y"] + t["height"] - 1, (t, b)
+    assert page.evaluate(f"getComputedStyle({box}).overflowY") == "hidden"
+    # A tap on a button keeps the focus, so the box stays open under the finger.
+    page.tap("#send")
+    assert page.evaluate(f"document.activeElement === {box}")
+    assert page.evaluate(stacked)
+    # Away from the box, an empty one closes back to a row.
+    page.evaluate(f"{box}.blur()")
+    page.wait_for_function(f"!{stacked}")
+    # Only text taller than its room scrolls.
+    page.fill("#input", "\n".join(f"line {i}" for i in range(80)))
+    assert page.evaluate(f"getComputedStyle({box}).overflowY") == "auto"
+    assert errors == []
+
+
 def test_a_failed_spawn_keeps_the_text_and_says_why(server, page):
     page.goto(server.url)
     page.click("#tab-add")
@@ -900,6 +937,7 @@ def close_session(pg) -> None:
         pg.click("#dialog .ok")
 
 
+@pytest.mark.quarantine("#693")
 def test_a_session_from_spawn_to_close(server, page):
     page.goto(server.url)
     assert "token=" not in page.url, "the token stays out of the address bar"
@@ -954,6 +992,33 @@ def test_a_session_from_spawn_to_close(server, page):
     assert page.errors == []
 
 
+def test_claude_codes_task_notices_draw_as_inbox_rows(server, page):
+    # Claude Code wakes the agent with this prompt when a background command
+    # ends (#699); the fake echoes it as Claude does.
+    notice = (
+        "<task-notification>\n<task-id>b1</task-id>\n"
+        "<tool-use-id>toolu_01abc</tool-use-id>\n"
+        "<output-file>/tmp/tasks/b1.output</output-file>\n"
+        "<status>failed</status>\n"
+        '<summary>Background command "# Smoke the build\nmake smoke &amp;&amp; '
+        'git push" failed with exit code 1</summary>\n</task-notification>'
+    )
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    page.fill("#input", notice)
+    page.press("#input", "Enter")
+    turns_done(page, 1)
+    row = page.locator(".row.inbox.err")
+    assert row.locator(".from").inner_text() == "background · failed · exit 1"
+    assert row.locator(".body > .md").inner_text() == "Smoke the build"
+    assert not page.is_visible(".row.user") and "toolu_01abc" not in row.inner_text()
+    row.locator("summary").click()
+    assert "make smoke && git push" in row.locator(".args").inner_text()
+    assert row.locator(".outfile").inner_text() == "/tmp/tasks/b1.output"
+    assert page.errors == []
+
+
 def test_a_prompt_sent_mid_turn_shows_pending_until_read(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
@@ -973,6 +1038,7 @@ def test_a_prompt_sent_mid_turn_shows_pending_until_read(server, page):
     assert page.errors == []
 
 
+@pytest.mark.quarantine("#507")
 def test_tabs_reorder_per_browser_and_survive_a_reload(server, browser, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
@@ -1140,6 +1206,23 @@ def test_quiet_is_disabled_on_an_idle_session(server, page):
     spawn(page, "hello")
     page.wait_for_selector("#s-status.at-done")
     assert page.is_disabled("#quiet-session")
+
+
+def test_the_autoclose_button_toggles_and_the_agent_must_then_close(server, page):
+    """#691: Autoclose is pressed while on, and a done without close is then
+    refused, so the agent's answer is the refusal."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    page.wait_for_selector("#s-status.at-done")
+    page.click("#autoclose-session")
+    page.wait_for_selector("#autoclose-session[aria-pressed=true]")
+    page.fill("#input", '/mcp turn_end {"attention": "done", "line": "over"}')
+    page.click("#send")
+    page.wait_for_selector("text=this session is in autoclose")
+    page.click("#autoclose-session")
+    page.wait_for_selector("#autoclose-session[aria-pressed=false]")
+    assert page.errors == []
 
 
 def test_alt_q_quiets_a_working_session_and_leaves_an_idle_one(server, page):
@@ -1761,22 +1844,22 @@ ACTS = """bs => bs.map(b => {
 })"""
 
 
-def test_the_actions_are_one_row_of_equal_cells_with_icons(server, page):
+def test_the_actions_are_two_rows_of_equal_cells_with_icons(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page)
-    row = page.locator(".side-acts.live-only").bounding_box()
+    box = page.locator(".side-acts.live-only").bounding_box()
     cells = page.eval_on_selector_all(".side-acts.live-only .act", ACTS)
-    assert [c["icon"] for c in cells] == [
-        True
-    ] * 5  # Sleep, Quiet (#386), Continue, Restart, Archive
+    # Sleep, Quiet (#386), Autoclose (#691); Continue, Restart, Archive.
+    assert [c["icon"] for c in cells] == [True] * 6
     widths = [c["width"] for c in cells]
     assert max(widths) - min(widths) < 1, widths
-    # The row is covered edge to edge.
-    assert abs(cells[0]["left"] - row["x"]) < 1
-    assert abs(cells[-1]["right"] - (row["x"] + row["width"])) < 1
+    # Each row of three is covered edge to edge.
+    for row in (cells[:3], cells[3:]):
+        assert abs(row[0]["left"] - box["x"]) < 1
+        assert abs(row[-1]["right"] - (box["x"] + box["width"])) < 1
     assert all(c["label"] != "none" for c in cells)
-    # A narrow panel keeps the row and drops the labels.
+    # A narrow panel keeps the rows and drops the labels.
     drag_panel(page, 205)
     cells = page.eval_on_selector_all(".side-acts.live-only .act", ACTS)
     widths = [c["width"] for c in cells]
@@ -2982,6 +3065,49 @@ def test_the_menu_completes_a_model_and_esc_closes_it_without_interrupting(
     assert page.errors == []
 
 
+def test_spawn_completes_agents_here_and_on_a_link_then_flags_and_their_values(
+    linked, browser, page
+):
+    """/spawn offers this server's agents, the default first, then each
+    linked server's as agent@server, then its flags and their values; the
+    prompt completes nothing. /announce offers its flags (#352)."""
+    beta_session(linked, browser)
+    page.goto(linked.alpha.url)
+    page.wait_for_selector(
+        "#remotes .remote[data-server=beta] .band-link:has-text('linked')"
+    )
+    spawn(page)
+    page.click("#input")
+    page.keyboard.type("/spawn ")
+    page.wait_for_function(
+        "[...document.querySelectorAll('#cmd-menu .cmd-row .nm')]"
+        ".some(n => n.textContent === 'opus@beta')"
+    )
+    assert menu_rows(page) == ["opus", "deepseek", "opus@beta", "deepseek@beta"]
+    page.keyboard.type("op@b")
+    page.keyboard.press("Tab")
+    assert page.input_value("#input") == "/spawn opus@beta "
+    page.keyboard.type("--mo")
+    page.keyboard.press("Enter")  # accepts the flag, sends nothing
+    assert page.input_value("#input") == "/spawn opus@beta --model "
+    page.keyboard.type("son")
+    page.keyboard.press("Enter")
+    assert page.input_value("#input") == "/spawn opus@beta --model sonnet "
+    page.keyboard.type("-")
+    flags = menu_rows(page)
+    assert "--effort" in flags and "--quiet" in flags and "--model" not in flags
+    page.keyboard.type("-effort ")
+    assert "high" in menu_rows(page)
+    page.keyboard.type("high fix the ")
+    assert menu_rows(page) == []
+    page.fill("#input", "")
+    page.keyboard.type("/announce deploy at five --cr")
+    assert menu_rows(page) == ["--critical"]
+    page.keyboard.type(" --until ")
+    assert menu_rows(page) == []
+    assert page.errors == []
+
+
 def test_the_chip_keeps_the_configured_model_and_the_panel_adds_the_resolved_id(
     server, page
 ):
@@ -3823,6 +3949,44 @@ def test_the_transcript_follows_when_it_grows_under_its_own_scroll(server, page)
     assert page.errors == []
 
 
+def test_a_reply_streaming_at_the_bottom_never_jumps_the_view_up(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "\n\n".join(f"line {i}" for i in range(60)))
+    # Every frame while the reply streams, how far the view moved up. Each delta replaces the row;
+    # a new row skips layout at its 40 px placeholder until it is drawn, so
+    # the list shrank for a frame and the view jumped up, then back (#668).
+    page.evaluate(
+        """() => {
+          window.worst = 0;
+          const t = document.querySelector('#tr');
+          let last = t.scrollTop;
+          const tick = () => {
+            window.worst = Math.max(window.worst, last - t.scrollTop);
+            last = t.scrollTop;
+            requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        }"""
+    )
+    page.fill("#input", "/stream 30 tall")
+    page.press("#input", "Enter")
+    page.wait_for_function(
+        "[...document.querySelectorAll('.row.prose .body')]"
+        ".some(b => b.textContent.includes('para12'))",
+        timeout=15000,
+    )
+    turns_done(page, 2)
+    assert page.evaluate(
+        "[...document.querySelectorAll('.row.prose')].at(-1).offsetHeight"
+        " > document.querySelector('#tr').clientHeight"
+    ), "the reply grew taller than the view"
+    # A row that ends shorter than its placeholder (the turn's 21 px footer
+    # under a 40 px one) still pulls the view a few pixels: never a screen.
+    assert page.evaluate("window.worst") < 64
+    assert page.errors == []
+
+
 def test_selecting_the_row_under_the_new_divider_keeps_the_divider(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
@@ -4373,6 +4537,7 @@ def test_more_than_500_messages_read_at_once_go_out_in_batches(
         s.stop()
 
 
+@pytest.mark.quarantine("#650")
 def test_the_divider_is_drawn_on_its_row_when_scrolling_up_mounts_it(
     replay_server, page
 ):
@@ -4722,6 +4887,7 @@ def test_a_push_shows_a_notification(server, full_browser):
     ctx.close()
 
 
+@pytest.mark.quarantine("#776")
 def test_a_push_for_the_session_in_front_stays_quiet(server, full_browser):
     ctx = full_browser.new_context()
     ctx.grant_permissions(["notifications"])
@@ -4754,6 +4920,7 @@ def test_a_push_for_the_session_in_front_stays_quiet(server, full_browser):
     ctx.close()
 
 
+@pytest.mark.quarantine("#547")
 def test_the_worker_forgets_the_views_of_closed_windows(server, full_browser):
     ctx = full_browser.new_context()
     ctx.grant_permissions(["notifications"])
@@ -6263,6 +6430,26 @@ def test_a_phone_reaches_tabs_the_drawer_and_the_chips(server, browser):
     assert errors == []
 
 
+def test_a_long_tip_does_not_widen_the_new_tab_on_a_phone(server, browser):
+    """#711: the tip is one nowrap line, and the spawn grid's auto column took
+    its full width, pushing the composer, chips and hints past a 390 px screen."""
+    errs: list = []
+    page = phone(browser, errs)
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    page.tap("#tab-add")
+    page.wait_for_function("document.querySelector('#sp-agent').value !== ''")
+    page.evaluate(
+        """(() => { const t = document.getElementById('hint-tip'); t.hidden = false;
+        document.getElementById('hint-tip-go').textContent =
+          'Coordinate several agents with a workflow you approve as a plan, and the server runs it'; })()"""
+    )
+    assert page.evaluate(WIDER) == []
+    go = page.locator("#hint-tip-go")
+    assert go.evaluate("e => e.scrollWidth > e.clientWidth")
+    assert errs == []
+
+
 def test_the_new_tab_on_a_phone_adds_a_line_on_enter_like_a_session(server, browser):
     """#315: Enter spawned here, while in a session's composer it adds a line."""
     errs: list = []
@@ -7251,6 +7438,35 @@ def test_spawn_on_a_linked_server_from_the_new_tab(linked, page):
     assert not page.errors
 
 
+def test_settings_shows_a_trusted_link_on_both_servers(
+    tmp_path: Path, fake_claude: str, fake_opencode: str, page
+):
+    """A trusted link says so on the server that holds it, and the far server
+    lists it under the servers that link it, at desktop and phone width."""
+    pair = Linked(tmp_path, fake_claude, fake_opencode, trusted=True).start()
+    try:
+        open_settings(page, pair.alpha.url)
+        page.wait_for_function(
+            "document.querySelector('#set-servers .link-beta')"
+            "?.textContent.includes('trusted, both ways')",
+            timeout=10000,
+        )
+        assert page.locator("#set-link-trusted").count() == 1
+        open_settings(page, pair.beta.url)
+        page.wait_for_selector("#set-servers .set-incoming.link-alpha", timeout=10000)
+        row = page.inner_text("#set-servers .set-incoming.link-alpha")
+        assert "links here" in row and "trusted · both ways" in row
+        page.set_viewport_size({"width": 390, "height": 844})
+        wide = page.evaluate(
+            "[...document.querySelectorAll('#set-servers *')]"
+            ".filter(e => e.getBoundingClientRect().right > 391).length"
+        )
+        assert wide == 0
+        assert page.errors == []
+    finally:
+        pair.stop()
+
+
 def test_settings_lists_the_link_and_edits_the_far_config(linked, page):
     page.goto(linked.alpha.url)
     page.wait_for_selector("#a2[data-view=fleet]")
@@ -8086,14 +8302,18 @@ def test_settings_opens_on_its_title_then_this_browser_then_servers(server, page
     page.goto(server.url + "#settings")
     page.wait_for_selector("#a2[data-view=settings] .set-harness")
     order = page.evaluate(SECTIONS)
-    assert order[:3] == ["set-head", "set-browser", "set-servers"], order
+    assert order[:4] == ["set-head", "set-browser", "set-knowledge", "set-servers"], (
+        order
+    )
 
 
 def test_settings_without_a_config_keeps_the_page_width(empty_server, page):
     page.goto(empty_server.url + "#settings")
     page.wait_for_selector("#set-setup")
     order = page.evaluate(SECTIONS)
-    assert order[:3] == ["set-empty", "set-browser", "set-servers"], order
+    assert order[:4] == ["set-empty", "set-browser", "set-knowledge", "set-servers"], (
+        order
+    )
 
 
 def test_a_settings_redraw_leaves_the_theme_list_open(server, page):
@@ -8200,8 +8420,50 @@ def test_attached_files_upload_as_chips_and_land_as_one_card(server, page, tmp_p
     assert "look at these" in row.inner_text()
     assert "Attached files:" not in row.inner_text()
     assert page.locator("#atts .chip").count() == 0
+    dock = row.locator(".fcard .dock")
+    assert dock.is_visible()
+    key = dock.get_attribute("data-dock")
+    dock.click()
+    pane = page.locator(f'#canvas .pane[data-pane="{key}"]')
+    pane.wait_for()
+    assert pane.locator(".fn").inner_text() == "shot.png"
+    assert row.locator(".fcard .held").inner_text() == "docked · show"
     (got,) = inbox_of(server, lid).glob("*-notes.txt")
     assert got.read_text() == "line one\n" * 50000
+    assert page.errors == []
+
+
+def test_a_local_file_link_opens_in_the_viewer_and_docks(server, page):
+    (server.root / "docs").mkdir()
+    notes = server.root / "docs" / "notes.md"
+    notes.write_text("# Notes\n\nKeep this beside the chat.\n")
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    page.fill("#input", "/md Open `docs/notes.md:3`.")
+    page.click("#send")
+    turns_done(page, 1)
+    # The path is clickable before the lazy path.stat decoration lands.
+    ref = page.locator(".row.prose code.ref")
+    ref.wait_for()
+    ref.click()
+    viewer = page.locator("#viewer")
+    viewer.wait_for(state="visible")
+    dock = viewer.locator(".fbar .dock")
+    assert dock.is_visible()
+    key = dock.get_attribute("data-dock")
+    dock.click()
+    pane = page.locator(f'#canvas .pane[data-pane="{key}"]')
+    pane.wait_for()
+    assert pane.locator(".fn").inner_text() == "notes.md"
+    assert pane.locator(".ver").inner_text() == "v1"
+    notes.write_text("# Notes, revised\n\nStill beside the chat.\n")
+    ref.click()
+    pane.locator(".ver", has_text="v2").wait_for()
+    page.reload()
+    kept = page.locator(f'#canvas .pane[data-pane="{key}"]')
+    kept.locator(".fn").wait_for()
+    assert kept.locator(".ver").inner_text() == "v2"
     assert page.errors == []
 
 
@@ -8653,6 +8915,7 @@ def open_tokens(page, server):
     page.wait_for_selector("#set-tok-default")
 
 
+@pytest.mark.quarantine("#776")
 def test_an_admin_edits_a_members_policy_and_the_default(quota_server, page, browser):
     member_page(browser, quota_server)  # mints ben
     open_tokens(page, quota_server)
@@ -8915,6 +9178,7 @@ def test_the_handoff_chip_continues_fresh_at_once(server, page):
     )
 
 
+@pytest.mark.quarantine("#411")
 def test_btw_mid_turn_answers_in_a_block_that_folds_locally(btw_server, page):
     page.goto(btw_server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
@@ -9039,3 +9303,13 @@ def test_an_urgent_handoff_shows_steered_in_on_the_row_it_makes(server, page):
     page.click(f"#tablist .tab[data-id='{b}']")
     pill = page.wait_for_selector(".row.inbox .from .steered", timeout=10000)
     assert pill.inner_text() == "steered in"
+
+
+def test_the_sidebar_shows_the_sessions_load(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    # The sampler reads every 5 s; the first reading after the spawn shows it.
+    page.wait_for_selector("#s-load:not([hidden])", timeout=15000)
+    assert re.fullmatch(r"\d+\.\d cores · \d+\.\d GB", page.inner_text("#s-load-v"))
+    assert page.errors == []

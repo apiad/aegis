@@ -68,6 +68,7 @@ class Terminal:
         self._on_output = on_output
         self._on_exit = on_exit
         self.proc: asyncio.subprocess.Process | None = None
+        self.user: str | None = None
         self.fd: int | None = None
         self.bytes_read = 0
         self.exited = asyncio.Event()
@@ -138,6 +139,7 @@ class Terminal:
             raise
         finally:
             os.close(slave)
+        self.user = user
         self.fd = master
         self.exited = asyncio.Event()
         self._decoder.reset()
@@ -180,12 +182,12 @@ class Terminal:
         with contextlib.suppress(OSError):
             groups.add(os.tcgetpgrp(self.fd))  # 0 while the PTY has no session
         groups -= {0, os.getpgrp()}
-        self._signal(groups, signal.SIGHUP)
+        await self._signal(groups, signal.SIGHUP)
         loop = asyncio.get_running_loop()
         end = loop.time() + grace
         while not self.exited.is_set() or any(map(_alive, groups)):
             if loop.time() >= end:
-                self._signal(groups, signal.SIGKILL)
+                await self._signal(groups, signal.SIGKILL)
                 break
             await asyncio.sleep(0.05)
         # SIGKILL lands, and the dead are reaped, a moment after it is sent.
@@ -196,12 +198,27 @@ class Terminal:
                 return
             await asyncio.sleep(0.05)
 
-    def _signal(self, groups: set[int], sig: int) -> None:
+    async def _signal(self, groups: set[int], sig: int) -> None:
         for pgid in groups:
-            _killpg(pgid, sig)
+            try:
+                await launch.signal_process_async(pgid, sig, user=self.user, group=True)
+            except OSError as e:
+                log.warning(
+                    "aegis: could not signal terminal group %s as %s: %s",
+                    pgid,
+                    self.user,
+                    e,
+                )
         if self.proc is not None:
-            with contextlib.suppress(ProcessLookupError):
-                self.proc.send_signal(sig)
+            try:
+                await launch.signal_process_async(self.proc.pid, sig, user=self.user)
+            except OSError as e:
+                log.warning(
+                    "aegis: could not signal terminal process %s as %s: %s",
+                    self.proc.pid,
+                    self.user,
+                    e,
+                )
 
     def last_line(self) -> str:
         """The newest line of output that is not blank, as plain text, with a
@@ -324,11 +341,6 @@ class Terminal:
 
 def _winsize(fd: int, cols: int, rows: int) -> None:
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
-
-
-def _killpg(pgid: int, sig: int) -> None:
-    with contextlib.suppress(ProcessLookupError, PermissionError):
-        os.killpg(pgid, sig)
 
 
 def _alive(pgid: int) -> bool:

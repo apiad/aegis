@@ -125,6 +125,27 @@ async def test_a_members_session_records_its_user_and_starts_in_its_home(
     assert recorded.harness(world.fake) == {"ben"}
 
 
+async def test_closing_a_members_session_signals_its_harness_as_the_member(
+    world, recorded, monkeypatch
+):
+    s = await ben_spawn(world)
+    real_kill = launch.os.kill
+
+    def deny_server_signal(pid, sig):
+        if sig != 0:
+            raise PermissionError("the server cannot signal the member")
+        return real_kill(pid, sig)
+
+    monkeypatch.setattr(launch.os, "kill", deny_server_signal)
+    await world.app.registry.call("session.close", {"log_id": s.log_id}, BEN)
+
+    assert s.log_id not in world.app.sessions.sessions
+    assert any(
+        shape == "run" and user == "ben" and argv[:2] == ["kill", "-s"]
+        for shape, argv, user in recorded
+    )
+
+
 async def test_an_admins_session_keeps_the_root_and_runs_as_the_server(world, recorded):
     s = await world.spawn()
     assert s.spec.linux_user is None and s.spec.cwd == world.root
@@ -160,6 +181,27 @@ async def test_a_members_terminal_runs_as_the_member_in_its_home(
     meta = world.app.terminals.get(r["id"]).meta
     assert meta["linux_user"] == "ben" and meta["cwd"] == str(ben_home)
     assert recorded[-1][1][-2:] == ["/bin/sh", "-l"]  # ben's shell, from passwd
+
+
+async def test_stopping_a_members_terminal_signals_it_as_the_member(
+    world, recorded, monkeypatch
+):
+    r = await world.app.registry.call("term.spawn", {"profile": "shell"}, BEN)
+    term = world.app.terminals.get(r["id"])
+    real_killpg = launch.os.killpg
+
+    def deny_server_signal(pgid, sig):
+        if sig != 0:
+            raise PermissionError("the server cannot signal the member")
+        return real_killpg(pgid, sig)
+
+    monkeypatch.setattr(launch.os, "killpg", deny_server_signal)
+    await term.stop(grace=0.1)
+
+    assert any(
+        shape == "run" and user == "ben" and argv[:2] == ["kill", "-s"]
+        for shape, argv, user in recorded
+    )
 
 
 async def test_a_monitor_runs_as_the_owner_of_the_arming_session(world, recorded):
@@ -201,6 +243,10 @@ async def test_a_workflow_sh_step_and_probe_run_as_the_workflows_owner(world, re
     await give_up(world, armed["run"], 30)
     assert recorded.of("step-ran") == {"ben"}
     assert recorded.of("probe-ran") == {"ben"}
+    state = world.app.workflows.runs[armed["run"]]
+    assert world.app.workflows.linux_user(state) == "ben"
+    await world.app.registry.call("session.close", {"log_id": main.log_id}, BEN)
+    assert world.app.workflows.linux_user(state) == "ben"
 
 
 async def test_a_queue_worker_runs_as_its_enqueuers_user(world, recorded):

@@ -93,6 +93,7 @@ export class Settings {
   onLinks(links, home) {
     this.links = links;
     this.home = home;
+    this.incoming = undefined; // a way back opened or went: read it again
     if (this.server && !links.some((l) => l.name === this.server)) this.pick(null);
     else if (this.box.isConnected && this.box.offsetParent !== null && !this.dirty) this.editing() ? this.later() : this.draw();
   }
@@ -185,6 +186,7 @@ export class Settings {
   // sessions patch never redraws the form under the person's cursor.
   async open() {
     this.draw();
+    this.loadNative();
     this.loadModels();
     if (this.found.length) return;
     try {
@@ -226,6 +228,7 @@ export class Settings {
           { className: "set-page" },
           h("p", { className: "notice", id: "set-member", textContent: "Server settings (agents, queues, parking, workflows, servers, tokens) are edited by an admin." }),
           this.browser(),
+          this.knowledge(),
           this.checks(),
           this.modelsView(),
         ),
@@ -237,7 +240,7 @@ export class Settings {
     const w = this.wire;
     // The title first, then what this browser keeps, then the servers; the
     // loading and no-config pages keep the same width and order.
-    const page = (...kids) => h("div", { className: "set-page" }, ...kids, this.browser(), this.servers(), this.tokens());
+    const page = (...kids) => h("div", { className: "set-page" }, ...kids, this.browser(), this.knowledge(), this.servers(), this.tokens());
     if (!w || !this.doc) return this.box.replaceChildren(page(h("p", { className: "notice", textContent: "Loading…" })));
     if (!w.exists && !this.dirty) return this.box.replaceChildren(page(this.empty()));
     const full = h(
@@ -245,6 +248,7 @@ export class Settings {
       { className: "set-page" },
       this.head(),
       this.browser(),
+      this.knowledge(),
       this.servers(),
       this.tokens(),
       w.error && h("p", { className: "set-alert err", id: "set-error", textContent: `The file on disk does not parse, so aegis is still using the last version that did. ${w.error}` }),
@@ -262,6 +266,8 @@ export class Settings {
       this.park(),
       this.untested(),
       this.workflows(),
+      this.usage(),
+      this.fieldSection("embeddings"),
       this.fieldSection("network"),
       this.fieldSection("host"),
     );
@@ -319,6 +325,65 @@ export class Settings {
     this.themeChip.value = document.documentElement.dataset.theme;
     this.drawApp();
     return this.browserNode;
+  }
+
+  // The person's own knowledge switch (knowledge.setting): off, the harness
+  // loads its own skills and memory beside aegis's; on, their sessions start
+  // without them. Always this server's and the caller's own, whichever
+  // server the form below edits; built once, like browser(), and read on
+  // each open of Settings (loadNative).
+  knowledge() {
+    if (!this.knowledgeNode) {
+      this.nativeBox = h("input", { type: "checkbox", id: "set-native" });
+      this.nativeNote = h("p", { className: "set-none", id: "set-native-note" });
+      this.nativeBox.disabled = true;
+      this.nativeBox.addEventListener("change", async () => {
+        const want = this.nativeBox.checked;
+        this.nativeBox.disabled = true;
+        try {
+          const r = await this.conn.call("knowledge.setting", { native: want });
+          this.drawNative(r.native, "Saved. A session already open keeps how it started; sessions you start from now on use this.");
+        } catch (e) {
+          this.nativeBox.checked = !want;
+          this.drawNative(!want, String(e?.message || e), true);
+        }
+      });
+      this.nativeRetry = button("Retry", "set-native-retry", () => this.loadNative());
+      this.nativeRetry.hidden = true;
+      this.knowledgeNode = h(
+        "section",
+        { className: "set-knowledge", id: "set-knowledge" },
+        h("h3", { textContent: "Skills and memory" }),
+        h("label", { className: "set-browser-row set-native" }, this.nativeBox, h("span", { textContent: "Only aegis's skills and memory in my sessions" })),
+        this.nativeNote,
+        this.nativeRetry,
+      );
+    }
+    return this.knowledgeNode;
+  }
+
+  // The switch as the server has it now. A failed read leaves the box usable,
+  // as it last was, with a Retry: never stuck disabled.
+  loadNative() {
+    this.knowledge();
+    if (this.nativeLoading) return;
+    this.nativeLoading = true;
+    this.conn
+      .call("knowledge.setting", {})
+      .then((r) => this.drawNative(r.native))
+      .catch((e) => this.drawNative(this.nativeBox.checked, `The setting could not be read (${e?.message || e}).`, true, true))
+      .finally(() => (this.nativeLoading = false));
+  }
+
+  drawNative(on, said = "", err = false, retry = false) {
+    this.nativeBox.checked = on;
+    this.nativeBox.disabled = false;
+    this.nativeRetry.hidden = !retry;
+    const what = on
+      ? "On: Claude Code starts without its Skill tool and its auto-memory, Codex without its skills and memories, OpenCode without its skills. Your aegis skills and memories replace them."
+      : "Off: each harness also loads its own skills and memory, beside aegis's. /setup moves them into aegis first.";
+    this.nativeNote.textContent = said ? `${said} ${what}` : what;
+    this.nativeNote.classList.toggle("err", err);
   }
 
   // Whether aegis is installed here, and what the service worker keeps.
@@ -438,12 +503,24 @@ export class Settings {
   // The servers: this one, each link with its state, and a form to add one.
   servers() {
     const since = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const trust = (l) => (!l.trusted || l.state !== "linked" ? "" : l.granted ? " · trusted, both ways" : l.trust_error ? ` · trust refused: ${l.trust_error}` : "");
     const state = (l) =>
       l.state === "linked"
-        ? `linked${l.rtt_ms != null ? ` · ${l.rtt_ms} ms` : ""}`
+        ? `linked${l.rtt_ms != null ? ` · ${l.rtt_ms} ms` : ""}${trust(l)}`
         : l.state === "offline"
           ? `offline since ${since(l.since)}`
           : `${l.state}${l.error ? `: ${l.error}` : ""}`;
+    // The servers that linked this one with trust (links.py, Backlink).
+    if (this.incoming === undefined) {
+      this.incoming = [];
+      this.conn
+        .call("link.incoming")
+        .then((rows) => {
+          this.incoming = rows;
+          if (rows.length && !this.dirty) this.editing() ? this.later() : this.draw();
+        })
+        .catch(() => {});
+    }
     const rows = [
       h("tr", {}, h("td", {}, h("b", { textContent: this.home })), h("td", { className: "m", textContent: "this server" }), h("td", {}, h("span", { className: "set-pill ok", textContent: "serving" })), h("td")),
       ...this.links.map((l) =>
@@ -456,10 +533,27 @@ export class Settings {
           h("td", {}, button("Remove", null, () => this.unlink(l.name))),
         ),
       ),
+      ...this.incoming.map((l) =>
+        h(
+          "tr",
+          { className: `set-link set-incoming link-${l.name}` },
+          h("td", {}, h("b", { textContent: l.name })),
+          h("td", { className: "m", textContent: "links here" }),
+          h("td", {}, h("span", { className: `set-pill ${l.state === "linked" ? "ok" : "bad"}`, textContent: l.state === "linked" ? "trusted · both ways" : l.state })),
+          h("td"),
+        ),
+      ),
     ];
     const url = h("input", { className: "set-in", id: "set-link-url", placeholder: "https://dev.example", spellcheck: false });
     const token = h("input", { className: "set-in", id: "set-link-token", placeholder: "its token; kept in links.json, never in .aegis.yaml", type: "password" });
-    const add = button("Link", "set-link-add", () => this.link(url.value.trim(), token.value.trim()), "btn primary");
+    const trusted = h("input", { type: "checkbox", id: "set-link-trusted" });
+    const trustBox = h(
+      "label",
+      { className: "set-link-trust", title: "Only for a server you alone use. Its agents will be able to start sessions and read here." },
+      trusted,
+      h("span", { textContent: "Trusted (both ways)" }),
+    );
+    const add = button("Link", "set-link-add", () => this.link(url.value.trim(), token.value.trim(), trusted.checked), "btn primary");
     const picker =
       this.links.length > 0 &&
       h(
@@ -476,9 +570,9 @@ export class Settings {
       "section",
       { className: "set-servers", id: "set-servers" },
       h("h3", { textContent: "Servers" }),
-      h("p", { className: "set-none", textContent: "A linked server's sessions show in the Fleet and the tab bar. Nothing on it can reach this machine." }),
+      h("p", { className: "set-none", textContent: "A linked server's sessions show in the Fleet and the tab bar. Nothing on it can reach this machine, unless the link is trusted: only for a server you alone use." }),
       h("table", { className: "tbl" }, ...rows),
-      h("div", { className: "set-linkrow" }, url, token, add),
+      h("div", { className: "set-linkrow" }, url, token, trustBox, add),
       this.linkError && h("p", { className: "err-text", id: "set-link-error", textContent: this.linkError }),
       picker,
     );
@@ -838,10 +932,10 @@ export class Settings {
     await this.loadTokens();
   }
 
-  async link(url, token) {
+  async link(url, token, trusted) {
     this.linkError = "";
     try {
-      await this.conn.call("link.add", { url, token });
+      await this.conn.call("link.add", { url, token, ...(trusted ? { trusted } : {}) });
     } catch (e) {
       this.linkError = e.message;
     }
@@ -1449,7 +1543,7 @@ export class Settings {
       el.addEventListener("input", () => set(el.value ? el.value === "true" : undefined));
     } else {
       const number = (f.kind === "int" || f.kind === "number") && !f.off;
-      el = h("input", { type: number ? "number" : "text", step: "any", value: shown(s[k]), placeholder: shown(f.default), spellcheck: false, className: f.kind === "list" ? "pick set-cmd" : "pick set-num" });
+      el = h("input", { type: number ? "number" : "text", step: "any", value: shown(s[k]), placeholder: shown(f.default), spellcheck: false, className: f.kind === "list" || f.kind === "text" ? "pick set-cmd" : "pick set-num" });
       if (f.off) el.title = "a number, or off";
       el.addEventListener("input", () => {
         const v = el.value.trim();
@@ -1539,6 +1633,73 @@ export class Settings {
       return row;
     });
     return [limit("total", "Workflow node sessions at once, all agents", "4"), ...this.doc.agents.map((a) => limit(a.name, `Workflow node sessions of ${a.name} at once`, "total")), ...stray];
+  }
+
+  // The usage: block (usage/owners.py): who owns a local repo, how an owner is
+  // shown, and each subscription's name and monthly fee. Each map's rows write
+  // the whole map back, so a row may be renamed in place.
+  usage() {
+    const u = (this.doc.usage ||= {});
+    const map = (path, label, add, cols) => {
+      const key = path.slice("usage.".length);
+      u[key] ||= {};
+      const list = Object.entries(u[key]).map(([k, v]) => ({ k, v }));
+      const sync = () => {
+        u[key] = Object.fromEntries(list.filter((r) => r.k).map((r) => [r.k, r.v]));
+        this.touch();
+      };
+      const box = h("div", { className: "set-queues", id: `set-usage-${key}` });
+      box.dataset.key = path;
+      const rowOf = (r) => {
+        const row = h("div", { className: "set-queue" });
+        const name = h("input", { value: r.k, spellcheck: false, placeholder: cols[0], className: "set-name" });
+        name.setAttribute("aria-label", `${label} ${cols[0]}`);
+        name.addEventListener("input", () => {
+          r.k = name.value.trim();
+          sync();
+        });
+        const del = button("Remove", null, () => {
+          list.splice(list.indexOf(r), 1);
+          row.remove();
+          sync();
+        }, "link danger");
+        row.append(h("div", { className: "set-queue-line" }, name, ...cols.slice(1).map((c) => this.usageValue(key, r, c, label, sync)), del));
+        return row;
+      };
+      box.append(...list.map(rowOf));
+      const more = button(add, `set-usage-add-${key}`, () => {
+        const r = { k: "", v: key === "subscriptions" ? {} : "" };
+        list.push(r);
+        box.append(rowOf(r));
+        box.lastChild.querySelector("input").focus();
+      }, "link");
+      return h("div", {}, h("div", { className: "set-section-head" }, h("h4", { textContent: label }), more), box);
+    };
+    const head = h("div", { className: "set-section-head" }, h("h3", { textContent: "Usage" }));
+    const note = h("p", { className: "set-none", textContent: "How aegis usage and the usage page split the work. Owners name who owns each local repo, by its directory name; owner names are how each owner is shown. Subscriptions give an account, the part after the colon in aegis usage --split billing, a name and a monthly fee in USD, which is shared over the work that ran on it." });
+    return h("section", { id: "set-usage" }, head, note,
+      map("usage.owners", "Owners", "Add owner", ["repo", "owner"]),
+      map("usage.owner_names", "Owner names", "Add owner name", ["owner", "shown as"]),
+      map("usage.subscriptions", "Subscriptions", "Add subscription", ["account", "name", "fee"]));
+  }
+
+  // A value cell of a usage row: a name, or a subscription's name or fee.
+  usageValue(key, r, col, label, sync) {
+    const sub = key === "subscriptions";
+    const fee = sub && col === "fee";
+    const now = sub ? (fee ? r.v.fee : r.v.name) : r.v;
+    const input = h("input", { type: fee ? "number" : "text", min: 0, step: "any", value: now ?? "", spellcheck: false, placeholder: fee ? "USD a month" : col, className: fee ? "pick set-limit" : "pick set-cmd" });
+    input.setAttribute("aria-label", `${label} ${col}`);
+    input.addEventListener("input", () => {
+      const v = input.value.trim();
+      if (!sub) r.v = v;
+      else if (fee) {
+        if (v === "") delete r.v.fee;
+        else r.v.fee = Number(v);
+      } else r.v.name = v;
+      sync();
+    });
+    return input;
   }
 
   async loadSaved() {

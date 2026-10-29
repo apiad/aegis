@@ -1,4 +1,4 @@
-.PHONY: check gates hooks test-durations lint lint-docs lint-detail format format-check typecheck changelog changelog-check test test-cov test-all test-slow test-live test-multiuser canary test-browser bench coverage know-how site-css
+.PHONY: check gates hooks ops-stubs test-durations lint lint-docs lint-detail format format-check typecheck changelog changelog-check test test-cov test-all test-slow test-live test-multiuser canary test-quarantine test-browser bench coverage know-how site-css
 
 # Every gate, on the fast lane: the tests marked slow, the browser tests among
 # them, are `test-slow`'s. The tests run before typecheck so a type error cannot
@@ -52,6 +52,12 @@ changelog-check:
 changelog:
 	@uv run python scripts/changelog.py preview
 
+# The signatures of srv.ops (src/aegis/api/ops.pyi), from the operation
+# registry. tests/test_library.py fails when the committed file is stale.
+ops-stubs:
+	uv run python -m aegis.api.stubs > src/aegis/api/ops.pyi
+	uv run ruff format src/aegis/api/ops.pyi
+
 # Blocking. The legacy tree reported ~235 diagnostics and kept this advisory;
 # this tree has none, and new code keeps it that way.
 typecheck:
@@ -61,7 +67,7 @@ typecheck:
 # over the budget without @pytest.mark.slow fails it (tests/conftest.py).
 # A red run is a regression to investigate, not noise to re-roll.
 test:
-	uv run pytest -q -n auto -m "not slow" --max-unmarked-duration=3
+	uv run pytest -q -n auto -m "not slow and not quarantine" --max-unmarked-duration=3
 
 test-cov:
 	uv run pytest -q -n auto -m "not slow" --cov=aegis --cov-report=term-missing
@@ -74,10 +80,14 @@ test-all:
 # Serial here; CI splits it in four shards. With `check` it is every test CI
 # runs (tests/test_lanes.py holds them together).
 test-slow:
-	uv run pytest -q -m "slow and not live and not multiuser"
+	uv run pytest -q -m "slow and not live and not multiuser and not quarantine"
 
 # The client in headless Chromium against a real `aegis serve` and the fake
 # claude. Marked slow too, so `make test` skips them; CI runs them.
+# The flaky tests the PR gate leaves out (#776), as nightly.yml runs them.
+test-quarantine:
+	uv run pytest -q -n 2 -m "quarantine and not live"
+
 test-browser:
 	uv run pytest -q -m browser
 
@@ -98,7 +108,7 @@ test-live:
 # aegis as a service user with capabilities, against real Linux users it
 # creates with sudo (tests/multiuser/). Needs passwordless sudo and systemd.
 test-multiuser:
-	uv run pytest -q --run-multiuser -m multiuser
+	uv run pytest -q --run-multiuser -m "multiuser and not quarantine"
 
 # The latest stable release of every harness under this aegis, against a fake
 # model: no quota. Installs the releases into ~/.cache/aegis-canary. CI runs it

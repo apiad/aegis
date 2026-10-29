@@ -749,6 +749,29 @@ def test_a_working_step_opens_read_only_from_the_card_with_no_tab(server, page):
     assert not page.errors
 
 
+def test_a_long_workflow_title_stays_inside_its_steps_card(server, page):  # noqa: F811
+    # #670: the badge ran past the card and over its neighbour.
+    long = "A workflow title far too long to fit on one fleet card at any width"
+    definition = flow(report(7, 8), RESULT).replace(
+        "title: Two steps", f"title: {long}"
+    )
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(
+        page, "/mcp workflow_arm " + json.dumps({"definition": definition, "args": {}})
+    )
+    page.click("#entries .wfcard button >> text=Approve and run")
+    page.locator("#entries .wfcard .wfrow[data-node=one] a.who").wait_for()
+    page.goto(server.url + "#fleet")
+    card = page.locator(".card", has=page.locator(".badge", has_text="workflow ·"))
+    badge = card.locator(".badge", has_text="workflow ·")
+    badge.wait_for()
+    b, c = badge.bounding_box(), card.bounding_box()
+    assert b["x"] + b["width"] <= c["x"] + c["width"], (b, c)
+    assert badge.get_attribute("title") == f"workflow · {long} · one"
+    assert not page.errors
+
+
 def test_a_steps_see_chip_opens_its_part_of_the_plan(server, page, tmp_path):  # noqa: F811
     from .test_workflows_canvas import SEEN
 
@@ -844,4 +867,76 @@ def test_approving_tells_the_main_agent_and_its_card_waits(server, page):  # noq
     page.wait_for_selector(
         f"#cards .card[data-id='{main}'] .s >> text=waiting · workflow", timeout=10000
     )
+    assert not page.errors
+
+
+PROGRESS_FLOW = """id: progress
+title: Progress
+say: Wait for a flag, measuring how far along it is.
+root:
+  seq:
+    - {check: {sh: "test -f flag", every: 5s}, progress: "echo 40", id: ci, say: Wait for the flag.}
+  say: All of it.
+"""
+
+
+def test_the_card_draws_a_steps_progress_command_and_its_bar(server, page, tmp_path):  # noqa: F811
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(
+        page,
+        "/mcp workflow_arm " + json.dumps({"definition": PROGRESS_FLOW, "args": {}}),
+    )
+    card = ".wfcard[data-status=armed]"
+    page.wait_for_selector(
+        f"{card} .wfrow[data-node=ci] pre.progress >> text=progress $ echo 40"
+    )
+    page.click(f"{card} button >> text=Approve and run")
+    now = ".wfcard[data-status=running] .wfnow .nowline[data-node=ci]"
+    page.wait_for_selector(f"{now} .pct >> text=40%", timeout=15000)
+    assert page.eval_on_selector(f"{now} .bar i", "i => i.style.width") == "40%"
+    page.wait_for_selector(".wfcard .wfrow[data-node=ci] .out >> text=40%")
+    (tmp_path / "flag").write_text("")
+    page.wait_for_selector(".wfcard[data-status=done]", timeout=20000)
+    page.wait_for_selector(".wfcard .wfrow[data-node=ci] .out >> text=100%")
+    assert not page.errors
+
+
+def test_inputs_fold_and_the_header_shows_time_and_cost(server, page):  # noqa: F811
+    # #712: a long input folds to its name and a preview, a list opens as
+    # coloured JSON, and the header says how long the run took and what its
+    # steps cost.
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    definition = flow(report(7, 0), RESULT) + (
+        "args: {type: object, properties: {xs: {type: array}, rules: {type: string},"
+        " n: {type: integer}}}\n"
+    )
+    args = {
+        "xs": [{"issue": 111, "bench": "frame"}, {"issue": 112, "bench": "ecs"}],
+        "rules": "How to work: " + "read the issue, then fix it. " * 10,
+        "n": 3,
+    }
+    spawn(
+        page,
+        "/mcp workflow_arm " + json.dumps({"definition": definition, "args": args}),
+    )
+    card = "#entries .wfcard"
+    page.click(f"{card} button >> text=Approve and run")
+    page.wait_for_selector(
+        f"{card}[data-status=done] .wfhead >> text=2 of 2 done", timeout=20000
+    )
+    eta = page.inner_text(f"{card} .wfhead .eta")
+    assert re.search(r"\d+m\d\d elapsed · \$\d+\.\d+ spent", eta), eta
+    # Folded by default: one line each, the short one inline.
+    xs = f"{card} details.wfarg:has(.k:text-is('xs'))"
+    assert page.inner_text(f"{xs} > summary .v") == "2 items"
+    assert not page.locator(xs).evaluate("d => d.open")
+    assert page.locator(f"{card} details.wfarg:has(.k:text-is('rules'))").count() == 1
+    assert page.inner_text(f"{card} .wfarg.inline:has(.k:text-is('n')) .v") == "3"
+    page.click(f"{xs} > summary")
+    page.wait_for_selector(f"{xs} .fence[data-lang=json] code.hljs")
+    assert '"issue": 111' in page.inner_text(f"{xs} .fence pre")
+    page.set_viewport_size({"width": 390, "height": 800})
+    assert page.evaluate("document.documentElement.scrollWidth") <= 390
     assert not page.errors

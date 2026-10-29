@@ -17,7 +17,7 @@ one, and close the ones it started. A person can do the same from the browser.
 state, what it needs from the person (its attention and line), what it waits
 on, its plan, what it is doing now, its model and its spend. Then it lists the
 sessions of every linked server that is up as `handle@server`, with their
-state alone.
+state alone, or in full over a [trusted link](links#trusted-links).
 `agents_list` shows the agents you can start sessions from.
 
 ## Read a peer
@@ -25,7 +25,8 @@ state alone.
 `peer_read` with `target` (a handle) returns up to the last 30 lines of that
 session's transcript, or up to 200 with `last=200`. Tool calls are left out unless you pass `tools=true`. Reading
 changes nothing and wakes nobody. A session on a linked server cannot be read
-by an agent; a person reads it in the browser.
+by an agent; a person reads it in the browser. Over a trusted link,
+`handle@server` reads it.
 
 ## Hand work over
 
@@ -97,8 +98,10 @@ can reach it in two ways: `peer_handoff` to `handle@server`, and
 `session_spawn` with `agent@server`, which that server's quota policy for the
 link decides. Reading, sending to and enqueueing on another server are for
 people, in the browser. Nothing on a linked server can reach a session here:
-a link only goes one way. A handoff from a server that links this one arrives
-headed `> from agent:<handle>@<server> (<user>)`.
+a link only goes one way, unless it is trusted ([links](links#trusted-links)):
+then agents on both servers spawn, hand off to, read, wait on and close each
+other's sessions and enqueue on each other's queues. A handoff from
+another server arrives headed `> from agent:<handle>@<server> (<user>)`.
 
 ## Close a session
 
@@ -115,8 +118,11 @@ for five minutes.
 ## Close yourself when you finish
 
 When the person tells you to close when you are done ("merge it and close"),
-or the plan or workflow they approved says so, end your last turn with
-`turn_end` with `attention` done and `close` true. Never pass it on your own
+or the plan or workflow they approved says so, or your session is in
+autoclose ([sessions#autoclose](sessions#autoclose)), end your last turn with
+`turn_end` with `attention` done and `close` true. In autoclose, `turn_end`
+refuses done without `close`: end done with `close`, or with review or
+needs_you while the work is not over. Never pass it on your own
 judgment: a person may still want to read the tab.
 
 aegis archives your session once that turn ends, together with every session

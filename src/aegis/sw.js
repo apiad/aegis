@@ -3,7 +3,8 @@
 // page and its files from there, so aegis opens with no connection. It also
 // raises the notifications ping.js asks for (Chrome on Android shows none any
 // other way), shows the pushes aegis's sender sends (push.py), and opens a
-// session when one is clicked.
+// session when one is clicked. It also takes what another app shares into
+// aegis and hands it to the New session form.
 
 const BUILD = "__AEGIS_BUILD__"; // web.py writes the build id here
 const CACHE = `aegis-${BUILD}`;
@@ -35,9 +36,10 @@ self.addEventListener("message", (event) => {
 // /login, /sw.js itself) goes to the network untouched.
 self.addEventListener("fetch", (event) => {
   const req = event.request;
-  if (req.method !== "GET") return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
+  if (req.method === "POST" && url.pathname === "/share") return event.respondWith(stash(req));
+  if (req.method !== "GET") return;
   const page = req.mode === "navigate" && url.pathname === "/" && !url.search;
   const file = req.mode !== "navigate" && (url.pathname.startsWith("/static/") || url.pathname === "/manifest.webmanifest");
   if (page || file) event.respondWith(fromBuild(req, page ? "/" : url.pathname));
@@ -161,6 +163,28 @@ async function status() {
 
 async function tell(msg) {
   for (const c of await self.clients.matchAll({ type: "window", includeUncontrolled: true })) c.postMessage(msg);
+}
+
+// What another app shared into aegis (the manifest's share_target, #735). The
+// page cannot read a POST's body, so the worker keeps the text and the files in
+// SHARE and sends the page to the New session form, which takes them out
+// (app.js takeShare). Only the latest share is kept: one the page never took
+// goes with the next.
+const SHARE = "aegis.share"; // not "aegis-": activate() deletes those
+async function stash(req) {
+  const form = await req.formData();
+  const field = (k) => String(form.get(k) || "").trim();
+  // Android sends the link inside the text, and a page's title as the subject.
+  const text = field("text");
+  const parts = [field("title"), text, field("url")].filter((p, i) => p && (i === 1 || !text.includes(p)));
+  const files = form.getAll("files").filter((f) => f instanceof File && f.size);
+  const id = Date.now().toString(36);
+  await caches.delete(SHARE);
+  const cache = await caches.open(SHARE);
+  await Promise.all(files.map((f, i) => cache.put(`/share/${id}/${i}`, new Response(f))));
+  const meta = { text: parts.join("\n"), files: files.map((f) => ({ name: f.name, type: f.type })) };
+  await cache.put(`/share/${id}`, new Response(JSON.stringify(meta)));
+  return Response.redirect(`/#new?share=${id}`, 303);
 }
 
 // Bring an aegis page forward and tell it which session to open, or open one

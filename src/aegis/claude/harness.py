@@ -11,11 +11,19 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import os
+
 from ..harness import Launch, session_env
 from . import login
 from . import control
 from .control import Catalog
-from .process import REPLACED_TOOLS, ClaudeProcess, build_argv
+from .process import (
+    NATIVE_TOOLS,
+    NO_AUTO_MEMORY,
+    REPLACED_TOOLS,
+    ClaudeProcess,
+    build_argv,
+)
 
 if TYPE_CHECKING:
     from ..session import SpawnSpec
@@ -38,6 +46,11 @@ class ClaudeSession:
             # Without aegis's tools there is nothing to replace them with.
             keep = set(launch.keep_harness_tools)
             disallowed = tuple(t for t in REPLACED_TOOLS if t not in keep)
+            if launch.knowledge_native:
+                disallowed += tuple(NATIVE_TOOLS)
+        env = session_env(launch)
+        if launch.knowledge_native:
+            env = {**(os.environ if env is None else env), **NO_AUTO_MEMORY}
         argv = build_argv(
             bin,
             launch.model,
@@ -55,7 +68,7 @@ class ClaudeSession:
             launch.stderr_path,
             launch.on_line,
             launch.on_exit,
-            env=login.with_token(session_env(launch), launch.user),
+            env=login.with_token(env, launch.user),
             cgroup=launch.cgroup,
             user=launch.user,
         )

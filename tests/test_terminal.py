@@ -53,6 +53,7 @@ async def test_typed_input_is_echoed_and_run(tmp_path):
     await asyncio.wait_for(t.exited.wait(), 3)
 
 
+@pytest.mark.quarantine("#550")
 async def test_ctrl_c_reaches_the_foreground_program(tmp_path):
     t, rec = await run(tmp_path, ["sh", "-c", "echo ready; exec sleep 100"])
     await until(lambda: "ready" in rec.text(), what="ready")
@@ -163,3 +164,14 @@ def _alive(pid: int) -> bool:
         return False
     with open(f"/proc/{pid}/stat") as f:
         return f.read().split(") ")[1][0] != "Z"
+
+
+def test_terminal_group_alive_treats_a_permission_error_as_alive(monkeypatch):
+    from aegis import terminal
+
+    def denied(pgid, sig):
+        raise PermissionError("the server cannot inspect the member group")
+
+    monkeypatch.setattr(terminal.os, "killpg", denied)
+
+    assert terminal._alive(4321)

@@ -31,8 +31,9 @@ from .cgroups import SessionCgroups
 from .config import CONTEXT_DEFAULTS
 from .harness import harness_for
 from .meta import MetaStore, rebuild
-from .names import TITLE_MAX, mint_handle, valid_handle
+from .names import TITLE_MAX, free_handle, mint_handle, valid_handle
 from . import notice_sources
+from .knowledge import hint
 from .notice_sources import Item
 from .notices import TEXT_MAX
 from .ops import OpError
@@ -135,6 +136,16 @@ class Registry(Host):
         self.quota = None
         self.notices = None  # notices.Notices, set by App
         self.sign_in = None  # claude.login.SignIn, set by App
+        self.load = None  # load.LoadSampler, set by App
+        # knowledge.Knowledge, and whose knowledge a session's sends are
+        # hinted from (its owner, else the admin); both set by App.
+        self.knowledge = None
+        self.skill_servers = None  # skill_mcp.SkillServers, set by App
+        self._hint_failures: set[str] = set()  # causes already logged
+        self.principal_of: Callable[[Session], str] = lambda s: s.spec.owner or ""
+        # Whether a session's owner turned the harness's own knowledge off;
+        # set by App from the owner's setup record.
+        self.native_of: Callable[[str | None], bool] = lambda owner: False
         self.nudges = None  # nudges.Nudges, set by App
         # The live config's context block (config.py); the app points it at
         # Config.current().
@@ -210,7 +221,12 @@ class Registry(Host):
 
     def released(self, session: Session) -> None:
         if self.cgroups is not None:
-            self.cgroups.release(session.log_id)
+            self.cgroups.release(session.log_id, user=session.spec.linux_user)
+
+    def load_changed(self, log_id: str) -> None:
+        """A session's shown load changed: republish its card."""
+        if (s := self.sessions.get(log_id)) is not None:
+            s._publish_now()
 
     def cgroup_dir(self, session: Session) -> Path | None:
         """The session's cgroup, or None when the unit is not delegated."""
@@ -385,14 +401,9 @@ class Registry(Host):
 
     def workflow_lock(self, session: Session) -> str | None:
         """A node's session is the workflow's while its run is live: nobody
-        types into it, interrupts it or hands it off but the engine (spec §05)."""
-        wf = session.workflow
-        if wf and self.workflows is not None and self.workflows.live(wf["run"]):
-            return (
-                f"{session.handle} is node {wf['node']} of workflow {wf['run']}; "
-                "stop the workflow to talk to it"
-            )
-        return None
+        types into it, interrupts it or hands it off but the engine (spec §05).
+        The reason comes from the run (workflows.Workflows.lock)."""
+        return None if self.workflows is None else self.workflows.lock(session)
 
     def cascade_next(
         self, session: Session, text: str
@@ -401,6 +412,24 @@ class Registry(Host):
 
     def notice_blocks(self, session: Session, at: str) -> str:
         return "" if self.notices is None else self.notices.pending(session, at)
+
+    def knowledge_native(self, owner: str | None) -> bool:
+        return self.native_of(owner)
+
+    def knowledge_hint(self, session: Session, text: str) -> str:
+        if self.knowledge is None or not hint.wanted(text):
+            return ""
+        # A hint is an extra: whatever breaks in it, the send still goes out.
+        try:
+            return self.knowledge.hint_for(
+                self.principal_of(session), session.log_id, text, str(session.spec.cwd)
+            )
+        except Exception as e:
+            cause = f"{type(e).__name__}: {e}"
+            if cause not in self._hint_failures:
+                self._hint_failures.add(cause)
+                log.exception("knowledge hint failed, sending without it: %s", cause)
+            return ""
 
     def compacted(self, session: Session) -> None:
         if self.notices is not None:
@@ -438,6 +467,8 @@ class Registry(Host):
             "waiting_for": self._waiting_for(session),
             **self._worker(session),
             "layout": session.standing.get("layout"),
+            # CPU in cores over the last minute and RSS, with what it started.
+            "load": self.load.of(session.log_id) if self.load is not None else None,
             "cache_cold": cache.cold_policy(session.spec.harness, self.context()),
             # Only a live successor counts; an archived session keeps its own.
             "continued_by": session.continued_by
@@ -605,14 +636,16 @@ class Registry(Host):
     def _stderr_path(self, log_id: str) -> Path:
         return self.roots.state_root / "stderr" / f"{log_id}.log"
 
-    def _handles(self, *, except_id: str | None = None) -> set[str]:
-        hs = {s.handle for i, s in self.sessions.items() if i != except_id}
-        hs |= {
-            m["handle"]
-            for i, m in self.archived.items()
-            if i != except_id and m.get("handle")
+    def _open_handles(self, *, except_id: str | None = None) -> set[str]:
+        """The handles a session may not take: an archived session's is free
+        to rename to (#673)."""
+        return {s.handle for i, s in self.sessions.items() if i != except_id}
+
+    def _handles(self) -> set[str]:
+        """Every handle, archived ones included, for minting a fresh one."""
+        return self._open_handles() | {
+            m["handle"] for m in self.archived.values() if m.get("handle")
         }
-        return hs
 
     # -- building sessions -------------------------------------------------------
     def _session(self, meta: dict) -> Session:
@@ -659,6 +692,8 @@ class Registry(Host):
             quota_paused=meta.get("quota_paused"),
             notices_sent=meta.get("notices_sent"),
             items_sent=meta.get("items_sent"),
+            skills=meta.get("skills"),
+            skill_runs=meta.get("skill_runs"),
             tool_calls=meta.get("tool_calls") or 0,
             cache_recent=meta.get("cache_recent"),
             compactions=meta.get("compactions") or 0,
@@ -667,6 +702,7 @@ class Registry(Host):
             if meta.get("continued_by") == "starting"
             else meta.get("continued_by"),
             quiet=bool(meta.get("quiet")),
+            autoclose=bool(meta.get("autoclose")),
             checked_version=meta.get("checked_version"),
             # The meta's {"models", "at", "exhausted"}; a spawn record's list
             # has no exhausted.
@@ -700,13 +736,15 @@ class Registry(Host):
             self._admit(m)
 
     def _admit(self, meta: dict) -> None:
-        if not meta.get("handle") or meta["handle"] in self._handles():
+        if not meta.get("handle") or (
+            not meta.get("archived") and meta["handle"] in self._open_handles()
+        ):
             meta["handle"] = mint_handle(self._handles())
         if meta.get("archived"):
             self.archived[meta["log_id"]] = meta
             return
         if not self._prev.clean and restarts.end_leftover(
-            meta.get("pid"), meta.get("pid_started")
+            meta.get("pid"), meta.get("pid_started"), user=meta.get("linux_user")
         ):
             log.warning(
                 "aegis: ended the harness a crash left behind for %s", meta["handle"]
@@ -856,6 +894,8 @@ class Registry(Host):
                 )
             except PermissionError as e:
                 raise OpError("no_linux_user", str(e)) from None
+        if self.knowledge_native(spec.owner):
+            spec = dataclasses.replace(spec, knowledge_native=True)
         s = self._session(
             {
                 "log_id": log_id,
@@ -894,6 +934,13 @@ class Registry(Host):
             self.monitors.drop_owner(log_id)
         if self.side_notes is not None:
             self.side_notes.drop(log_id)
+        if self.knowledge is not None:
+            self.knowledge.forget(log_id)
+        if self.skill_servers is not None:
+            try:
+                await self.skill_servers.stop_session(log_id)
+            except Exception:
+                log.exception("aegis: %s's skill servers did not stop", log_id)
         await s.stop()
         if self.secrets is not None:
             # Pads and open requests die with the session, and so do the
@@ -932,8 +979,13 @@ class Registry(Host):
             "continued_by": None,
             "quiet": False,  # a person reopening it wants to see it (#386)
         }
-        s = self._session(meta)
+        # An open session may have taken its handle meanwhile (#673).
+        handle = free_handle(str(meta["handle"]), self._open_handles())
+        renamed = handle != meta["handle"]
+        s = self._session({**meta, "handle": handle})
         self.sessions[log_id] = s
+        if renamed:
+            s.report({"kind": "name", "handle": s.handle, "title": s.title})
         self.metas.write(s.meta())
         self._publish("sessions", [{"upsert": s.wire()}])
         return s
@@ -951,7 +1003,7 @@ class Registry(Host):
                     "bad_handle",
                     "a handle is 2 or 3 lowercase segments joined by hyphens",
                 )
-            if handle in self._handles(except_id=log_id):
+            if handle in self._open_handles(except_id=log_id):
                 raise OpError("handle_taken", f"{handle} is already a session's handle")
         if title is not None and (len(title) > TITLE_MAX or "\n" in title):
             raise OpError(
@@ -994,6 +1046,14 @@ class Registry(Host):
                 "can be quiet, since only its turn's end brings it back",
             )
         s._set(quiet=quiet)
+        self.metas.write(s.meta())
+        return s.wire()
+
+    def set_autoclose(self, log_id: str, on: bool) -> dict:
+        """Turn a session's autoclose on or off (#691): while on, its agent
+        may end only done with close, review or needs_you."""
+        s = self.open(log_id)
+        s._set(autoclose=on)
         self.metas.write(s.meta())
         return s.wire()
 

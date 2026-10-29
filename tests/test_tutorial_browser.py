@@ -183,7 +183,7 @@ def test_enter_on_a_bare_command_with_an_argument_does_what_it_did(
         "permission": ("/permission ", ""),
         "rename": ("/rename", "missing_argument: usage: /rename <handle>"),
         "title": ("/title", "missing_argument: usage: /title <text>"),
-        "spawn": ("/spawn", "missing_argument: usage: /spawn <agent>"),
+        "spawn": ("/spawn ", ""),  # its agents since #352
         "help": ("/", ""),  # the menu, with every command
     }
     for name, (line, error) in expect.items():
