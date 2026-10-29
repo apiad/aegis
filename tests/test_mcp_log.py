@@ -1,10 +1,12 @@
 import logging
+import subprocess
+import sys
 
 
 def test_a_refused_tool_call_logs_no_rich_traceback():
     """fastmcp logs every ToolError with its traceback, and every refused op is
     one. Rendered rich, each cost about 0.5 s on the event loop (#366)."""
-    import aegis.mcp  # noqa: F401
+    import aegis.mcp_tools  # noqa: F401
 
     handlers = logging.getLogger("fastmcp").handlers
     assert handlers
@@ -16,8 +18,18 @@ def test_a_tool_errors_message_is_not_wrapped_by_rich():
     page's 4,000-character error held the event loop for seconds (#409)."""
     from rich.logging import RichHandler
 
-    import aegis.mcp  # noqa: F401
+    import aegis.mcp_tools  # noqa: F401
 
     handlers = logging.getLogger("fastmcp").handlers
     assert handlers
     assert not any(isinstance(h, RichHandler) for h in handlers)
+
+
+def test_serve_listens_without_importing_fastmcp():
+    """Importing fastmcp was most of a start (#519): what `aegis serve`
+    imports before it listens leaves it to a thread started afterwards."""
+    code = "import sys, aegis.cli, aegis.web; print('fastmcp' in sys.modules)"
+    out = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    )
+    assert out.stdout.strip() == "False"

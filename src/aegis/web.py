@@ -30,6 +30,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
+import importlib
 import json
 import logging
 import os
@@ -60,6 +61,7 @@ from .app import App
 from .as_user import Place
 from .channels import Sub
 from .links import PROTO, Backlink
+from .mcp import PATH as MCP_PATH
 from .ops import Caller, OpError
 from .version import running
 from .tokens import load_or_create_token  # noqa: F401 — cli and tests import it from here
@@ -865,13 +867,47 @@ def build_web(
                 app.links.detach(back)
             write_task.cancel()
 
+    # The MCP app is built after the server starts listening. Building it
+    # imports fastmcp, most of a start (#519), so that import runs in a thread
+    # while the server already serves pages, and a call to /mcp waits until
+    # the app is up.
+    mcp_ready = asyncio.Event()
+
+    async def run_mcp(stopping: asyncio.Event) -> None:
+        try:
+            tools = await asyncio.to_thread(importlib.import_module, "aegis.mcp_tools")
+            _, mcp_app = tools.build_mcp(app.registry, app.tokens, app.sessions)
+        except Exception:
+            log.exception("the MCP endpoint failed to start")
+            mcp_ready.set()
+            return
+        # It keeps its own session manager running for the server's life.
+        async with mcp_app.router.lifespan_context(mcp_app):
+            app.mcp_app = mcp_app
+            mcp_ready.set()
+            await stopping.wait()
+
+    class McpEndpoint:
+        async def __call__(self, scope, receive, send) -> None:
+            await mcp_ready.wait()
+            if app.mcp_app is None:
+                response = PlainTextResponse(
+                    "aegis's MCP endpoint failed to start; the server log says why",
+                    status_code=503,
+                )
+                await response(scope, receive, send)
+                return
+            await app.mcp_app.router(scope, receive, send)
+
     @contextlib.asynccontextmanager
     async def lifespan(_):
-        # The MCP app keeps its own session manager running for the server's life.
-        async with app.mcp_app.router.lifespan_context(app.mcp_app):
-            await app.boot()
-            yield
-            await app.shutdown()
+        stopping = asyncio.Event()
+        mcp_task = asyncio.create_task(run_mcp(stopping))
+        await app.boot()
+        yield
+        await app.shutdown()
+        stopping.set()
+        await mcp_task
 
     web = Starlette(
         routes=[
@@ -888,7 +924,7 @@ def build_web(
             Route("/dictation/{pin}/{name}", dictation_file),
             Route("/speech/{pin}/{name:path}", speech_file),
             WebSocketRoute("/ws", ws),
-            *app.mcp_app.routes,
+            Route(MCP_PATH, McpEndpoint(), methods=["GET", "POST", "DELETE"]),
         ],
         lifespan=lifespan,
     )
