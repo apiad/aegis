@@ -90,3 +90,33 @@ async def test_the_turn_names_the_harness_version_the_last_check_found(app):  # 
     await until(lambda: inbox(s), timeout=5)
     (md,) = inbox(s)
     assert f"{s.harness.label} 9.9.9" in md and "1.0.0" not in md
+
+
+async def test_an_agents_spawn_prompt_of_slash_feedback_runs_the_command(app):  # noqa: F811
+    """#545: an agent spawned a session with prompt "/feedback <words>", and
+    Claude Code answered with its own /feedback builtin. The line runs as if
+    typed in the new session; the harness never gets it as text."""
+    from aegis.ops import Caller
+
+    parent = await spawn(app)
+    r = await app.registry.call(
+        "session.spawn",
+        {"agent": "opus", "prompt": "/feedback the queue card needs a model"},
+        Caller("agent", log_id=parent),
+    )
+    assert r["command"] == {"status": "delivered"}
+    s = app.sessions.sessions[r["log_id"]]
+    await until(lambda: inbox(s), timeout=5)
+    assert "queue card needs a model" in inbox(s)[0]
+    assert not [e for e in s.entries() if e["kind"] == "user"], "no plain prompt"
+
+
+async def test_a_spawn_prompt_with_a_bad_command_says_the_session_started(app):  # noqa: F811
+    import pytest
+
+    from aegis.ops import OpError
+
+    with pytest.raises(OpError) as e:
+        await app.registry.call("session.spawn", {"agent": "opus", "prompt": "/model"})
+    assert e.value.code == "missing_argument"
+    assert "started, but its first line failed: usage: /model" in e.value.message
