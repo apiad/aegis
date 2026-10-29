@@ -12,6 +12,7 @@ from .test_browser import (  # noqa: F401
     SETTINGS_CONFIG,
     Server,
     browser,
+    online,
     open_settings,
     page,
 )
@@ -34,6 +35,7 @@ def server(tmp_path: Path, fake_claude: str, fake_opencode: str):
 
 
 def open_spawn(pg) -> None:
+    online(pg)
     pg.click("#tab-add")
     pg.wait_for_selector("#a2[data-view=spawn]")
     pg.wait_for_function("document.querySelector('#sp-agent').value !== ''")

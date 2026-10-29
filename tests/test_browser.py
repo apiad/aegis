@@ -302,7 +302,14 @@ def turns_done(pg, n: int) -> None:
     )
 
 
+def online(pg) -> None:
+    """Wait until the page's socket is open. Until then + does nothing, and
+    goto returns at the load event, before it opens (#809)."""
+    pg.wait_for_selector("#conn-dot.ready", state="attached")
+
+
 def spawn(pg, prompt: str | None = None) -> str:
+    online(pg)
     pg.click("#tab-add")
     pg.wait_for_selector("#a2[data-view=spawn]")
     pg.wait_for_function("document.querySelector('#sp-agent').value !== ''")
@@ -314,6 +321,19 @@ def spawn(pg, prompt: str | None = None) -> str:
     if prompt:
         turns_done(pg, 1)
     return pg.evaluate("location.hash.slice(3)")
+
+
+def test_spawn_waits_for_the_socket(server, page):
+    # #809: goto returns at the load event; a click on + before the socket is
+    # open does nothing. The client's first send, its hello, is held 2 s here.
+    page.add_init_script(
+        """(() => { const send = WebSocket.prototype.send; let first = true;
+        WebSocket.prototype.send = function (d) { if (first) { first = false;
+          setTimeout(() => send.call(this, d), 2000); } else send.call(this, d); }; })()"""
+    )
+    page.goto(server.url)
+    page.set_default_timeout(8000)
+    assert spawn(page)
 
 
 def pick(pg, sel: str, text: str) -> None:
@@ -1791,6 +1811,7 @@ def harness_quota_server(tmp_path: Path, fake_claude: str, fake_opencode: str):
 
 
 def spawn_agent(pg, agent: str, prompt: str = "hello") -> None:
+    online(pg)
     pg.click("#tab-add")
     pg.wait_for_selector("#a2[data-view=spawn]")
     pg.wait_for_function("document.querySelector('#sp-agent').value !== ''")
