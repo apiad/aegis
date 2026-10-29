@@ -155,7 +155,7 @@ disk, starts with none.
 A page whose own Content-Security-Policy blocks scripts from the server works
 as before, without the menu or the bar inside it.
 
-### Annotating images and PDFs
+## Annotating images and PDFs
 
 An image or PDF opened in Files, or opened from a sent file's card, has an
 Annotate control over its preview. Turn it on, then click to mark a point or
