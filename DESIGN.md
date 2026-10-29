@@ -87,6 +87,15 @@ on a busy host while the work keeps every idle core and disk slot
 (`cgroups.SessionCgroups.shield`, #782). What a session starts outside the
 tree, through dockerd or `systemd-run`, has only the OOM scores against it.
 
+**The person can pause every session.** `<state>/paused.json` holds the
+pause, written by Settings' Pause all or `aegis serve --paused` before boot,
+so it outlives a restart. Pause all ends every session's process and marks
+a cut turn with `quota_paused`, as the quota gate does. While the record is
+there, `start_spec` refuses every start and `quota_hold` holds every session
+the person has not resumed, so the gate's own checks hold messages, queue
+tasks, schedule ticks, workflow nodes and the restart's continues. Resume
+all removes it and continues as a quota gate that opens (`pause.py`, #788).
+
 **In a host OOM, a session dies before the server.** The server raises each
 child's `oom_score_adj` to 500 right after the spawn
 (`harness.raise_oom_score`), so a runaway tree is killed instead of the server

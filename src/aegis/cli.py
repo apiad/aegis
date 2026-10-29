@@ -266,6 +266,12 @@ def serve(
         "--name",
         help="This server's name, the @server in addresses; default: the hostname.",
     ),
+    paused: bool = typer.Option(
+        False,
+        "--paused",
+        help="Start with every session paused: cut turns stay cut and nothing "
+        "runs until you resume it (Settings, or a message to one session).",
+    ),
 ) -> None:
     """Serve Claude Code sessions to browser tabs."""
     import logging
@@ -294,6 +300,10 @@ def serve(
             return
         typer.echo(f"port {port} on {host} is taken; pass --port", err=True)
         raise typer.Exit(1)
+    if paused:
+        from . import pause
+
+        pause.write(roots.state_root, by="aegis serve --paused")
     token = load_or_create_token(roots.state_root)
     shown = "127.0.0.1" if host in ("127.0.0.1", "0.0.0.0") else host
     url = f"http://{shown}:{port}/?token={token}"
