@@ -1,0 +1,17 @@
+# aegis serve from this branch, as a delegated system unit (MemoryHigh=5632M MemoryMax=6656M OOMScoreAdjust=-500)
+cgroup.subtree_control: cpu io memory pids
+work/cgroup.subtree_control: memory pids
+work/memory.max: 5368709120        # 5.5 GiB - 512 MiB
+work/pids.max: 8743                # TasksMax 9255 - 512
+server/memory.min: 536870912
+server/cpu.weight: 1000
+server/io.prio.class: promote-to-rt
+work/browsers/ work/sessions/ work/terminals/
+journal: aegis: work capped together at 5368709120 and 8743 tasks, server keeps 536870912
+
+# real Chromium via Browsers._launcher() in a delegated unit (TasksMax=4000)
+session pids.max: 4096
+page h1: ok
+browsers/chromium holds 12 procs: ['chrome', 'chrome_crashpad']
+oom_score_adj: chrome 0/200/300 (Chromium sets its own), crashpad 500
+server/ holds: ['MainThread', 'python']
