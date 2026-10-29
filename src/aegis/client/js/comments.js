@@ -27,9 +27,11 @@ function el(tag, cls, text) {
 // The one message: a header naming the file, then each comment's locator,
 // quote and note, numbered in the order they were made.
 export function message(path, items) {
-  const parts = [`Comments on ${path}:`];
+  const visual = items.some((c) => c.annotation);
+  const parts = [`${visual ? "Annotations" : "Comments"} on ${path}:`];
   items.forEach((c, i) => {
-    parts.push(`${i + 1}. ${c.locator}`);
+    if (c.annotation) parts.push(`${i + 1}. ${JSON.stringify(c.annotation)}`);
+    else parts.push(`${i + 1}. ${c.locator}`);
     if (c.quote) parts.push(quoted(c.quote).replace(/^/gm, "   "));
     if (c.note.trim()) parts.push(c.note.trim().replace(/^/gm, "   "));
   });
@@ -60,8 +62,8 @@ export class Tray {
     this.pins();
   }
 
-  add({ locator, quote, at }) {
-    this.items.push({ locator, quote, note: "", at });
+  add({ locator, quote, at, annotation = null }) {
+    this.items.push({ locator, quote, note: "", at, ...(annotation ? { annotation } : {}) });
     this.save();
     this.draw();
     this.pins();
@@ -97,7 +99,9 @@ export class Tray {
     discard.type = "button";
     discard.dataset.act = "discard";
     discard.addEventListener("click", () => this.clear());
-    head.append(el("span", "cn", n === 1 ? "1 comment" : `${n} comments`), send, discard);
+    const annotations = this.items.every((c) => c.annotation);
+    const count = annotations ? (n === 1 ? "1 annotation" : `${n} annotations`) : n === 1 ? "1 comment" : `${n} comments`;
+    head.append(el("span", "cn", count), send, discard);
     const list = el("ol", "clist");
     this.items.forEach((c, i) => {
       const li = el("li");
@@ -134,6 +138,18 @@ export class Tray {
     const root = this.content;
     if (!root?.isConnected) return;
     this.items.forEach((c, i) => {
+      if (c.at && !Array.isArray(c.at)) {
+        const pin = el("span", `pin vpin ${c.at.type || "region"}`);
+        pin.dataset.n = String(i + 1);
+        pin.dataset.tray = this.store;
+        pin.dataset.chrome = "";
+        pin.style.left = `${c.at.x * 100}%`;
+        pin.style.top = `${c.at.y * 100}%`;
+        pin.style.width = `${c.at.width * 100}%`;
+        pin.style.height = `${c.at.height * 100}%`;
+        root.append(pin);
+        return;
+      }
       if (!Array.isArray(c.at)) return;
       const r = rangeIn(root, c.at);
       if (!r) return;

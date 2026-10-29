@@ -16,6 +16,7 @@
 // one, its card holds a line instead of a frame (entries.hold), and the
 // agent's state reaches the viewer's frame instead.
 
+import { annotate } from "./annotations.js";
 import { Tray } from "./comments.js";
 import { artifactStage, dockButton, fileActions, fileUrl, fillWorkflow, hold, markdown, phoneButton, popButton, preview, swipe } from "./entries.js";
 import { entryIcon, icon } from "./glyphs.js";
@@ -204,6 +205,7 @@ export class Viewer {
     this.key = null; // the session shown
     this.drawn = 0; // bumped by every draw, so a fetch for an older one is dropped
     this.tray = null; // the shown file's comments
+    this.annotation = null; // the shown image or PDF's drawing layer
     menu.bar(root, (range, content) => this.pointItems(range, content), { unit: contentUnit });
     menu.attach(root, (t, ev) => this.pressed(t, ev));
   }
@@ -279,6 +281,8 @@ export class Viewer {
   }
 
   render(e) {
+    this.annotation?.destroy();
+    this.annotation = null;
     const item = this.isOpen ? this.items.get(this.key) : null;
     const draw = ++this.drawn;
     // A redraw of the same item keeps its tray (newTray), and the note being
@@ -350,8 +354,8 @@ export class Viewer {
       files.title = `Open ${rootPath} in the Files view, where it can be edited`;
       acts.append(files);
     }
-    // Comments on a text, Markdown or HTML file, kept per version (its URL).
-    const tray = ["markdown", "text", "html"].includes(f.preview) ? this.newTray(f.url, this.pathOf()) : null;
+    // Comments and visual annotations, kept per version (the file's URL).
+    const tray = ["markdown", "text", "html", "image", "pdf"].includes(f.preview) ? this.newTray(f.url, this.pathOf()) : null;
     drawFile(f, {
       remote: item.remote,
       glyph: item.glyph,
@@ -362,6 +366,12 @@ export class Viewer {
       isCurrent: () => draw === this.drawn,
       drawn: (content) => tray?.layer(content),
     });
+    if (["image", "pdf"].includes(f.preview)) {
+      this.annotation = annotate(body.querySelector(".stage"), tray, {
+        path: this.pathOf(),
+        kind: f.preview,
+      });
+    }
     if (item.files.length > 1) {
       // Round from the last file to the first, as on the card.
       const go = (d) => {

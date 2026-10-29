@@ -403,6 +403,13 @@ menu.attach(root, (target, ev) =&gt; ({
 2. § Testing
    &gt; a selection made while a fake turn streams keeps its bar
    Also during a park.</pre>
+<h3 id="visual-annotations">Visual annotations</h3>
+<ul>
+  <li>An image or PDF preview carries an annotation layer, inactive until the person chooses Annotate so the media and the native PDF viewer keep their ordinary controls.</li>
+  <li>A click records a point; a drag records a rectangle. Coordinates are normalized to the rendered image or PDF viewport, not browser pixels, so resizing does not move the reference.</li>
+  <li>The native PDF frame does not expose its current page. A page number beside Annotate is therefore part of each PDF annotation and must be set to the visible page before drawing.</li>
+  <li>The comment tray stores the file, kind, page when applicable, normalized region and editable note in browser storage. Send writes the structured fields as JSON into one composer message; the server receives nothing before then.</li>
+</ul>
 <figure>
   <div><span class="try">try it</span><span style="font-family:var(--font-mono);font-size:11px;color:var(--faint)">right-click or long-press an element of the sample page, pick Comment, then Send</span></div>
   <div class="mock page" id="page">
@@ -459,7 +466,7 @@ menu.attach(root, (target, ev) =&gt; ({
   <li><b>menu.js</b>: the module, Files' and the canvas tabs' menus moved onto it with no change in what they show, and the fleet card and session tab menus with today's calls (Open, Open in new tab, Interrupt, Stop, Hand off, Rename, Close).</li>
   <li><b>Lifecycle</b>: asleep, Wake, Restart, Archive, the commands and aliases, the panel's buttons renamed, the help pages (<code>commands.md</code>, <code>getting-started.md</code>, <code>config.md</code>'s park section) and DESIGN.md's process model.</li>
   <li><b>Transcript</b>: the selection bar, the row menus, the composer helper, <code>data-chrome</code>, the row link.</li>
-  <li><b>Inside files and pages</b>: the bar, menu and comment tray in the viewer and editor, then in artifacts and sent HTML with the pointing script.</li>
+  <li><b>Inside files and pages</b>: the bar, menu and comment tray in the viewer and editor, then in artifacts and sent HTML with the pointing script; normalized drawing layers extend the tray to images and PDFs.</li>
   <li><b>The rest</b>: Files' new items with <code>term.spawn</code>'s cwd, journal entries, sent cards, archive rows.</li>
 </ol>
 
@@ -472,6 +479,7 @@ menu.attach(root, (target, ev) =&gt; ({
   <li>Server: Sleep and a park both report asleep with their reasons; Restart changes the process id and keeps the conversation; <code>/close</code> archives.</li>
   <li>A quiet working card shows the quiet mark and no <code>zz</code>; its menu has Unquiet and Interrupt; Sleep keeps it quiet.</li>
   <li>Browser: a right-click on an element of a sent HTML page opens the menu with that element's locator; Ask puts it in the composer; three comments become one message in order; Download still returns the original bytes; a reload keeps unsent comments.</li>
+  <li>Browser: an image drag produces a normalized JSON region and a numbered overlay; a PDF region includes the page the person entered; both send through the existing tray.</li>
   <li>The card menu per state: no Interrupt on an asleep card, no Wake on a working one, disabled items on a locked workflow step.</li>
 </ul>
 
