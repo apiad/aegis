@@ -3909,6 +3909,40 @@ def test_a_reply_read_on_screen_turns_its_mark_and_clears_the_done_badge(server,
     assert page.errors == []
 
 
+@pytest.mark.parametrize("width", [1280, 390])
+def test_a_one_line_reply_is_as_tall_as_its_line(server, browser, width):
+    """#743: the gutter stacked the read mark over the read-aloud chip, 45 px
+    beside a 26 px line, so each one-line reply left a band under it. The two
+    sit side by side on the line, and the row is as tall as its text."""
+    errors: list = []
+    if width < 760:
+        page = phone(browser, errors)
+    else:
+        page = browser.new_context(viewport={"width": width, "height": 800}).new_page()
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "hello")
+    page.wait_for_selector(".row.prose .rm .speak", state="attached")
+    got = page.evaluate(
+        """() => {
+          const row = document.querySelector('.row.prose'), body = row.querySelector('.body');
+          const mark = row.querySelector('.rm > .ic').getBoundingClientRect();
+          const chip = row.querySelector('.rm .speak').getBoundingClientRect();
+          const first = body.firstElementChild.getBoundingClientRect(), last = body.lastElementChild.getBoundingClientRect();
+          const b = { top: first.top, bottom: last.bottom, height: last.bottom - first.top };
+          return { row: row.getBoundingClientRect().height, body: b.height, top: b.top, bottom: b.bottom,
+                   mark: [mark.top, mark.bottom], chip: [chip.top, chip.bottom, chip.left, mark.right] };
+        }"""
+    )
+    assert got["row"] <= got["body"] + 0.5, got
+    # Both marks sit beside the line, inside its height, the chip after the mark.
+    for top, bottom in (got["mark"], got["chip"][:2]):
+        assert top >= got["top"] - 0.5 and bottom <= got["bottom"] + 0.5, got
+    assert got["chip"][2] >= got["chip"][3], got
+    assert errors == []
+    page.context.close()
+
+
 def test_a_reply_that_turns_read_keeps_its_row(server, page):
     page.goto(server.url)
     page.wait_for_selector("#a2[data-view=fleet]")
