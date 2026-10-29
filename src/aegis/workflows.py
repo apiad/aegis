@@ -47,7 +47,7 @@ from typing import TYPE_CHECKING
 from . import layout as canvas
 from . import launch, refs, restarts
 from .agents import PERMISSION_ORDER, resolve
-from .monitors import CONDITION_LIMIT_S, _percent
+from .monitors import CONDITION_LIMIT_S, _percent, iso_now
 from .ops import OpError
 from .workflow_lang import (
     MAX_ROUNDS,
@@ -194,10 +194,6 @@ def _news(o: dict) -> bool:
     """Whether an open item only tells the main agent something: a person's
     gate opened or passed. Nothing waits on its answer."""
     return o["kind"] == "passed" or (o["kind"] == "gate" and o.get("by") == "person")
-
-
-def iso_now() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%S")
 
 
 def _fold(kids: list[str]) -> str:
@@ -2469,7 +2465,7 @@ class Workflows:
             while True:
                 rc, out, err = await self._probe_sh(cmd, self._cwd(st), env, st)
                 self._readings[(st.run, inst)] = (
-                    f"exit {rc if rc is not None else '?'} at {iso_now()[11:16]}"
+                    f"exit {rc if rc is not None else '?'} at {time.strftime('%H:%M')}"
                 )
                 self._publish(st.run)
                 n = st.nodes.get(inst)
@@ -2656,7 +2652,7 @@ class Workflows:
         try:
             rc, out, err = await self._probe_sh(cmd, self._cwd(st), env, st)
             self._readings[(st.run, inst)] = (
-                f"exit {rc if rc is not None else '?'} at {iso_now()[11:16]}"
+                f"exit {rc if rc is not None else '?'} at {time.strftime('%H:%M')}"
             )
             last = (err.strip().splitlines() or out.strip().splitlines() or [""])[-1]
             why = f"exit {rc if rc is not None else '?'}" + (
