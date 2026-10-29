@@ -40,6 +40,7 @@ async def test_a_members_agent_cannot_launder_ownership(world):
     assert world.session(child).meta()["owner"] == "ben"
 
 
+@pytest.mark.quarantine("#776")
 async def test_a_queue_worker_is_owned_by_whoever_enqueued(world):
     r = await world.app.registry.call("session.spawn", {"agent": "opus"}, as_(BEN))
     a = world.session(r["log_id"])

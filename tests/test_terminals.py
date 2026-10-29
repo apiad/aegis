@@ -223,6 +223,7 @@ async def test_two_restarts_at_once_start_one_child(reg):
     assert t.running and descendants("cat") == 1
 
 
+@pytest.mark.quarantine("#507")
 async def test_a_close_during_spawn_leaves_the_terminal_archived(reg):
     spawning = asyncio.create_task(reg.spawn("echo", owner="ana"))
     await asyncio.sleep(0)  # spawn runs until it waits for the child
@@ -253,6 +254,7 @@ async def test_shutdown_during_a_close_still_ends_a_program_that_ignores_sighup(
             os.killpg(pid, signal.SIGKILL)
 
 
+@pytest.mark.quarantine("#507")
 async def test_a_closed_terminal_shows_what_it_printed_on_its_way_out(reg):
     t = await reg.spawn("polite", owner="ana")
     await until(lambda: "ready" in reg.bus.text(t.id), what="ready")

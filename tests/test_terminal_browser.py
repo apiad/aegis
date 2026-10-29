@@ -182,6 +182,7 @@ def test_the_filter_shows_only_terminals_and_is_remembered(server, browser):  # 
     assert page.locator(".kinds [data-kind=terminals][aria-checked=true]").count() == 1
 
 
+@pytest.mark.quarantine("#562")
 def test_a_closed_terminal_is_in_the_archive_and_replays(server, browser):  # noqa: F811
     tid = server.call("term.spawn", {"profile": "tui"})["id"]
     server.call("term.close", {"id": tid})

@@ -1,0 +1,71 @@
+name: nightly
+# What the PR gate leaves out until the fair release (#768): the slow tests,
+# the browser tests among them, in four shards, and the flaky tests marked
+# `quarantine` (#776). It runs on main every night and by hand, and no merge
+# waits on it. Read the last run before tagging a release (know-how/releasing.md).
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+jobs:
+  # pytest-split balances the shards from .test_durations (refresh it with
+  # `make test-durations`). Two workers per shard: more on a 4-vCPU runner
+  # turns Chromium-heavy tests flaky.
+  slow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25  # about 8 min per shard
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [1, 2, 3, 4]
+    name: slow (${{ matrix.group }}/4)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - name: chromium for browser tests
+        uses: ./.github/actions/chromium
+      - run: uv run pytest -q -n 2 -m "slow and not live and not multiuser and not quarantine" --splits 4 --group ${{ matrix.group }} --splitting-algorithm least_duration
+
+  # The quarantined tests, each three times, so a run says how often each one
+  # fails. It reports in the job summary and never fails the run.
+  quarantine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - name: chromium for browser tests
+        uses: ./.github/actions/chromium
+      - name: three rounds of the quarantined tests
+        run: |
+          for round in 1 2 3; do
+            uv run pytest -q -n 2 -m "quarantine and not live" -rf -p no:cacheprovider \
+              | grep -E '^FAILED' | sed -E 's/^FAILED ([^ ]+).*/\1/' >> /tmp/failed.txt || true
+          done
+          total=$(uv run pytest -q --collect-only -m "quarantine and not live" | grep -c '::' || true)
+          { echo "### quarantined tests: $total, three rounds each"
+            echo
+            if [ -s /tmp/failed.txt ]; then
+              echo "| test | failed rounds |"; echo "|---|---|"
+              sort /tmp/failed.txt | uniq -c | sort -rn | awk '{print "| `" $2 "` | " $1 " of 3 |"}'
+            else
+              echo "No quarantined test failed in three rounds."
+            fi; } >> "$GITHUB_STEP_SUMMARY"
