@@ -5,6 +5,13 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [2.17.1] - 2026-10-29
+
+### Changed
+
+- **aegis now lives at github.com/syalia-srl/aegis, with its site at aegis.syalia.com.** The old GitHub address redirects. The package metadata, the landing page and the issue link that `/feedback` falls back to point at the new home (#768).
+  help: feedback
+
 ## [2.17.0] - 2026-10-27
 
 ### Added
