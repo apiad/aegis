@@ -159,6 +159,30 @@ def test_an_unknown_page_names_the_three_closest():
     assert len(msg.split("closest are ")[1].split(", ")) == 3
 
 
+def test_read_opens_a_subsection_by_its_slug_or_heading():
+    """#760: a guide named a ### heading and got unknown_section."""
+    text = PAGE + (
+        "\n## Skills\n\nSkills intro.\n\n### Skills as commands\n\nType /name.\n\n"
+        "```text\n### not a heading\n```\n\n### Writing one\n\nWrite it.\n"
+    )
+    index = Index([parse("knowledge", text)])
+    one = index.read("knowledge", "skills-as-commands")
+    assert (
+        one
+        == "### Skills as commands\n\nType /name.\n\n```text\n### not a heading\n```\n"
+    )
+    assert index.read("knowledge#Skills as commands") == one
+    assert index.read("knowledge", "writing-one") == "### Writing one\n\nWrite it.\n"
+    assert index.read("knowledge", "skills").startswith("## Skills\n\nSkills intro.")
+    with pytest.raises(KeyError):
+        index.read("knowledge", "not-a-heading")
+
+
+def test_the_shipped_knowledge_page_opens_skills_as_commands():
+    got = Index(load()).read("knowledge", "Skills as commands")
+    assert got.startswith("### Skills as commands\n")
+
+
 def test_an_unknown_section_lists_the_page_sections():
     index = Index([parse("monitors", PAGE)])
     with pytest.raises(KeyError, match="its sections are wait-on-a-process, "):
