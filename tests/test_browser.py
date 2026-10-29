@@ -6430,6 +6430,49 @@ def test_a_phone_reaches_tabs_the_drawer_and_the_chips(server, browser):
     assert errors == []
 
 
+HEADER_ROWS = """() => {
+  const kids = [...document.querySelector('#a2 .tabs').children].filter(e => e.offsetWidth && !e.classList.contains('gap'));
+  const rows = [];
+  for (const e of kids) {
+    const r = e.getBoundingClientRect(), row = rows.find((x) => r.top < x.bottom && r.bottom > x.top);
+    if (row) row.ids.push(e.id || e.className); else rows.push({ top: r.top, bottom: r.bottom, ids: [e.id || e.className] });
+  }
+  return rows.sort((a, b) => a.top - b.top).map((x) => x.ids);
+}"""
+
+
+@pytest.mark.parametrize("width", [360, 390])
+def test_a_phone_header_keeps_fleet_with_the_buttons_and_the_tabs_alone(
+    server, browser, width
+):
+    """#752: on a phone Fleet sat on the tab row (#631), beside two-line tabs,
+    the overflow menu and +, so about one and a half sessions showed. Fleet,
+    the server and the buttons share the first row, the buttons giving up a
+    few pixels each at 360 px, and the sessions have the second to themselves."""
+    errors: list = []
+    page = phone(browser, errors)
+    page.set_viewport_size({"width": width, "height": 844})
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    for n in range(3):
+        spawn(page, f"session {n}")
+    rows = page.evaluate(HEADER_ROWS)
+    assert len(rows) == 2, rows
+    assert rows[0][0] == "tab-fleet" and rows[0][-1] == "help-btn", rows
+    assert "tablist" in rows[1] and "tab-fleet" not in rows[1], rows
+    assert page.locator("#conn-dot").bounding_box()["width"] >= 6, "the dot stays"
+    tabs = page.locator("#tablist").bounding_box()
+    assert tabs["width"] > width - 90, tabs
+    # Each button keeps a tap target 34 px wide and 40 px tall or more.
+    sizes = page.eval_on_selector_all(
+        ".tabs :is(.keys-btn.bell,.set-btn,.jr-btn,.help-btn)",
+        "bs => bs.filter(b => b.offsetWidth).map(b => [b.offsetWidth, b.offsetHeight])",
+    )
+    assert len(sizes) == 8 and all(w >= 34 and h >= 40 for w, h in sizes), sizes
+    assert page.evaluate(WIDER) == []
+    assert errors == []
+
+
 def test_a_long_tip_does_not_widen_the_new_tab_on_a_phone(server, browser):
     """#711: the tip is one nowrap line, and the spawn grid's auto column took
     its full width, pushing the composer, chips and hints past a 390 px screen."""
