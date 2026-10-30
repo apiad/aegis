@@ -5,6 +5,12 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [2.20.0] - 2026-10-30
+
+### Fixed
+
+A session on a linked server shows its workflow's cards: the plan, Approve and run, gates, proposed changes and `see` chips all work from the linking server, instead of saying "workflow not found" or showing no way to approve. The same for schedules: a far agent's schedule card can be approved from the linking server, and the Schedules view has a server picker.
+
 ## [2.19.0] - 2026-10-30
 
 ### Added
