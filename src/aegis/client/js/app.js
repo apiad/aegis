@@ -740,9 +740,14 @@ const schedules = new Schedules(conn, $("schedules"), {
 setSecrets((op, params) => callFor(shown, op, params));
 // A card asks the server of the session it is shown in: names are per server.
 const shownServer = () => (shown ? forKey(shown).server : null);
+// A card a session here made across a trusted link goes to the server it names.
+// In a far session's transcript the name is that server's word about its own
+// links, and undefined finds no schedule: it could otherwise put an Unpause for
+// a schedule of this server or another link in front of a person.
+const cardServer = (named) => (!named ? shownServer() : shownServer() ? undefined : named);
 setApprovals({
-  schedule: (name) => schedules.on(shownServer()).get(name) || null,
-  call: (op, params) => conn.call(op, params, shownServer()),
+  schedule: (name, named) => schedules.on(cardServer(named)).get(name) || null,
+  call: (op, params, named) => conn.call(op, params, cardServer(named)),
 });
 const scheduleHandlers = (server) => [
   (list) => {

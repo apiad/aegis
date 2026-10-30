@@ -71,14 +71,55 @@ that card, or Resume in the Schedules view, starts it. An agent cannot
 unpause or fire a schedule that is waiting for you. A schedule you create
 yourself starts at once.
 
+### On another server
+
+Over a [trusted link](links#trusted-links), every `schedule_*` tool takes a
+schedule on the other server as `name@server`, as `queue_enqueue` does with
+`queue@server`. Put one there when the clock must keep ticking while this
+machine sleeps:
+
+```json
+{"name": "nightly-tests@host", "clock": {"every": "1h"}, "fire": {"agent": "opus"}, "prompt": "run the tests"}
+```
+
+The schedule lives and ticks on that server, and it fires there. A
+`fire.cwd`, a `fire.session` and an agent's name are that server's; with no
+`cwd`, a fire starts in that server's working directory. A reply names the
+schedule `name@server` and adds `server`. `schedule_list` gives this server's
+schedules and then each trusted server's, in the same form, and leaves out a
+server that cannot answer now. `schedule_test` takes `name@server` to try a clock
+and a check there, and that schedule need not exist yet.
+
+The rules are the same as here, and the far server applies them. What the agent
+creates waits for a person, an edit waits again, no agent can unpause or fire one
+that is waiting, an agent changes only what it created, and a fire stays below the
+permission of the agent that created it.
+
+The card shows under the agent's call in this session, and Unpause acts on the
+far server. The far server's Schedules view shows the schedule as
+well. Two cases have no Unpause on the card, which says to use the far server's
+Schedules view instead:
+
+- The agent is on the server that accepted the link, and calls back over it.
+  Its browser does not follow the other server's schedules, and the tool's reply
+  has a `note` that says so. Open the Schedules view of the server that holds
+  the link.
+- You read that session through a link. A card there may only act on the
+  session's own server, so a far session can never aim your click somewhere
+  else. Pick the server in the Schedules view here.
+
+A plain link refuses all of this, as it does `queue@server`, and a member's agent
+is refused. Nothing is relayed to a third server.
+
 ## Fire a workflow
 
-A schedule whose prompt is a /workflow or /loop line runs that saved
-workflow at each fire, with no click, at the version a person approved. When
+To make a schedule run a saved workflow, give it a /workflow or /loop line as its
+prompt: it runs that workflow at each fire, with no click, at the version a
+person approved. When
 the workflow changes, the schedule pauses and its card shows the change until
 you unpause it. One saved before schedules pinned a version waits for a
 person from the server's start, and no agent can unpause it. No agent can
-`schedule_fire` such a schedule, paused or not:
+`schedule_fire` such a schedule, paused or not, across a link included:
 the approval covers its clock, not runs on demand. A person's Fire now on a
 paused one works only when no approval is due and the workflow is still the
 approved version. See [Fire one from a schedule](workflows#fire-one-from-a-schedule).

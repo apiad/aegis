@@ -822,7 +822,11 @@ class Schedules:
         return {
             "name": name,
             **s.dump(),
-            "owner_handle": by.handle if by else None,
+            "owner_handle": f"{far['handle']}@{far['server']}"
+            if (far := s.owner.get("far"))
+            else by.handle
+            if by
+            else None,
             "next": iso(nxt) if nxt else None,
             "held": st.held,
             "errors": st.errors,

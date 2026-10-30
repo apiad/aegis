@@ -701,6 +701,37 @@ def split_address(target: str, own: str) -> tuple[str, str | None]:
     return (handle, None) if not at or server == own else (handle, server)
 
 
+def across(app: App, server: str, caller: Caller):
+    """The link for an agent's call to ``server``, which only a link both
+    servers trust carries (links.py, #684); the refusal otherwise."""
+    if caller.link is not None:
+        raise OpError("not_relayed", "a link is not relayed to another server")
+    if not app.links.trusted(server):
+        raise OpError("not_across_links", f"{server} is another server; {ACROSS}")
+    if not app.who(caller).is_admin:
+        raise OpError(
+            "not_for_members", "acting across a link is for an admin's agents"
+        )
+    link = app.links.get(server)
+    assert link is not None
+    return link
+
+
+def from_trusted(app: App, caller: Caller, sender: FarAgent) -> str:
+    """A trusted link speaking for one of its own agents: its address."""
+    if (
+        caller.link is None
+        or sender.server != caller.link
+        or not app.links.trusted(caller.link)
+    ):
+        raise OpError(
+            "not_a_link", "only a trusted link, for its own server, says this"
+        )
+    if not valid_handle(sender.handle):
+        raise OpError("bad_sender", "a sender is a handle")
+    return f"{sender.handle}@{sender.server}"
+
+
 def register_agent_ops(app: App) -> None:
     r = app.registry
     reg = app.sessions
@@ -718,35 +749,6 @@ def register_agent_ops(app: App) -> None:
                 "not_across_links", f"{target} is on another server; {ACROSS}"
             )
         return handle
-
-    def across(server: str, caller: Caller):
-        """The link for an agent's call to ``server``, which only a link both
-        servers trust carries (links.py, #684); the refusal otherwise."""
-        if caller.link is not None:
-            raise OpError("not_relayed", "a link is not relayed to another server")
-        if not app.links.trusted(server):
-            raise OpError("not_across_links", f"{server} is another server; {ACROSS}")
-        if not app.who(caller).is_admin:
-            raise OpError(
-                "not_for_members", "acting across a link is for an admin's agents"
-            )
-        link = app.links.get(server)
-        assert link is not None
-        return link
-
-    def from_trusted(caller: Caller, sender: FarAgent) -> str:
-        """A trusted link speaking for one of its own agents: its address."""
-        if (
-            caller.link is None
-            or sender.server != caller.link
-            or not app.links.trusted(caller.link)
-        ):
-            raise OpError(
-                "not_a_link", "only a trusted link, for its own server, says this"
-            )
-        if not valid_handle(sender.handle):
-            raise OpError("bad_sender", "a sender is a handle")
-        return f"{sender.handle}@{sender.server}"
 
     def target(handle: str):
         handle = here(handle)
@@ -828,7 +830,7 @@ def register_agent_ops(app: App) -> None:
         for handle in p.sessions:
             h, server = split_address(handle, app.server_name)
             if server is not None:
-                link = across(server, caller)
+                link = across(app, server, caller)
                 try:
                     listed = await link.call("session.list")
                 except OpError as e:
@@ -903,7 +905,7 @@ def register_agent_ops(app: App) -> None:
         inbox, and the task id comes back as `task-id@server`."""
         name, server = split_address(p.queue, app.server_name)
         if server is not None:
-            link = across(server, caller)
+            link = across(app, server, caller)
             me = own(caller)
             try:
                 r = await link.call(
@@ -920,7 +922,7 @@ def register_agent_ops(app: App) -> None:
             return {**r, "task_id": f"{r['task_id']}@{server}"}
         far = None
         if p.from_agent is not None:
-            from_trusted(caller, p.from_agent)
+            from_trusted(app, caller, p.from_agent)
             far = p.from_agent.model_dump()
         if name not in app.queues.queues:
             known = ", ".join(sorted(app.queues.queues)) or "none configured"
@@ -964,7 +966,7 @@ def register_agent_ops(app: App) -> None:
         task_id, server = split_address(p.task_id, app.server_name)
         if server is None:
             return None
-        link = across(server, caller)
+        link = across(app, server, caller)
         try:
             return {"result": await link.call(op, {"task_id": task_id})}
         except OpError as e:
@@ -1280,7 +1282,7 @@ def register_agent_ops(app: App) -> None:
             raise OpError("bad_params", "handle is required")
         h, server = split_address(p.handle, app.server_name)
         if server is not None:
-            link = across(server, caller)
+            link = across(app, server, caller)
             try:
                 return await link.call(
                     "peer.close",
@@ -1343,7 +1345,7 @@ def register_agent_ops(app: App) -> None:
         """session_close from an agent on a server linked with trust, under
         the same rule as here: a session it started closes at once when done,
         any other on a second call with the token it was given."""
-        key = from_trusted(caller, p.sender)
+        key = from_trusted(app, caller, p.sender)
         s = target(p.target)
         s.check_lock()
         card = s.wire()

@@ -655,23 +655,23 @@ class _schedule:
         quota: dict[str, dict[str, int | Literal["pace"]]] = ...,
         name: str,
     ) -> Any:
-        """Fire a prompt on a clock: every 5m, a cron line, or once at a time, into a new session from an agent or into an existing session's inbox. With a bash check, a tick fires only when the check exits 0 with a stdout different from the last fire's, and that stdout is appended to the prompt. You own what you create; schedule_delete removes it. A schedule you create or change waits, paused, until a person approves it from the card under your call."""
+        """Fire a prompt on a clock: every 5m, a cron line, or once at a time, into a new session from an agent or into an existing session's inbox. With a bash check, a tick fires only when the check exits 0 with a stdout different from the last fire's, and that stdout is appended to the prompt. You own what you create; schedule_delete removes it. A schedule you create or change waits, paused, until a person approves it from the card under your call. `name@server` makes it on a server linked with trust: it lives and ticks there, its runs start there, and a directory or a session in it is that server's."""
     async def delete(self, *, name: str) -> Any:
-        """Delete a schedule you own. A live run keeps going."""
+        """Delete a schedule you own. A live run keeps going. `name@server` is one on a server linked with trust."""
     async def fire(self, *, name: str) -> Any:
-        """Fire a schedule you own now, skipping its clock and its check. The overlap rule still holds: with a live run, wait holds it and skip drops it. A schedule that fires a workflow fires only on its clock for an agent: the person approved the clock, not runs on demand."""
+        """Fire a schedule you own now, skipping its clock and its check. The overlap rule still holds: with a live run, wait holds it and skip drops it. A schedule that fires a workflow fires only on its clock for an agent: the person approved the clock, not runs on demand. `name@server` is one on a server linked with trust, and its run starts there."""
     async def list(self) -> Any:
-        """Every schedule on this server: its clock, layers and owner, its next tick, its live runs, and whether it is paused."""
+        """Every schedule on this server: its clock, layers and owner, its next tick, its live runs, and whether it is paused. An agent also gets each server's linked with trust, named `name@server` and with `server`."""
     async def pause(self, *, name: str) -> Any:
-        """Stop a schedule you own from ticking until it is resumed."""
+        """Stop a schedule you own from ticking until it is resumed. `name@server` is one on a server linked with trust."""
     async def pools(self) -> Any:
         """The pools a schedule's quota lines may name, with their windows, and the lines a schedule gets when it names none: for the view's editor."""
     async def resume(self, *, name: str, workflow: str | None = ...) -> Any:
-        """Start a paused schedule again from now, its error count cleared. The ticks that fell during the pause do not fire."""
+        """Start a paused schedule again from now, its error count cleared. The ticks that fell during the pause do not fire. `name@server` is one on a server linked with trust; one waiting for a person stays a person's to unpause there too."""
     async def runs(
         self, *, name: str, offset: int = ..., limit: int = ..., quiet: bool = ...
     ) -> Any:
-        """One schedule's fires and ticks, newest first, a page at a time. The ticks that changed nothing are left out unless you pass quiet."""
+        """One schedule's fires and ticks, newest first, a page at a time. The ticks that changed nothing are left out unless you pass quiet. `name@server` reads one on a server linked with trust."""
     async def test(
         self,
         *,
@@ -681,7 +681,7 @@ class _schedule:
         cwd: str | None = ...,
         name: str | None = ...,
     ) -> Any:
-        """Try a clock and a check without saving anything: the next three ticks, and whether the check would fire now and why."""
+        """Try a clock and a check without saving anything: the next three ticks, and whether the check would fire now and why. With `name@server` both are tried on a server linked with trust."""
     async def update(
         self,
         *,
@@ -693,7 +693,7 @@ class _schedule:
         quota: dict[str, dict[str, int | Literal["pace"]]] = ...,
         name: str,
     ) -> Any:
-        """Replace a schedule you own with a new definition. It applies from the next tick; a live run is not touched."""
+        """Replace a schedule you own with a new definition. It applies from the next tick; a live run is not touched. `name@server` is one on a server linked with trust."""
 
 class _secret:
     async def provide(self, *, log_id: str, id: str, secret: str) -> Any:
