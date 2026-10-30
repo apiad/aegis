@@ -15,7 +15,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 TABLES = ("entries_fts", "touches", "handles", "entries")
 SCHEMA = """
 CREATE TABLE entries(

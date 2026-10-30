@@ -156,6 +156,31 @@ def commit_files(
     return [name.decode("utf-8") for name in out.split(b"\0") if name]
 
 
+def commit_by_subject(
+    directory: str, subject: str, ts: float, user: str | None = None
+) -> str | None:
+    """The full hash of the newest commit on any ref with exactly this subject,
+    made by ``ts`` plus a minute for the clock; for a commit that printed no hash.
+    None for one no ref holds any more, such as a deleted branch's."""
+    out = _git(
+        [
+            "log",
+            "--all",
+            "--format=%H%x00%s",
+            "--fixed-strings",
+            f"--grep={subject}",
+            f"--until={int(ts) + 60}",
+        ],
+        _where(directory, user),
+        user,
+    )
+    for line in (out or "").splitlines():
+        h, _, s = line.partition("\0")
+        if s == subject:
+            return h
+    return None
+
+
 # The owner/name at the end of a remote URL, SSH or HTTPS, without .git.
 SLUG = re.compile(r"[:/]([^/:\s]+)/([^/:\s]+?)(?:\.git)?/?$")
 _slug_cache: dict[tuple[str, str | None], str | None] = {}

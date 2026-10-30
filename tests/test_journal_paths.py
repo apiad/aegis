@@ -1,3 +1,4 @@
+import os
 import subprocess
 
 import pytest
@@ -97,3 +98,23 @@ def test_checkout_of_finds_the_top_whose_origin_is_the_slug(tmp_path):
     assert paths.checkout_of("Acme-Co/Atlas", [str(a)], None) == str(a)
     assert paths.checkout_of("acme-co/ledger", [str(a)], None) is None
     assert paths.remote_slug(str(tmp_path / "gone")) is None
+
+
+def test_a_commit_is_found_by_its_exact_subject_up_to_a_time(repo):
+    def commit(subject, when):
+        env = {**os.environ, "GIT_COMMITTER_DATE": f"{when} +0000"}
+        subprocess.run(
+            [*GIT, "commit", "-q", "--allow-empty", "-m", subject],
+            cwd=repo,
+            check=True,
+            env=env,
+        )
+        return git("rev-parse", "HEAD", cwd=repo).strip()
+
+    old = commit("fix: y", 1700001000)
+    new = commit("fix: y", 1700002000)
+    commit("fix: y and more", 1700002500)
+    assert paths.commit_by_subject(str(repo), "fix: y", 1700003000) == new
+    assert paths.commit_by_subject(str(repo), "fix: y", 1700001500) == old
+    assert paths.commit_by_subject(str(repo), "fix: *", 1700003000) is None
+    assert paths.commit_by_subject(str(repo), "gone", 1700003000) is None

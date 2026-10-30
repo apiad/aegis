@@ -42,6 +42,9 @@ REPO_FLAG = re.compile(
 )
 PR_NUMBER = re.compile(r"/pull/(\d+)|^merged #(\d+)")
 PUSH = re.compile(r"\bgit\b[^|;&\n]*\bpush\b")
+# Stands for the hash in the text of a commit row that printed none, until the
+# writer thread finds it in the repo.
+NO_HASH = "?"
 
 
 @dataclass
@@ -188,7 +191,7 @@ class Deriver:
         # (a rejected push after the commit, gh pr merge in a worktree).
         cmd, text = str(call.input.get("command") or ""), out.text
         cwd = self.cwd or os.sep
-        found = shell.commits(cmd, text)
+        found = shell.commits(cmd, text, out.is_error)
         near = tuple(
             dict.fromkeys(
                 os.path.dirname(p) for op, p in self._turn if op in ("write", "edit")
@@ -199,7 +202,7 @@ class Deriver:
                 i,
                 ts,
                 "commit",
-                f"{h[:7]} {subject} · {branch}",
+                f"{h[:7]} {subject} · {branch}" if h else f"{NO_HASH} {subject}",
                 source=source,
                 commit=(d, h),
                 near=near,

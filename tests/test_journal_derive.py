@@ -465,3 +465,15 @@ def test_an_issue_closed_with_repo_carries_its_slug():
     r.result()
     [issue] = [x for x in derive(r) if x.kind == "issue"]
     assert (issue.text, issue.slug, issue.workdir) == ("closed #5", "acme-co/atlas", "")
+
+
+def test_a_quiet_commit_is_a_row_with_its_hash_still_to_find():
+    r = Rec()
+    spawned(r)
+    r.own("send", text="commit")
+    r.call("t1", "Bash", {"command": "cd /r/x && git commit -qm 'feat: y'"})
+    r.output("t1", "")
+    r.result()
+    commit = [x for x in derive(r) if x.kind == "commit"][0]
+    assert commit.text == "? feat: y"
+    assert commit.commit == ("/r/x", "")

@@ -27,6 +27,12 @@ ISSUE_CLOSE = re.compile(r"\bgh\s+issue\s+close\s+(?:\S*/issues/)?#?(\d+)\b")
 # at once, instead of being re-read joined with every later line.
 JOIN_WINDOW = 100
 SEPARATORS = {"&&", "||", ";", "|", "&", ";;", "|&"}
+# What git commit says when it made no commit, -q or not.
+NO_COMMIT = re.compile(r"nothing (added )?to commit|no changes added to commit")
+# -m or -F, alone or last in a cluster of short flags (-qm, -am), with its value
+# in the same word or the next.
+SHORT_MESSAGE = re.compile(r"^-[a-zA-Z]*?(?P<flag>[mF])(?P<value>.*)$", re.S)
+COMMIT_LINE = re.compile(r"\bgit\b.*\bcommit\b")
 # git subcommands that print "[branch hash] subject" for a commit they make.
 COMMITTERS = {"commit", "cherry-pick", "revert"}
 
@@ -135,12 +141,72 @@ def _commands(body: str) -> list[list[str]]:
     return out
 
 
-def commits(command: str, output: str) -> list[tuple[str, str, str]]:
+def commits(
+    command: str, output: str, is_error: bool = False
+) -> list[tuple[str, str, str]]:
+    """(branch, hash, subject) of each commit the call made. A commit that
+    printed no line of its own (`git commit -q`, a pipe) comes from its command,
+    with branch and hash empty, unless the call failed or said nothing changed."""
     if not re.search(r"\bgit\b", command):
         return []
-    return [
+    found = [
         (m["branch"], m["hash"], m["subject"].strip()) for m in COMMIT.finditer(output)
     ]
+    if found or is_error or NO_COMMIT.search(output):
+        return found
+    return [("", "", subject) for subject in _commit_subjects(_body(command))]
+
+
+def _message_arg(words: list[str]) -> str | None:
+    """The first message a `git commit`'s arguments give: -m's text, or "-" for
+    -F -; None when they give none this can read."""
+    for k, w in enumerate(words):
+        if w.startswith("--message="):
+            return w.split("=", 1)[1]
+        if w.startswith("--file="):
+            return w.split("=", 1)[1] if w == "--file=-" else None
+        if w in ("--message", "--file"):
+            value = words[k + 1] if k + 1 < len(words) else None
+            return value if w == "--message" or value == "-" else None
+        short = SHORT_MESSAGE.match(w)
+        if short:
+            value = short["value"] or (words[k + 1] if k + 1 < len(words) else None)
+            return value if short["flag"] == "m" or value == "-" else None
+    return None
+
+
+def _commit_subjects(body: str) -> list[str]:
+    """The subject of each `git commit` in the command that names its message.
+    A heredoc's lines are gone from what _commands reads, so those on a commit's
+    own line are kept apart, in order."""
+    heredocs = [
+        m[0][len(m[1]) + 1 :].splitlines()[:-1]
+        for m in HEREDOC.finditer(body)
+        if COMMIT_LINE.search(body[: m.start()].rsplit("\n", 1)[-1])
+    ]
+    out = []
+    for argv in _commands(body):
+        argv = argv[_skip_preamble(argv) :]
+        if not argv or argv[0] != "git":
+            continue
+        _, sub = _git_dir(argv, "")
+        if sub != "commit":
+            continue
+        words = argv[argv.index(sub) + 1 :]
+        if "--dry-run" in words:
+            continue
+        message = _message_arg(words)
+        if message is None:
+            continue
+        lines: list[str] = []
+        if message == "-" or "<<" in message:
+            lines = heredocs.pop(0) if heredocs else []
+        elif not message.startswith("$"):
+            lines = message.splitlines()
+        subject = next((x.strip() for x in lines if x.strip()), "")
+        if subject:
+            out.append(subject)
+    return out
 
 
 def _gits(command: str, cwd: str) -> list[tuple[str, str]]:
