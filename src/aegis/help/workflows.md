@@ -236,7 +236,9 @@ in both as an agent of its own alias while the run lives; `session_spawn`
 refuses it with an error naming the run when it does not fit, and the node
 goes on without it. Last comes the quota the server keeps for its owner. An
 agent without a number of its own is bound only by the totals, and a `cap`
-above `limits.total` is refused.
+above `limits.total` is refused. A session kept for a later step (`session:`)
+holds its slot until that step has run, so a fresh step before it can wait for
+good: that wakes you as a stuck run, below.
 
 ## Arm it
 
@@ -283,8 +285,12 @@ run waits on you for: a failed step, a gate with `by: main`, a worker's
 question, and the person's answer to a change you proposed. You are also
 told, with nothing to answer, when a gate with `by: person` opens (headed
 `gate`) and when the person continues at it (headed `passed`), so you can
-tell the person their card waits and need no monitor to see it. Each one is
-told once, also across a restart. You get one more message when the run ends,
+tell the person their card waits and need no monitor to see it. A run stuck
+on room wakes you too, headed `stuck`, with nothing to answer: a step has no
+room, no agent is working, and the message names the sessions holding the
+slots, such as one kept for a step that runs after the waiting one. Raise the
+limits or reorder with `workflow_edit`, or end it with `workflow_stop`. Each
+one is told once, also across a restart. You get one more message when the run ends,
 headed `done`, `failed` or `stopped`, or `rejected` when the person rejects
 the plan before it starts. `workflow_status` shows the tree, the
 story and what the run waits on at any time; `workflow_stop` stops the run

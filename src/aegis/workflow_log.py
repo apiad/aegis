@@ -37,7 +37,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 LIVE = frozenset({"armed", "running"})
-NOTICES = frozenset({"edit", "passed"})  # open only until the main agent is told
+NOTICES = frozenset(
+    {"edit", "passed", "stuck"}
+)  # open only until the main agent is told
 
 
 @dataclass
@@ -98,6 +100,8 @@ class RunState:
     # Who launched it, with no click: {typed, by: person, principal, line}
     # or {typed, by: schedule, name, run, line}. Never the token.
     launch: dict | None = None
+    # The last stuck report, {nodes, held_by}: the same one is not told twice.
+    stuck: dict | None = None
     # A rejection logged and not yet told to the main agent.
     reject_untold: bool = False
     approve_untold: bool = False
@@ -234,6 +238,11 @@ def _apply(st: RunState, r: dict) -> None:
             o["told"] = True
             if o.get("kind") in NOTICES:
                 del st.open[to]
+    elif ev == "stuck":
+        st.stuck = {"nodes": r.get("nodes"), "held_by": r.get("held_by")}
+        text = r.get("text") or ""
+        st.open[str(r.get("to"))] = {"kind": "stuck", "text": text, "told": False}
+        _tell(st, t, "note", f"Stuck: {text}")
     elif ev == "edit_proposed":
         if st.proposal is not None:
             _edit_status(st, st.proposal["v"], "replaced")

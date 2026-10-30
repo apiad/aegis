@@ -75,7 +75,7 @@ from .workflow_lang import (
     walk,
     with_defaults,
 )
-from .workflow_log import LIVE, NodeState, RunLog, RunState, apply, fold
+from .workflow_log import LIVE, NOTICES, NodeState, RunLog, RunState, apply, fold
 from .workflow_store import Saved, check_named
 
 if TYPE_CHECKING:
@@ -85,6 +85,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 PUBLISH_S = 0.25  # a run's wire goes out at most this often
 PASS_S = 30.0  # a pass at least this often, as the schedules' clock does
+STUCK_S = 3.0  # how long a run stands stuck before the main agent is told: a retry or a closing session moves it sooner
 CUT = "cut by restart: it may have run in part; rerun or skip?"
 NUL = "the command holds a NUL byte, which bash cannot take"
 SH_LIMIT_S = 1800.0  # an sh with no deadline over it
@@ -192,8 +193,10 @@ async def _signal_group(pgid: int, sig: signal.Signals, user: str | None) -> Non
 
 def _news(o: dict) -> bool:
     """Whether an open item only tells the main agent something: a person's
-    gate opened or passed. Nothing waits on its answer."""
-    return o["kind"] == "passed" or (o["kind"] == "gate" and o.get("by") == "person")
+    gate opened or passed, or a run stuck on room. Nothing waits on its answer."""
+    return o["kind"] in ("passed", "stuck") or (
+        o["kind"] == "gate" and o.get("by") == "person"
+    )
 
 
 def _fold(kids: list[str]) -> str:
@@ -327,6 +330,10 @@ class Workflows:
         # ones this pass finds: the card shows them queued.
         self._queued: dict[str, set[str]] = {}
         self._queuing: set[str] = set()
+        # This pass's instances with no room, and the alias each waits to
+        # spawn; a run's stuck reading and since when it has stood (#823).
+        self._roomless: dict[str, str] = {}
+        self._stuck_since: dict[str, tuple[dict, float]] = {}
         # The commands and polling probes running now, by (run, instance):
         # no pass ever awaits one. A running sh with no task here was cut
         # by a restart.
@@ -633,6 +640,8 @@ class Workflows:
             return o.get("error") or n.error
         if o["kind"] == "passed":
             return "continued by the person"
+        if o["kind"] == "stuck":
+            return o.get("text") or ""
         return o.get("outcome") or ""
 
     def _rows(self, st: RunState, wf: Workflow) -> list[dict]:
@@ -1600,8 +1609,10 @@ class Workflows:
         if wf is None:
             return
         self._queuing = set()
+        self._roomless = {}
         state = await self._advance(st, wf, wf.root, "")
         await self._close_spent(st, wf)
+        self._report_stuck(st, wf)
         if self._queuing != self._queued.get(run, set()):
             self._queued[run] = self._queuing
             self._publish(run)
@@ -2670,13 +2681,18 @@ class Workflows:
 
     def _room(self, st: RunState, wf: Workflow, alias: str) -> bool:
         """Whether one more session of agent ``alias`` fits in every counter
-        that applies: the server's max_agents total and its number for the
-        alias, counting every open session that is a live run's node or was
-        spawned under one (a session whose node is done but not yet closed
-        still holds memory), then the run's limits total and its number for
-        the alias, counting the same sessions of this run. An alias without
-        a number of its own is bound only by the totals. The quota gate is
-        asked after this."""
+        that applies. The quota gate is asked after this."""
+        return self._holders(st, wf, alias) is None
+
+    def _holders(self, st: RunState, wf: Workflow, alias: str) -> list[Session] | None:
+        """The sessions filling the first counter with no room for one more
+        session of agent ``alias``, or None when it fits: the server's
+        max_agents total and its number for the alias, counting every open
+        session that is a live run's node or was spawned under one (a session
+        whose node is done but not yet closed still holds memory), then the
+        run's limits total and its number for the alias, counting the same
+        sessions of this run. An alias without a number of its own is bound
+        only by the totals."""
         live = [
             (s, run)
             for s in self._reg.sessions.values()
@@ -2686,13 +2702,78 @@ class Workflows:
         pool = self._app.config.current().workflows["max_agents"]
         for bound, among in ((pool, [s for s, _ in live]), (wf.limits, mine)):
             if len(among) >= bound.get("total", math.inf):
-                return False
-            if (
-                alias in bound
-                and sum(s.spec.agent == alias for s in among) >= bound[alias]
-            ):
-                return False
-        return True
+                return among
+            same = [s for s in among if s.spec.agent == alias]
+            if alias in bound and len(same) >= bound[alias]:
+                return same
+        return None
+
+    def _stuck_on(self, st: RunState, wf: Workflow) -> list[Session] | None:
+        """The sessions a stuck run waits on, or None when it may still move
+        by itself. It is stuck when every step that wants to start has no
+        room and nothing else can change that: no command, no running step,
+        nothing open for the main agent or the person to answer, and no
+        session of the run or holding the slots at work. A step waiting on
+        the quota gate or a turn's end is not stuck."""
+        if not self._roomless or self._queuing - self._roomless.keys():
+            return None
+        if st.proposal is not None or any(
+            o["kind"] not in NOTICES for o in st.open.values()
+        ):
+            return None
+        if any(k[0] == st.run for k in self._tasks) or any(
+            n.status == "running" and inst not in self._roomless
+            for inst, n in st.nodes.items()
+        ):
+            return None
+        held: dict[str, Session] = {}
+        for alias in self._roomless.values():
+            holders = self._holders(st, wf, alias)
+            if holders is None:
+                return None  # _close_spent made room: the next pass starts it
+            held |= {s.log_id: s for s in holders}
+        mine = [s for s in self._reg.sessions.values() if self._run_of(s) == st.run]
+        if not all(self._reg.finished(s) for s in (*held.values(), *mine)):
+            return None
+        return list(held.values())
+
+    def _report_stuck(self, st: RunState, wf: Workflow) -> None:
+        """Tell the main agent of a run stuck on room, naming the sessions
+        that hold the slots: a session a later step will use can't be freed,
+        so _close_spent doesn't reach it (#823). It is logged as a notice
+        once it has stood for STUCK_S, and the same reading is not told
+        twice, also across a restart."""
+        holders = self._stuck_on(st, wf)
+        if holders is None:
+            self._stuck_since.pop(st.run, None)
+            return
+        reading = {
+            "nodes": sorted(self._roomless),
+            "held_by": sorted(s.handle for s in holders),
+        }
+        if reading == st.stuck:
+            return
+        was, since = self._stuck_since.get(st.run, (None, 0.0))
+        if was != reading:
+            was, since = reading, time.time()
+            self._stuck_since[st.run] = (was, since)
+        if (due := since + STUCK_S) > time.time():
+            self._due_at(due)
+            return
+        del self._stuck_since[st.run]
+        says = []
+        for inst in reading["nodes"]:
+            node = self._template(wf, inst)
+            says.append(f'"{self._say(st, wf, node, inst[: -len(node.id)])}"')
+        text = (
+            f"{', '.join(says)} waits for room, and the slots are held by "
+            f"{', '.join(reading['held_by'])}."
+        )
+        self._log(
+            st.run,
+            {"ev": "stuck", "to": f"stuck:{reading['nodes'][0]}", "text": text}
+            | reading,
+        )
 
     def admit(self, parent: Session, alias: str) -> None:
         """Refuse a session that a node, or a session under one, spawns past
@@ -2739,6 +2820,7 @@ class Workflows:
         if s is not None:
             return s
         if not self._room(st, wf, alias):
+            self._roomless[tag["node"]] = alias
             return None  # a session closing wakes a pass (Registry.archive -> changed)
         agents, default = self._app._agents()
         spec = resolve(
@@ -2895,6 +2977,7 @@ class Workflows:
         # Nothing of an ended run waits for room, and the room it held is
         # free now: a queued node of another run starts on this wake.
         self._queued.pop(st.run, None)
+        self._stuck_since.pop(st.run, None)
         self._answered = {k for k in self._answered if k[0] != st.run}
         self._publish(st.run)
         self._owner_card(st)
@@ -2962,6 +3045,15 @@ class Workflows:
             return (
                 f"The person kept the plan: your change {to} was not applied, and "
                 "the run goes on as it was. Nothing to answer."
+            )
+        if o["kind"] == "stuck":
+            return (
+                f"The run is stuck: {o.get('text') or ''}\n"
+                "No agent is working, so no slot frees by itself: a session kept "
+                "for a later step stays open until that step has run. Change the "
+                "plan with workflow_edit (raise its limits, or run the later step "
+                "first) or end the run with workflow_stop. If another run holds a "
+                "slot, its end frees it. Nothing to answer."
             )
         if o["kind"] == "passed":
             value = o.get("value")
