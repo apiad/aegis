@@ -151,6 +151,11 @@ class Host:
 
     def turn_ended(self, session: "Session") -> None: ...
 
+    def flush_ended(self, session: "Session") -> None:
+        """A held flush ended with the session idle: the turn it started
+        ended before its send returned, so what reads finished() looks again,
+        without a second turn end."""
+
     def recorded(self, session: "Session", record: dict, events: list | None) -> None:
         """A record was stored and folded: the journal derives from it."""
 
@@ -986,8 +991,8 @@ class Session:
 
     async def _flush_held(self) -> None:
         self._flushing = True
+        batch, self.held = self.held, []
         try:
-            batch, self.held = self.held, []
             if batch:
                 # Before the send gathers notices: the "held" warning ends here.
                 self._host.status_changed(self)
@@ -997,6 +1002,10 @@ class Session:
                 )
         finally:
             self._flushing = False
+            if batch and not self.busy:
+                # The turn the send started ended before it returned, and its
+                # end found the session busy flushing (#536).
+                self._host.flush_ended(self)
 
     @property
     def inbox(self) -> Path:

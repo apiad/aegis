@@ -255,6 +255,18 @@ class Registry(Host):
             loop = asyncio.get_running_loop()
             loop.call_later(silent_s, lambda: loop.create_task(nudges.check(session)))
 
+    def flush_ended(self, session: Session) -> None:
+        """What turn_ended does that reads finished(), which was False then:
+        the flush was still in flight (#536)."""
+        if self.queues is not None:
+            self.queues.turn_ended(session)
+        self._close_when_finished(session)
+        self._maybe_unquiet(session)
+        if self.schedules is not None:
+            self.schedules.changed()
+        if self.workflows is not None:
+            self.workflows.changed()
+
     def _retire_predecessor(self, new: Session) -> None:
         """After a handoff, archive the old session once the new one has
         answered (#354). Stateless, so a restart in between changes nothing:

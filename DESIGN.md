@@ -587,7 +587,9 @@ queue worker is finished only when its turn has ended with no live monitor, no
 held message and no Claude task still open (`task_started` without its
 `task_notification`), and no session it spawned still working. Reading the
 turn boundary alone as done closed a worker mid-wait in the legacy tree. The
-test is `Registry.finished`, and a schedule's run ends on it too.
+test is `Registry.finished`, and a schedule's run ends on it too. A flush of
+held messages counts as busy until its send returns, and the turn it started
+can end first, so the flush's end asks again (`Host.flush_ended`, #536).
 
 **A schedule's tick passes four layers, and its state is folded from a log.**
 `schedules.py` runs one clock task in the server. It wakes at the next tick or
