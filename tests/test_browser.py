@@ -983,7 +983,11 @@ def test_a_session_from_spawn_to_close(server, page):
     page.wait_for_selector(".row.tool.running")
     page.keyboard.press("Escape")
     turns_done(page, 3)
-    assert page.locator(".row.tool.err .tr2").last.inner_text() == "interrupted"
+    # The row can turn err before its result text lands: wait for the label (#693).
+    page.wait_for_function(
+        "() => [...document.querySelectorAll('.row.tool.err .tr2')].at(-1)"
+        "?.textContent === 'interrupted'"
+    )
 
     ids = page.evaluate(
         "[...document.querySelectorAll('#entries .row')].map(r => r.dataset.id)"
