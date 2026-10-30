@@ -56,12 +56,59 @@ The page talks to aegis through `window.aegis`:
   card collapses to `label`;
 - `aegis.onState(fn)` hears your `artifact_update`;
 - `aegis.onStatus(fn)` hears the page's status, and the server's refusal of a
-  submit when there is one.
+  submit when there is one;
+- `aegis.dictate(field, fn)` dictates into a textarea or text input, and a second
+  call for the same field stops it (see below);
+- `aegis.upload(file, onProgress)` sends a file to the session's inbox and wakes
+  you with its path (see below).
 
 Limits the checks cannot catch: an event name is one word matching
-`[a-z][a-z0-9_-]{0,31}` and is never submit, error or close; state, event data
+`[a-z][a-z0-9_-]{0,31}` and is never submit, error, close or upload; state, event data
 and a submit's data are at most 64 KB each; at most 20 emits a minute; a
 submit's label is one line of at most 140 characters.
+
+## Take dictation or a file
+
+A page can take long spoken answers, one field per question, and files of up
+to 100 MB:
+
+```html
+<label>What went wrong? <textarea id="q1"></textarea></label>
+<button id="mic">Dictate</button>
+<input id="audio" type="file" accept="audio/*">
+<button id="send">Send</button>
+<script>
+  aegis.ready((state) => {
+    q1.value = state.q1 ?? "";
+    q1.addEventListener("input", () => aegis.state({ q1: q1.value }));
+    mic.onclick = () => aegis.dictate(q1, (s) => (mic.textContent = s === "idle" ? "Dictate" : "Stop"));
+    audio.onchange = async () => {
+      const f = await aegis.upload(audio.files[0], (sent, size) => (mic.title = `${sent} of ${size}`));
+      audio.after(`Sent ${f.name}`);
+    };
+    send.onclick = () => aegis.submit({ q1: q1.value }, "Answered");
+  });
+</script>
+```
+
+`aegis.dictate` must run inside a click in the page: a call with no click is
+refused and the person sees why. The function hears `loading`, `listening`,
+`finishing` and `idle`, also on the field's `data-dictation`. The microphone and
+the engine run in aegis's page and only the text reaches yours, as `input` events
+on the field, so save it with `aegis.state` as above: words still in flight when
+the page leaves the screen are lost, because the microphone stops with it. aegis
+draws its own bar over the page while it listens, with a Stop button. A submit while
+dictation runs stops it and is refused, with the reason on the card, because
+its data was read before the last words landed: the person sends again.
+The answer you get is the next submit or event, with a note that part of it was
+dictated and may hold misheard words. `artifact_read` has no such note, so
+treat text from a dictating page as a draft there too.
+
+`aegis.upload` takes a File or a Blob and resolves to `{name, path, mime, size}`,
+or rejects with an error whose `code` says why. Each file is a turn of yours
+headed `> from artifact:<id> · upload`, listing its path, and an `upload` entry
+in `artifact_read`'s events; it counts against the 20 events a minute. The page
+stays live, and the file is not subject to the 64 KB limits.
 
 ## Hear the answer
 

@@ -157,6 +157,10 @@ artifacts.setup({
   entry: (id) => transcript.entries.get(id),
   key: () => shown,
   point: (frame, params) => pagePoint(frame, params),
+  dictation: () => dictation,
+  toast: (message) => toast(message, { kind: "error" }),
+  waitOnline: () => waitOnline(),
+  local: (key) => !forKey(key).server,
 });
 const pointing = { items: (ctx) => pointItems(ctx), send: (key, text) => toComposer(key, text) };
 const viewer = new Viewer($("viewer"), { entry: (id) => transcript.entries.get(id), point: pointing });
@@ -3644,9 +3648,11 @@ const dictation = new Dictation({
   prepare: () => conn.call("dictation.prepare"),
   onState(state) {
     for (const [b, el] of mics()) b.dataset.state = dictation.target?.el === el ? state : "idle";
+    artifacts.dictationState(state);
   },
   onLevel(x) {
     for (const [b] of mics()) b.style.setProperty("--level", Math.min(1, x * 8).toFixed(2));
+    artifacts.dictationCheck();
   },
   onError(message) {
     toast(message, { kind: "error" });
