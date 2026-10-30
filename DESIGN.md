@@ -644,8 +644,8 @@ a person's gate opening or passed wakes it as news with nothing to answer: a
 record that tells news older logs never told carries `tell`, so a restart on
 an old log stays quiet. So does a run stuck on room: every step that wants to
 start has no room and nothing else can change that (no command or running
-step, nothing open to answer, and no session of the run or holding the slots
-at work), which a session kept for a later step can cause and _close_spent
+leaf in it or in a run holding the slots, nothing open to answer, and no
+session of the run or holding the slots at work), which a session kept for a later step can cause and _close_spent
 cannot free. It stands a few seconds first, because a retry or a closing session
 moves a run on the next pass, and its `stuck` record names the full counter
 and its holders.

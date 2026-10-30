@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -9,6 +10,7 @@ from .conftest import until
 from .test_agents import CONFIG, World, mcp, turn
 from .test_workflows_e2e import ok
 from .test_workflows_parallel import report
+from .test_workflows_steps import verdict
 
 
 @pytest.fixture
@@ -316,7 +318,7 @@ async def test_a_step_waiting_on_room_nobody_can_free_is_reported(
     assert rows[prefix + "review"] == "queued"
     # Told once, however many passes find it the same.
     for _ in range(3):
-        wf.changed()
+        await asyncio.sleep(0.3)  # past STUCK_S: a new reading would be told
         await wf.step()
     assert len(stuck_wakes(main)) == 1
 
@@ -329,8 +331,9 @@ async def test_a_step_waiting_on_room_nobody_can_free_is_reported(
         '{check: {sh: "false"}, id: hold, deadline: 1h, say: Hold.}',
         '{gate: {by: person, ask: "ok?", show: []}, id: hold, say: Hold.}',
         "{id: hold, say: Hold., agent: {session: main, prompt: Hold on.}}",
+        '{if: {when: {sh: "sleep 30"}, then: {wait: 1s, id: w, say: W.}}, id: hold, say: Hold.}',
     ],
-    ids=["wait", "sh", "check", "gate", "main"],
+    ids=["wait", "sh", "check", "gate", "main", "probe"],
 )
 async def test_a_leaf_at_work_beside_the_waiting_step_holds_the_report(
     world, monkeypatch, beside
@@ -358,7 +361,7 @@ root:
     st = wf.runs[run]
     await until(lambda: "review" in wf._queued.get(run, ()), timeout=15)
     await asyncio.sleep(1)  # well past STUCK_S
-    assert st.nodes["hold"].status == "running"
+    assert {r["id"]: r["state"] for r in wf.wire(run)["tree"]}["hold"] == "running"
     assert not stuck_wakes(wf.owner(st))
 
 
@@ -427,6 +430,217 @@ async def test_raising_a_full_pool_lets_a_stuck_run_finish(
 
     await until(finished, timeout=20)
     assert st.status == "done", {k: (n.status, n.error) for k, n in st.nodes.items()}
+
+
+async def test_a_brief_wait_is_not_reported_before_it_has_stood(world, monkeypatch):
+    monkeypatch.setattr("aegis.workflows.STUCK_S", 60)
+    wf = world.app.workflows
+    run = await run_it(world, later_step(json.dumps(report(1, 0.1))))
+    main = wf.owner(wf.runs[run])
+    await until(lambda: run in wf._stuck_since, timeout=15)
+    await asyncio.sleep(0.5)
+    await wf.step()
+    assert not stuck_wakes(main) and wf.runs[run].stuck is None
+    monkeypatch.setattr("aegis.workflows.STUCK_S", 0.1)
+    wf.changed()
+    await until(lambda: stuck_wakes(main), timeout=10)
+
+
+async def test_a_step_with_room_after_all_is_not_stuck(world, monkeypatch):
+    # _close_spent can free a slot after the step found none, in the one pass.
+    wf = world.app.workflows
+    run = await run_it(world, later_step(json.dumps(report(1, 0.1))))
+    st = wf.runs[run]
+    await until(lambda: st.status == "running", timeout=10)
+    monkeypatch.setattr(wf, "_roomless", {"review": "opus"})
+    monkeypatch.setattr(wf, "_queuing", {"review"})
+    monkeypatch.setattr(wf, "_full", lambda *_: None)
+    monkeypatch.setattr(wf, "_at_work", lambda *_: False)
+    assert wf._stuck_on(st, wf.defs[run]) is None
+
+
+async def test_a_failed_step_open_beside_the_waiting_one_holds_the_report(
+    world, monkeypatch
+):
+    monkeypatch.setattr("aegis.workflows.STUCK_S", 0.2)
+    r = json.dumps(report(1, 0.1))
+    text = f"""id: failing
+title: Failing
+say: A step fails beside the steps that wait.
+limits: {{total: 1}}
+root:
+  par:
+    - {{sh: "false", id: bad, say: Fail.}}
+    - seq:
+        - {{id: impl, say: Write it., agent: {{agent: opus, prompt: {r}}}}}
+        - {{id: review, say: Review it., agent: {{agent: opus, prompt: {r}}}}}
+        - {{id: fix, say: Fix it., agent: {{session: impl, prompt: {r}}}}}
+      id: item
+      say: One item.
+  id: both
+  say: Both.
+"""
+    wf = world.app.workflows
+    run = await run_it(world, text)
+    st = wf.runs[run]
+    main = wf.owner(st)
+    await until(lambda: "review" in wf._queued.get(run, ()) and "bad" in st.open)
+    await asyncio.sleep(1)
+    assert not stuck_wakes(main)
+    # Skipped, nothing is left to answer: the wait is the only thing left.
+    await until(lambda: main.status == "idle", timeout=10)
+    ok(await turn(main, mcp("workflow_answer", run=run, to="bad", choice="skip")))
+    await until(lambda: stuck_wakes(main), timeout=10)
+
+
+async def test_an_edit_waiting_for_the_person_holds_the_report(world, monkeypatch):
+    monkeypatch.setattr("aegis.workflows.STUCK_S", 0.2)
+    text = later_step(json.dumps(report(1, 1.5)))
+    wf = world.app.workflows
+    run = await run_it(world, text)
+    st = wf.runs[run]
+    main = wf.owner(st)
+    await until(lambda: main.status == "idle", timeout=10)
+    changed = text.replace("say: Fix it.", "say: Fix it again.")
+    ok(await turn(main, mcp("workflow_edit", run=run, definition=changed)))
+    assert st.proposal is not None
+    await until(lambda: "review" in wf._queued.get(run, ()), timeout=15)
+    await asyncio.sleep(1)
+    assert not stuck_wakes(main)
+    await world.app.registry.call("workflow.edit.reject", {"run": run, "v": 2})
+    await until(lambda: stuck_wakes(main), timeout=10)
+
+
+async def test_a_step_waiting_on_the_quota_gate_holds_the_report(
+    tmp_path, fake_claude, monkeypatch
+):
+    monkeypatch.setattr("aegis.workflows.STUCK_S", 0.2)
+    (tmp_path / ".aegis.yaml").write_text(CONFIG + "workflows: {max_agents: 4}\n")
+    world = await World(tmp_path, fake_claude).start()
+    try:
+        r = json.dumps(report(1, 0.1))
+        text = f"""id: gated
+title: Gated
+say: One step has no room, one has room and no quota.
+limits: {{opus: 1}}
+root:
+  seq:
+    - {{id: impl, say: Write it., agent: {{agent: opus, prompt: {r}}}}}
+    - par:
+        - {{id: review, say: Review it., agent: {{agent: opus, prompt: {r}}}}}
+        - {{id: other, say: Look too., agent: {{agent: reviewer, prompt: {r}}}}}
+      id: both
+      say: Both.
+    - {{id: fix, say: Fix it., agent: {{session: impl, prompt: {r}}}}}
+  id: item
+  say: One item.
+"""
+        app, start = world.app, world.app.start_spec
+
+        def gated(spec):
+            got, gate = start(spec)
+            if spec.agent == "reviewer":
+                return got, SimpleNamespace(may_start=False)
+            return got, gate
+
+        monkeypatch.setattr(app, "start_spec", gated)
+        wf = app.workflows
+        run = await run_it(world, text)
+        main = wf.owner(wf.runs[run])
+        await until(
+            lambda: {"review", "other"} <= set(wf._queued.get(run, ())), timeout=15
+        )
+        await asyncio.sleep(1)
+        assert not stuck_wakes(main)
+        # The gate opens, that step finishes, and review alone still waits.
+        monkeypatch.setattr(app, "start_spec", start)
+        wf.changed()
+        await until(lambda: stuck_wakes(main), timeout=15)
+    finally:
+        await world.stop()
+
+
+async def test_a_holder_whose_run_moves_on_its_own_is_not_stuck(world, monkeypatch):
+    # The pool is full with a session idle between its steps: run A's command
+    # ends, its next step runs in that session, and run B then has room.
+    monkeypatch.setattr("aegis.workflows.STUCK_S", 0.2)
+    r = json.dumps(report(1, 0.1))
+    first = f"""id: first
+title: First
+say: Write, wait on a command, fix in the same session.
+root:
+  seq:
+    - {{id: a, say: Write it., agent: {{agent: opus, prompt: {r}}}}}
+    - {{sh: "sleep 2", id: pause, say: Wait.}}
+    - {{id: c, say: Fix it., agent: {{session: a, prompt: {r}}}}}
+  id: item
+  say: One item.
+"""
+    second = f"""id: second
+title: Second
+say: One fresh step.
+root: {{id: b, say: Do it., agent: {{agent: opus, prompt: {r}}}}}
+"""
+    wf = world.app.workflows
+    a = await run_it(world, first)
+    await until(
+        lambda: (
+            (n := wf.runs[a].nodes.get("pause")) is not None and n.status == "running"
+        ),
+        timeout=15,
+    )
+    b = await run_it(world, second)
+    await until(lambda: "b" in wf._queued.get(b, ()), timeout=10)
+    await until(lambda: settled(wf, b), timeout=20)
+    assert wf.runs[b].status == "done"
+    assert not stuck_wakes(wf.owner(wf.runs[b]))
+
+
+async def test_a_holder_at_work_in_another_run_holds_the_report(world, monkeypatch):
+    # A judge asking an if works with no leaf running: only its session says so.
+    monkeypatch.setattr("aegis.workflows.STUCK_S", 0.2)
+    r = json.dumps(report(1, 0.1))
+    j = json.dumps(verdict(True, 1.5))
+    first = f"""id: first
+title: First
+say: A judge decides.
+root:
+  if:
+    when: {{judge: {{agent: opus, prompt: {j}}}}}
+    then: {{wait: 1s, id: w, say: Wait.}}
+  id: pick
+  say: Pick.
+"""
+    second = f"""id: second
+title: Second
+say: One fresh step.
+root: {{id: b, say: Do it., agent: {{agent: opus, prompt: {r}}}}}
+"""
+    wf = world.app.workflows
+    a = await run_it(world, first)
+    await until(lambda: wf.runs[a].nodes.get("pick") is not None, timeout=15)
+    b = await run_it(world, second)
+    await until(lambda: settled(wf, b), timeout=20)
+    assert wf.runs[b].status == "done"
+    assert not stuck_wakes(wf.owner(wf.runs[b]))
+
+
+async def test_a_holder_in_a_run_that_is_stuck_too_is_reported(world, monkeypatch):
+    monkeypatch.setattr("aegis.workflows.STUCK_S", 0.2)
+    r = json.dumps(report(1, 0.1))
+    second = f"""id: second
+title: Second
+say: One fresh step.
+root: {{id: b, say: Do it., agent: {{agent: opus, prompt: {r}}}}}
+"""
+    wf = world.app.workflows
+    a = await run_it(world, later_step(r, limits="{}"))
+    await until(lambda: stuck_wakes(wf.owner(wf.runs[a])), timeout=15)
+    b = await run_it(world, second)
+    main = wf.owner(wf.runs[b])
+    await until(lambda: stuck_wakes(main), timeout=15)
+    holder = world.app.sessions.sessions[wf.runs[a].nodes["impl"].log_id]
+    assert holder.handle in stuck_wakes(main)[0]
 
 
 async def test_a_stuck_report_is_not_told_again_after_a_restart(world, monkeypatch):

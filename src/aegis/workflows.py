@@ -40,6 +40,7 @@ import os
 import secrets
 import signal
 import time
+from collections.abc import Collection
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -2719,23 +2720,18 @@ class Workflows:
     ) -> tuple[list[str], list[Session]] | None:
         """The full counters and the sessions a stuck run waits on, or None
         when it may still move by itself. It is stuck when every step that
-        wants to start has no room and nothing else can change that: no
-        command, no running leaf (a loop or an if reads running while it holds
-        the waiting step), nothing open for the main agent or the person to
-        answer, and no session of the run or holding the slots at work. A step
-        waiting on the quota gate or a turn's end is not stuck."""
+        wants to start has no room and nothing else can change that: nothing
+        at work in it or in a run holding the slots (_at_work), nothing open
+        for the main agent or the person to answer, and no session of the run
+        or holding the slots at work. A step waiting on the quota gate or a
+        turn's end is not stuck."""
         if not self._roomless or self._queuing - self._roomless.keys():
             return None
         if st.proposal is not None or any(
             o["kind"] not in NOTICES for o in st.open.values()
         ):
             return None
-        if any(k[0] == st.run for k in self._tasks) or any(
-            n.status == "running"
-            and inst not in self._roomless
-            and self._template(wf, inst).kind in LEAVES
-            for inst, n in st.nodes.items()
-        ):
+        if self._at_work(st, wf, self._roomless.keys()):
             return None
         full: set[str] = set()
         held: dict[str, Session] = {}
@@ -2748,14 +2744,31 @@ class Workflows:
         mine = [s for s in self._reg.sessions.values() if self._run_of(s) == st.run]
         if not all(self._reg.finished(s) for s in (*held.values(), *mine)):
             return None
+        # A run holding a slot while it moves will use or free it: its session
+        # idles only until the command before its next step ends.
+        for run in {self._run_of(s) or "" for s in held.values()} - {st.run}:
+            other, its = self.runs.get(run), self.defs.get(run)
+            if other and its and self._at_work(other, its, self._queued.get(run, ())):
+                return None
         return sorted(full), list(held.values())
+
+    def _at_work(self, st: RunState, wf: Workflow, waiting: Collection[str]) -> bool:
+        """Whether a command or a running leaf moves the run on its own, other
+        than a leaf ``waiting`` for room. A loop or an if reads running while
+        it holds the waiting step, so only leaves count."""
+        return any(k[0] == st.run for k in self._tasks) or any(
+            n.status == "running"
+            and inst not in waiting
+            and self._template(wf, inst).kind in LEAVES
+            for inst, n in st.nodes.items()
+        )
 
     def _report_stuck(self, st: RunState, wf: Workflow) -> None:
         """Tell the main agent of a run stuck on room, naming the full counter
-        and the sessions that hold its slots: a session a later step will use can't be freed,
-        so _close_spent doesn't reach it (#823). It is logged as a notice
-        once it has stood for STUCK_S, and the same reading is not told
-        twice, also across a restart."""
+        and the sessions that hold its slots: a session a later step will use
+        can't be freed, so _close_spent doesn't reach it (#823). It is logged
+        as a notice once it has stood for STUCK_S, and the same reading is not
+        told twice, also across a restart."""
         got = self._stuck_on(st, wf)
         if got is None:
             self._stuck_since.pop(st.run, None)
@@ -3258,6 +3271,7 @@ class Workflows:
                     "gate": "continue or abort",
                     "ask": "none: answer it with text",
                     "passed": "none: it only tells you the person continued",
+                    "stuck": "none: it only tells you the run waits for room",
                 }.get(o["kind"], "")
                 raise OpError(
                     "bad_choice", f"{to} is a {o['kind']} item: it takes choice {takes}"

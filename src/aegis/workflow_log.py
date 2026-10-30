@@ -18,11 +18,11 @@ have started on them), in that one record, so no crash lands between the two.
 
 What a run waits on is folded into ``open``, keyed by the id the main agent
 answers to: a failure that will not retry, a gate, a question, an edit's
-outcome, a person's gate opening or passed. ``woke`` (and ``approved_told``, for an approval) records that the main agent was told, so a restart tells
+outcome, a person's gate opening or passed, a run stuck on room. ``woke`` (and ``approved_told``, for an approval) records that the main agent was told, so a restart tells
 again only what was never delivered; the answers (``retried``, ``skipped``,
 ``extended``, ``gate_answered``, ``answered``, ``edit_applied``,
 ``edit_rejected``) close the items, and a notice (an edit's outcome, a
-person's gate passed) closes once told. A record that wakes for news the
+person's gate passed, a stuck report) closes once told. A record that wakes for news the
 main agent was never woken for before carries ``tell``, so an older log
 folds as it did and a restart tells nothing it had kept quiet.
 ``gate_delegated`` hands a person's gate to the main agent: the open one,

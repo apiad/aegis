@@ -285,22 +285,24 @@ run waits on you for: a failed step, a gate with `by: main`, a worker's
 question, and the person's answer to a change you proposed. You are also
 told, with nothing to answer, when a gate with `by: person` opens (headed
 `gate`) and when the person continues at it (headed `passed`), so you can
-tell the person their card waits and need no monitor to see it. A run stuck
-on room wakes you too, headed `stuck`, with nothing to answer: a step has no
-room, no agent is working, and the message names the full counter and the
-sessions holding its slots, such as one kept for a step that runs after the
-waiting one. With `limits` full, raise them with `workflow_edit`. With the
-server's `workflows: {max_agents}` full, `limits` can't help: ask the person
-to raise it.
-Either way you can have the waiting step continue in a held session
-(`session:`) with `workflow_edit`, or end the run with `workflow_stop`. A group
-that has begun keeps the order of its steps, so an edit can't run the later
-step first. Each one is told once, also across a restart. You get one more message when the run ends,
+tell the person their card waits and need no monitor to see it. Each one is
+told once, also across a restart. You get one more message when the run ends,
 headed `done`, `failed` or `stopped`, or `rejected` when the person rejects
 the plan before it starts. `workflow_status` shows the tree, the
 story and what the run waits on at any time; `workflow_stop` stops the run
 and unlocks its sessions, or, with a node, stops only that step, which then
 waits for your answer.
+
+A run stuck on room wakes you too, once, headed `stuck`, with nothing to
+answer: a step has no room, no agent is working, and nothing moves in this run
+or in a run holding the slots. The message names the full counter and the
+sessions holding its slots, such as one kept for a step that runs after the
+waiting one. With `limits` full, raise them with `workflow_edit`. With the
+server's `workflows: {max_agents}` full, `limits` can't help: ask the person
+to raise it. Either way you can have the waiting step continue in a held
+session (`session:`) with `workflow_edit`, or end the run with `workflow_stop`.
+A group that has begun keeps the order of its steps, so an edit can't run the
+later step first.
 
 ## What the person sees
 
