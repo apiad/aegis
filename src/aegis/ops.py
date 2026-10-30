@@ -72,7 +72,7 @@ USER = Caller("user")
 # What a schedule's run with spawn: false may not call: each starts other work
 # (schedules.py). schedule.create is here so a run cannot start agents through
 # a schedule of its own.
-NO_SPAWN = ("session.spawn", "queue.enqueue", "schedule.create")
+NO_SPAWN = ("session.spawn", "session.handoff", "queue.enqueue", "schedule.create")
 
 Handler = Callable[[Any, Caller], Awaitable[Any]]
 

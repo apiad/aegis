@@ -739,15 +739,14 @@ class _session:
     async def handoff(
         self,
         *,
-        log_id: str,
-        text: str | None = ...,
         agent: str | None = ...,
+        msg: str | None = ...,
         model: str | None = ...,
         effort: str | None = ...,
         permission: str | None = ...,
         cwd: str | None = ...,
     ) -> Any:
-        """Continue a session's work in a fresh one: the same agent, folder, model and effort unless the params say otherwise, opened with its handoff brief, its last turns and the instruction. The old session refuses messages from here on, and is archived when the new one finishes its first turn."""
+        """Continue your work in a new session and end this one: from this call nobody can write to it. The new session starts when your turn ends, with `msg`, your turn_end brief and your last turns, so end your turn right after this call. Pass `agent` to continue on another agent, with at most your permission. Refused while a monitor, a background task, a queue task or a held message waits for you. A workflow you own follows the new session."""
     async def interrupt(self, *, log_id: str) -> Any:
         """session.interrupt"""
     async def kills(self, *, log_id: str) -> Any:

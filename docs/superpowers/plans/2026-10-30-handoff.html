@@ -150,7 +150,7 @@ svg text{font-family:var(--font-mono)}
 </ol>
 
 <h2 id="pr1"><span class="n">03</span>PR 1: lock and /handoff</h2>
-<details class="task" id="task-1" data-state="pending"><summary>1 · The lock<span class="f">session.py, registry.py, app.py · tests/test_handoff_lock.py</span></summary>
+<details class="task" id="task-1" data-state="done"><summary>1 · The lock<span class="f">session.py, registry.py, app.py · tests/test_handoff_lock.py</span></summary>
 <ol>
 <li>Write failing tests in <code>tests/test_handoff_lock.py</code>, with the <code>world</code> fixture and the <code>handed</code> helper shape from <code>tests/test_context_e2e.py</code>.</li>
 <script type="text/plain" data-lang="python">
@@ -172,7 +172,7 @@ async def test_a_restart_keeps_the_lock_and_the_archive_happens(world): ...
 <li>Pass the tests, and commit <code>feat(handoff): a handed-off session refuses messages</code>.</li>
 </ol></details>
 
-<details class="task" id="task-2" data-state="pending"><summary>2 · /handoff, the instruction, the waker check<span class="f">commands.py, app.py, agent_ops.py · tests/test_handoff_lock.py, tests/test_commands.py</span></summary>
+<details class="task" id="task-2" data-state="done"><summary>2 · /handoff, the instruction, the waker check<span class="f">commands.py, app.py, agent_ops.py · tests/test_handoff_lock.py, tests/test_commands.py</span></summary>
 <ol>
 <li>Write failing tests.</li>
 <script type="text/plain" data-lang="python">
@@ -191,7 +191,7 @@ async def test_the_chip_is_refused_by_a_waker_too(world): ...
 <li>Pass the tests, and commit <code>feat(handoff): /handoff with an instruction</code>.</li>
 </ol></details>
 
-<details class="task" id="task-3" data-state="pending"><summary>3 · The browser, the docs, the PR<span class="f">client/js/app.js, client/js/commands.js, help/handoffs.md, help/commands.md, DESIGN.md, changelog.d · tests/test_handoff_browser.py</span></summary>
+<details class="task" id="task-3" data-state="done"><summary>3 · The browser, the docs, the PR<span class="f">client/js/app.js, client/js/commands.js, help/handoffs.md, help/commands.md, DESIGN.md, changelog.d · tests/test_handoff_browser.py</span></summary>
 <ol>
 <li>Write failing browser tests: <code>test_handoff_line_opens_the_new_tab_and_hides_the_old_box</code> and <code>test_an_offline_message_is_refused_and_kept</code>.</li>
 <li>In <code>app.js</code>, the box and its send button hide while <code>s.continued_by</code> is set. The <code>handoff-done</code> row at <code>drawReplies</code> stays, with the new session's handle as a link. Disable <code>continue</code>, <code>restart</code> and <code>stop-session</code> in the same place as <code>held</code>.</li>
@@ -201,7 +201,7 @@ async def test_the_chip_is_refused_by_a_waker_too(world): ...
 </ol></details>
 
 <h2 id="pr2"><span class="n">04</span>PR 2: agent tool</h2>
-<details class="task" id="task-4" data-state="pending"><summary>4 · session_handoff with the pending state<span class="f">app.py, session.py, registry.py, agent_ops.py, help/handoffs.md · tests/test_handoff_tool.py</span></summary>
+<details class="task" id="task-4" data-state="done"><summary>4 · session_handoff with the pending state<span class="f">app.py, session.py, registry.py, agent_ops.py, help/handoffs.md · tests/test_handoff_tool.py</span></summary>
 <ol>
 <li>Write failing tests.</li>
 <script type="text/plain" data-lang="python">
@@ -235,6 +235,7 @@ async def test_permission_is_capped_at_the_callers(world): ...
 <li>The spec gives a person's refusal as "in <code>deliver</code>". The plan adds a separate <code>check_handed_off</code> beside <code>check_lock</code>, because <code>check_lock</code> also guards Interrupt and <code>session.close</code> (<code>agent_ops.py:1264</code>), which stay allowed.</li>
 <li><code>Registry.reopen</code> clears <code>continued_by</code> today on purpose (<code>registry.py:988</code>). The approved spec reverses that.</li>
 <li>The spec first refused a handoff while a workflow ran. Two tests in <code>tests/test_workflow_faults.py</code> show a run follows its owner's successor by design, so a workflow does not refuse.</li>
+<li>Task 4 also handles a call outside a turn, from an agent's shell after its turn ended: it starts at once, since no turn end would come. A dead process during the turn clears the lock for the same reason.</li>
 <li>The offline message in review focus 1 has no browser test. <code>outbox.js</code>'s <code>deliver</code> already keeps a draft refused with any other code in state <code>error</code>, with the message, so nothing new is needed for it.</li>
 </ul>
 </main></div>

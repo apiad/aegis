@@ -153,7 +153,11 @@ held in memory. While a live successor is named, the old session refuses every
 message (`Session.check_handed_off`, apart from `check_lock` because Interrupt
 and Archive stay open), and an archived one that names a successor cannot be
 reopened. A failed first turn, a dead process or a closed successor clears the
-name, and a `handoff_off` record says so in the old transcript (#874).
+name, and a `handoff_off` record says so in the old transcript (#874). An agent's
+`session_handoff` during its turn sets `continued_by` to `pending` with the
+request in `handoff_pending`, both in the meta: the lock starts at the call, and
+`Registry.turn_ended` starts the new session, so its tail holds the turn's last
+message. Boot starts a pending handoff whose turn already ended.
 
 **A restart gives back what it cut.** aegis writes `<state>/server.json` at both ends
 of a clean shutdown, so boot tells a restart from a crash. A turn the server's own
@@ -275,9 +279,9 @@ model that worked its answer out in its thinking believes it was shown, so it
 needs the fact; the opening, not a verdict, because a status line before a
 tool call is prose too and only the agent can tell it from its answer (#679).
 A queue worker hears `noted`, since its final message is its task's result. The brief rides in the report, and
-`session.handoff`, which only a person can call, through the chip, the menu or
-`/handoff` with an instruction, starts the fresh session from it, and refuses
-while `Registry.wakers` lists anything. The fold also
+`session.handoff`, through the chip, the menu, `/handoff` with an instruction or
+an agent's `session_handoff`, starts the fresh session from it, and refuses
+while `Registry.wakers` lists anything but a run, which follows its owner. The fold also
 times the plan from the records' `ts`: work is time inside a turn and after a
 turn that did not hand back to the person, idle is the rest, and each item gets
 the work done while it was `doing`. It accrues only at a plan record and at turn
