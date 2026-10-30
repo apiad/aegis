@@ -1,0 +1,13 @@
+$ # 40 separate runs of the unfixed test, four at a time (957c7124)
+failed: 2 of 40
+E       AssertionError: You said: **> from queue:general · task#task-b85208a9 · ok · 2026-10-30T11:32:51Z
+E         You said: **summarize****
+
+$ # 60 separate runs of the fixed test, four at a time
+failed: 0 of 60
+
+$ # 20 separate runs of the new test
+failed: 0 of 20
+
+$ # scratch probe: deliver a wake, send a prompt 0 to 50 ms later, 60 sessions
+final rows, 60 of 60: inbox(wake) prose(wake) user(prompt) prose(prompt)
