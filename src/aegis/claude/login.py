@@ -179,6 +179,7 @@ async def probe(
                     "",
                 ],
                 user=None,
+                via=launch.resolve_via(),
                 cwd=scratch,
                 env=env,
                 stdin=asyncio.subprocess.PIPE,

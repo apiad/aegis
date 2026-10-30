@@ -170,9 +170,11 @@ class ClaudeProcess:
         env: dict[str, str] | None = None,
         cgroup: Path | None = None,
         user: str | None = None,
+        via: str | None = None,
     ) -> None:
         self.argv = argv
         self.user = user
+        self.via = via
         self.cwd = cwd
         self.cgroup = cgroup
         self.stderr_path = stderr_path
@@ -206,6 +208,7 @@ class ClaudeProcess:
             cgroup=self.cgroup,
             oom=True,
             user=self.user,
+            via=self.via,
         )
         err = asyncio.create_task(self._pump_stderr())
         self._tasks = [err, asyncio.create_task(self._pump_stdout(err))]

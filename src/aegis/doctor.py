@@ -44,6 +44,7 @@ from .config import (
     load,
 )
 from .harness import harness_for
+from .links import LinkStore
 from .harness_versions import OUTSIDE, VERSION_TIMEOUT_S, judge
 from .knowledge import embed
 from .ranking import annotate, ranking
@@ -84,7 +85,9 @@ class Found:
 
 
 async def _version(bin: str) -> str:
-    proc = await launch.child([bin, "--version"], stdout=PIPE, stderr=STDOUT, user=None)
+    proc = await launch.child(
+        [bin, "--version"], stdout=PIPE, stderr=STDOUT, user=None, via=None
+    )
     try:
         out, _ = await asyncio.wait_for(proc.communicate(), VERSION_TIMEOUT_S)
     except TimeoutError:
@@ -419,6 +422,35 @@ def _network(snap: Snapshot) -> Finding:
     )
 
 
+def _exit(snap: Snapshot, roots, multi_user: bool) -> list[Finding]:
+    """An exit that cannot carry anything is an error: what names it fails on
+    purpose, with a 502, rather than leaving from this machine's address."""
+    names = {snap.exit_via} | {a.exit for a in snap.agents if a.exit != "off"}
+    names.discard(None)
+    names.discard("")
+    if not names:
+        return []
+    if multi_user:
+        return [Finding("error", "exit_via", "an exit is off on a multi-user server")]
+    links = {
+        e.get("name"): e for e in LinkStore(roots.state_root / "links.json").load()
+    }
+    out = []
+    for name in sorted(names):
+        link = links.get(name)
+        if link is None:
+            out.append(Finding("error", "exit_via", f"{name} is not a link here"))
+        elif not link.get("trusted"):
+            out.append(
+                Finding("error", "exit_via", f"the link to {name} is not trusted")
+            )
+        else:
+            out.append(
+                Finding("ok", "exit_via", f"what aegis starts exits through {name}")
+            )
+    return out
+
+
 def _workflows(w: dict, agents: tuple[str, ...] = ()) -> Finding:
     if "error" in w:
         return Finding("error", "workflows", w["error"])
@@ -725,6 +757,7 @@ async def doctor(
     if "error" in snap.harness_versions:
         out.append(Finding("error", "harness_versions", snap.harness_versions["error"]))
     out.append(_network(snap))
+    out += _exit(snap, roots, multi_user=snap.multi_user is not None)
     if snap.host_error:
         out.append(Finding("error", "host", snap.host_error))
     out.append(_workflows(snap.workflows, tuple(a.name for a in snap.agents)))

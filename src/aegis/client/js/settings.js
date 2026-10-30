@@ -501,6 +501,21 @@ export class Settings {
     this.pushNode.replaceChildren(...(rows.length ? [h("div", { className: "set-browser-k", textContent: "Push to" }), ...rows] : []));
   }
 
+  // What aegis starts from now on reaches the internet from this link (exit.py).
+  async exitVia(name) {
+    if (this.dirty) {
+      this.status = "Save or discard your edits first";
+      this.draw();
+      return;
+    }
+    try {
+      await this.call("link.exit", { name });
+    } catch (e) {
+      this.status = e.message;
+      this.draw();
+    }
+  }
+
   // The servers: this one, each link with its state, and a form to add one.
   servers() {
     const since = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -531,7 +546,7 @@ export class Settings {
           h("td", {}, h("b", { textContent: l.name })),
           h("td", { className: "m", textContent: l.url }),
           h("td", {}, h("span", { className: `set-pill ${l.state === "linked" ? "ok" : "bad"}`, textContent: state(l) })),
-          h("td", {}, button("Remove", null, () => this.unlink(l.name))),
+          h("td", {}, !this.server && l.trusted && l.granted ? button(l.name === this.doc?.exit_via ? "Stop exit" : "Exit here", null, () => this.exitVia(l.name === this.doc?.exit_via ? null : l.name)) : null, button("Remove", null, () => this.unlink(l.name))),
         ),
       ),
       ...this.incoming.map((l) =>
@@ -540,7 +555,7 @@ export class Settings {
           { className: `set-link set-incoming link-${l.name}` },
           h("td", {}, h("b", { textContent: l.name })),
           h("td", { className: "m", textContent: "links here" }),
-          h("td", {}, h("span", { className: `set-pill ${l.state === "linked" ? "ok" : "bad"}`, textContent: l.state === "linked" ? "trusted · both ways" : l.state })),
+          h("td", {}, h("span", { className: `set-pill ${l.state === "linked" ? "ok" : "bad"}`, textContent: l.exit_bytes ? `exit · ${Math.round(l.exit_bytes / 1e6)} MB` : l.state === "linked" ? "trusted · both ways" : l.state })),
           h("td"),
         ),
       ),

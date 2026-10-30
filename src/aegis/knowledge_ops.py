@@ -898,6 +898,7 @@ def register_knowledge_ops(app: App) -> None:
             proc = await launch.child(
                 ["bash", "-c", RUN_SH, "skill-run", p.script, *p.args],
                 user=s.spec.linux_user,
+                via=launch.resolve_via(s.spec.agent),
                 cwd="/",
                 stdin=launch.PIPE,
                 stdout=launch.PIPE,

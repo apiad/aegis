@@ -84,6 +84,7 @@ async def run_bash(
             stdout=launch.PIPE,
             stderr=launch.PIPE,
             user=user,
+            via=launch.resolve_via(),
         )
     except OSError as e:
         return None, "", str(e)

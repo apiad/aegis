@@ -245,6 +245,7 @@ async def run(
             stdout=launch.PIPE,
             stderr=launch.DEVNULL,
             user=user,
+            via=launch.resolve_via(),
         )
     except OSError as e:
         raise OneshotError(str(e)) from e

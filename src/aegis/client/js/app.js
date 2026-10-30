@@ -2246,6 +2246,8 @@ function renderMeta(s) {
   drawCold(s);
   drawClosing(s);
   $("s-cwd").textContent = s.cwd;
+  $("s-exit-row").hidden = !s.exit;
+  $("s-exit").textContent = s.exit || "";
   $("chip-model").replaceChildren(factIcon("h", s.harness), s.model);
   $("chip-model").title = s.model_id || "";
   $("chip-effort").replaceChildren(factIcon("e", s.effort), `${s.effort} effort`);

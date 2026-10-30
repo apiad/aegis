@@ -20,6 +20,13 @@ signal a member's process retries as that member:
 - ``browser``: a URL handed to the desktop's browser through ``webbrowser``,
   which starts its own process.
 
+``child`` and ``pty`` also take ``via``, the linked server the process reaches
+the internet through (exit.py), or None for this machine's own route. It is
+required, like ``user``: a process that should exit and forgets to say would
+leave from the address the person meant to avoid. ``resolve_via`` gives what
+the configuration says. ``run`` has no ``via``: it is the server's housekeeping,
+``git`` and ``systemctl``, on local state.
+
 Every shape takes ``user``, the Linux user the process acts for, or None for
 the server itself. It is required, so a new call site has to say. Outside the
 multi-user mode it changes nothing. Once ``configure`` turns the mode on (at
@@ -43,7 +50,9 @@ import signal
 import shutil
 import subprocess
 import webbrowser
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from . import users
 from .cgroups import wrap
@@ -59,6 +68,30 @@ _STILL_PARENT = '[ "$PPID" = "$0" ] || exit 143; exec "$@"'
 
 # The multi-user mode: its pool, setpriv's path and a login's PATH; None off.
 _mode: tuple[users.Pool, str, str] | None = None
+
+
+# The server's exits (exit.py) and how to read its configuration; None off.
+_exits: Any = None
+_resolve: Callable[[str | None], str | None] | None = None
+
+
+def configure_exits(
+    exits: Any, resolve: Callable[[str | None], str | None] | None
+) -> None:
+    global _exits, _resolve
+    _exits, _resolve = exits, resolve
+
+
+def resolve_via(agent: str | None = None) -> str | None:
+    """The link a process started now exits through: the one ``agent`` names,
+    or the server's, or None."""
+    return None if _resolve is None else _resolve(agent)
+
+
+def _via(via: str | None, env: dict[str, str] | None) -> dict[str, str] | None:
+    if via is None or _exits is None:
+        return env
+    return {**(os.environ if env is None else env), **_exits.env(via)}
 
 
 def configure(mu: users.MultiUser | None) -> None:
@@ -119,6 +152,7 @@ async def child(
     argv: list[str],
     *,
     user: str | None,
+    via: str | None,
     cwd: str | Path | None = None,
     env: dict[str, str] | None = None,
     stdin=None,
@@ -148,7 +182,7 @@ async def child(
             raise FileNotFoundError(argv[0])
         argv = [setpriv, "--pdeathsig", "TERM", "/bin/sh", "-c", _STILL_PARENT,
                 str(os.getpid()), exe, *argv[1:]]  # fmt: skip
-    argv, env, cwd = _as(user, argv, env, cwd)
+    argv, env, cwd = _as(user, argv, _via(via, env), cwd)
     proc = await asyncio.create_subprocess_exec(
         *wrap(cgroup, argv),
         cwd=cwd,
@@ -168,6 +202,7 @@ async def pty(
     argv: list[str],
     *,
     user: str | None,
+    via: str | None,
     tty: int,
     cwd: str | Path,
     env: dict[str, str] | None,
@@ -176,7 +211,7 @@ async def pty(
     """``argv`` on the terminal ``tty``, as its controlling terminal
     (``setsid --ctty``: a preexec_fn is unsafe in a threaded server), in
     ``cgroup`` when there is one, with the OOM score raised."""
-    argv, env, start_in = _as(user, argv, env, cwd)
+    argv, env, start_in = _as(user, argv, _via(via, env), cwd)
     proc = await asyncio.create_subprocess_exec(
         *wrap(cgroup, ["setsid", "--ctty", *argv]),
         stdin=tty,

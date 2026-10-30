@@ -11,7 +11,15 @@ import socket
 import httpx
 import pytest
 
+from aegis import doctor, launch
 from aegis import exit as exit_
+from aegis.config import Snapshot, write
+from aegis.links import LinkStore
+from aegis.net.config import NetConfig
+from aegis.net.probe import Reach, Trace
+from aegis.net.service import Probes
+from aegis.ops import OpError
+from aegis.roots import make_roots
 
 from .conftest import until
 from .test_links import Node
@@ -380,3 +388,175 @@ async def test_no_secret_or_token_is_logged(trusted, anywhere, caplog):  # noqa:
             w.close()
     assert out.secret not in caplog.text
     assert beta.token not in caplog.text
+
+
+# -- using it: configuration and what a process gets --------------------------------
+def _environ(pid: int) -> dict[str, str]:
+    raw = open(f"/proc/{pid}/environ", "rb").read().split(b"\0")
+    return dict(e.decode().split("=", 1) for e in raw if b"=" in e)
+
+
+CONFIG_EXIT = """\
+default_agent: opus
+exit_via: beta
+agents:
+  opus: {harness: claude-code, model: opus, effort: high, permission: full}
+  direct: {harness: claude-code, model: opus, effort: high, permission: full, exit: "off"}
+queues:
+  general: {agent: opus, max_parallel: 1}
+"""
+
+
+async def _reload(node: Node, text: str) -> None:
+    (node.root / ".aegis.yaml").write_text(text)
+    await until(
+        lambda: (
+            node.app.config.current().doc.exit_via
+            == ("beta" if "exit_via" in text else None)
+        ),
+        timeout=5,
+        what="the config",
+    )
+
+
+async def test_a_session_exits_and_a_profile_with_exit_off_does_not(trusted):  # noqa: F811
+    alpha, _ = trusted
+    await _reload(alpha, CONFIG_EXIT)
+    url = alpha.app.exits.get("beta").url
+    s = await alpha.spawn(agent="opus")
+    await until(lambda: s.pid, timeout=10, what="the process")
+    env = _environ(s.pid)
+    assert env["HTTPS_PROXY"] == url and "127.0.0.1" in env["NO_PROXY"]
+    assert s.wire()["exit"] == "beta"
+    d = await alpha.spawn(agent="direct")
+    await until(lambda: d.pid, timeout=10, what="the process")
+    assert _environ(d.pid).get("HTTPS_PROXY") != url
+    assert d.wire()["exit"] is None
+
+
+async def test_a_profile_alone_can_name_the_exit(trusted):  # noqa: F811
+    alpha, _ = trusted
+    text = CONFIG_EXIT.replace("exit_via: beta\n", "").replace(
+        'exit: "off"', "exit: beta"
+    )
+    await _reload(alpha, text)
+    await until(
+        lambda: launch.resolve_via("direct") == "beta", timeout=5, what="the profile"
+    )
+    assert launch.resolve_via("opus") is None
+    assert launch.resolve_via() is None
+
+
+async def test_a_monitor_and_a_workflow_step_get_the_exit(trusted):  # noqa: F811
+    alpha, _ = trusted
+    await _reload(alpha, CONFIG_EXIT)
+    assert launch.resolve_via() == "beta"
+    p = await launch.child(
+        ["sh", "-c", "echo $HTTPS_PROXY"],
+        stdout=launch.PIPE,
+        user=None,
+        via=launch.resolve_via(),
+    )
+    out, _ = await p.communicate()
+    assert out.decode().strip() == alpha.app.exits.get("beta").url
+
+
+async def test_a_direct_child_keeps_the_servers_environment(trusted, monkeypatch):  # noqa: F811
+    monkeypatch.setenv("HTTPS_PROXY", "http://corp.example:3128")
+    p = await launch.child(
+        ["sh", "-c", "echo $HTTPS_PROXY"], stdout=launch.PIPE, user=None, via=None
+    )
+    out, _ = await p.communicate()
+    assert out.decode().strip() == "http://corp.example:3128"
+
+
+async def test_link_exit_writes_the_config_and_refuses_an_unknown_link(trusted):  # noqa: F811
+    alpha, _ = trusted
+    r = await alpha.app.registry.call("link.exit", {"name": "beta"})
+    assert r == {"exit_via": "beta"}
+    assert "exit_via: beta" in (alpha.root / ".aegis.yaml").read_text()
+    await until(lambda: launch.resolve_via() == "beta", timeout=5, what="the config")
+    await alpha.app.registry.call("link.exit", {"name": None})
+    assert "exit_via" not in (alpha.root / ".aegis.yaml").read_text()
+    with pytest.raises(OpError):
+        await alpha.app.registry.call("link.exit", {"name": "nowhere"})
+
+
+async def test_a_settings_save_keeps_the_exit_keys(trusted):  # noqa: F811
+    alpha, _ = trusted
+    await _reload(alpha, CONFIG_EXIT)
+    snap = alpha.app.config.current()
+    assert write(alpha.app.config.path, snap.doc, snap.stamp) == []
+    text = (alpha.root / ".aegis.yaml").read_text()
+    assert "exit_via: beta" in text and "exit: off" in text.replace('"', "")
+
+
+async def test_the_far_server_shows_the_bytes_each_link_took(trusted, anywhere):  # noqa: F811
+    alpha, beta = trusted
+    out = alpha.app.exits.get("beta")
+    async with Target() as t:
+        async with httpx.AsyncClient(proxy=out.url, trust_env=False) as c:
+            await c.get(f"http://127.0.0.1:{t.port}/", timeout=10)
+    (row,) = await beta.app.registry.call("link.incoming", {})
+    assert row["name"] == "alpha" and row["exit_bytes"] > 0
+
+
+async def test_the_via_reading_says_the_address_and_the_link_going_down(trusted):  # noqa: F811
+    alpha, beta = trusted
+    await _reload(alpha, CONFIG_EXIT)
+    seen = []
+
+    async def trace(timeout, proxy=None):
+        seen.append(proxy)
+        return Trace(ok=True, ip="203.0.113.9", colo="HEL", loc="FI")
+
+    async def reach(anchors, timeout):
+        return Reach(ok=True, rtt_ms=1.0, anchor="1.1.1.1:443")
+
+    alpha.app.net._probes = Probes(reach=reach, trace=trace, throughput=None)
+    alpha.app.net._cfg = lambda: NetConfig(speed_interval=0)
+    await alpha.app.net.refresh()
+    via = alpha.app.net.wire()["via"]
+    assert via["name"] == "beta" and via["ip"] == "203.0.113.9" and via["down"] == ""
+    assert alpha.app.exits.get("beta").url in seen
+    await beta.stop()
+    await until(
+        lambda: alpha.app.links.get("beta").state != "linked",
+        timeout=10,
+        what="the link down",
+    )
+    await alpha.app.net.refresh()
+    assert "since" in alpha.app.net.wire()["via"]["down"]
+    await beta.start()
+
+
+async def test_a_multi_user_server_refuses_an_exit(trusted, anywhere):  # noqa: F811
+    alpha, _ = trusted
+    out = alpha.app.exits.get("beta")
+    out.refused = lambda: "an exit is off on a multi-user server"
+    async with Target() as t:
+        r, w, head = await _connect(out.port, out.secret, f"127.0.0.1:{t.port}")
+        assert head.startswith("HTTP/1.1 502")
+        assert "multi-user" in await _body(r, head)
+        w.close()
+        assert t.hits == 0
+
+
+def test_doctor_flags_a_name_that_is_no_trusted_link(tmp_path):
+    roots = make_roots(tmp_path, None)
+    roots.state_root.mkdir(parents=True, exist_ok=True)
+    LinkStore(roots.state_root / "links.json").save(
+        [{"name": "plain", "url": "http://x", "token": "t", "trusted": False},
+         {"name": "good", "url": "http://y", "token": "t", "trusted": True}]
+    )  # fmt: skip
+
+    def finding(name):
+        snap = Snapshot(path=tmp_path / "x", exit_via=name)
+        return doctor._exit(snap, roots, multi_user=False)
+
+    assert doctor._exit(Snapshot(path=tmp_path / "x"), roots, multi_user=False) == []
+    assert finding("good")[0].level == "ok"
+    for name in ("plain", "gone"):
+        assert finding(name)[0].level == "error"
+    snap = Snapshot(path=tmp_path / "x", exit_via="good")
+    assert doctor._exit(snap, roots, multi_user=True)[0].level == "error"

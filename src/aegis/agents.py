@@ -69,6 +69,8 @@ class Agent:
     permission: str
     priming: str | None = None
     keep_harness_tools: tuple[str, ...] = ()
+    # A linked server to exit through, or "off"; blank: the server's exit_via.
+    exit: str = ""
     # Why this agent cannot be spawned as written; None when it can.
     error: str | None = None
     # The cascade, head first; (model,) for a one-model agent.
@@ -134,6 +136,7 @@ def _agent(name: str, raw: Any) -> Agent:
         **values,
         priming=str(priming) if priming else None,
         keep_harness_tools=keep,
+        exit=str(d.get("exit") or ""),
         error=error or keep_error,
         models=models or ((values["model"],) if values["model"] else ()),
         repeated=repeated,

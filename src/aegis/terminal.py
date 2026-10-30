@@ -112,11 +112,12 @@ class Terminal:
         env: dict[str, str],
         cgroup: Path | None,
         user: str | None = None,
+        via: str | None = None,
     ) -> None:
         if self.running or self.starting:
             raise OpError("running", f"terminal {self.meta['name']} is running")
         async with self._starting:
-            await self._start(argv, cwd, env, cgroup, user)
+            await self._start(argv, cwd, env, cgroup, user, via)
 
     async def _start(
         self,
@@ -125,6 +126,7 @@ class Terminal:
         env: dict[str, str],
         cgroup: Path | None,
         user: str | None,
+        via: str | None,
     ) -> None:
         cols, rows = self.meta["cols"], self.meta["rows"]
         master, slave = os.openpty()
@@ -132,7 +134,7 @@ class Terminal:
         os.set_blocking(master, False)
         try:
             self.proc = await launch.pty(
-                argv, tty=slave, cwd=cwd, env=env, cgroup=cgroup, user=user
+                argv, tty=slave, cwd=cwd, env=env, cgroup=cgroup, user=user, via=via
             )
         except BaseException:
             os.close(master)

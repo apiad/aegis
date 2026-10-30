@@ -45,7 +45,7 @@ import pwd
 from typing import Any, Literal
 
 from .as_user import Runners
-from . import attachments, cache, harness_versions, restarts
+from . import attachments, cache, harness_versions, launch as launching, restarts
 from . import layout as canvas
 from .artifacts import ArtifactError, Board
 from .claude.control import Catalog
@@ -537,6 +537,8 @@ class Session:
         # parked session's wake included, is unattended.
         self.launch_by = "agent"
         self.last_verdict: harness_versions.Verdict | None = None
+        # The link the last launch exits through (exit.py); None for direct.
+        self.exit_via: str | None = None
         # The last launch's version when it was outside the tested range, for
         # the panel's warning colour (#456); None in range or before a launch.
         self.untested_version: dict | None = None
@@ -636,6 +638,7 @@ class Session:
         # differently depending on whether a turn had run (#243).
         m["model"] = self.spec.model or "default"
         m["harness_label"] = self.harness.label
+        m["exit"] = self.exit_via
         m["untested_version"] = self.untested_version
         m["cache_hit"] = cache.hit_rate(self.cache_recent)
         m["cache_alarm"] = cache.alarm(self.cache_recent, self.spec.harness)
@@ -789,8 +792,10 @@ class Session:
         inbox = await self._host.runners.get(user)(
             attachments.ensure_inbox, self.state_root, self.log_id, self._home()
         )
+        self.exit_via = launching.resolve_via(self.spec.agent)
         proc = self.harness.process(
             Launch(
+                via=self.exit_via,
                 cwd=self.spec.cwd,
                 model=self.spec.model,
                 effort=self.spec.effort,

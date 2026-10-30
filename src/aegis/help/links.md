@@ -108,6 +108,58 @@ server's sessions: live views still go one way. Nothing is relayed: a call
 that came over a link never goes on to a third server. The far server's
 Settings lists this server under Links here.
 
+## Exit through a trusted link
+
+A server can send what it starts out to the internet through a trusted link,
+from the far server's address, with no VPN and no change to the machine's
+routes. Name the link in `.aegis.yaml`:
+
+```yaml
+exit_via: host
+```
+
+or press Exit here on its row in Settings, Servers. Sessions, queue workers,
+workflow steps, monitors, skill tools and terminals started after that get the
+proxy variables for a listener on loopback. A running process keeps the
+environment it started with, so a change applies to the next one started, and a
+session's sidebar says which exit it has. The Host rows gain a Via row with the
+address they exit from.
+
+One agent can differ from the rest, with `exit:` naming a link or `off`:
+
+```yaml
+agents:
+  opus: {harness: claude-code, model: opus}
+  opus-local: {harness: claude-code, model: opus, exit: "off"}
+```
+
+A terminal profile whose `env:` names `HTTPS_PROXY` or `HTTP_PROXY` keeps it.
+The server's own work stays on its own route: `git` and `systemctl` it runs,
+its doctor, its version checks and its network probes.
+
+What it does not cover:
+
+- A program that ignores the proxy variables goes out directly: bare `ssh`, a
+  raw socket, UDP. `curl`, `git` over HTTPS, `gh`, `npm`, `uv`, Python, Node's
+  `fetch` and Claude Code all honour them. It is no guarantee for every packet.
+- Only a trusted link can be an exit, and a multi-user server cannot use one,
+  so the far server has only its admin's token.
+- The relay connects to public addresses only, so an agent cannot reach the far
+  server's private network through it.
+
+When the link is down, a connection through the exit fails with a 502 that says
+why, and nothing falls back to this machine's address. `aegis doctor` flags a
+name that is not a trusted link.
+
+The near server must reach the far server's aegis URL without the VPN: a far
+server only on an overlay network cannot replace that overlay. The far server
+sees the host and port of each HTTPS connection and all of any plain HTTP, and
+Settings on it shows the bytes each link took.
+
+An exit changes the address and the country a provider sees, and does not change
+what the provider's terms allow. It is not a way around a provider's rules about
+where its service may be used.
+
 ## When a link is down
 
 A link is linked, connecting, offline, unauthorized (the far server refused

@@ -270,6 +270,7 @@ class SkillServers:
             proc = await launch.child(
                 ["bash", "-c", SERVE_SH, UNPACK_PY, str(len(tar)), *command],
                 user=user,
+                via=launch.resolve_via(),
                 cwd="/",
                 stdin=launch.PIPE,
                 stdout=launch.PIPE,

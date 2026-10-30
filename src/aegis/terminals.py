@@ -31,6 +31,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from . import launch
 from . import fs_paths
 from .ops import OpError
 from .term_profiles import argv, login_shell, with_shell
@@ -321,7 +322,10 @@ class Terminals:
             cmd = argv(spec)
             if user and spec["cmd"] is None:
                 cmd = [_passwd(user).pw_shell or "/bin/sh", "-l"]
-            await t.start(cmd, Path(t.meta["cwd"]), env, cgroup, user=user)
+            # A profile that names a proxy of its own keeps it.
+            own = {k.lower() for k in spec["env"]} & {"https_proxy", "http_proxy"}
+            via = None if own else launch.resolve_via()
+            await t.start(cmd, Path(t.meta["cwd"]), env, cgroup, user=user, via=via)
         except OSError as e:
             if cg is not None:
                 cg.release(t.id, user=t.meta.get("linux_user"))

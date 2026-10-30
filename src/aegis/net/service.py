@@ -53,7 +53,7 @@ def default_probes() -> Probes:
         return _canned(ok=True)
     return Probes(
         reach=lambda anchors, timeout: probe.reach(anchors, timeout),
-        trace=lambda timeout: probe.trace(timeout=timeout),
+        trace=lambda timeout, proxy=None: probe.trace(timeout=timeout, proxy=proxy),
         throughput=lambda nbytes, timeout: probe.throughput(
             nbytes=nbytes, timeout=timeout
         ),
@@ -66,9 +66,11 @@ def _canned(*, ok: bool) -> Probes:
             return Reach(ok=False, error="offline")
         return Reach(ok=True, rtt_ms=24.0, anchor="1.1.1.1:443")
 
-    async def trace(timeout):
+    async def trace(timeout, proxy=None):
         if not ok:
             return Trace(ok=False, error="offline")
+        if proxy is not None:
+            return Trace(ok=True, ip="203.0.113.9", colo="HEL", loc="FI")
         return Trace(ok=True, ip="203.0.113.7", colo="MIA", loc="US")
 
     async def throughput(nbytes, timeout):
@@ -105,6 +107,13 @@ class NetState:
     # was kept. The address is still the best guess and stays on screen; this
     # is what lets the renderer date it instead of presenting it as current.
     trace_error: str = ""
+    # The address through the exit (exit.py), on its own stamp: this machine's
+    # route may be down while the exit works, which is why it is there.
+    via: Trace | None = None
+    via_at: float = 0.0
+    via_name: str = ""
+    # Why the exit carries nothing now; empty when it does.
+    via_down: str = ""
 
     @property
     def sampled(self) -> bool:
@@ -126,8 +135,11 @@ class NetService:
         on_change: Callable[[], None] = lambda: None,
         clock=time.monotonic,
         wall=time.time,
+        exit_now: Callable[[], Any] = lambda: None,
     ):
         self._cfg = cfg
+        # The exit in force, with ``name``, ``url`` and ``down()``, or None.
+        self._exit_now = exit_now
         self._probes = probes or default_probes()
         self._watched = watched
         self._on_change = on_change
@@ -229,7 +241,23 @@ class NetService:
             if want_speed:
                 state = replace(state, speed=await self._speed(cfg), speed_at=now)
 
-        self._state = state
+        self._state = await self._with_via(state, cfg, now)
+
+    async def _with_via(self, state: NetState, cfg: NetConfig, now: float) -> NetState:
+        found = self._exit_now()
+        if found is None:
+            return replace(state, via=None, via_name="", via_down="")
+        down = found.down() or ""
+        changed = found.name != state.via_name or down != state.via_down
+        state = replace(state, via_name=found.name, via_down=down)
+        due = state.via is None or now - state.via_at >= cfg.trace_interval
+        if down or not (due or changed):
+            return state
+        try:
+            trace = await self._probes.trace(cfg.timeout, found.url)
+        except Exception as exc:  # noqa: BLE001
+            trace = Trace(ok=False, error=type(exc).__name__)
+        return replace(state, via=trace, via_at=now)
 
     @staticmethod
     def _with_trace(state: NetState, found: Trace, now: float) -> NetState:
@@ -284,6 +312,17 @@ class NetService:
             "loc": tr.loc if tr else "",
             "ip_at": at(s.trace_at) if tr and tr.ok else None,
             "ip_error": s.trace_error,
+            "via": None
+            if not s.via_name
+            else {
+                "name": s.via_name,
+                "down": s.via_down,
+                "ip": s.via.ip if s.via else "",
+                "colo": s.via.colo if s.via else "",
+                "loc": s.via.loc if s.via else "",
+                "error": s.via.error if s.via else "",
+                "at": at(s.via_at) if s.via else None,
+            },
             "speed": None
             if sp is None
             else {

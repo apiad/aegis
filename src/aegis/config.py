@@ -61,11 +61,11 @@ TOP_KEYS = (
     "agents", "queues", "default_agent", "recap", "btw", "context", "usage",
     "session_memory_max", "terminals", "terminal_memory_max", "park", "network",
     "host", "workflows", "harness_versions", "notices", "nudges", "multi_user",
-    "knowledge",
+    "knowledge", "exit_via",
 )  # fmt: skip
 AGENT_KEYS = (
     "harness", "provider", "model", "models", "effort", "permission", "priming",
-    "keep_harness_tools",
+    "keep_harness_tools", "exit",
 )  # fmt: skip
 QUEUE_KEYS = ("agent", "max_parallel", "quiet")
 
@@ -641,6 +641,8 @@ class AgentDoc(BaseModel):
     permission: str = ""
     priming: str | None = None
     keep_harness_tools: list[str] = Field(default_factory=list)
+    # A linked server to exit through, or "off"; blank: the server's exit_via.
+    exit: str = ""
 
 
 class QueueDoc(BaseModel):
@@ -683,6 +685,7 @@ class ConfigDoc(BaseModel):
     model_config = {"extra": "forbid"}
     agents: list[AgentDoc] = Field(default_factory=list)
     default_agent: str | None = None
+    exit_via: str | None = None
     queues: list[QueueDoc] = Field(default_factory=list)
     park: dict[str, int] = Field(default_factory=dict)
     # The workflows: block's max_agents: total and a bound per agent alias;
@@ -701,6 +704,11 @@ class ConfigDoc(BaseModel):
     )
 
 
+def _exit_via(data: dict) -> str | None:
+    v = data.get("exit_via")
+    return str(v) if v else None
+
+
 def doc_from(data: dict) -> ConfigDoc:
     agents = [
         AgentDoc(
@@ -712,6 +720,7 @@ def doc_from(data: dict) -> ConfigDoc:
             permission=a.permission,
             priming=a.priming,
             keep_harness_tools=_keep_raw(data, a.name),
+            exit=a.exit,
         )
         for a in agents_from(data)
     ]
@@ -737,6 +746,7 @@ def doc_from(data: dict) -> ConfigDoc:
     return ConfigDoc(
         agents=agents,
         default_agent=str(d) if d else None,
+        exit_via=_exit_via(data),
         queues=queues,
         park={k: v for k, v in park_from(data.get("park")).items() if k != "error"},
         max_agents={} if w is None or "error" in pool else pool["max_agents"],
@@ -837,6 +847,7 @@ class Snapshot:
     stamp: Stamp | None = None
     agents: tuple[Agent, ...] = ()
     default_agent: str | None = None
+    exit_via: str | None = None
     queues: dict[str, dict] = field(default_factory=dict)
     unknown_keys: tuple[str, ...] = ()
     doc: ConfigDoc = field(default_factory=ConfigDoc)
@@ -881,6 +892,7 @@ class Snapshot:
             stamp=stamp,
             agents=tuple(agents_from(data)),
             default_agent=str(d) if d else None,
+            exit_via=_exit_via(data),
             queues=queues_from(data.get("queues")),
             unknown_keys=tuple(str(k) for k in data if k not in TOP_KEYS),
             doc=doc_from(data),
@@ -1150,6 +1162,10 @@ def _set_agent(node: CommentedMap, a: AgentDoc) -> None:
         _put(keeper, "keep_harness_tools", list(a.keep_harness_tools))
     else:
         keeper.pop("keep_harness_tools", None)
+    if a.exit:
+        _put(node, "exit", a.exit)
+    else:
+        node.pop("exit", None)
 
 
 def _apply(data: CommentedMap, doc: ConfigDoc) -> None:
@@ -1157,6 +1173,10 @@ def _apply(data: CommentedMap, doc: ConfigDoc) -> None:
         _put(data, "default_agent", doc.default_agent)
     else:
         data.pop("default_agent", None)
+    if doc.exit_via:
+        _put(data, "exit_via", doc.exit_via)
+    else:
+        data.pop("exit_via", None)
     if doc.agents:
         agents = _entries(data, "agents", [a.name for a in doc.agents])
         for a in doc.agents:
