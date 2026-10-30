@@ -90,11 +90,15 @@ async def test_a_member_cannot_write_another_home_or_the_state(mu_server):
         mu_server,
         BEN,
         log_id,
-        f"/sh (touch /home/{CARA}/x 2>/dev/null; echo $?; "
+        # The pause keeps the first code alone in the file for a while, so
+        # a wait that returns on one code fails every run, not one in many.
+        f"/sh (touch /home/{CARA}/x 2>/dev/null; echo $?; sleep 1; "
         f"touch {mu_server.state}/x 2>/dev/null; echo $?) > {out}",
     )
+    # The subshell writes one code per line, so wait for both, not the first.
     codes = await until(
-        lambda: out.exists() and out.read_text().split(), what="the writes"
+        lambda: out.exists() and len(c := out.read_text().split()) == 2 and c,
+        what="the writes",
     )
     assert codes[0] != "0" and codes[1] != "0"
 
