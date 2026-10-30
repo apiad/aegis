@@ -527,10 +527,6 @@ class Session:
         # once", covered (harness_versions.py): a relaunch on it says nothing
         # again. "?" for a version that could not be read. In the meta.
         self.checked_version = checked_version
-        # Who asked for the next launch: a person's op sets "person" just
-        # before ensure_running and puts it back after; anything else, a
-        # parked session's wake included, is unattended.
-        self.launch_by = "agent"
         self.last_verdict: harness_versions.Verdict | None = None
         # The last launch's version when it was outside the tested range, for
         # the panel's warning colour (#456); None in range or before a launch.
@@ -757,19 +753,26 @@ class Session:
         return self._proc is not None and self._proc.running
 
     # -- operations --------------------------------------------------------
-    async def start(self) -> None:
+    async def start(self, launch_by: str = "agent") -> None:
         """A brand-new session: record the spawn, then start ``claude``."""
         self._record({"kind": "spawn", **self.spec.record(), "handle": self.handle})
-        await self.ensure_running()
+        await self.ensure_running(launch_by)
 
-    async def ensure_running(self) -> None:
+    async def ensure_running(self, launch_by: str = "agent") -> None:
         """Start the harness if there is no process. Raises FileNotFoundError
-        when its binary is missing, leaving the session stopped."""
+        when its binary is missing, leaving the session stopped.
+
+        ``launch_by``: who asked for this launch, "person" or "agent", which
+        the version check judges it by. An argument, not an attribute: a
+        person's launch and an unattended wake of the same session can wait
+        on the start lock together, and each is judged as itself (#449).
+        Anything but a person's op, a parked session's wake included, is
+        unattended."""
         async with self._starting:
             if not self.running:
-                await self._start_process()
+                await self._start_process(launch_by)
 
-    async def _start_process(self) -> None:
+    async def _start_process(self, launch_by: str = "agent") -> None:
         self._generation += 1
         generation = self._generation
 
@@ -777,7 +780,7 @@ class Session:
             if generation == self._generation:
                 self._on_exit(code, tail)
 
-        await self._check_version()
+        await self._check_version(launch_by)
         resume = self.resume_id
         mcp, system_prompt = self._host.spawn_args(self)
         user = self._host.user_for(self.spec)
@@ -831,7 +834,7 @@ class Session:
         self._set(parked_rss=0, parked_idle_s=0)
         self._set(status="idle", asleep_why=None)
 
-    async def _check_version(self) -> None:
+    async def _check_version(self, launch_by: str) -> None:
         """Judge the harness version before a launch, and note one outside the
         tested range in the transcript, once per version."""
         cfg = self._host.harness_versions()
@@ -851,9 +854,9 @@ class Session:
         token = v.version or "?"
         if v.path is None or not v.outside or token == self.checked_version:
             return
-        if cfg[self.launch_by] == "off":
+        if cfg[launch_by] == "off":
             return
-        text = v.notice(started_anyway=self.launch_by == "agent")
+        text = v.notice(started_anyway=launch_by == "agent")
         log.warning("%s (%s): %s", self.handle, self.log_id, text.replace("\n", "; "))
         self._record(
             {
@@ -948,6 +951,7 @@ class Session:
         through_lock: bool = False,
         urgent: bool = False,
         by_person: bool = False,
+        launch_by: str = "agent",
     ) -> Literal["sent", "held", "steered"]:
         """An inbox message. Idle or stopped: sent now (a stopped session is
         resumed to receive it). Mid-turn: held, and sent with any others when
@@ -956,7 +960,8 @@ class Session:
         that, and gets it from a harness that reads mid-turn input. When the
         owner's quota gate says no turn may start, held with ``held_for:
         "quota"`` until it opens (app.on_quota). ``by_person``: a person's
-        / line delivered it (``person_turn``). Returns what it did."""
+        / line delivered it (``person_turn``). ``launch_by``: who starts the
+        harness if it is stopped (ensure_running). Returns what it did."""
         if self.archived:
             raise Archived(self.log_id)
         if not through_lock:
@@ -975,7 +980,7 @@ class Session:
         if self._host.quota_hold(self) is not None:
             self._hold(msg | {"held_for": "quota"})
             return "held"
-        await self._send(_inbox_text([msg]), by_person=by_person)
+        await self._send(_inbox_text([msg]), by_person=by_person, launch_by=launch_by)
         return "sent"
 
     def _hold(self, msg: dict) -> None:
@@ -1045,8 +1050,9 @@ class Session:
         *,
         steered: bool = False,
         by_person: bool = False,
+        launch_by: str = "agent",
     ) -> None:
-        await self.ensure_running()
+        await self.ensure_running(launch_by)
         assert self._proc is not None
         if not self.title and not text.startswith("/"):
             # A slash command names no task; the first prompt does.
@@ -1117,7 +1123,7 @@ class Session:
             self._record({"kind": "cascade_stopped", "to": fell_to, "by": "stop"})
             self._host.turn_ended(self)
 
-    async def restart(self) -> None:
+    async def restart(self, launch_by: str = "agent") -> None:
         """A fresh process on the same conversation: end the one there is, if
         any, and start another, which resumes it (#479). Under the start lock,
         so a send waits for the new process. Calls neither stop() nor
@@ -1127,7 +1133,7 @@ class Session:
             await self._end_process()
             self._record({"kind": "restart"})
             self._set(status="asleep", asleep_why="slept")
-            await self._start_process()
+            await self._start_process(launch_by)
 
     async def park(self, idle_s: float) -> bool:
         """End the process of a session nothing needs (park.py); the next

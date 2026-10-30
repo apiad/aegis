@@ -268,11 +268,11 @@ async def test_a_continue_that_cannot_start_stays_paused_and_tries_again(
     real = type(ben).ensure_running
     fails = {"n": 1}
 
-    async def flaky(self):
+    async def flaky(self, launch_by="agent"):
         if fails["n"]:
             fails["n"] -= 1
             raise FileNotFoundError("claude")
-        await real(self)
+        await real(self, launch_by)
 
     monkeypatch.setattr(type(ben), "ensure_running", flaky)
     seed(world, session=40)
