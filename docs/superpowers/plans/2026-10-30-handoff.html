@@ -216,7 +216,7 @@ async def test_spawn_false_on_a_schedule_run_refuses(world): ...
 async def test_permission_is_capped_at_the_callers(world): ...
 </script>
 <li>Mark <code>session.handoff</code> <code>agent=True</code> and make <code>log_id</code> a hidden field (<code>SkipJsonSchema</code>, as <code>SpawnParams.spawned_from</code>), so one op serves both. Add <code>host</code> and <code>msg</code> to the schema; <code>msg</code> feeds the same path as <code>text</code>. An agent's call acts on its own session only.</li>
-<li>On an agent's call, store <code>handoff_pending</code> in the session's meta (<code>META_FIELDS</code> at <code>session.py:90</code>), set <code>continued_by = "pending"</code>, and answer with the instruction to end the turn. Boot keeps both.</li>
+<li>On an agent's call, store <code>handoff_pending</code> in the session's meta (<code>_NOW</code> at <code>session.py:82</code>), set <code>continued_by = "pending"</code>, and answer with the instruction to end the turn. Boot keeps both.</li>
 <li>In <code>Registry.turn_ended</code>, after the existing steps, start the pending handoff through one shared <code>App.start_handoff(old, params)</code>, moved out of the op. With <code>turn_error</code> set, call <code>_call_off_handoff</code>.</li>
 <li>Run <code>tests/test_live.py</code> for the real harness once. Update the help page, <code>DESIGN.md</code> and add a fragment. Open the PR, CI green, merge.</li>
 </ol></details>
