@@ -957,7 +957,6 @@ def close_session(pg) -> None:
         pg.click("#dialog .ok")
 
 
-@pytest.mark.quarantine("#693")
 def test_a_session_from_spawn_to_close(server, page):
     page.goto(server.url)
     assert "token=" not in page.url, "the token stays out of the address bar"
@@ -980,10 +979,14 @@ def test_a_session_from_spawn_to_close(server, page):
 
     page.fill("#input", "/busy 5")
     page.press("#input", "Enter")
-    page.wait_for_selector(".row.tool.running")
+    busy = page.locator(".row.tool.running").get_attribute("data-id")
     page.keyboard.press("Escape")
     turns_done(page, 3)
-    assert page.locator(".row.tool.err .tr2").last.inner_text() == "interrupted"
+    # textContent, not inner_text: a row below the fold is skipped by
+    # content-visibility:auto, and Chromium's innerText reads it as '' (#693).
+    tr2 = page.locator(f'.row.tool.err[data-id="{busy}"] .tr2')
+    tr2.wait_for(state="attached", timeout=8000)
+    assert tr2.text_content() == "interrupted"
 
     ids = page.evaluate(
         "[...document.querySelectorAll('#entries .row')].map(r => r.dataset.id)"
