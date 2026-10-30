@@ -10,8 +10,12 @@ from pathlib import Path
 
 import pytest
 
+from aegis.dictation import PINS, pin_id
+
 from .test_browser import (  # noqa: F401
+    Linked,
     _artifact,
+    beta_session,
     browser,
     dict_server,
     mic_page,
@@ -172,3 +176,53 @@ def test_a_file_picked_in_the_page_reaches_the_inbox_and_wakes_the_agent(
     assert path in row.text_content()
     assert page.locator(".row.artifact .acard").get_attribute("data-status") == "live"
     assert page.errors == []
+
+
+@pytest.fixture
+def far(tmp_path: Path, fake_claude: str, fake_opencode: str):
+    """Two servers, the browser on alpha, the session and its page on beta, with
+    the engine on alpha, which is the one serving the browser's page."""
+    d = tmp_path / "dictation" / pin_id()
+    d.mkdir(parents=True)
+    stub = (Path(__file__).parent / "fixtures" / "dictation" / "needle.js").read_bytes()
+    for p in PINS:
+        (d / p.name).write_bytes(stub if p.name == "needle.js" else b"stub")
+    pair = Linked(tmp_path, fake_claude, fake_opencode)
+    pair.alpha.env["AEGIS_DICTATION_DIR"] = str(d.parent)
+    yield pair.start()
+    pair.stop()
+
+
+def test_a_linked_servers_page_dictates_and_uploads_and_the_agent_is_told(
+    far,
+    mic_page,  # noqa: F811
+    tmp_path: Path,
+):
+    pg = mic_page
+    lid = beta_session(far, pg.context.browser)
+    pg.goto(f"{far.alpha.url}#s=beta/{lid}")
+    pg.wait_for_selector("#a2[data-view=session]")
+    turns_done(pg, 1)
+    aid, _ = _artifact(pg, far.beta, (FIELD[0] + FILE[0], FIELD[1] + FILE[1]), 1)
+    inner = pg.frame_locator(f"iframe[data-artifact={aid}]")
+
+    src = tmp_path / "note.m4a"
+    src.write_bytes(b"x" * 300_000)
+    inner.locator("#f").set_input_files(str(src))
+    inner.locator("#got").locator("text=path").wait_for(timeout=15000)
+    path = re.search(r'"path":"([^"]+)"', inner.locator("#got").inner_text()).group(1)
+    assert Path(path).is_relative_to(far.beta.root), "the far server's inbox"
+    assert Path(path).read_bytes() == src.read_bytes()
+    row = pg.locator(f".row.inbox:has(.from:has-text('artifact:{aid} · upload'))")
+    row.wait_for(timeout=10000)
+
+    _listening(pg, inner)
+    inner.locator("#mic").click()
+    inner.locator("#st", has_text="idle").wait_for(timeout=10000)
+    assert "kw=" in inner.locator("#q").input_value()
+    inner.locator("#go").click()
+    row = pg.locator(f".row.inbox:has(.from:has-text('artifact:{aid} · submit'))")
+    row.wait_for(timeout=10000)
+    assert "kw=" in row.text_content()
+    assert "dictated by voice" in row.text_content()
+    assert pg.errors == []

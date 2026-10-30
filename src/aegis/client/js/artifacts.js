@@ -271,10 +271,16 @@ window.addEventListener("message", async (ev) => {
     frame.dataset.errored = "1";
   }
   try {
-    // A linked server may predate the mark, so it is only sent to this one.
-    const said = (m.method === "aegis/emit" || m.method === "aegis/submit") && spoken.has(id) && local(key);
+    const said = (m.method === "aegis/emit" || m.method === "aegis/submit") && spoken.has(id);
     // The frame's id last, so a page that sends its own artifact_id cannot name another.
-    await inOrder(id, () => call(op, { ...(m.params || {}), ...(said && { dictated: true }), artifact_id: id }, key));
+    const params = { ...(m.params || {}), artifact_id: id };
+    await inOrder(id, () =>
+      call(op, said ? { ...params, dictated: true } : params, key).catch((err) => {
+        // A linked server older than the mark refuses it: the answer matters more.
+        if (said && !local(key) && err.code === "bad_params") return call(op, params, key);
+        throw err;
+      }),
+    );
     if (said) spoken.delete(id);
     if (m.id !== undefined) send(frame, { jsonrpc: "2.0", id: m.id, result: "ok" });
     if (m.method === "aegis/submit") {
