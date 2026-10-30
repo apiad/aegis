@@ -6665,6 +6665,40 @@ def archived(root: Path, n: int) -> list[str]:
     return ids[::-1]
 
 
+# What the row measures, all in one task: a locator's bounding_box() resolves
+# the node and then measures it, and a redraw between the two returns None.
+ARCHIVE_ROW_LAYOUT = """id => {
+  const row = document.querySelector(`#arch-list tr[data-id='${id}']`);
+  const box = (n) => {
+    const { x, width, height } = n.getBoundingClientRect();
+    return { x, width, height };
+  };
+  return {
+    row: box(row),
+    read: getComputedStyle(row.querySelector('.btn.read')).display,
+    reopen: box(row.querySelector('.btn.reopen')),
+  };
+}"""
+# The server filter's All reads the page again, through the same loadArchive.
+ARCHIVE_REDRAWS = """() => {
+  window.archiveRedraws = setInterval(
+    () => document.querySelector('#arch-servers button').click(), 5);
+}"""
+# Stops those and waits out the replies still coming, for a tap to land on a row
+# that stays: 300 ms without a redraw.
+ARCHIVE_QUIET = """() => new Promise((done) => {
+  clearInterval(window.archiveRedraws);
+  let timer;
+  const wait = () => {
+    clearTimeout(timer);
+    timer = setTimeout(done, 300);
+  };
+  new MutationObserver(wait).observe(
+    document.getElementById('arch-list'), { childList: true });
+  wait();
+})"""
+
+
 def test_a_phone_fits_the_archive_and_a_tap_on_a_row_reads_it(
     tmp_path, fake_claude, fake_opencode, browser
 ):
@@ -6687,11 +6721,16 @@ def test_a_phone_fits_the_archive_and_a_tap_on_a_row_reads_it(
         )
         assert servers[0] <= servers[1], f"the server filter is cut: {servers}"
         row = page.locator(f"#arch-list tr[data-id='{ids[0]}']")
-        assert row.bounding_box()["height"] <= 64, "a row is two lines and a button"
-        assert page.is_hidden(f"#arch-list tr[data-id='{ids[0]}'] .btn.read")
-        reopen = row.locator(".btn.reopen").bounding_box()
+        # A link's state change reads the page again and rebuilds every row
+        # (#774), so the layout is read in one task, here under such redraws.
+        page.evaluate(ARCHIVE_REDRAWS)
+        layout = page.evaluate(ARCHIVE_ROW_LAYOUT, ids[0])
+        assert layout["row"]["height"] <= 64, "a row is two lines and a button"
+        assert layout["read"] == "none"
+        reopen = layout["reopen"]
         assert reopen["x"] + reopen["width"] <= 390 and reopen["height"] >= 44
         assert reopen["width"] >= 44
+        page.evaluate(ARCHIVE_QUIET)
         row.locator("td").first.tap()
         page.wait_for_function("id => location.hash === '#read=' + id", arg=ids[0])
         assert errors == []
