@@ -42,7 +42,7 @@ def reveal_then_gone(page, browser, url):
 
 
 def provide(page, value):
-    page.fill(f"{ASK} input[type=password]", value)
+    page.fill(f"{ASK} textarea", value)
     page.click(f"{ASK} button:has-text('Provide')")
     # On a linked server the line can land a render after the class.
     page.wait_for_selector(f"{ASK}.gone:has-text('Provided:')")
@@ -72,7 +72,7 @@ def test_a_secret_is_revealed_once_and_a_request_writes_its_file(server, page, b
         "secret_request",
         {"path": str(server.root / "tok"), "prompt": "A GitHub token"},
     )
-    page.wait_for_selector(f"{ASK} input[type=password]")
+    page.wait_for_selector(f"{ASK} textarea")
     assert "A GitHub token" in page.inner_text(ASK)
     typed = secrets.token_urlsafe(24)
     provide(page, typed)
@@ -100,7 +100,7 @@ def test_secret_cards_work_on_a_linked_servers_session(linked, browser, page):  
         page, browser, f"{linked.alpha.url}#s=beta/{lid}"
     ).startswith(value)
     mcp(page, 3, "secret_request", {"path": str(root / "tok"), "prompt": "p"})
-    page.wait_for_selector(f"{ASK} input[type=password]")
+    page.wait_for_selector(f"{ASK} textarea")
     typed = secrets.token_urlsafe(24)
     provide(page, typed)
     assert (root / "tok").read_text() == typed
@@ -135,3 +135,25 @@ def test_a_secret_cards_title_sits_beside_its_icon_on_a_phone(server, browser): 
     assert title["top"] < icon["bottom"] and title["left"] > icon["right"], box
     assert title["right"] <= 390 and acts["top"] >= title["bottom"] - 1, box
     assert errors == []
+
+
+def test_a_requested_secret_keeps_its_line_breaks(server, page):  # noqa: F811
+    """#785: the field was an <input>, which deletes the line breaks of a
+    pasted private key, so the file held one unusable line."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    path = server.root / "key"
+    mcp(page, 1, "secret_request", {"path": str(path), "prompt": "An SSH key"})
+    page.wait_for_selector(f"{ASK} textarea")
+    body = "\n".join(secrets.token_urlsafe(52) for _ in range(4))
+    key = f"-----BEGIN OPENSSH PRIVATE KEY-----\n{body}\n-----END OPENSSH PRIVATE KEY-----\n"
+    field = page.locator(f"{ASK} textarea")
+    field.fill(key)
+    masked = field.evaluate("t => getComputedStyle(t).webkitTextSecurity")
+    assert masked == "disc", masked
+    field.press("Control+Enter")
+    page.wait_for_selector(f"{ASK}.gone:has-text('Provided:')")
+    assert path.read_bytes() == key.encode()
+    assert key not in page.content()
+    assert page.errors == []

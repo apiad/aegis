@@ -50,8 +50,8 @@ again: send it again.
 When you need a secret only the person has, do not ask them to paste it in
 chat. Call `secret_request` with a path that does not exist yet, in a directory
 that does, and a prompt that says what you need and why. Then end your turn
-with `turn_end` and `attention=needs_you`. The person types it into a password field on
-the card; the server writes it to the path with mode 0600 and wakes you with
+with `turn_end` and `attention=needs_you`. The person types or pastes it into a masked field on
+the card, line breaks and all (a private key works as pasted); the server writes it to the path with mode 0600 and wakes you with
 `> from secret:<id> · provided · path=… · N B`. If they do not answer within the
 ttl (30 minutes by default), you are woken with `expired` and nothing is
 written. A path that exists is refused with exists, so a request never
