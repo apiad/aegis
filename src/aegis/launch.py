@@ -91,7 +91,20 @@ def resolve_via(agent: str | None = None) -> str | None:
 def _via(via: str | None, env: dict[str, str] | None) -> dict[str, str] | None:
     if via is None or _exits is None:
         return env
-    return {**(os.environ if env is None else env), **_exits.env(via)}
+    base = os.environ if env is None else env
+    # Git's own choice of ssh stays: it may carry a key the person needs. A
+    # person who set one chose it, and it goes direct like a bare ``ssh``.
+    keep = (
+        {"GIT_SSH_COMMAND": base["GIT_SSH_COMMAND"]}
+        if "GIT_SSH_COMMAND" in base
+        else {}
+    )
+    return {**base, **_exits.env(via), **keep}
+
+
+def exit_proxy(via: str | None) -> dict[str, str] | None:
+    """The exit for a program that takes its proxy as a setting: Chromium."""
+    return None if via is None or _exits is None else _exits.get(via).playwright_proxy()
 
 
 def configure(mu: users.MultiUser | None) -> None:

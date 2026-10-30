@@ -6,13 +6,18 @@ through beta, two real servers in this process as in test_links.py.
 import asyncio
 import base64
 import logging
+import os
+import shlex
 import socket
+import sys
+from pathlib import Path
 
 import httpx
 import pytest
 
 from aegis import doctor, launch
 from aegis import exit as exit_
+from aegis.browsers import launch_proxy
 from aegis.config import Snapshot, write
 from aegis.links import LinkStore
 from aegis.net.config import NetConfig
@@ -560,3 +565,98 @@ def test_doctor_flags_a_name_that_is_no_trusted_link(tmp_path):
         assert finding(name)[0].level == "error"
     snap = Snapshot(path=tmp_path / "x", exit_via="good")
     assert doctor._exit(snap, roots, multi_user=True)[0].level == "error"
+
+
+# -- the gaps: git over SSH and Chromium ---------------------------------------------
+async def _through_helper(url: str, port: int, send: bytes) -> tuple[bytes, bytes, int]:
+    helper = Path(exit_.__file__).with_name("exit_connect.py")
+    p = await launch.child(
+        [sys.executable, "-I", str(helper), "127.0.0.1", str(port)],
+        env={"HTTPS_PROXY": url, "PATH": os.environ["PATH"]},
+        stdin=launch.PIPE,
+        stdout=launch.PIPE,
+        stderr=launch.PIPE,
+        user=None,
+        via=None,
+    )
+    out, err = await asyncio.wait_for(p.communicate(send), 15)
+    return out, err, p.returncode
+
+
+async def test_the_ssh_helper_carries_a_stream_through_the_exit(trusted, anywhere):  # noqa: F811
+    alpha, beta = trusted
+    out = alpha.app.exits.get("beta")
+
+    async def reverse(reader, writer):
+        data = await reader.read()
+        writer.write(data[::-1])
+        await writer.drain()
+        writer.close()
+
+    server = await asyncio.start_server(reverse, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    got, _, code = await _through_helper(out.url, port, b"abc")
+    server.close()
+    assert (got, code) == (b"cba", 0)
+    assert beta.app.exit_bytes["alpha"] >= 3
+
+
+async def test_the_ssh_helper_says_why_when_the_exit_refuses(trusted):  # noqa: F811
+    alpha, _ = trusted
+    out = alpha.app.exits.get("beta")
+    got, err, code = await _through_helper(out.url, 22, b"")
+    assert got == b"" and code == 1
+    assert b"not a public address" in err
+
+
+async def test_git_gets_the_helper_and_a_persons_own_command_stays(trusted):  # noqa: F811
+    alpha, _ = trusted
+    command = alpha.app.exits.env("beta")["GIT_SSH_COMMAND"]
+    words = shlex.split(command)
+    assert words[:2] == ["ssh", "-o"]
+    assert words[2].startswith("ProxyCommand=") and words[2].endswith(
+        "exit_connect.py %h %p"
+    )
+    assert launch._via("beta", {"A": "1"})["GIT_SSH_COMMAND"] == command
+    kept = launch._via("beta", {"GIT_SSH_COMMAND": "ssh -i mine"})
+    assert kept["GIT_SSH_COMMAND"] == "ssh -i mine"
+    assert kept["HTTPS_PROXY"] == alpha.app.exits.get("beta").url
+
+
+async def test_chromium_gets_the_exit_only_when_one_is_in_force(trusted):  # noqa: F811
+    alpha, _ = trusted
+    assert launch_proxy() == {}
+    await _reload(alpha, CONFIG_EXIT)
+    out = alpha.app.exits.get("beta")
+    assert launch_proxy() == {
+        "proxy": {
+            "server": f"http://127.0.0.1:{out.port}",
+            "username": "aegis",
+            "password": out.secret,
+        }
+    }
+
+
+@pytest.mark.browser
+@pytest.mark.slow
+async def test_chromium_reaches_a_page_through_the_exit(trusted, monkeypatch):  # noqa: F811
+    """A name the near server cannot resolve, which only the relay's answer
+    turns into the target: a page that loads came through it."""
+    pytest.importorskip("playwright")
+    from playwright.async_api import async_playwright
+
+    alpha, _ = trusted
+    await _reload(alpha, CONFIG_EXIT)
+
+    async def here(host, port):
+        return ["127.0.0.1"]
+
+    monkeypatch.setattr(exit_, "resolve", here)
+    async with Target(b"through the exit") as t:
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(**launch_proxy())
+            page = await browser.new_page()
+            await page.goto(f"http://only-the-relay.invalid:{t.port}/")
+            assert "through the exit" in await page.content()
+            await browser.close()
+    assert t.hits >= 1

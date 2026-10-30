@@ -119,8 +119,9 @@ exit_via: host
 ```
 
 or press Exit here on its row in Settings, Servers. Sessions, queue workers,
-workflow steps, monitors, skill tools and terminals started after that get the
-proxy variables for a listener on loopback. A running process keeps the
+workflow steps, monitors, skill tools, terminals and browsers started after that
+go through a listener on loopback: each gets the proxy variables, Chromium its
+launch setting, and `git` over SSH a `GIT_SSH_COMMAND`, unless you set one. A running process keeps the
 environment it started with, so a change applies to the next one started, and a
 session's sidebar says which exit it has. The Host rows gain a Via row with the
 address they exit from.
@@ -139,7 +140,7 @@ its doctor, its version checks and its network probes.
 
 What it does not cover:
 
-- A program that ignores the proxy variables goes out directly: bare `ssh`, a
+- A program that ignores the proxy variables goes out directly: a bare `ssh`, a
   raw socket, UDP. `curl`, `git` over HTTPS, `gh`, `npm`, `uv`, Python, Node's
   `fetch` and Claude Code all honour them. It is no guarantee for every packet.
 - Only a trusted link can be an exit, and a multi-user server cannot use one,
