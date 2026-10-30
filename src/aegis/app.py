@@ -2419,7 +2419,7 @@ class App:
                     "busy", f"{old.handle} is working; hand it off when its turn ends"
                 )
             # What would wake a session nobody can write to, or lose its result.
-            if wakers := reg.wakers(old):
+            if wakers := reg.wakers(old, run=False):
                 raise OpError(
                     "has_wakers",
                     f"{old.handle} still waits on {', '.join(wakers)}; "
@@ -2463,7 +2463,11 @@ class App:
             else:
                 # No agent named: only what a flag names changes, so a model
                 # chosen by hand stays.
-                changes = {"model": p.model, "effort": p.effort, "permission": p.permission}
+                changes = {
+                    "model": p.model,
+                    "effort": p.effort,
+                    "permission": p.permission,
+                }
                 spec = dataclasses.replace(
                     spec, **{k: v for k, v in changes.items() if v is not None}
                 )

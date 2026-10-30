@@ -167,7 +167,7 @@ svg text{font-family:var(--font-mono)}
 <tr><td>No quota trigger in this work</td><td class="why">The issue names quota as a way in, and none exists today. It stays open on #874 for later.</td><td class="who">maintainer</td></tr>
 <tr><td>A new session that fails before answering unlocks the old one</td><td class="why">Otherwise a failed start leaves the work with no session anyone can write to.</td><td class="who">agent</td></tr>
 <tr><td>The tool is <code>session_handoff</code></td><td class="why">It sits beside <code>session_spawn</code> and <code>session_close</code>, and a bare <code>handoff</code> reads too close to <code>peer_handoff</code>.</td><td class="who">agent</td></tr>
-<tr><td>A session with something that would wake it cannot hand off</td><td class="why">A monitor, a background task, a queue task or a workflow would wake a locked session, or lose its result. Reuses <code>wakers()</code>, and the refusal lists them. It also stops new cases of #486.</td><td class="who">agent</td></tr>
+<tr><td>A session with something that would wake it cannot hand off</td><td class="why">A monitor, a background task or a queue task would wake a locked session, or lose its result. Reuses <code>wakers()</code>, and the refusal lists them. A workflow is left out: its run already follows its owner's successor (<code>test_a_run_follows_its_main_agent_through_a_handoff</code>).</td><td class="who">agent</td></tr>
 <tr><td>An agent's handoff starts when its turn ends</td><td class="why">The new session then gets the old one's last message in its tail, and the old one is never mid-turn when it retires.</td><td class="who">agent</td></tr>
 <tr><td>A handed-off session cannot be reopened from the archive</td><td class="why">Reopening would give it a message box again. Its transcript stays readable, and the new session can <code>peer_read</code> it.</td><td class="who">agent</td></tr>
 <tr><td>A handoff to a linked server archives the old session as soon as the far side takes the first message</td><td class="why">Nothing on a plain link tells this server when the far turn ends.</td><td class="who">agent</td></tr>
@@ -248,7 +248,7 @@ svg text{font-family:var(--font-mono)}
 <ul>
 <li>No quota trigger. Quota notices stay as they are.</li>
 <li>No handoff happens without someone asking for it. Past <code>handoff_at</code>, the agent still writes a brief and the person still presses the chip.</li>
-<li>Monitors, queue tasks and workflows do not move to the new session. That is #486's question, and the refusal avoids it.</li>
+<li>Monitors and queue tasks do not move to the new session. #486, a gate's card left in the archived owner, stays open.</li>
 <li>This settles #104's question for sessions: a person or an agent can now retire one session and start another on a different harness.</li>
 </ul>
 </main>

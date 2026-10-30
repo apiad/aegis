@@ -234,6 +234,8 @@ async def test_permission_is_capped_at_the_callers(world): ...
 <ul>
 <li>The spec gives a person's refusal as "in <code>deliver</code>". The plan adds a separate <code>check_handed_off</code> beside <code>check_lock</code>, because <code>check_lock</code> also guards Interrupt and <code>session.close</code> (<code>agent_ops.py:1264</code>), which stay allowed.</li>
 <li><code>Registry.reopen</code> clears <code>continued_by</code> today on purpose (<code>registry.py:988</code>). The approved spec reverses that.</li>
+<li>The spec first refused a handoff while a workflow ran. Two tests in <code>tests/test_workflow_faults.py</code> show a run follows its owner's successor by design, so a workflow does not refuse.</li>
+<li>The offline message in review focus 1 has no browser test. <code>outbox.js</code>'s <code>deliver</code> already keeps a draft refused with any other code in state <code>error</code>, with the message, so nothing new is needed for it.</li>
 </ul>
 </main></div>
 <script>

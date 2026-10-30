@@ -315,12 +315,13 @@ class Registry(Host):
             frontier = {s.log_id for s in kids}
         return out[::-1]
 
-    def wakers(self, s: Session) -> list[str]:
+    def wakers(self, s: Session, *, run: bool = True) -> list[str]:
         """What will still wake ``s`` with a new turn, one phrase each: its
         approved run, monitors, background tasks and callback queue tasks.
         turn_end refuses done while any is live (#608): the task is not over.
         Its children are not here; they do not wake it, and one spawned for the
-        person may outlive the task that started it."""
+        person may outlive the task that started it. ``run=False`` leaves the
+        run out, for a handoff: a run follows its owner's successor."""
         n_mon = len(self.monitors.of(s.log_id)) if self.monitors is not None else 0
         n_tasks = sum(1 for w in self._waiting_for(s) if w["kind"] == "task")
         counts = (
@@ -328,8 +329,8 @@ class Registry(Host):
             (len(s.open_tasks), "background task"),
             (n_tasks, "queue task"),
         )
-        run = self._running(s)
-        out = [f"workflow {run.run}"] if run is not None else []
+        live = self._running(s) if run else None
+        out = [f"workflow {live.run}"] if live is not None else []
         out += [f"{n} {noun}{'' if n == 1 else 's'}" for n, noun in counts if n]
         return out
 
@@ -423,7 +424,7 @@ class Registry(Host):
         next_ = self.successor(session)
         if next_ is None:
             return None
-        return "a new session" if next_ == "starting" else next_.handle
+        return "a new session" if isinstance(next_, str) else next_.handle
 
     def workflow_lock(self, session: Session) -> str | None:
         """A node's session is the workflow's while its run is live: nobody
