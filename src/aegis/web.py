@@ -873,10 +873,16 @@ def build_web(
     # the app is up.
     mcp_ready = asyncio.Event()
 
+    def build_mcp():
+        tools = importlib.import_module("aegis.mcp_tools")
+        return tools.build_mcp(app.registry, app.tokens, app.sessions)[1]
+
     async def run_mcp(stopping: asyncio.Event) -> None:
         try:
-            tools = await asyncio.to_thread(importlib.import_module, "aegis.mcp_tools")
-            _, mcp_app = tools.build_mcp(app.registry, app.tokens, app.sessions)
+            # Built in the thread too: on the loop, the build could run between
+            # boot and the bind, and an agent resumed at boot found the port
+            # closed (#811).
+            mcp_app = await asyncio.to_thread(build_mcp)
         except Exception:
             log.exception("the MCP endpoint failed to start")
             mcp_ready.set()
