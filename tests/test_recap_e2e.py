@@ -174,6 +174,55 @@ async def test_a_session_closed_during_the_call_gets_no_record(world, monkeypatc
     assert not a.recap_cost_usd
 
 
+def rows_after_a_remove(world, monkeypatch) -> list[dict]:
+    """Every session row published after that session's removal, as it grows."""
+    late: list[dict] = []
+    removed: set[str] = set()
+    publish = world.app.channels.publish
+
+    def spy(channel, ops):
+        if channel == "sessions":
+            for op in ops:
+                if "remove" in op:
+                    removed.add(op["remove"])
+                elif "upsert" in op and op["upsert"].get("log_id") in removed:
+                    late.append(op["upsert"])
+        publish(channel, ops)
+
+    monkeypatch.setattr(world.app.channels, "publish", spy)
+    return late
+
+
+async def test_a_call_paid_after_the_close_does_not_bring_the_session_back(
+    world, monkeypatch
+):
+    a = await two_unread(world)
+    late = rows_after_a_remove(world, monkeypatch)
+    monkeypatch.setenv("FAKE_CLAUDE_ONESHOT", "empty")
+    monkeypatch.setenv("FAKE_CLAUDE_ONESHOT_SLEEP", "1")
+    pending = asyncio.create_task(
+        world.app.registry.call("recap.request", {"log_id": a.log_id})
+    )
+    await asyncio.sleep(0.2)
+    await world.app.registry.call("session.close", {"log_id": a.log_id})
+    assert (await pending)["status"] == "failed"
+    assert a.recap_cost_usd == 0.004  # paid: the card's change is what comes late
+    await asyncio.sleep(0.5)  # past PUBLISH_EVERY_S
+    assert not late
+
+
+async def test_a_publish_waiting_at_the_close_does_not_bring_the_session_back(
+    world, monkeypatch
+):
+    a = await two_unread(world)
+    await a.stop()
+    late = rows_after_a_remove(world, monkeypatch)
+    a.add_recap_cost(0.01)  # arms the timer, and the close below never awaits it
+    await world.app.registry.call("session.close", {"log_id": a.log_id})
+    await asyncio.sleep(0.5)  # past PUBLISH_EVERY_S
+    assert not late
+
+
 async def test_stopping_the_server_kills_a_running_call(world, monkeypatch, tmp_path):
     a = await two_unread(world)
     monkeypatch.setattr(recap, "TIMEOUT_S", 60)

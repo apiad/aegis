@@ -1,0 +1,1 @@
+- **A closed session no longer comes back as a tab that can be neither closed nor reopened.** A card update waiting at the close, or a recap paid after it, published the session's row again after its removal, so every browser watching that server, on the server itself or through a link, showed an archived session as an open tab until a reload (#856).

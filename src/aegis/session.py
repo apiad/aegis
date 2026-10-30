@@ -1347,7 +1347,11 @@ class Session:
         if self._publish_timer is not None:
             self._publish_timer.cancel()
             self._publish_timer = None
-        self._publish("sessions", [{"upsert": self.wire()}])
+        # A closed session's row is gone from every browser (Registry.close); a
+        # timer armed before the close, or a cost paid after it, must not put
+        # it back as a tab that can be neither closed nor reopened (#856).
+        if not self.archived:
+            self._publish("sessions", [{"upsert": self.wire()}])
 
     def _on_line(self, line: str) -> None:
         try:
