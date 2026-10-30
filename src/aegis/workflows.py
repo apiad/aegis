@@ -850,9 +850,14 @@ class Workflows:
             if last != "done":
                 return _fold([last, "running"])
             if "probe" in node.body:
-                return (
-                    "done" if (s.untils.get(s.round) or {}).get("pass") else "running"
-                )
+                u = s.untils.get(s.round)
+                if u is None:
+                    return "running"  # its until has not answered yet
+                if u.get("pass"):
+                    return "done"
+                # Spent, as _repeat ends it: no round is left to run.
+                spent = s.round >= s.max and node.body.get("at_max") == "done"
+                return "done" if spent else "running"
             return "done" if s.round >= s.max else "running"
         if node.kind == "map":
             if s is None or s.items is None:

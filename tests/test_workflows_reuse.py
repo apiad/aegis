@@ -193,3 +193,42 @@ async def test_a_spent_steps_session_names_the_step_that_may_continue_it(world):
     assert e.value.code == "in_workflow"
     assert "which is done, but fix may still continue" in e.value.message
     assert lid in world.app.sessions.sessions
+
+
+async def test_a_spent_loop_is_done_and_frees_the_session_it_kept(world):
+    # #741: each item's impl stayed open behind a loop that read running once
+    # its rounds were spent, so the next item's fresh step never had room.
+    r = json.dumps(report(1, 0.1))
+    text = f"""id: spent
+title: Spent
+say: Each item writes, fixes in rounds, then has a fresh review.
+limits: {{total: 1}}
+root:
+  map:
+    over: [1, 2]
+    as: x
+    cap: 1
+    do:
+      seq:
+        - {{id: impl, say: Write it., agent: {{agent: opus, prompt: {r}}}}}
+        - loop:
+            max: 2
+            until: {{expr: "false"}}
+            at_max: done
+            do: {{id: fix, say: Fix it., agent: {{session: impl, prompt: {r}}}}}
+          id: rounds
+          say: Twice.
+        - {{id: review, say: Review it., agent: {{agent: opus, prompt: {r}}}}}
+      id: item
+      say: One item.
+  id: items
+  say: Both.
+"""
+    wf = world.app.workflows
+    run = await run_it(world, text)
+    await until(lambda: settled(wf, run), timeout=20)
+    st = wf.runs[run]
+    assert st.status == "done", {k: (n.status, n.error) for k, n in st.nodes.items()}
+    rows = {r["id"]: r["state"] for r in wf.wire(run)["tree"]}
+    assert rows["items.0.rounds"] == rows["items.1.rounds"] == "done"
+    assert st.nodes["items.0.impl"].log_id not in world.app.sessions.sessions
