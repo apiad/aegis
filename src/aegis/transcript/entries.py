@@ -1291,6 +1291,10 @@ class Fold:
                         typed = (self._entries.get(pid) or {}).get("md")
                 if pid is None:
                     pid = self._take(None, command=False)
+            elif ev.text.startswith(NOTICE_HEADER):
+                # Steered mid-turn (Session._steer_owed), with no send of its
+                # own: it must not take the row of a prompt still pending.
+                pid = self._exact(ev.text)
             else:
                 pid = self._take(ev.text, command=False)
             carried = self._entries.get(pid) if pid is not None else None

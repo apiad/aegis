@@ -1,7 +1,9 @@
 """Notices: what a session is told about the host's disk, memory, CPU and quota.
 
 A notice never starts a turn and never goes into the system prompt: it rides
-on the session's next send or its next aegis tool result. Reading a signal
+on the session's next send or, during a turn, its next tool call
+(``Session._steer_owed``) or, on a harness without ``steers_notices``, its next
+aegis tool result. Reading a signal
 never raises; a missing /proc or PSI file reads as None, and None means no
 notice of that kind.
 

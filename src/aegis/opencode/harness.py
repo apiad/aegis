@@ -15,6 +15,7 @@ class OpenCode:
     src = "opencode"
     label = LABEL
     steers_mid_turn = False  # untested mid-turn; held until a live check
+    steers_notices = False
     tool_prefix = "aegis_"
 
     def __init__(self, bin: str) -> None:

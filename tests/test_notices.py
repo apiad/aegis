@@ -566,8 +566,72 @@ async def test_the_first_send_carries_the_notice_and_the_second_does_not(noticed
     assert second == "and a test"
 
 
-async def test_a_tool_result_carries_the_notice_when_no_send_came_first(noticed):
+def inbox_rows(s) -> str:
+    return json.dumps([e for e in s.entries() if e["kind"] == "inbox"])
+
+
+async def test_a_tool_call_steers_the_notice_into_its_turn(noticed):
     s = await noticed.spawn()
+    said = await turn(s, "/sh true")
+    assert said == "Executed command."
+    assert "The disk holding aegis" in inbox_rows(s)
+    assert s.notices_sent.get("disk") == "warn"
+    assert sent(noticed.app, s.log_id) == ["/sh true"]  # no send of its own
+    await turn(s, "hello")
+    assert sent(noticed.app, s.log_id)[-1] == "hello"  # and told once
+
+
+async def test_an_aegis_tool_call_steers_it_and_its_result_stays_clean(noticed):
+    s = await noticed.spawn()
+    said = await turn(s, mcp("plan_update", items=[{"text": "a", "state": "doing"}]))
+    assert said.startswith("mcp ok: plan saved") and DISK_WARN not in said
+    assert "The disk holding aegis" in inbox_rows(s)
+
+
+@pytest.mark.parametrize("why", ["idle", "interrupting", "falling", "no process"])
+async def test_nothing_is_steered_where_it_would_start_a_turn(noticed, why):
+    s = await noticed.spawn()
+    await turn(s, "/sh true")
+    s.notices_sent.clear()
+    loop = asyncio.get_running_loop()
+    if why != "idle":
+        s._set(status="working")
+    held = loop.create_future()
+    if why == "interrupting":
+        s._interrupt_timer = held
+    elif why == "falling":
+        s._falling = held
+    proc, sends = s._proc, []
+    if why == "no process":
+        s._proc = None
+    else:
+
+        async def send(text):
+            sends.append(text)
+
+        s._proc = SimpleNamespace(send=send)
+    s._steer_owed()
+    await asyncio.sleep(0)
+    assert sends == [] and s.notices_sent == {}  # still owed
+    s._interrupt_timer = s._falling = None
+    s._proc = proc
+    held.cancel()
+    s._set(status="idle")
+
+
+def test_a_notice_echo_leaves_a_pending_prompt_alone():
+    r = Rec()
+    r.own("send", text="the person's words")
+    r.echo(BLOCK)
+    rows = {(e["kind"], e["status"]) for e in run(r)[0].entries()}
+    assert rows == {("user", "pending"), ("inbox", "ok")}
+
+
+async def test_a_tool_result_carries_the_notice_when_no_send_came_first(
+    noticed, monkeypatch
+):
+    s = await noticed.spawn()
+    monkeypatch.setattr(s.harness, "steers_notices", False)
     said = await turn(s, mcp("plan_update", items=[{"text": "a", "state": "doing"}]))
     assert said.startswith("mcp ok: plan saved")
     assert DISK_WARN in said
@@ -575,8 +639,11 @@ async def test_a_tool_result_carries_the_notice_when_no_send_came_first(noticed)
     assert sent(noticed.app, s.log_id)[0].startswith("/mcp plan_update")
 
 
-async def test_a_slash_command_goes_unchanged_and_the_next_prompt_carries_it(noticed):
+async def test_a_slash_command_goes_unchanged_and_the_next_prompt_carries_it(
+    noticed, monkeypatch
+):
     s = await noticed.spawn()
+    monkeypatch.setattr(s.harness, "steers_notices", False)
     await turn(s, "/sh true")
     await turn(s, "hello")
     command, prompt = sent(noticed.app, s.log_id)

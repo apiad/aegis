@@ -141,6 +141,11 @@ class Harness(Protocol):
     tool_prefix: str
     # Reads a message sent mid-turn inside that turn (Session.deliver's urgent).
     steers_mid_turn: bool
+    # Takes a pending notice that way at each tool call, instead of on the
+    # result of an aegis tool. Each one needs a run with a real model first: a
+    # harness that hands a steer on as its own message may have it read as a
+    # new request.
+    steers_notices: bool
     bin: str
 
     def process(self, launch: Launch) -> Process: ...

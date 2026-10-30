@@ -141,6 +141,8 @@ def _arg(flag: str) -> str | None:
 
 OUT = threading.Lock()
 inbox: queue.Queue = queue.Queue()
+NOTICE_HEADER = "> from aegis:notice · "
+STEER_WAIT_S = 0.03
 interrupted = threading.Event()
 state: dict = {
     "cost": 0.0,
@@ -454,7 +456,20 @@ def tool_id() -> str:
     return f"toolu_fake_{state['tool']}"
 
 
+def read_steered_notices() -> None:
+    """As the real CLI reads what reached stdin by the tool boundary and echoes
+    it. A model takes seconds to ask again; this gives aegis a moment to write."""
+    time.sleep(STEER_WAIT_S)
+    with inbox.mutex:
+        notices = [t for t in inbox.queue if str(t).startswith(NOTICE_HEADER)]
+        for t in notices:
+            inbox.queue.remove(t)
+    for t in notices:
+        echo(t)
+
+
 def tool_output(tid: str, text: str, is_error: bool = False) -> None:
+    read_steered_notices()
     emit(
         {
             "type": "user",
