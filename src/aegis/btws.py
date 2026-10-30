@@ -93,8 +93,12 @@ class SideNotes:
             },
         )
 
-    @staticmethod
-    def _answer(s, record: dict) -> None:
+    def _answer(self, s, record: dict) -> None:
+        # Free the slot first: whoever reads the settled block may ask again at
+        # once, before this task's done callback runs (#826).
+        cur = self._running.get(s.log_id)
+        if cur is not None and cur[0] == record["id"]:
+            del self._running[s.log_id]
         if not s.archived:  # a closed session's store is shut
             s.report(record)
 
