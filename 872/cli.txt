@@ -1,0 +1,12 @@
+$ aegis usage --since 1d --split purpose
+PURPOSE  COST
+fix             50¢  ██████████████████████████████
+total  50¢
+
+$ aegis journal search --kind commit
+2026-10-30 Fri
+  17:56  20261030-120000-demo01  commit  ? fix: a quiet commit on a deleted branch
+         files unknown: the commit was not in the repo aegis guessed
+  17:56  20261030-120000-demo01  commit  9f3d7df fix: a quiet commit a ref still holds
+         demo/a.py
+2 entries
