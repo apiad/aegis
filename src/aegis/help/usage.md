@@ -86,19 +86,19 @@ The older views still work: `--sessions` lists the costliest sessions,
 ## Where a quota gauge says it will land
 
 A gauge's arrow is where the window should end at its reset. What is spent is
-known, so only the time left is estimated, at a rate between two: the window's
-own so far, and what your last finished windows of that kind usually spent (the
-last 20 for a 5-hour window, the last 4 for a week or a month, from this
-server's own readings).
+known, so only what remains of the window is estimated, at a rate between two:
+the window's own so far, and what your last finished windows of that kind
+usually spent (the last 20 for a 5-hour window, the last 4 for a week or a
+month, from this server's own readings).
 
 ```text
-landing = spent + time left × (0.5 × usual + spent) / (0.5 + time gone)
+landing = spent + remaining × (0.5 × usual + spent) / (0.5 + elapsed)
 ```
 
-Spent and usual are percents of the quota; time left and time gone are fractions
+Spent and usual are percents of the quota; remaining and elapsed are fractions
 of the window. A new window therefore reads what your windows usually spend, or
-100% until one has finished, and the window's own rate counts for more as time
-goes. At half time the two weigh the same. A burst in the first hours moves the
+100% until one has finished, and the window's own rate counts for more as it
+goes on. Halfway through, the two weigh the same. An early burst moves the
 number without sending it to several hundred percent, and a quiet stretch brings
 it back down.
 
