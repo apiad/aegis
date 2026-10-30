@@ -100,7 +100,7 @@ class RunState:
     # Who launched it, with no click: {typed, by: person, principal, line}
     # or {typed, by: schedule, name, run, line}. Never the token.
     launch: dict | None = None
-    # The last stuck report, {nodes, held_by}: the same one is not told twice.
+    # The last stuck report, {nodes, held_by, full}: the same one is not told twice.
     stuck: dict | None = None
     # A rejection logged and not yet told to the main agent.
     reject_untold: bool = False
@@ -239,9 +239,15 @@ def _apply(st: RunState, r: dict) -> None:
             if o.get("kind") in NOTICES:
                 del st.open[to]
     elif ev == "stuck":
-        st.stuck = {"nodes": r.get("nodes"), "held_by": r.get("held_by")}
+        st.stuck = {k: r.get(k) for k in ("nodes", "held_by", "full")}
         text = r.get("text") or ""
-        st.open[str(r.get("to"))] = {"kind": "stuck", "text": text, "told": False}
+        full = r.get("full")
+        st.open[str(r.get("to"))] = {
+            "kind": "stuck",
+            "text": text,
+            "full": full,
+            "told": False,
+        }
         _tell(st, t, "note", f"Stuck: {text}")
     elif ev == "edit_proposed":
         if st.proposal is not None:
