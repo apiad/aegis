@@ -4021,7 +4021,7 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
     if (shown === s.key) transcript.toBottom();
     // /tutorial and /whats-new start a guide in a new session (help.guide):
     // open its tab, on the server that runs it, as a spawn from the new tab does.
-    if (/^\/(tutorial|whats-new|doctor)(\s|$)/.test(text) && r?.log_id) go(`#s=${keyOf(forKey(s.key).server, r.log_id)}`);
+    if (/^\/(tutorial|whats-new|doctor|handoff)(\s|$)/.test(text) && r?.log_id) go(`#s=${keyOf(forKey(s.key).server, r.log_id)}`);
   };
   if (fromComposer) {
     sending.add(s.key);

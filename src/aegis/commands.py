@@ -39,7 +39,7 @@ class Command:
     doc: str
     args: str = (
         ""  # what the menu completes: "models", "efforts", "permissions",
-        # "tutorials" or "workflows"; "spawn" and "announce" walk their own
+        # "tutorials" or "workflows"; "spawn", "handoff" and "announce" walk their own
         # words and flags (client/js/commands.js)
     )
 
@@ -117,6 +117,13 @@ AEGIS: dict[str, Command] = {
             "spawn",
         ),
         Command(
+            "handoff",
+            "[text]",
+            "Continue this work in a new session and close this one to messages; "
+            "flags: --agent, --model, --effort, --permission, --cwd",
+            "handoff",
+        ),
+        Command(
             "announce",
             "<text> [--until HH:MM] [--critical]",
             "Tell every agent on this server something, once",
@@ -167,6 +174,46 @@ class SpawnLine:
     permission: str | None = None
     cwd: str | None = None
     quiet: bool = False
+
+
+HANDOFF_FLAGS = ("agent", *SPAWN_FLAGS)
+HANDOFF_USAGE = (
+    "usage: /handoff [--agent name[@server]] [--model m] [--effort e] "
+    "[--permission p] [--cwd path] [text]"
+)
+
+
+@dataclass(frozen=True)
+class HandoffLine:
+    agent: str | None = None
+    server: str | None = None
+    text: str | None = None
+    model: str | None = None
+    effort: str | None = None
+    permission: str | None = None
+    cwd: str | None = None
+
+
+def parse_handoff(arg: str) -> HandoffLine:
+    """``/handoff``'s argument: leading flags, then the rest of the line as the
+    text, verbatim. Unlike /spawn's the agent is a flag, so the text's first
+    word stays the text's."""
+    rest = arg.strip()
+    flags: dict[str, str] = {}
+    while rest.startswith("--"):
+        word, _, rest = rest.partition(" ")
+        name = word[2:]
+        if name not in HANDOFF_FLAGS:
+            raise OpError("bad_handoff", f"no flag --{name}; {HANDOFF_USAGE}")
+        value, _, rest = rest.lstrip().partition(" ")
+        if not value:
+            raise OpError("bad_handoff", f"--{name} needs a value; {HANDOFF_USAGE}")
+        flags[name] = value
+        rest = rest.lstrip()
+    agent, at, server = flags.pop("agent", "").partition("@")
+    if at and not (agent and server):
+        raise OpError("bad_handoff", HANDOFF_USAGE)
+    return HandoffLine(agent or None, server or None, rest or None, **flags)
 
 
 def parse_spawn(arg: str) -> SpawnLine:
