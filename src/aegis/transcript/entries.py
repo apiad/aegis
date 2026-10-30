@@ -798,6 +798,12 @@ class Fold:
             return self._upsert(
                 _entry(f"e{i}", "system", "ok", ts, d.SYSTEM_GLYPH, summary=line)
             )
+        if kind == "handoff_off":
+            # The session a handoff started will not take over (registry.py).
+            line = f"handoff called off: {rec.get('handle')} {rec.get('why')}"
+            return self._upsert(
+                _entry(f"e{i}", "system", "ok", ts, d.SYSTEM_GLYPH, summary=line)
+            )
         if kind == "server_paused":
             # The person paused every session (app.pause_all); the stop's
             # own record follows.
