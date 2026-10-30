@@ -1,0 +1,11 @@
+$ # BEFORE: src/aegis/btws.py as on origin/main 957c7124, the test as committed
+$ pytest tests/test_btw_e2e.py -k test_the_slot_is_free_the_moment_the_block_stops_running -q
+E               AssertionError: timed out waiting for the second ask
+aegis.ops.OpError: btw_busy: a side note is already running in this session; wait for it or cancel it
+FAILED tests/test_btw_e2e.py::test_the_slot_is_free_the_moment_the_block_stops_running[fail]
+FAILED tests/test_btw_e2e.py::test_the_slot_is_free_the_moment_the_block_stops_running[garbage]
+2 failed, 10 deselected, 2 warnings in 13.68s
+
+$ # AFTER: the fix
+$ pytest tests/test_btw_e2e.py -k test_the_slot_is_free_the_moment_the_block_stops_running -q
+2 passed, 10 deselected, 2 warnings in 2.65s
