@@ -56,7 +56,11 @@ async def test_it_ticks_on_the_far_server_and_its_runs_start_there(trusted):  # 
     alpha, beta = trusted
     here = await alpha.spawn()
     t = frozen(beta)
-    ok(await turn(here, mcp("schedule_create", name="far-tick@beta", **NEW | {"prompt": DONE})))
+    ok(
+        await turn(
+            here, mcp("schedule_create", name="far-tick@beta", **NEW | {"prompt": DONE})
+        )
+    )
     await approve(alpha, "far-tick")
     await tick(beta, t)
     (fired,) = runs(beta, "far-tick", "fired")
@@ -155,7 +159,9 @@ async def test_an_owner_pauses_resumes_and_deletes_after_approval(trusted):  # n
     await made(here)
     await approve(alpha)
     far = "far-triage@beta"
-    assert ok(await turn(here, mcp("schedule_pause", name=far)))["paused"]["by"] == "user"
+    assert (
+        ok(await turn(here, mcp("schedule_pause", name=far)))["paused"]["by"] == "user"
+    )
     assert ok(await turn(here, mcp("schedule_resume", name=far)))["paused"] is None
     # A rename is the same agent: ownership goes by its log id, not its handle.
     await alpha.app.registry.call(
@@ -169,7 +175,11 @@ async def test_an_owner_pauses_resumes_and_deletes_after_approval(trusted):  # n
 async def test_a_far_fire_starts_its_run_on_the_far_server(trusted):  # noqa: F811
     alpha, beta = trusted
     here = await alpha.spawn()
-    ok(await turn(here, mcp("schedule_create", name="far-fire@beta", **NEW | {"prompt": DONE})))
+    ok(
+        await turn(
+            here, mcp("schedule_create", name="far-fire@beta", **NEW | {"prompt": DONE})
+        )
+    )
     await approve(alpha, "far-fire")
     said = ok(await turn(here, mcp("schedule_fire", name="far-fire@beta")))
     assert said["outcome"] == "fired" and said["name"] == "far-fire@beta"
@@ -206,7 +216,10 @@ async def test_an_agent_cannot_unpause_or_fire_across_a_link(trusted):  # noqa: 
     ):
         assert "needs_person" in said and "mcp ok" not in said, said
     s = beta.app.schedules.items["far-triage"]
-    assert s.paused["by"] == "approval" and beta.app.schedules.state["far-triage"].runs == 0
+    assert (
+        s.paused["by"] == "approval"
+        and beta.app.schedules.state["far-triage"].runs == 0
+    )
 
     # What alpha sends, seen by beta's own rule, is refused there and not here.
     me = {
@@ -394,8 +407,10 @@ async def test_nothing_relays_to_a_third_server(trusted, tmp_path, fake_claude):
     try:
         alpha.app.links.add("gamma", gamma.base, gamma.token, trusted=True)
         await until(
-            lambda: (link := alpha.app.links.get("gamma")).state == "linked"
-            and link.granted
+            lambda: (
+                (link := alpha.app.links.get("gamma")).state == "linked"
+                and link.granted
+            )
         )
         create(gamma, "gamma-own", "x")
         # Beta's call down the way back asks alpha to go on to gamma.

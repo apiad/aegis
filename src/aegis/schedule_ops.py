@@ -37,8 +37,7 @@ if TYPE_CHECKING:
 
 AT_SERVER = "`name@server` is one on a server linked with trust."
 NAME = (
-    "Two or three lowercase words joined by hyphens, unique on its server. "
-    + AT_SERVER
+    "Two or three lowercase words joined by hyphens, unique on its server. " + AT_SERVER
 )
 
 
@@ -220,9 +219,7 @@ def register_schedule_ops(app: App) -> None:
                 "it, from the card under the call that made it",
             )
 
-    def card(
-        caller: Caller, name: str, action: str, server: str | None = None
-    ) -> None:
+    def card(caller: Caller, name: str, action: str, server: str | None = None) -> None:
         # The approval card under the agent's call (entries.py, entries.js).
         if (s := me(caller)) is not None:
             s.record_card(
@@ -274,7 +271,9 @@ def register_schedule_ops(app: App) -> None:
         """One schedule's fires and ticks, newest first, a page at a time. The
         ticks that changed nothing are left out unless you pass quiet.
         `name@server` reads one on a server linked with trust."""
-        if (far := await far_call("schedule.runs", p, caller, speaks=False)) is not None:
+        if (
+            far := await far_call("schedule.runs", p, caller, speaks=False)
+        ) is not None:
             return far["result"]
         return sch.runs(p.name, p.offset, p.limit, p.quiet)
 
@@ -386,7 +385,9 @@ def register_schedule_ops(app: App) -> None:
         """Try a clock and a check without saving anything: the next three
         ticks, and whether the check would fire now and why. With `name@server`
         both are tried on a server linked with trust."""
-        if (far := await far_call("schedule.test", p, caller, speaks=False)) is not None:
+        if (
+            far := await far_call("schedule.test", p, caller, speaks=False)
+        ) is not None:
             return far["result"]
         try:
             clock = clock_from(p.clock)
