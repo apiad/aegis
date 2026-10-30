@@ -5,6 +5,13 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [2.19.0] - 2026-10-30
+
+### Added
+
+A trusted link can be an exit: with `exit_via: <link>` in `.aegis.yaml`, or Exit here in Settings, sessions, workers, workflow steps, monitors, terminals, browsers and `git` over SSH reach the internet from the far server's address, with no VPN. It covers programs that honour the proxy variables. A dead exit fails with a 502 and never falls back to this machine's address, and the Host rows gain a Via row. See the links help page. (#862)
+  help: links#exit-through-a-trusted-link
+
 ## [2.18.0] - 2026-10-30
 
 The tested harness range does not move: the canary fails on codex-cli 0.166.0 and opencode v2.2.3, both newer than this release's range (#831 to #855), so aegis asks before a session starts on either.

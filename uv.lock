@@ -8,7 +8,7 @@ resolution-markers = [
 
 [[package]]
 name = "aegis-harness"
-version = "2.18.0"
+version = "2.19.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },
