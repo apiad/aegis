@@ -438,9 +438,10 @@ class Registry(Host):
         """The live session continuing ``old`` after a handoff: "starting"
         while it spawns, the open session it names, or None when the name is
         stale (the new session was closed, or a crash left it behind);
-        "pending" while the agent that asked ends its turn."""
+        "pending" while the agent that asked ends its turn; ``handle@server``
+        for the moment before a handoff across a link archives it."""
         c = old.continued_by
-        if c in ("starting", "pending"):
+        if c in ("starting", "pending") or (c and "@" in c):
             return c
         return self.sessions.get(c) if c else None
 
@@ -449,7 +450,9 @@ class Registry(Host):
         next_ = self.successor(session)
         if next_ is None:
             return None
-        return "a new session" if isinstance(next_, str) else next_.handle
+        if isinstance(next_, str):
+            return next_ if "@" in next_ else "a new session"
+        return next_.handle
 
     def workflow_lock(self, session: Session) -> str | None:
         """A node's session is the workflow's while its run is live: nobody

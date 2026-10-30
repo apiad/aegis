@@ -120,7 +120,7 @@ svg text{font-family:var(--font-mono)}
 </head>
 <body>
 <!-- For executing agents: code sits in script type="text/plain" blocks, unescaped. Mark progress by editing data-state on a task to doing or done, one Edit per change. -->
-<div class="chrome"><span>aegis</span><span class="tab">plan · handoff</span><span class="st"><span class="pill acc">in progress</span><span class="pill">#874</span></span></div>
+<div class="chrome"><span>aegis</span><span class="tab">plan · handoff</span><span class="st"><span class="pill acc">done</span><span class="pill">#874</span></span></div>
 <div class="wrap">
 <nav class="toc" id="toc">
 <a href="#global">Global constraints</a><a href="#focus">Review focus</a><a href="#pr1">PR 1: lock and /handoff</a><a href="#pr2">PR 2: agent tool</a><a href="#pr3">PR 3: another server</a><a href="#departs">Departures from the spec</a>
@@ -222,7 +222,7 @@ async def test_permission_is_capped_at_the_callers(world): ...
 </ol></details>
 
 <h2 id="pr3"><span class="n">05</span>PR 3: another server</h2>
-<details class="task" id="task-5" data-state="pending"><summary>5 · A handoff across a link<span class="f">app.py, agent_ops.py, registry.py, help/handoffs.md · tests/test_handoff_far.py</span></summary>
+<details class="task" id="task-5" data-state="done"><summary>5 · A handoff across a link<span class="f">app.py, agent_ops.py, registry.py, help/handoffs.md · tests/test_handoff_far.py</span></summary>
 <ol>
 <li>Write failing tests in the shape of the linked server in <code>tests/test_workflow_lock.py</code>: <code>test_a_far_handoff_archives_when_the_far_side_takes_it</code>, <code>test_a_refused_far_spawn_leaves_it_open_and_unlocked</code>, <code>test_open_children_refuse_a_far_handoff</code>, <code>test_a_plain_links_opening_has_no_peer_read</code>.</li>
 <li><code>App.start_handoff</code> with a server calls <code>_spawn_far</code> for an agent, and the link call in <code>_spawn_line</code> for a person. On success it sets <code>continued_by</code> to <code>handle@server</code> and archives through <code>Registry._archive</code>. <code>successor_name</code> returns that value.</li>
@@ -236,6 +236,7 @@ async def test_permission_is_capped_at_the_callers(world): ...
 <li><code>Registry.reopen</code> clears <code>continued_by</code> today on purpose (<code>registry.py:988</code>). The approved spec reverses that.</li>
 <li>The spec first refused a handoff while a workflow ran. Two tests in <code>tests/test_workflow_faults.py</code> show a run follows its owner's successor by design, so a workflow does not refuse.</li>
 <li>Task 4 also handles a call outside a turn, from an agent's shell after its turn ended: it starts at once, since no turn end would come. A dead process during the turn clears the lock for the same reason.</li>
+<li>Task 5's opening never carries the <code>peer_read</code> sentence, trusted link or not, because an archived session is readable only from its own server. A workflow also refuses a far handoff, since a run cannot follow across a link.</li>
 <li>The offline message in review focus 1 has no browser test. <code>outbox.js</code>'s <code>deliver</code> already keeps a draft refused with any other code in state <code>error</code>, with the message, so nothing new is needed for it.</li>
 </ul>
 </main></div>

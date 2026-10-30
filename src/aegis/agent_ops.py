@@ -393,6 +393,12 @@ HANDOFF_HEAD = (
     "It is archived once you finish your first turn; peer_read {handle} still "
     "reads it after that, if you need more than what follows."
 )
+# On a linked server: nothing tells the old server when the first turn ends, and
+# peer_read reaches an archived session only from its own server (#874).
+HANDOFF_HEAD_FAR = (
+    "You continue the work of session {handle}, on another server. It is archived "
+    "as you start, so what follows is all you have of it."
+)
 
 
 HANDOFF_KIDS = (
@@ -411,12 +417,13 @@ def handoff_opening(
     kids: tuple[str, ...] = (),
     leads: bool = False,
     instruction: str | None = None,
+    far: bool = False,
 ) -> str:
     """A handoff's first message: who it continues, the sessions it started
     that the new one adopts (#641), the brief when the agent wrote one, the
     last turns as /spawn carries them (#354), and last, so it is what the agent
     reads last, the instruction it was handed off with (#874)."""
-    parts = [HANDOFF_HEAD.format(handle=handle)]
+    parts = [(HANDOFF_HEAD_FAR if far else HANDOFF_HEAD).format(handle=handle)]
     if kids:
         line = HANDOFF_KIDS.format(handle=handle, kids=", ".join(kids))
         parts.append(line + (HANDOFF_LEADS.format(handle=handle) if leads else ""))

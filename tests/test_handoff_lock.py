@@ -188,11 +188,11 @@ async def test_an_unknown_agent_leaves_the_session_unlocked(world):
     await send(world, a, "back to work")
 
 
-async def test_handoff_to_a_server_is_refused_for_now(world):
+async def test_handoff_to_an_unknown_server_leaves_it_unlocked(world):
     a = await world.spawn()
-    with pytest.raises(OpError):
+    with pytest.raises(OpError) as e:
         await send(world, a, "/handoff --agent opus@far go on")
-    assert a.continued_by is None
+    assert e.value.code == "unknown_server" and a.continued_by is None
 
 
 async def test_handoff_on_an_asleep_session(world):
