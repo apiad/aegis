@@ -195,7 +195,8 @@ export function netRows(net, now, measure = null) {
   // The address what aegis starts exits from, through a link (exit.py).
   const via = net.via;
   if (via) {
-    const place = [via.name, via.colo, via.loc].filter(Boolean).join(" · ");
+    // An IPv6 address leaves room for little else on a phone.
+    const place = via.ip.includes(":") ? via.name : [via.name, via.colo, via.loc].filter(Boolean).join(" · ");
     if (via.down) rows.push(textRow("Via", via.down, via.name, "critical", `Nothing goes out through ${via.name} now, and nothing falls back to this machine's address: ${via.down}.`));
     else if (via.ip) rows.push(textRow("Via", via.ip, place, via.error ? "stale" : "", `What aegis starts reaches the internet from ${via.ip}, through ${via.name}.`));
     else rows.push(textRow("Via", via.error ? "no answer" : "looking up", via.name, via.error ? "stale" : "", via.error ? `The lookup through ${via.name} failed: ${via.error}.` : ""));
