@@ -1,0 +1,1 @@
+- **A workflow run stuck waiting for room now tells its main agent.** A step could wait for a slot for good, with no agent working and nobody told, when the slot was held by a session a later step still needs. The main agent is now woken once, with the sessions holding the slots named, and can raise the limits or stop the run.

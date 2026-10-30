@@ -236,7 +236,9 @@ in both as an agent of its own alias while the run lives; `session_spawn`
 refuses it with an error naming the run when it does not fit, and the node
 goes on without it. Last comes the quota the server keeps for its owner. An
 agent without a number of its own is bound only by the totals, and a `cap`
-above `limits.total` is refused.
+above `limits.total` is refused. A session kept for a later step (`session:`)
+holds its slot until that step has run, so a fresh step before it can wait for
+good: that wakes you as a stuck run, below.
 
 ## Arm it
 
@@ -290,6 +292,18 @@ the plan before it starts. `workflow_status` shows the tree, the
 story and what the run waits on at any time; `workflow_stop` stops the run
 and unlocks its sessions, or, with a node, stops only that step, which then
 waits for your answer.
+
+A run stuck on room wakes you too, once, headed `stuck`, with nothing to
+answer: a step has no room, no agent is working, and nothing moves in this run
+or in a run holding the slots. The message names the full counter and the
+sessions holding its slots, such as one kept for a step that runs after the
+waiting one. With `limits` full, raise them with `workflow_edit`. With the
+server's `workflows: {max_agents}` full, `limits` can't help: ask the person
+to raise it. When this run holds one of the sessions, you can also have the
+waiting step continue in it (`session:`) with `workflow_edit`; a step can't
+continue in another run's session, but that run frees its slot when it ends.
+Or end the run with `workflow_stop`. A group that has begun keeps the order of
+its steps, so an edit can't run the later step first.
 
 ## What the person sees
 

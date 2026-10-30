@@ -643,6 +643,13 @@ A person's rejection of the plan wakes the main agent as an ending does, and
 a person's gate opening or passed wakes it as news with nothing to answer: a
 record that tells news older logs never told carries `tell`, so a restart on
 an old log stays quiet.
+A run stuck on room wakes the main agent as news too: every step that wants to
+start has no room and nothing else can change that (no command or running leaf
+in it or in a run holding the slots, nothing open to answer, and no session of
+the run or holding the slots at work), which a session kept for a later step
+can cause and _close_spent cannot free. It stands a few seconds first, because
+a retry or a closing session moves a run on the next pass, and its `stuck`
+record names the full counter and its holders.
 Answers are records too, and a failed branch keeps its cap slot until it is
 retried or skipped. The answers only a person gives (a `by: person` gate,
 applying or rejecting an edit, approving, handing a gate over) are operations
