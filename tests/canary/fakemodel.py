@@ -350,6 +350,13 @@ class FakeModel:
                 "system": self._system(body),
                 "stream": body.get("stream"),
                 "last_person": c.last_person[-400:],
+                # A steered notice, in whichever message the harness put it.
+                "whole": " ".join(
+                    re.findall(
+                        r"> from aegis:notice[^\"]{0,200}",
+                        json.dumps(body.get("messages") or body.get("input") or []),
+                    )
+                ),
                 "called": c.called,
                 "tools": c.tools,
                 "tool_types": sorted(

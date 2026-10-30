@@ -1425,6 +1425,7 @@ class Session:
             if isinstance(ev, ToolCall) and ev.parent is None:
                 tools += 1
                 changes["tool_calls"] = tools
+                self._steer_owed()
             if isinstance(ev, ToolCall) and ev.name in TIMER_TOOLS:
                 self.timers.add(ev.name)
             if isinstance(ev, Compact):
@@ -1470,6 +1471,32 @@ class Session:
             self._host.status_changed(self)
         if any(isinstance(ev, Result) for ev in events) and not falling:
             self._turn_over()
+
+    def _steer_owed(self) -> None:
+        """What the session is owed goes into the running turn: this tool
+        call's result has yet to reach the model, so another request is coming
+        and the write joins it instead of starting a turn. A write outside a
+        running turn would start one, so nothing goes then. Stored only as
+        the harness's echo: this is no send (no clock, no nudge, no recap)."""
+        if (
+            not self.harness.steers_notices
+            or self.status != "working"
+            or self._proc is None
+            or self._falling is not None
+            or (self._interrupt_timer is not None and not self._interrupt_timer.done())
+        ):
+            return
+        if blocks := self._host.notice_blocks(self, "tool"):
+            asyncio.get_running_loop().create_task(self._steer(blocks))
+
+    async def _steer(self, text: str) -> None:
+        proc = self._proc
+        if proc is None:
+            return
+        try:
+            await proc.send(text)
+        except Exception:
+            log.warning("%s: a notice did not reach the agent", self.handle)
 
     def _turn_over(self) -> None:
         """A turn ended: send what it held, unless the gate says no new turn."""

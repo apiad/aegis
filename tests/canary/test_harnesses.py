@@ -622,8 +622,9 @@ async def test_a_rate_limited_model_falls_to_the_next_in_its_cascade(canary):
 
 
 async def test_a_notice_reaches_the_model_on_a_prompt_and_on_a_tool_result(canary):
-    # Agent status (#522) rides only on what aegis writes: the prompt and its
-    # own tool results. This is the check that every harness hands both on.
+    # Agent status (#522) rides only on what aegis writes: the prompt, and
+    # either a steer at a tool call or its own tool results. This is the check
+    # that every harness hands both on.
     from aegis.notices import Item
 
     canary.model.script(
@@ -659,9 +660,14 @@ async def test_a_notice_reaches_the_model_on_a_prompt_and_on_a_tool_result(canar
     )
     log = canary.model.log
     assert any("alpha-7" in x["last_person"] for x in log), "no prompt carried it"
-    assert any("bravo-9" in r for x in log for r in x["tool_results"]), (
-        f"no tool result carried it: {[x['tool_results'] for x in log]}"
-    )
+    if s.harness.steers_notices:
+        assert any("bravo-9" in x["whole"] for x in log), "no steer carried it"
+        replies = [x for x in log if "CANARY-NOTE-DONE" in str(x.get("reply"))]
+        assert len(replies) == 1, "a steered notice started a turn of its own"
+    else:
+        assert any("bravo-9" in r for x in log for r in x["tool_results"]), (
+            f"no tool result carried it: {[x['tool_results'] for x in log]}"
+        )
 
 
 async def test_knowledge_native_starts_claude_without_its_skills_and_memory(canary):

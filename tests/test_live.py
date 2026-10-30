@@ -2267,6 +2267,74 @@ async def test_real_claude_is_woken_by_a_stalled_monitor_and_acts(tmp_path: Path
         await asyncio.wait_for(task, 30)
 
 
+async def test_real_claude_takes_a_notice_at_its_next_tool_call(tmp_path: Path):
+    """A warning set while a real Sonnet's first Bash runs reaches it at its
+    second Bash, inside the turn, and starts no turn of its own (#880)."""
+    import asyncio
+
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.notices import Item
+    from aegis.roots import make_roots
+    from aegis.transcript.store import read_store
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  sonnet: {{harness: claude-code, model: {SONNET}, effort: low, permission: full}}\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        claude_bin=claude,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+    try:
+        r = await app.registry.call("session.spawn", {"agent": "sonnet"})
+        s = app.sessions.sessions[r["log_id"]]
+        await s.send(
+            "This is a test of aegis itself. Run `sleep 3` with Bash, then run "
+            "`echo two` with Bash, in two separate calls, then reply in one line."
+        )
+        await until(
+            lambda: any(e["kind"] == "tool" for e in s.entries()),
+            timeout=120,
+            what="the first Bash",
+        )
+        app.notices.set(s.log_id, "monitors", [Item("live:on", "warn", "steer-mark-7")])
+        await until(lambda: s.status == "idle", timeout=180, what="the turn's end")
+        records, _ = read_store(app.sessions.store_path(s.log_id))
+        store = json.dumps(records)
+        assert "steer-mark-7" in store, "the notice never reached the agent"
+        rows = [e["kind"] for e in s.entries()]
+        assert any(
+            e["kind"] == "inbox" and "steer-mark-7" in (e.get("md") or "")
+            for e in s.entries()
+        ), rows
+        sends = [x for x in records if x.get("kind") == "send"]
+        results = [
+            x
+            for x in records
+            if '"type":"result"' in str(x.get("line")).replace(" ", "")
+        ]
+        assert len(sends) == 1 and "steer-mark-7" not in sends[0]["text"]
+        assert len(results) == 1, "a steered notice started a turn of its own"
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)
+
+
 async def test_real_claude_runs_setup_asks_first_and_proposes_from_a_project(
     tmp_path: Path, monkeypatch
 ):
