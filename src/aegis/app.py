@@ -95,6 +95,7 @@ from .help_ops import register_help_ops
 from .host import HostSampler
 from .load import LoadSampler
 from .net.service import NetService
+from .exit import Exits
 from .links import LinkError, Links, probe
 from .mcp import PATH as MCP_PATH, Tokens, build_mcp
 from . import refs
@@ -636,6 +637,9 @@ class App:
             )
         self.links = Links(roots.state_root, server_name, self.user, self.publish)
         self.links.answer = self.answer_link
+        self.exits = Exits(self.links)
+        # Bytes each linked server took through this one as its exit (exit.py).
+        self.exit_bytes: dict[str, int] = {}
         self.queues.far_callback = self._far_callback
         self.monitors.far_list = self._far_list
         # Sessions a pause or a continue is under way for, so a reading that
@@ -713,6 +717,9 @@ class App:
                 "link to trust this one"
             )
         return None
+
+    def count_exit(self, server: str, n: int) -> None:
+        self.exit_bytes[server] = self.exit_bytes.get(server, 0) + n
 
     async def answer_link(self, server: str, op: str, params) -> dict:
         """Run a call a trusted linked server sent back down its link: as this
@@ -1262,6 +1269,7 @@ class App:
             self._config_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._config_task
+        await self.exits.shutdown()
         await self.links.shutdown()
         await self.parker.stop()
         await self.nudges.stop()
