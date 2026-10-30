@@ -131,6 +131,8 @@ class Monitor:
     last_progress: int | None = None
     readings: list[list[float]] = field(default_factory=list)  # [time, percent]
     checks: dict[str, dict] = field(default_factory=dict)  # kind -> last result
+    # The tool row this monitor waits on: its entry id, title and summary.
+    source: dict | None = None
     # Watched sessions, for a monitor that waits on sessions instead of bash.
     sessions: list[dict] = field(default_factory=list)
 
@@ -173,6 +175,7 @@ class Monitor:
             "id": self.id,
             "description": self.description,
             "progress": self.last_progress,
+            "source": self.source,
             "cwd": self.cwd,
             "started_at": self.started_at,
             "interval_s": self.interval_s,
@@ -188,6 +191,18 @@ class Monitor:
             or None,
             "broken": any(c.get("bad") for c in checks),
         }
+
+
+def find_source(entries: list[dict], text: str) -> dict | None:
+    """The latest tool row whose call holds ``text``. An agent never sees a
+    row's id, so it names the row by what it wrote there. Its own monitor_start
+    is skipped: that row is in the fold already and holds the text too (#870)."""
+    for e in reversed(entries):
+        if e["kind"] != "tool" or e["title"] in ("monitor_start", "monitor_sessions"):
+            continue
+        if text in f"{e['summary']}\n{e['detail'].get('args', '')}":
+            return {"id": e["id"], "title": e["title"], "summary": e["summary"]}
+    return None
 
 
 # The per-session notices a monitor's owner gets (notices.py): its live

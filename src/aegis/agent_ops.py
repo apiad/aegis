@@ -25,7 +25,7 @@ from pydantic.json_schema import SkipJsonSchema
 from . import files
 from . import layout as canvas
 from .confirm import TTL_S
-from .monitors import iso_now
+from .monitors import find_source, iso_now
 from .names import SPAWN_HEAD, SPAWN_TASK, valid_handle
 from .ops import Caller, OpError
 from .session import ASLEEP_WHY, Archived, asleep_from
@@ -68,6 +68,13 @@ class MonitorStart(_Strict):
         "written, test lines passed), or as a last resort elapsed seconds over the "
         "expected duration, capped at 99. Pass null only when nothing about the "
         "process can be counted or estimated."
+    )
+    # Required but nullable, as progress is: agents leave optional fields out.
+    source: str | None = Field(
+        min_length=1,
+        description="Text from your tool call that started what you wait on, such "
+        "as the comment line that opens its Bash command: clicking the monitor goes "
+        "to the latest call holding it. Pass null when no call of yours started it.",
     )
     interval_s: float = Field(10, ge=1, le=3600)
     timeout_s: float = Field(3600, gt=0, le=7 * 86400)
@@ -774,6 +781,7 @@ def register_agent_ops(app: App) -> None:
         cwd = Path(p.cwd).expanduser() if p.cwd else s.spec.cwd
         if not cwd.is_absolute():
             cwd = s.spec.cwd / cwd
+        source = find_source(s.entries(), p.source) if p.source else None
         m = app.monitors.start(
             s.log_id,
             str(cwd),
@@ -781,10 +789,20 @@ def register_agent_ops(app: App) -> None:
             done=p.done,
             fail=p.fail,
             progress=p.progress,
+            source=source,
             interval_s=p.interval_s,
             timeout_s=p.timeout_s,
         )
-        return {"monitor_id": m.id, "other_live_monitors": roster(s.log_id, m.id)}
+        said = {
+            "monitor_id": m.id,
+            "source": source,
+            "other_live_monitors": roster(s.log_id, m.id),
+        }
+        if p.source and not source:
+            said["note"] = (
+                "none of your tool calls holds that text, so the monitor links to none"
+            )
+        return said
 
     @r.op("monitor.sessions", MonitorSessions, agent=True, read=True)
     async def monitor_sessions(p: MonitorSessions, caller):

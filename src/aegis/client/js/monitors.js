@@ -88,8 +88,19 @@ function row(m) {
   }));
   box.addEventListener("pointerleave", byMouse(soonClose));
   box.addEventListener("focus", () => box.matches(":focus-visible") && open(m.id));
-  box.addEventListener("click", () => open(m.id));
+  // A phone taps the row for its card, which holds the same link.
+  box.addEventListener("click", () => {
+    if (narrow.matches || !goToSource(m)) open(m.id);
+  });
   return box;
+}
+
+// The tool call the monitor waits on, shown in the transcript. The card would
+// cover it, so the card closes; false when the transcript has no such row.
+function goToSource(m) {
+  if (!m.source || !reveal(m.source.id)) return false;
+  closeMonitorCard();
+  return true;
 }
 
 // -- the chart: readings as steps, a dashed line from the last to 100 at the ETA
@@ -255,6 +266,12 @@ function card(m, live) {
     h("dt", null, "Checks"), h("dd", null, `every ${dur(m.interval_s)}`),
     h("dt", null, "Times out"), h("dd", null, clock(m.started_at + m.timeout_s), outIn),
   );
+  if (m.source) {
+    const link = h("button", "btn link src", `${m.source.title} · ${m.source.summary}`);
+    link.title = "Show this tool call in the transcript";
+    link.addEventListener("click", () => goToSource(m));
+    facts.append(h("dt", null, "Waits on"), h("dd", null, link));
+  }
   const checks = m.sessions
     ? h("div", "checks", h("h5", null, "Sessions"), ...m.sessions.map(watched))
     : h("div", "checks", h("h5", null, "Checks"), ...m.checks.map(check));
@@ -270,6 +287,7 @@ let mons = new Map(); // id -> monitor
 let openId = null, openSig = null, openT = null, closeT = null;
 let live = [];
 let cardEl = null;
+let reveal = () => false;
 
 function cardBox() {
   if (cardEl) return cardEl;
@@ -340,7 +358,8 @@ export function closeMonitorCard() {
   return true;
 }
 
-export function renderMonitors(box, list) {
+export function renderMonitors(box, list, revealRow) {
+  reveal = revealRow;
   mons = new Map(list.map((m) => [m.id, m]));
   const next = new Map();
   for (const m of list) {

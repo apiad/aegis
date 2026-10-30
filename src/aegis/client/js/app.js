@@ -2285,7 +2285,7 @@ function renderMeta(s) {
   drawWaiting(s);
   const mons = s.monitors || [];
   $("s-mon-sec").hidden = !mons.length;
-  renderMonitors($("s-monitors"), mons);
+  renderMonitors($("s-monitors"), mons, revealToolRow);
   const working = s.state === "working";
   $("interrupt").hidden = !working;
   // A member reads another's session and changes nothing in it (tokens.py).
@@ -4357,6 +4357,15 @@ function toggleSide() {
   if (root.dataset.side === "open") closeSide();
   else root.dataset.side = "open";
 }
+// A monitor's link to the tool call it waits on: the row open, as find opens it.
+const revealToolRow = (id) => {
+  if (!transcript.entries.has(id)) return false;
+  transcript.reveal(id);
+  transcript.open(id);
+  if (drawerMode.matches) closeSide();
+  return true;
+};
+
 // The header's height, for the drawer to start under it: it wraps to two rows
 // on a phone and grows with the safe area.
 const header = document.querySelector("#a2 > .tabs");

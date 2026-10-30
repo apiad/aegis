@@ -22,6 +22,9 @@ Call `monitor_start` with:
 - `fail` (optional): a bash command; exit code 0 means it failed;
 - `progress`: a bash command that prints a number from 0 to 100 for the bar,
   or null when nothing about the process can be counted;
+- `source`: text from your tool call that started what you wait on, or null
+  when no call of yours started it (see
+  [Link the call you wait on](#link-the-call-you-wait-on));
 - `interval_s=10` by default: how often the conditions run, from 1 to 3600
   seconds;
 - `timeout_s=3600` by default, and at most 7 days;
@@ -44,6 +47,23 @@ passed. When nothing can be counted, estimate from elapsed time over the
 expected duration and cap it at 99. Pass null only when neither works. The
 card also shows an estimate of when the bar reaches 100.
 
+## Link the call you wait on
+
+The person reading a monitor usually wants the command behind it: what ran and
+what it printed. Name that call in `source`, with any text you wrote in it,
+such as the comment line that opens a Bash command. You never see a row's id,
+so aegis finds the row: the latest tool call in your session holding that text,
+leaving out `monitor_start` rows.
+
+The reply's `source` says which row it found. When no call holds the text, the
+monitor still arms, `source` is null and `note` says so. For a pull
+request's CI, name the push or the `gh pr create` that started it.
+
+In the sidebar, a click on the monitor goes to that call in the transcript and
+opens it. Hovering still shows the monitor's card, with the same link under
+Waits on, and on a phone a tap opens the card and the link is there. A monitor
+without a linked call opens its card on a click.
+
 ## Wait on CI
 
 Wait until a pull request's CI checks finish, GitHub Actions or any other, with
@@ -52,6 +72,7 @@ the GitHub CLI:
 ```json
 {
   "description": "CI on pull request 42",
+  "source": "gh pr create",
   "done": "gh pr checks 42 --json bucket --jq 'length > 0 and all(.[]; .bucket == \"pass\" or .bucket == \"skipping\")' | grep -qx true",
   "fail": "gh pr checks 42 --json bucket --jq 'any(.[]; .bucket == \"fail\" or .bucket == \"cancel\")' | grep -qx true",
   "progress": "gh pr checks 42 --json bucket --jq '(map(select(.bucket != \"pending\")) | length) * 100 / ([length, 1] | max) | floor'",
@@ -78,6 +99,7 @@ waiting:
 ```json
 {
   "description": "CI on pull request 42 after the push",
+  "source": "git push",
   "done": "test \"$(gh pr view 42 --json headRefOid --jq .headRefOid)\" = <sha> && gh pr checks 42 --json bucket --jq 'length > 0 and all(.[]; .bucket == \"pass\" or .bucket == \"skipping\")' | grep -qx true",
   "fail": "test \"$(gh pr view 42 --json headRefOid --jq .headRefOid)\" = <sha> && gh pr checks 42 --json bucket --jq 'any(.[]; .bucket == \"fail\" or .bucket == \"cancel\")' | grep -qx true",
   "progress": "gh pr checks 42 --json bucket --jq '(map(select(.bucket != \"pending\")) | length) * 100 / ([length, 1] | max) | floor'"
@@ -91,6 +113,7 @@ that started after it:
 ```json
 {
   "description": "the re-run of slow (2/4) on pull request 42",
+  "source": "gh run rerun",
   "done": "gh pr checks 42 --json name,bucket,startedAt --jq 'map(select(.name == \"slow (2/4)\" and .startedAt > \"<time>\")) | length > 0 and all(.[]; .bucket == \"pass\")' | grep -qx true",
   "fail": "gh pr checks 42 --json name,bucket,startedAt --jq 'any(.[]; .name == \"slow (2/4)\" and .startedAt > \"<time>\" and (.bucket == \"fail\" or .bucket == \"cancel\"))' | grep -qx true",
   "progress": "gh pr checks 42 --json name,bucket,startedAt --jq 'if any(.[]; .name == \"slow (2/4)\" and .startedAt > \"<time>\" and .bucket != \"pending\") then 100 else 10 end'"

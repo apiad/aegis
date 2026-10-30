@@ -1195,7 +1195,7 @@ def test_archiving_the_open_tab_opens_the_next_one_as_quiet_does(server, browser
 
 HOLD = (
     '/mcp monitor_start {"description": "hold", "done": "false", '
-    '"progress": null, "interval_s": 60}'
+    '"progress": null, "source": null, "interval_s": 60}'
 )
 
 
@@ -1468,6 +1468,7 @@ def test_a_monitor_shows_in_the_sidebar_and_its_wake_arrives_as_an_inbox_row(
             "description": "wait for the flag",
             "done": f"test -f {flag}",
             "progress": None,
+            "source": None,
             "interval_s": 1,
         }
     )
@@ -1520,11 +1521,17 @@ def test_a_monitor_with_no_reading_animates_and_one_with_a_reading_fills(
     page.wait_for_selector("#a2[data-view=fleet]")
     spawn(page)
     for args in (
-        {"description": "no command", "done": "false", "progress": None},
+        {
+            "description": "no command",
+            "done": "false",
+            "progress": None,
+            "source": None,
+        },
         {
             "description": "a pct file",
             "done": "false",
             "progress": f"cat {pct}",
+            "source": None,
             "interval_s": 1,
         },
     ):
@@ -1545,6 +1552,7 @@ def test_a_monitor_with_no_reading_animates_and_one_with_a_reading_fills(
 
 
 def arm(page, **args):
+    args.setdefault("source", None)
     page.fill("#input", f"/mcp monitor_start {json.dumps(args)}")
     page.press("#input", "Enter")
     page.wait_for_selector(f"#s-monitors .mon >> text={args['description']}")
@@ -1591,6 +1599,63 @@ def test_hovering_a_monitor_opens_its_card_and_it_stays_open_as_readings_arrive(
     assert page.evaluate("window.closes") == 0
     page.keyboard.press("Escape")
     page.wait_for_selector("#mcard:not(.show)", state="attached")
+    assert page.errors == []
+
+
+def test_clicking_a_monitor_goes_to_the_tool_call_it_waits_on(server, page):
+    """The row selected and open, and the card out of its way (#870)."""
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "/bash run the tests => 12 passed")
+    page.wait_for_selector(".row.tool .tn >> text=Bash")
+    page.fill("#input", "/many 40")
+    page.press("#input", "Enter")
+    page.wait_for_selector(".row >> text=step 39", state="attached")
+    arm(page, description="tests", done="false", progress=None, source="run the tests")
+    page.click("#s-monitors .mon")
+    row = page.locator(".row.tool.sel")
+    row.wait_for()
+    assert "run the tests" in row.inner_text()
+    assert row.locator("details[open]").count() == 1
+    assert page.locator("#mcard.show").count() == 0
+    assert page.evaluate(
+        """() => {
+          const r = document.querySelector(".row.tool.sel").getBoundingClientRect();
+          const s = document.querySelector("#tr").getBoundingClientRect();
+          return r.top >= s.top && r.top <= s.bottom;
+        }"""
+    )
+    assert page.errors == []
+
+
+def test_a_monitor_with_no_source_still_opens_its_card_on_click(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page)
+    arm(page, description="plain", done="false", progress=None)
+    page.click("#s-monitors .mon")
+    page.wait_for_selector("#mcard.show")
+    assert "Waits on" not in page.inner_text("#mcard")
+    assert page.errors == []
+
+
+def test_on_a_phone_a_monitors_card_holds_the_link_to_its_tool_call(server, page):
+    page.goto(server.url)
+    page.wait_for_selector("#a2[data-view=fleet]")
+    spawn(page, "/bash run the tests => 12 passed")
+    page.wait_for_selector(".row.tool .tn >> text=Bash")
+    arm(page, description="tests", done="false", progress=None, source="run the tests")
+    page.set_viewport_size({"width": 390, "height": 800})
+    page.wait_for_selector("#nav:not([hidden])")
+    page.click("#nav-side")
+    page.wait_for_function("document.getElementById('a2').dataset.side === 'open'")
+    page.click("#s-monitors .mon")
+    page.wait_for_selector("#mcard.show")
+    page.click("#mcard .src")
+    page.wait_for_selector(".row.tool.sel")
+    assert page.locator("#mcard.show").count() == 0
+    page.wait_for_function("document.getElementById('a2').dataset.side !== 'open'")
+    assert page.evaluate("document.documentElement.scrollWidth") <= 390
     assert page.errors == []
 
 
@@ -6811,6 +6876,7 @@ def test_a_phone_sees_the_monitor_card_every_reply_and_a_one_line_composer(
         "description": "a phone monitor",
         "done": "false",
         "progress": "echo 30",
+        "source": None,
         "interval_s": 1,
     }
     page.fill("#input", f"/mcp monitor_start {json.dumps(args)}")

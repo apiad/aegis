@@ -152,7 +152,14 @@ async def test_a_member_cannot_prompt_or_interrupt_anothers_session(world):
 async def test_a_member_cannot_cancel_a_monitor_on_anothers_session(world):
     s = await world.spawn()  # the admin's
     out = await turn(
-        s, mcp("monitor_start", description="wait", done="sleep 60", progress=None)
+        s,
+        mcp(
+            "monitor_start",
+            description="wait",
+            done="sleep 60",
+            progress=None,
+            source=None,
+        ),
     )
     monitor_id = json.loads(out.removeprefix("mcp ok: "))["monitor_id"]
     with pytest.raises(OpError) as e:
