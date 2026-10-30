@@ -257,6 +257,25 @@ async def test_messages_to_a_busy_session_are_held_and_arrive_once_in_one_turn(w
     assert b.held == []
 
 
+async def test_a_prompt_sent_right_after_a_wake_gets_its_own_reply(world):
+    """The wake's reply never reads as the answer to it: the prompt's row moves
+    under that reply when the harness reads it (#445)."""
+    a = await world.spawn()
+    await a.deliver("> from agent:peer · now", "the wake")
+    await a.send("my prompt", by_person=True)
+    await until(
+        lambda: (
+            a.status == "idle"
+            and len([e for e in a.entries() if e["kind"] == "prose"]) == 2
+        ),
+        what="both replies",
+    )
+    rows = [e for e in a.entries() if e["kind"] in ("inbox", "user", "prose")]
+    assert [e["kind"] for e in rows] == ["inbox", "prose", "user", "prose"]
+    assert "the wake" in rows[1]["md"] and "my prompt" not in rows[1]["md"]
+    assert rows[2]["md"] == "my prompt" and "my prompt" in rows[3]["md"]
+
+
 async def busy(s, seconds: float = 1) -> None:
     await s.send(f"/busy {seconds}")
     await until(

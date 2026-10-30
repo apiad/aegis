@@ -198,12 +198,15 @@ async def test_a_worker_you_enqueued_counts_as_yours(world):
     assert f"queue general's worker for task#{t.id}, enqueued by {a.handle}" in said
 
 
-@pytest.mark.quarantine("#445")
 async def test_a_done_worker_you_enqueued_closes_at_once(world):
     a = await world.spawn()
     said = await turn(a, mcp("queue_enqueue", queue="general", payload="summarize"))
     t = world.app.queues.tasks[json.loads(said.removeprefix("mcp ok: "))["task_id"]]
-    await until(lambda: inbox(a), timeout=12, what="the callback")
+    # The callback wakes the idle session: its turn ends before ours starts, or
+    # turn() would read the wake's reply as the close's (#445).
+    await until(
+        lambda: inbox(a) and a.status == "idle", timeout=12, what="the callback's turn"
+    )
     assert t.status == "completed" and t.worker in world.app.sessions.archived
     # a person reopens the finished worker to look at it, and leaves it open
     await world.app.registry.call("session.reopen", {"log_id": t.worker})
