@@ -55,6 +55,7 @@ from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
+from . import exit as exit_
 from . import files, fs_paths
 from .app import App
 from .as_user import Place
@@ -572,6 +573,33 @@ def build_web(
             )
         return StreamingResponse(body(), headers=headers)
 
+    async def tunnel(websocket: WebSocket) -> None:
+        """One stream of a trusted link's exit (exit.py). A program's, like a
+        link's socket: a browser always sends an ``Origin``."""
+        host = websocket.headers.get("host", "")
+        if websocket.headers.get("origin") is not None or (
+            host not in allowed_hosts and host not in public
+        ):
+            await websocket.close(code=BAD_ORIGIN)
+            return
+        scheme, _, given = websocket.headers.get("authorization", "").partition(" ")
+        via = websocket.headers.get(exit_.LINK_HEADER, "")
+
+        def refusal() -> str | None:
+            principal = (
+                app.principals.resolve(given) if scheme.lower() == "bearer" else None
+            )
+            if principal is None:
+                return "bad token"
+            return app.trust_refusal(principal, via) if via else "no link named"
+
+        await exit_.relay(
+            websocket,
+            websocket.headers.get(exit_.TARGET_HEADER, ""),
+            refusal,
+            lambda n: app.count_exit(via, n),
+        )
+
     async def ws(websocket: WebSocket) -> None:
         host = websocket.headers.get("host", "")
         origin = websocket.headers.get("origin")
@@ -888,6 +916,7 @@ def build_web(
             Route("/dictation/{pin}/{name}", dictation_file),
             Route("/speech/{pin}/{name:path}", speech_file),
             WebSocketRoute("/ws", ws),
+            WebSocketRoute("/tunnel", tunnel),
             *app.mcp_app.routes,
         ],
         lifespan=lifespan,

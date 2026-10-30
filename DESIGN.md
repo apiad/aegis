@@ -866,6 +866,16 @@ with `spawned_from` as the starter; `monitor_sessions` reads the far session
 list each interval (`App._far_list`), keeping the last reading while the link
 is down.
 
+**A trusted link can be an exit** (#862, `exit.py`). A child named to exit gets the
+proxy variables for a listener on loopback, which opens one websocket per stream
+to the far server's `/tunnel`; the relay there connects to the target. It is
+limited to trusted links, because plain HTTP through a relay is text from a linked
+server reaching an agent, and a trusted link's token already runs a shell there.
+The relay asks `App.trust_refusal` for every stream and connects only to public
+addresses, checked after resolving the name. A dead exit answers 502 and nothing
+falls back to the near server's own address. It covers what honours the proxy
+variables and nothing else.
+
 **The client knows no subsystem by name.** Server state reaches the browser as
 named channels: a snapshot on subscribe, then numbered patches. A gap in the
 numbers, or a reconnect, means resubscribe, saying which revision it holds; a

@@ -117,7 +117,7 @@ svg text{font-family:var(--font-mono)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · exit through a link</span>
-  <span class="st"><span class="pill acc">draft</span><span class="pill">2026-10-30</span><span class="pill">#862</span></span>
+  <span class="st"><span class="pill acc">approved</span><span class="pill">2026-10-30</span><span class="pill">#862</span></span>
 </div>
 
 <div class="wrap">
@@ -138,7 +138,7 @@ svg text{font-family:var(--font-mono)}
 
 <main>
 <h1>Exit through a link: agents reach the internet from a linked server, with no VPN</h1>
-<div class="meta"><span>spec</span><span>·</span><span>status: draft, waiting for approval; build after the 3.0.0 release</span><span>·</span><span>issue <a href="https://github.com/syalia-srl/aegis/issues/862">#862</a></span></div>
+<div class="meta"><span>spec</span><span>·</span><span>status: approved 2026-10-30; built in three PRs, ahead of the 3.0.0 release by the maintainer's call</span><span>·</span><span>issue <a href="https://github.com/syalia-srl/aegis/issues/862">#862</a></span></div>
 <p class="lede">A server names one of its trusted links in <code>.aegis.yaml</code>, and every agent, worker, terminal and monitor it starts afterwards reaches the internet from the far server's address. The rest of the machine keeps its normal routing. This covers every program that honours the standard proxy variables, which a spike measured; a program that ignores them still goes out directly, and section 02 says which ones were measured.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
@@ -308,7 +308,7 @@ agents:
 </ul>
 
 <h2 id="delivery"><span class="n">10</span>Delivery</h2>
-<p>#768 freezes features until 3.0.0 on 2026-11-19, so the build starts after it. Three PRs:</p>
+<p>#768 freezes features until 3.0.0 on 2026-11-19. The maintainer chose to build this ahead of it. Three PRs:</p>
 <table class="tbl">
 <thead><tr><th>Slice</th><th>Contains</th><th>Done when</th></tr></thead>
 <tbody>
