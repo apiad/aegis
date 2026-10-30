@@ -60,8 +60,9 @@ A session on a linked server is addressed `handle@server`. An agent here can:
   arrives headed `> from agent:<handle>@<server> (<user>)`;
 - see those sessions in `session_list`, by handle and state only.
 
-It cannot read a session there, enqueue there, close one there or wait on one
-with `monitor_sessions`; those calls are refused and say so. Over a
+It cannot read a session there, enqueue there, close one there, wait on one
+with `monitor_sessions` or touch a schedule there; those calls are refused and
+say so. Over a
 [trusted link](#trusted-links) it can do all of them. Text a far server
 wrote, such as titles, messages or error text, never reaches an agent here.
 Only an admin's agents act through a link.
@@ -101,7 +102,9 @@ too: `queue_enqueue` with `queue@server` (the result comes back to the
 inbox), `task_status`, `task_cancel` and `task_resume` with `task-id@server`,
 `monitor_sessions` on `handle@server`, and `session_close` on
 `handle@server`, which closes a session the agent started there at once when
-it is done and any other on a second call with the token, as at home.
+it is done and any other on a second call with the token, as at home. Every
+`schedule_*` tool takes `name@server` too: the schedule lives and ticks on that
+server, and it [waits for a person](schedules#on-another-server) as at home.
 A person in the far server's browser can call this server too, with
 `/spawn agent@<this server>`, but its Fleet and tabs do not show this
 server's sessions: live views still go one way. Nothing is relayed: a call

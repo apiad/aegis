@@ -868,7 +868,16 @@ the result comes back through the link-only `queue.deliver`; `session_close`
 goes through the link-only `peer.close`, which applies the local two-step rule
 with `spawned_from` as the starter; `monitor_sessions` reads the far session
 list each interval (`App._far_list`), keeping the last reading while the link
-is down.
+is down. A schedule tool's `name@server` runs the operation on the far server,
+which keeps every rule because the near server names the calling agent in
+`from_agent`: a link call with one is an agent, born paused and refused an
+unpause or a fire while it waits, and a link call without one is a person, which
+is how a card's Unpause in a browser arrives. A server without the field refuses
+it, so a newer server's agent never passes as a person on an older one. Ownership
+goes by the far session's log id, which survives a rename. The approval card
+stays in the near session's transcript and names the server; the client honours
+that name only for a session on its own server (`cardServer` in `app.js`), since
+a far transcript could otherwise aim a person's Unpause at another server.
 
 **A trusted link can be an exit** (#862, `exit.py`). A child named to exit gets the
 proxy variables for a listener on loopback, which opens one websocket per stream
