@@ -539,6 +539,7 @@ class _monitor:
         done: str,
         fail: str | None = ...,
         progress: str | None,
+        source: str | None,
         interval_s: float = ...,
         timeout_s: float = ...,
         cwd: str | None = ...,
