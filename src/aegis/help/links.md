@@ -104,7 +104,7 @@ inbox), `task_status`, `task_cancel` and `task_resume` with `task-id@server`,
 `handle@server`, which closes a session the agent started there at once when
 it is done and any other on a second call with the token, as at home. Every
 `schedule_*` tool takes `name@server` too: the schedule lives and ticks on that
-server, and it [waits for a person](schedules#on-another-server) as at home.
+server, and it [waits for a person](schedules#an-agent-s-schedule-waits-for-you) as at home.
 A person in the far server's browser can call this server too, with
 `/spawn agent@<this server>`, but its Fleet and tabs do not show this
 server's sessions: live views still go one way. Nothing is relayed: a call
