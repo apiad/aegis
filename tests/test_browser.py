@@ -11,8 +11,6 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-import urllib.error
-import urllib.request
 from urllib.parse import unquote
 
 import pytest
@@ -103,19 +101,10 @@ class Server:
         for _ in range(100):
             try:
                 socket.create_connection(("127.0.0.1", self.port), timeout=0.1).close()
-                break
+                return self
             except OSError:
                 time.sleep(0.05)
-        else:
-            raise AssertionError("aegis serve is not listening")
-        # It listens before fastmcp is imported (#519), and a page that loads
-        # in that window may still be connecting when a test clicks. /mcp
-        # answers once the import is done: from then on the server is up.
-        try:
-            urllib.request.urlopen(f"http://127.0.0.1:{self.port}/mcp", timeout=30)
-        except urllib.error.HTTPError:
-            pass
-        return self
+        raise AssertionError("aegis serve is not listening")
 
     output = ""
 
