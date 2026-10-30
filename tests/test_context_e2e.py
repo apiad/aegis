@@ -142,14 +142,6 @@ async def test_a_second_click_starts_nothing(world):
     assert sum(1 for s in sessions if s.spec.continues == a.log_id) == 1
 
 
-async def test_an_agent_cannot_hand_a_session_off(world):
-    a = await world.spawn()
-    with pytest.raises(OpError):
-        await world.app.registry.call(
-            "session.handoff", {"log_id": a.log_id}, Caller("agent", a.log_id)
-        )
-
-
 async def handed(world, brief="Brief."):
     a = await world.spawn()
     await turn(a, "/ctx 342000")

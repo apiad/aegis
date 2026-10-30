@@ -317,12 +317,17 @@ class LogParams(_Strict):
     log_id: str
 
 
-class HandoffParams(LogParams):
-    """A handoff's instruction, and what the new session runs when it is not
-    what the old one ran (#874)."""
+class HandoffParams(_Strict):
+    """What a handoff starts, when it is not what the old session ran (#874)."""
 
-    text: str | None = None
-    agent: str | None = None
+    # A person names the session; an agent hands off its own.
+    log_id: SkipJsonSchema[str | None] = Field(None, exclude=True)
+    agent: str | None = Field(
+        None, description="The agent that continues; omitted, your own."
+    )
+    msg: str | None = Field(
+        None, description="What the new session should do, the last thing it reads."
+    )
     model: str | None = None
     effort: str | None = None
     permission: str | None = None
@@ -691,6 +696,7 @@ class App:
         self._cool_at: float | None = None
         reg.start_spec = self.start_spec
         reg.cascade = self.cascade_next
+        reg.start_pending_handoff = self.start_pending_handoff
         self.registry = Ops()
         self.registry.who = self.who
         self.registry.owner_of = self.owner_of
@@ -1233,6 +1239,12 @@ class App:
         # the continue; before the queues resume, so a worker the registry
         # continued needs no second message from its queue.
         await self.sessions.continue_after_boot()
+        # A turn that ended before the stop and whose handoff had not started:
+        # nothing else will end it. A cut turn continues above, and starts it
+        # when it ends.
+        for s in list(self.sessions.sessions.values()):
+            if s.continued_by == "pending" and not s.in_turn:
+                await self.start_pending_handoff(s)
         self.monitors.arm_all()
         await self.queues.resume_after_boot(resume)
         for s in list(self.sessions.sessions.values()):
@@ -1872,10 +1884,12 @@ class App:
             params = {
                 k: v
                 for k, v in dataclasses.asdict(line).items()
-                if v is not None and k != "server"
+                if v is not None and k not in ("server", "text")
             }
             r = await self.registry.call(
-                "session.handoff", {"log_id": s.log_id, **params}, caller
+                "session.handoff",
+                {"log_id": s.log_id, "msg": line.text, **params},
+                caller,
             )
             return {**r, "server": self.server_name}
         if name == "announce":
@@ -1999,6 +2013,103 @@ class App:
             raise OpError("server_offline", f"{link.describe()}; nothing was started")
         r = await link.call("session.spawn", params)
         return {**r, "server": far}
+
+    def _handoff_spec(self, old, p: HandoffParams, capped: bool) -> SpawnSpec:
+        """What a handoff from ``old`` starts: its own spec with what ``p``
+        names changed, so a model chosen by hand stays, or with ``p.agent`` the
+        spec a spawn of that agent gets. ``capped``: an agent asked, and cannot
+        hand a session more power than it has itself."""
+        spec = old.spec
+        overrides = {"model": p.model, "effort": p.effort, "permission": p.permission}
+        if p.agent:
+            agents, default = self._agents()
+            spec = resolve(
+                agents,
+                default,
+                p.agent,
+                {"harness": None, **overrides},
+                spec.cwd,
+                spawned_by=spec.spawned_by,
+                owner=spec.owner,
+            )
+        else:
+            spec = dataclasses.replace(
+                spec, **{k: v for k, v in overrides.items() if v is not None}
+            )
+        if p.cwd:
+            spec = dataclasses.replace(spec, cwd=self._resolve_cwd(p.cwd, old.spec.cwd))
+        if capped and PERMISSION_ORDER.index(spec.permission) > PERMISSION_ORDER.index(
+            old.spec.permission
+        ):
+            raise OpError(
+                "not_allowed",
+                f"your session runs with {old.spec.permission}, so a session you "
+                f"hand off to can have at most that (this one would have "
+                f"{spec.permission}); pass permission",
+            )
+        return spec
+
+    async def _start_handoff(self, old, p: HandoffParams, capped: bool) -> dict:
+        """Start the session that continues ``old``, and send its first message.
+        The old one is archived when it finishes its first turn."""
+        reg = self.sessions
+        report = old.standing.get("report") or {}
+        # The new session takes the old one's place in its group (#641):
+        # it joins it, heads it when the old one did, and adopts the old
+        # one's children once the old one is archived (_retire_predecessor).
+        leads = old.spec.group is None or old.spec.leads
+        kids = tuple(
+            k.handle for k in reg.sessions.values() if k.spec.spawned_by == old.log_id
+        )
+        prompt = handoff_opening(
+            old.handle,
+            report.get("handoff"),
+            spawn_tail(old.entries()),
+            kids=kids,
+            leads=leads and bool(kids),
+            instruction=p.msg,
+        )
+        spec = dataclasses.replace(
+            self._handoff_spec(old, p, capped),
+            continues=old.log_id,
+            spawned_from=None,
+            group=old.group_key(),
+            leads=leads,
+        )
+        spec, g = self.start_spec(spec)
+        if not g.may_start:
+            raise OpError("quota_closed", refusal(spec.owner or self.user, g))
+        # Set before the spawn awaits, so a second click in that window is
+        # refused rather than starting a second session.
+        old.mark_continued("starting")
+        try:
+            s = await reg.spawn(spec)
+        except (OSError, TimeoutError) as e:
+            old.mark_continued(None)
+            raise OpError(
+                "harness_failed", f"{self._bin(spec.harness)!r} did not start: {e}"
+            ) from e
+        except BaseException:
+            old.mark_continued(None)
+            raise
+        old.mark_continued(s.log_id)
+        try:
+            await s.send(prompt)
+        except (BrokenPipeError, ConnectionResetError, FileNotFoundError) as e:
+            old.mark_continued(None)
+            raise OpError(
+                "harness_failed", f"{s.handle} did not take its first message: {e}"
+            ) from e
+        return {"log_id": s.log_id, "handle": s.handle}
+
+    async def start_pending_handoff(self, old) -> None:
+        """The agent's turn ended: start the handoff it asked for. Nobody waits
+        on an answer here, so a refusal gives the session back and says why."""
+        params = HandoffParams(**(old.handoff_pending or {}))
+        try:
+            await self._start_handoff(old, params, capped=True)
+        except OpError as e:
+            self.sessions.call_off_pending(old, f"did not start: {e.message}")
 
     async def _spawn_far(
         self, p: SpawnParams, name: str, far: str, parent, caller: Caller
@@ -2399,14 +2510,25 @@ class App:
             except (BrokenPipeError, ConnectionResetError) as e:
                 raise _dead(e) from e
 
-        @r.op("session.handoff", HandoffParams, owned="log_id")
+        @r.op("session.handoff", HandoffParams, agent=True, owned="log_id")
         async def handoff(p: HandoffParams, caller):
-            """Continue a session's work in a fresh one: the same agent, folder,
-            model and effort unless the params say otherwise, opened with its
-            handoff brief, its last turns and the instruction. The old session
-            refuses messages from here on, and is archived when the new one
-            finishes its first turn."""
-            old = reg.open(p.log_id)
+            """Continue your work in a new session and end this one: from this
+            call nobody can write to it. The new session starts when your turn
+            ends, with `msg`, your turn_end brief and your last turns, so end
+            your turn right after this call. Pass `agent` to continue on another
+            agent, with at most your permission. Refused while a monitor, a
+            background task, a queue task or a held message waits for you. A
+            workflow you own follows the new session."""
+            if caller.is_agent:
+                if p.log_id not in (None, caller.log_id):
+                    raise OpError(
+                        "not_yours", "an agent can hand off only its own session"
+                    )
+                old = reg.open(caller.log_id)
+            else:
+                if p.log_id is None:
+                    raise OpError("bad_params", "session.handoff needs a log_id")
+                old = reg.open(p.log_id)
             old.check_lock()
             if old.worker:
                 raise OpError(
@@ -2414,10 +2536,6 @@ class App:
                 )
             if reg.successor(old) is not None:
                 raise OpError("handed_off", f"{old.handle} is already being continued")
-            if old.in_turn:
-                raise OpError(
-                    "busy", f"{old.handle} is working; hand it off when its turn ends"
-                )
             # What would wake a session nobody can write to, or lose its result.
             if wakers := reg.wakers(old, run=False):
                 raise OpError(
@@ -2425,88 +2543,25 @@ class App:
                     f"{old.handle} still waits on {', '.join(wakers)}; "
                     "cancel them or let them finish first",
                 )
-            report = old.standing.get("report") or {}
-            # The new session takes the old one's place in its group (#641):
-            # it joins it, heads it when the old one did, and adopts the old
-            # one's children once the old one is archived (_retire_predecessor).
-            leads = old.spec.group is None or old.spec.leads
-            kids = tuple(
-                k.handle
-                for k in reg.sessions.values()
-                if k.spec.spawned_by == old.log_id
-            )
-            prompt = handoff_opening(
-                old.handle,
-                report.get("handoff"),
-                spawn_tail(old.entries()),
-                kids=kids,
-                leads=leads and bool(kids),
-                instruction=p.text,
-            )
-            spec = old.spec
-            if p.agent:
-                agents, default = self._agents()
-                spec = resolve(
-                    agents,
-                    default,
-                    p.agent,
-                    {
-                        "harness": None,
-                        "model": p.model,
-                        "effort": p.effort,
-                        "permission": p.permission,
-                    },
-                    spec.cwd,
-                    spawned_by=spec.spawned_by,
-                    owner=spec.owner,
+            # Refused now, not when the turn ends and nobody is there to hear it.
+            self._handoff_spec(old, p, capped=caller.is_agent)
+            if caller.is_agent and old.in_turn:
+                if old.held:
+                    raise OpError(
+                        "held_messages",
+                        f"{len(old.held)} messages wait for your next turn; "
+                        "read them first",
+                    )
+                old.mark_handoff_pending(p.model_dump(exclude_none=True))
+                return (
+                    "Handed off: this session takes no more messages. End your turn "
+                    "now with a short final message; the new session starts then."
                 )
-            else:
-                # No agent named: only what a flag names changes, so a model
-                # chosen by hand stays.
-                changes = {
-                    "model": p.model,
-                    "effort": p.effort,
-                    "permission": p.permission,
-                }
-                spec = dataclasses.replace(
-                    spec, **{k: v for k, v in changes.items() if v is not None}
-                )
-            if p.cwd:
-                spec = dataclasses.replace(
-                    spec, cwd=self._resolve_cwd(p.cwd, old.spec.cwd)
-                )
-            spec = dataclasses.replace(
-                spec,
-                continues=old.log_id,
-                spawned_from=None,
-                group=old.group_key(),
-                leads=leads,
-            )
-            spec, g = self.start_spec(spec)
-            if not g.may_start:
-                raise OpError("quota_closed", refusal(spec.owner or self.user, g))
-            # Set before the spawn awaits, so a second click in that window is
-            # refused rather than starting a second session.
-            old.mark_continued("starting")
-            try:
-                s = await reg.spawn(spec)
-            except (OSError, TimeoutError) as e:
-                old.mark_continued(None)
+            if old.in_turn:
                 raise OpError(
-                    "harness_failed", f"{self._bin(spec.harness)!r} did not start: {e}"
-                ) from e
-            except BaseException:
-                old.mark_continued(None)
-                raise
-            old.mark_continued(s.log_id)
-            try:
-                await s.send(prompt)
-            except (BrokenPipeError, ConnectionResetError, FileNotFoundError) as e:
-                old.mark_continued(None)
-                raise OpError(
-                    "harness_failed", f"{s.handle} did not take its first message: {e}"
-                ) from e
-            return {"log_id": s.log_id, "handle": s.handle}
+                    "busy", f"{old.handle} is working; hand it off when its turn ends"
+                )
+            return await self._start_handoff(old, p, capped=caller.is_agent)
 
         @r.op("session.send", SendParams, owned="log_id")
         async def send(p: SendParams, caller):

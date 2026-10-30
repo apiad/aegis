@@ -1825,6 +1825,59 @@ async def test_real_claude_passes_a_brief_past_handoff_at_and_hands_off(tmp_path
         await asyncio.wait_for(task, 30)
 
 
+async def test_real_claude_hands_off_with_the_tool_and_the_new_session_acts(
+    tmp_path: Path,
+):
+    """A real session calls session_handoff (#874): its session locks at the
+    call, a new one starts when its turn ends and does what msg says, and the
+    old one is archived after that first turn."""
+    import asyncio
+
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  sonnet: {{harness: claude-code, model: {SONNET}, effort: low, permission: full}}\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        claude_bin=claude,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+    try:
+        r = await app.registry.call("session.spawn", {"agent": "sonnet"})
+        s = app.sessions.sessions[r["log_id"]]
+        await s.send(
+            "Call the aegis session_handoff tool with msg set to: Write the word "
+            "BETA into a file named handed.txt in your working directory. Then "
+            "end your turn."
+        )
+        await until(
+            lambda: s.log_id in app.sessions.archived,
+            timeout=240,
+            what="the old session archived after the new one's first turn",
+        )
+        assert (tmp_path / "handed.txt").read_text().strip() == "BETA"
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)
+
+
 async def test_real_btw_answers_mid_turn_and_the_agent_never_receives_it(
     tmp_path: Path,
 ):

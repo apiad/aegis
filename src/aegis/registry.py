@@ -163,6 +163,9 @@ class Registry(Host):
         self.start_spec = None
         # The app's cascade_next, which cools and picks (Host.cascade_next).
         self.cascade = None
+        # Starts the handoff an agent asked for in the turn that just ended
+        # (app.start_pending_handoff).
+        self.start_pending_handoff = None
         self.journal = None
         self.catalogs = None
         # One cgroup per session, when the unit is delegated (cgroups.py); the
@@ -240,6 +243,7 @@ class Registry(Host):
         if self.quota is not None:
             self.quota.turn_ended()
         self._retire_predecessor(session)
+        self._pending_handoff(session)
         self._close_when_finished(session)
         self._maybe_unquiet(session)
         if self.schedules is not None:
@@ -290,6 +294,21 @@ class Registry(Host):
                 self.metas.write(kid.meta())
         self.refresh_card(new.log_id)
         asyncio.get_running_loop().create_task(self._archive(old))
+
+    def _pending_handoff(self, s: Session) -> None:
+        """The turn that asked for a handoff ended: start it, or give the
+        session back when the turn failed."""
+        if s.continued_by != "pending":
+            return
+        if s.standing.get("turn_error"):
+            self.call_off_pending(s, "the turn that asked for it failed")
+        elif self.start_pending_handoff is not None:
+            asyncio.get_running_loop().create_task(self.start_pending_handoff(s))
+
+    def call_off_pending(self, s: Session, why: str) -> None:
+        """A handoff an agent asked for will not start."""
+        s.mark_continued(None)
+        s.report({"kind": "handoff_off", "handle": "the new session", "why": why})
 
     def _call_off_handoff(self, old: Session, new: Session, why: str) -> None:
         """The new session will not take over: the old one opens again and its
@@ -362,6 +381,8 @@ class Registry(Host):
         report = s.standing.get("report") or {}
         if not report.get("close") or report.get("attention") != "done":
             return
+        if s.continued_by == "pending":
+            return  # its handoff retires it, and its children go to the new one
         if s.standing.get("turn_error") or not self.finished(s):
             return
         if self.close_blockers(s):
@@ -402,6 +423,9 @@ class Registry(Host):
         old = self.sessions.get(session.spec.continues or "")
         if old is not None:
             self._call_off_handoff(old, session, "its process ended")
+        # The turn that asked for a handoff will never end now.
+        if session.continued_by == "pending":
+            self.call_off_pending(session, "the session's process ended")
         # A process that ends on its own failed: whatever its card says, the
         # person should see it (#386). A SIGTERM is most likely the server's
         # own stop under systemd, and the next boot continues the session.
@@ -413,9 +437,10 @@ class Registry(Host):
     def successor(self, old: Session) -> Session | str | None:
         """The live session continuing ``old`` after a handoff: "starting"
         while it spawns, the open session it names, or None when the name is
-        stale (the new session was closed, or a crash left it behind)."""
+        stale (the new session was closed, or a crash left it behind);
+        "pending" while the agent that asked ends its turn."""
         c = old.continued_by
-        if c == "starting":
+        if c in ("starting", "pending"):
             return c
         return self.sessions.get(c) if c else None
 
@@ -730,6 +755,7 @@ class Registry(Host):
             continued_by=None
             if meta.get("continued_by") == "starting"
             else meta.get("continued_by"),
+            handoff_pending=meta.get("handoff_pending"),
             quiet=bool(meta.get("quiet")),
             autoclose=bool(meta.get("autoclose")),
             checked_version=meta.get("checked_version"),

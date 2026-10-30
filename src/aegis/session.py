@@ -88,6 +88,7 @@ _NOW = (
     "model_id",
     "standing",
     "continued_by",
+    "handoff_pending",
     "quiet",
     "autoclose",
     "workflow",
@@ -407,6 +408,7 @@ class Session:
         cache_recent: list[list] | None = None,
         compactions: int = 0,
         continued_by: str | None = None,
+        handoff_pending: dict | None = None,
         quiet: bool = False,
         autoclose: bool = False,
         checked_version: str | None = None,
@@ -527,6 +529,7 @@ class Session:
         # The session a handoff started from this one (#354): "starting" while
         # it spawns, its log id after, None when the archive was called off.
         self.continued_by = continued_by
+        self.handoff_pending = handoff_pending
         # The process's start time from /proc, so a crashed server's successor
         # can tell this harness from a later process that reused its pid.
         self._pid_started: int | None = None
@@ -605,6 +608,7 @@ class Session:
             "cache_recent": self.cache_recent,
             "compactions": self.compactions,
             "continued_by": self.continued_by,
+            "handoff_pending": self.handoff_pending,
             "quiet": self.quiet,
             "autoclose": self.autoclose,
             "checked_version": self.checked_version,
@@ -674,7 +678,12 @@ class Session:
     def mark_continued(self, log_id: str | None) -> None:
         """Name the session a handoff started from this one, or clear it when
         the archive was called off (registry._retire_predecessor)."""
-        self._set(continued_by=log_id)
+        self._set(continued_by=log_id, handoff_pending=None)
+
+    def mark_handoff_pending(self, params: dict) -> None:
+        """An agent asked for a handoff in this turn: the lock starts now, the
+        new session when the turn ends (registry.turn_ended, #874)."""
+        self._set(continued_by="pending", handoff_pending=params)
 
     @property
     def in_turn(self) -> bool:

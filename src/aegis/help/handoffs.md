@@ -92,8 +92,14 @@ do next: `/handoff implement this plan`. Its flags go before the text. `--agent`
 continues on another agent, and `--model`, `--effort`, `--permission` and
 `--cwd` change what the new session runs.
 
+An agent does the same with `session_handoff`, passing `msg` and optionally
+`agent`, with at most its own permission. Nobody can write to its session from
+that call on, and the new session starts when its turn ends. An agent that asks
+in a turn that then fails, or whose process dies, keeps its session.
+
 Every way in is refused while the session works, and while a monitor, a
-background task or a queue task would wake it. The refusal lists them, so you
+background task or a queue task would wake it. An agent's call may come during
+its turn, and is refused while messages wait for its next one. The refusal lists them, so you
 can cancel them or wait. A workflow the session owns follows the new session.
 
 The new session takes the old one's place in its group of tabs: it joins the
