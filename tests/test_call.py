@@ -113,5 +113,7 @@ async def test_aegis_call_output_carries_no_notice(noticed, tmp_path):
     rc, out, _ = await sh(s, tmp_path, f"{AEGIS} call session_list")
     assert rc == 0 and NOTICE_HEADER not in out
     json.loads(out)
-    said = await turn(s, mcp("session_list"))
-    assert NOTICE_HEADER + "disk · warn" in said
+    # Still owed: the agent's next tool call of its own carries it.
+    await turn(s, mcp("session_list"))
+    rows = [e["title"] for e in s.entries() if e["kind"] == "inbox"]
+    assert rows and rows[0].startswith("aegis:notice · disk · warn")
