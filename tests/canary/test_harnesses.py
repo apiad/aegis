@@ -110,6 +110,7 @@ async def test_a_monitor_armed_by_the_agent_wakes_it(canary):
                         "description": "canary flag",
                         "done": f"test -f {flag}",
                         "progress": None,
+                        "source": None,
                         "interval_s": 1,
                     },
                 ),

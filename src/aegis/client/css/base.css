@@ -1171,6 +1171,9 @@ body{background:#000}
 @media (prefers-reduced-motion:reduce){#a2 .mcard{transition:none}}
 
 #a2 .mcard .hd{padding:13px 16px 10px;border-bottom:1px solid var(--rule)}
+#a2 .mcard .facts .src{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:none;border:none;padding:0;color:var(--accent);font:inherit;text-align:left;cursor:pointer}
+#a2 .mcard .facts .src:hover{text-decoration:underline}
+@media (pointer:coarse){#a2 .mcard .facts .src{padding:10px 0}}
 #a2 .mcard .hd .t{display:flex;gap:10px;align-items:flex-start}
 #a2 .mcard .hd .d{flex:1;color:var(--strong);font-family:var(--font-ui);font-size:13.5px;font-weight:500;line-height:1.35}
 #a2 .mcard .pill{flex:none;font-size:10.5px;padding:2px 8px;border-radius:9px;background:var(--accent-soft);color:var(--accent);margin-top:1px}

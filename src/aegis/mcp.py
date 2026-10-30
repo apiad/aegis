@@ -241,7 +241,8 @@ monitor_start with a bash `done` condition and a `progress` command echoing 0 to
 100, then end your turn. You are woken when it finishes, fails or times out. \
 Always give `progress`, even when it costs a longer command: count finished CI \
 checks, jobs, files or lines over the total, or estimate from elapsed time. Pass \
-null only when nothing can be counted.
+null only when nothing can be counted. Give `source` too, text from the tool call \
+that started what you wait on, so a click on the monitor goes to that call.
 
 To wait until other sessions here finish, call monitor_sessions with their \
 handles from session_list, which shows each one's state, plan and what it is \

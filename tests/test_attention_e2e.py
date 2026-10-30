@@ -83,6 +83,7 @@ async def test_a_live_monitor_is_waiting_and_cancelling_it_is_done(world):
             done="false",
             progress=None,
             interval_s=60,
+            source=None,
         ),
     )
     assert a.wire()["attention"] == "waiting"
@@ -130,7 +131,12 @@ async def test_a_parent_waits_on_a_working_child(world, published):
 async def test_a_parent_waits_on_a_child_that_waits(world, published):
     a = await world.spawn()
     arm = mcp(
-        "monitor_start", description="never", done="false", progress=None, interval_s=60
+        "monitor_start",
+        description="never",
+        done="false",
+        progress=None,
+        interval_s=60,
+        source=None,
     )
     said = await turn(a, mcp("session_spawn", agent="opus", prompt=arm))
     child = world.session(json.loads(said.removeprefix("mcp ok: "))["log_id"])
@@ -412,7 +418,10 @@ async def test_review_and_needs_you_pass_with_an_unfinished_plan(world, attentio
 async def test_done_with_a_live_monitor_is_refused_and_records_nothing(world):
     """#608: a live monitor will wake the session again, so its task is not over."""
     a = await world.spawn()
-    await turn(a, mcp("monitor_start", description="w", done="false", progress=None))
+    await turn(
+        a,
+        mcp("monitor_start", description="w", done="false", progress=None, source=None),
+    )
     said = await turn(a, mcp("turn_end", attention="done", line="Merged."))
     assert said.startswith("mcp error: still_waiting:") and "1 monitor" in said, said
     assert "review" in said and "monitor_cancel" in said, said
@@ -421,6 +430,9 @@ async def test_done_with_a_live_monitor_is_refused_and_records_nothing(world):
 
 async def test_review_passes_with_a_live_monitor(world):
     a = await world.spawn()
-    await turn(a, mcp("monitor_start", description="w", done="false", progress=None))
+    await turn(
+        a,
+        mcp("monitor_start", description="w", done="false", progress=None, source=None),
+    )
     said = await turn(a, mcp("turn_end", attention="review", line="CI runs."))
     assert not said.startswith("mcp error"), said

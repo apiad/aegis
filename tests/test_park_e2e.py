@@ -198,6 +198,7 @@ async def test_a_monitor_wakes_a_parked_session(parking, tmp_path):
             done=f"test -e {flag}",
             progress=None,
             interval_s=1,
+            source=None,
         ),
     )
     await until(

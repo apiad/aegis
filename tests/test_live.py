@@ -110,7 +110,9 @@ async def test_real_claude_arms_a_monitor_through_the_endpoint_and_is_woken(
         s = app.sessions.sessions[r["log_id"]]
         flag = tmp_path / "ready.flag"
         await s.send(
-            f"Use the aegis monitor_start tool to wait until the file {flag} exists "
+            "Use Bash to run `echo starting the job`, which stands for starting a "
+            f"job that creates the file {flag}. Then use the aegis monitor_start tool "
+            "to wait until that file exists "
             "(done condition `test -f <that path>`, interval 2 seconds). Then end your turn. "
             "When you are woken, reply with the single word WOKEN."
         )
@@ -119,6 +121,9 @@ async def test_real_claude_arms_a_monitor_through_the_endpoint_and_is_woken(
             timeout=120,
             what="the monitor armed by Claude",
         )
+        [m] = app.monitors.of(s.log_id)
+        bash = [e["id"] for e in s.entries() if e["title"] == "Bash"]
+        assert m.source and m.source["id"] in bash, m.source  # #870
         await until(
             lambda: s.status == "idle", timeout=60, what="Claude ending its turn"
         )

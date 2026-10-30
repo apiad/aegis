@@ -208,7 +208,12 @@ async def test_a_monitor_runs_as_the_owner_of_the_arming_session(world, recorded
     s = await ben_spawn(world)
     await world.app.registry.call(
         "monitor.start",
-        {"description": "w", "done": "echo monitor-ran", "progress": None},
+        {
+            "description": "w",
+            "done": "echo monitor-ran",
+            "progress": None,
+            "source": None,
+        },
         Caller("agent", log_id=s.log_id),
     )
     await until(lambda: recorded.of("monitor-ran"), timeout=10, what="the check")
@@ -498,7 +503,12 @@ async def test_a_pre_mode_sessions_monitor_fails_instead_of_running_as_the_serve
     s.spec = dataclasses.replace(s.spec, linux_user=None)
     await world.app.registry.call(
         "monitor.start",
-        {"description": "w", "done": "echo premon-ran", "progress": None},
+        {
+            "description": "w",
+            "done": "echo premon-ran",
+            "progress": None,
+            "source": None,
+        },
         Caller("agent", log_id=s.log_id),
     )
     m = next(iter(world.app.monitors.items.values()))

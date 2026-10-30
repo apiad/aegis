@@ -87,7 +87,10 @@ async def test_a_working_child_refuses_the_close_and_keeps_everyone(world):
 
 async def test_a_live_monitor_refuses_the_close(world):
     a = await world.spawn()
-    await turn(a, mcp("monitor_start", description="w", done="false", progress=None))
+    await turn(
+        a,
+        mcp("monitor_start", description="w", done="false", progress=None, source=None),
+    )
     said = await turn(a, done())
     assert said.startswith("mcp error: close_refused:") and "1 monitor" in said, said
     assert not closed(world, a)

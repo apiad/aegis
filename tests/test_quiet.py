@@ -200,7 +200,12 @@ async def test_a_finished_worker_whose_turn_errs_stays_quiet(world):
     of the stop would only flash."""
     a = await world.spawn()
     payload = mcp(
-        "monitor_start", description="w", done="false", progress=None, interval_s=60
+        "monitor_start",
+        description="w",
+        done="false",
+        progress=None,
+        interval_s=60,
+        source=None,
     )
     said = await turn(a, mcp("queue_enqueue", queue="general", payload=payload))
     t = world.app.queues.tasks[json.loads(said.removeprefix("mcp ok: "))["task_id"]]

@@ -116,6 +116,7 @@ async def test_a_terminal_a_monitor_a_workflow_step_and_a_queue_worker_run_as_th
         "description": "who",
         "done": f"id -un > {out}/monitor",
         "progress": None,
+        "source": None,
         "timeout_s": 60,
     }
     await send(s, BEN, log_id, f"/mcp monitor_start {json.dumps(monitor)}")

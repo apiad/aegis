@@ -136,7 +136,13 @@ async def test_a_nodes_own_monitor_still_wakes_it(world, tmp_path):
     flag = tmp_path / "flag"
     said = await turn(
         node,
-        mcp("monitor_start", description="w", done=f"test -f {flag}", progress=None),
+        mcp(
+            "monitor_start",
+            description="w",
+            done=f"test -f {flag}",
+            progress=None,
+            source=None,
+        ),
     )
     assert said.startswith("mcp ok"), said
     lock(world, node)
