@@ -299,10 +299,11 @@ or in a run holding the slots. The message names the full counter and the
 sessions holding its slots, such as one kept for a step that runs after the
 waiting one. With `limits` full, raise them with `workflow_edit`. With the
 server's `workflows: {max_agents}` full, `limits` can't help: ask the person
-to raise it. Either way you can have the waiting step continue in a held
-session (`session:`) with `workflow_edit`, or end the run with `workflow_stop`.
-A group that has begun keeps the order of its steps, so an edit can't run the
-later step first.
+to raise it. When this run holds one of the sessions, you can also have the
+waiting step continue in it (`session:`) with `workflow_edit`; a step can't
+continue in another run's session, but that run frees its slot when it ends.
+Or end the run with `workflow_stop`. A group that has begun keeps the order of
+its steps, so an edit can't run the later step first.
 
 ## What the person sees
 

@@ -241,11 +241,12 @@ def _apply(st: RunState, r: dict) -> None:
     elif ev == "stuck":
         st.stuck = {k: r.get(k) for k in ("nodes", "held_by", "full")}
         text = r.get("text") or ""
-        full = r.get("full")
         st.open[str(r.get("to"))] = {
             "kind": "stuck",
             "text": text,
-            "full": full,
+            "full": r.get("full"),
+            "here": r.get("here"),
+            "elsewhere": r.get("elsewhere"),
             "told": False,
         }
         _tell(st, t, "note", f"Stuck: {text}")

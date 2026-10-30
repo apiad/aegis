@@ -310,7 +310,8 @@ async def test_a_step_waiting_on_room_nobody_can_free_is_reported(
     holder = world.app.sessions.sessions[st.nodes[prefix + "impl"].log_id]
     md = stuck_wakes(main)[0]
     assert "Review it." in md and holder.handle in md
-    assert "workflow_edit" in md and "workflow_stop" in md
+    assert "session:" in md and "workflow_stop" in md
+    assert "another run holds" not in md  # all the slots are this run's
     assert any("Stuck" in e["text"] for e in st.story)
     # A notice: told, it leaves nothing open, and the run still waits.
     assert st.status == "running" and not st.open
@@ -640,7 +641,10 @@ root: {{id: b, say: Do it., agent: {{agent: opus, prompt: {r}}}}}
     main = wf.owner(wf.runs[b])
     await until(lambda: stuck_wakes(main), timeout=15)
     holder = world.app.sessions.sessions[wf.runs[a].nodes["impl"].log_id]
-    assert holder.handle in stuck_wakes(main)[0]
+    md = stuck_wakes(main)[0]
+    assert holder.handle in md and "another run holds" in md
+    # session: can't reach another run's session, so it isn't offered.
+    assert "session:" not in md and "workflow_stop" in md
 
 
 async def test_a_stuck_report_is_not_told_again_after_a_restart(world, monkeypatch):

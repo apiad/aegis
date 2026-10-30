@@ -195,10 +195,8 @@ async def _signal_group(pgid: int, sig: signal.Signals, user: str | None) -> Non
 
 def _news(o: dict) -> bool:
     """Whether an open item only tells the main agent something: a person's
-    gate opened or passed, or a run stuck on room. Nothing waits on its answer."""
-    return o["kind"] in ("passed", "stuck") or (
-        o["kind"] == "gate" and o.get("by") == "person"
-    )
+    gate opened or passed. Nothing waits on its answer."""
+    return o["kind"] == "passed" or (o["kind"] == "gate" and o.get("by") == "person")
 
 
 def _fold(kids: list[str]) -> str:
@@ -2798,9 +2796,16 @@ class Workflows:
             f"{', '.join(says)} waits for room in {counters}, and the slots are "
             f"held by {', '.join(reading['held_by'])}."
         )
+        runs = {self._run_of(s) for s in holders}
         self._log(
             st.run,
-            {"ev": "stuck", "to": f"stuck:{reading['nodes'][0]}", "text": text}
+            {
+                "ev": "stuck",
+                "to": f"stuck:{reading['nodes'][0]}",
+                "text": text,
+                "here": st.run in runs,
+                "elsewhere": bool(runs - {st.run}),
+            }
             | reading,
         )
 
@@ -3076,20 +3081,34 @@ class Workflows:
                 "the run goes on as it was. Nothing to answer."
             )
         if o["kind"] == "stuck":
+            ways = [
+                "ask the person to raise workflows max_agents in .aegis.yaml, "
+                "which the run's limits can't raise"
+                if "pool" in (o.get("full") or [])
+                else "raise the run's limits with workflow_edit",
+                # session: reaches only an earlier step of this run.
+                *(
+                    [
+                        "have the waiting step continue in a session this run holds "
+                        "(session:) with workflow_edit"
+                    ]
+                    if o.get("here")
+                    else []
+                ),
+                "end the run with workflow_stop",
+            ]
+            said = "; or ".join(ways)
             return (
                 f"The run is stuck: {o.get('text') or ''}\n"
                 "No agent is working, so no slot frees by itself: a session kept "
                 "for a later step stays open until that step has run. "
+                f"{said[0].upper()}{said[1:]}. "
                 + (
-                    "The run's limits can't raise the server's max_agents, so "
-                    "ask the person to raise workflows max_agents in .aegis.yaml"
-                    if "pool" in (o.get("full") or [])
-                    else "Raise the run's limits with workflow_edit"
+                    "A slot another run holds frees when that run ends. "
+                    if o.get("elsewhere")
+                    else ""
                 )
-                + ", have the waiting step continue in a held session (session:) "
-                "with workflow_edit"
-                + ", or end the run with workflow_stop. If another run holds a "
-                "slot, its end frees it. Nothing to answer."
+                + "Nothing to answer."
             )
         if o["kind"] == "passed":
             value = o.get("value")
