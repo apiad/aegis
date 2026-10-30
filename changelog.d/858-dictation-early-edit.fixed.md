@@ -1,1 +1,0 @@
-- **Text typed before the first dictated piece no longer moves where dictation lands.** The piece went to the old position, inside what had been typed.

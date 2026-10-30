@@ -5,6 +5,165 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [2.18.0] - 2026-10-30
+
+The tested harness range does not move: the canary fails on codex-cli 0.166.0 and opencode v2.2.3, both newer than this release's range (#831 to #855), so aegis asks before a session starts on either.
+
+### Added
+
+- **Claude sessions stay signed in for a year, and a failed sign-in shows a card that fixes it.** Several Claude Code sessions on one stored sign-in raced to refresh its single-use token, and the losers were logged out, often all of them. aegis now gives every Claude Code process it starts the token from `claude setup-token`, kept in `~/.config/aegis/claude-oauth-token` at mode 0600, which is never refreshed. When a turn fails to sign in, the session's transcript shows a card with the steps and a field: it refuses the browser's code with what to do instead, checks the token with one request on haiku, keeps it and restarts every session that failed. The Claude gauges read the five-hour and weekly windows from the sessions' own stream when the usage endpoint refuses that token, and `aegis doctor` warns before it expires.
+  help: claude-sign-in
+
+- **Attached files and local file links can stay beside the chat.** Their cards
+  and viewers now offer Dock, with the same movable, resizable, persistent pane
+  as files sent by an agent.
+  help: transcript#the-canvas
+
+- **Each session's CPU and RAM, for the agents and for you.** aegis measures what every session and everything it started uses, every 5 seconds. The sidebar shows it as a `load` line, a Fleet card shows it while the session holds a core or a GB, and `session_list` gives each session's `load`. The memory and cpu notices now tell a session what it holds and which session holds the most, and tell the heaviest one to slow its own work first: before, every session got the same advice and none could tell whether it was the cause. On a server without a cgroup per session it follows each process to the agent that started it, or to the `AEGIS_SESSION` it inherited (#762).
+  help: sessions#load
+
+- **Alt+P lists every open session and jumps to one.** One list holds this server's sessions and each linked server's, grouped by server, with each session's mark, title, state and the line it is on; quiet sessions come last, so they are reachable without the Fleet. Typing narrows it by handle, title, status or server, and Enter opens the session, bringing a quiet one's tab back. The tab bar's "N ▾" button opens the same list, and on a phone it always shows: before, it opened a menu of handles only, and nothing reached a quiet session or a session on another server from the keyboard (#781).
+  help: sessions#switch-between-sessions
+
+- **Pause every session at once, and start paused.** Settings has Pause
+  all: every session's process ends, with what its agent left running, and
+  nothing new starts until Resume all, or a message you write to one
+  session resumes it alone. `aegis serve --paused` starts or restarts with
+  the cut turns held instead of continued. A restart after an overload no
+  longer brings the overload straight back.
+  help: sessions#pause-every-session
+
+- **Artifacts can take dictation and files.** `aegis.dictate(field, fn)` dictates into a field of a page, one per question, and `aegis.upload(file)` sends a file of up to 100 MB to the session's inbox and wakes the agent with its path. The microphone and the engine stay in aegis's page, the microphone starts only from a click in the page, and aegis draws the bar that says it is on.
+  help: artifacts#take-dictation-or-a-file
+
+### Changed
+
+- **`artifact_send` says whether anyone was watching.** Its reply has a new `watching` field, so a `started: null` no longer reads the same when the person is on another tab as when their browser did not answer within 3 s. The feedback help page no longer asks agents to paste the draft again under the card; it was a duplicate whenever the person opened the tab later (#763).
+  help: artifacts
+
+- **A quota gauge's landing no longer starts low and then jumps.** The projection divided what was spent by the time gone, with a floor of 15% of the window, so a week could read 67% one day and 253% the next. It now keeps what is spent and runs the time left at a rate between the window's own and what your last finished windows usually spent, so a new window reads your usual and the number moves smoothly. A window that usually spends a lot can read near 100% from the start, which a `pace` line sees too.
+  help: usage#where-a-quota-gauge-says-it-will-land
+
+### Fixed
+
+- **On a phone the first tap on a reply chip or on "continue fresh" works.**
+  With the message box focused, as it is right after a send, the tap's blur
+  shrank the box and moved the chip from under the finger, so the tap did
+  nothing and the handoff looked out of reach.
+
+- **An open tab takes the new client by itself after an upgrade.** A tab
+  that stayed open through an upgrade, or a browser that kept an old copy,
+  ran the old client, and new features did nothing until a hard refresh. The
+  page now knows its build and the server names its own when the tab
+  reconnects. When they differ, the page takes the new build once, with or
+  without a service worker.
+
+- **A queue task completes when its worker's held-message turn ends fast.**
+  When the turn that delivers held messages ended before the send that
+  started it returned, the worker sat idle and its task stayed `running`
+  forever; a schedule's run or a workflow step waiting on it could hang the
+  same way. The end of the flush now checks again.
+
+- **A `session_spawn` prompt that starts with an aegis command runs it.**
+  `prompt: "/feedback <words>"` reached the harness as text, and Claude Code
+  answered with its own `/feedback`. A `/` first message now runs as if typed
+  in the new session's box, as the new tab already did.
+
+- **`aegis map` no longer hangs when a grammar download stalls.** On a
+  network that accepted the connection and never answered, the first run
+  printed nothing and never ended. aegis now needs wayfind 0.1.1, which
+  fetches missing grammars first, gives up on one after 120 s, names it, and
+  skips its files until a later run can download it.
+
+- **On a phone a secret card's title stays beside its icon.** A title wider
+  than the rest of the icon's line dropped below the icon. It now wraps
+  beside it, and the size and Reveal take the next line.
+
+- **An agent's answer no longer goes missing when the model wrote it in its thinking.** `turn_end` now answers with what the person has seen from the agent this turn: nothing, and it asks for the whole message now, since the agent's thinking is not shown; or how many messages and how the last begins, so the agent closes in a line when its answer is already there and writes it in full when it only wrote status lines. A model that worked its answer out in its thinking believed it had been shown, called `turn_end` and closed with one line about options the person never saw (#679).
+
+- **A file picked on Android arrives with its bytes when the phone reports
+  its size as 0.** Some document providers report no size for a file that
+  has content, and the upload sent an empty file. The browser now reads such
+  a file once and uploads what it holds.
+
+- **Stopping a member's session ends its processes.** When Linux denies the server's signal, aegis retries as the process's recorded owner so session close, terminal stop and command cleanup do not leave member work running.
+
+- **A spent loop no longer holds its session and deadlocks the run.** A `loop`
+  with `at_max: done` whose rounds ran out without `until` passing kept showing
+  `running`, so a session its steps reused stayed open and counted against
+  `limits`. A later fresh step could then sit `queued` for good with no agent
+  working. The loop now shows `done` and its session closes.
+
+- **A one-line agent message no longer leaves an empty band under it.** The
+  read mark and the read-aloud chip were stacked beside the text, taller
+  than one line, so each short reply took twice its height. They now sit
+  side by side on the first line.
+
+- **Codex recaps and side notes use the model identifier its CLI accepts.**
+  Their one-shot command no longer passes Aegis's `provider/` prefix to Codex,
+  which rejected every configured model for ChatGPT accounts.
+
+- **Dictation downloads its model once per browser, not on every use.** The
+  17.8 MB engine and model now stay in the browser's Cache Storage under their
+  version, and both transcription workers read them from there, so a phone on
+  mobile data no longer downloads them again each time.
+
+- **On a phone the session tabs have their own row again.** Fleet had moved
+  onto the tab row, beside two-line tabs, the session menu and +, so only
+  about one and a half sessions showed at 390 px. Fleet now shares the first
+  row with the server and the buttons, which give up a few pixels each on a
+  360 px screen, and the second row holds only the sessions.
+
+- **Workflow messages are stamped in UTC.** Their headers carried local time
+  with no zone while every other header is UTC with `Z`, so on a host off UTC
+  an agent read a workflow message hours before the notice that followed it.
+
+- **`help_read` opens a `###` subsection.** A ref or section name that is a
+  `###` heading inside a section, such as `knowledge#skills-as-commands`,
+  returns that subsection instead of `unknown_section`.
+
+- **The command menu shows nothing once `/spawn`'s prompt begins.** After
+  the agent and its flags, the menu stayed open as an empty strip over the
+  box while the prompt was typed. It now hides while it has nothing to
+  offer, lets Esc and Tab through, and shows again when the line does.
+
+- **Many busy sessions no longer stall the server.** Each session had its own
+  memory cap, but together they could fill the service up to its
+  `MemoryHigh`, and the kernel then throttled the server with them: aegis
+  stayed up but stopped answering. The sessions are now capped together below
+  the service's limit, the server keeps 512 MiB they cannot reclaim, and it
+  runs before them when every CPU is busy.
+
+- **Nothing aegis starts can starve the server any more.** Terminals and
+  browsers now share the memory cap the sessions got in this release, so a
+  build in a terminal or a heavy page counts against it too. Each session,
+  terminal and browser may run at most 4096 tasks, and all of them together
+  leave the server 512, so a fork bomb dies in its own session instead of
+  leaving the server unable to start a thread. The server's disk requests
+  now go first too. Chromium no longer runs in the server's own cgroup.
+
+- **The top bar's icon buttons are one size, on one line with the server's
+  name and version.** On a desktop, the schedule count widened Schedules to
+  42 px beside 30 px buttons, and the name, the version and its update arrow
+  sat 3 px below the icons. On a phone, the count dropped to a second row
+  under the clock, and in a narrow window without touch the bell was 10 px
+  narrower than the rest. The count
+  is now a badge on the clock's corner. In the session panel, the update
+  marker no longer sits 12 px after the version, twice the line's gap.
+
+- **A narrow window keeps the header's buttons on one row.** Below 760 px
+  with a mouse, `?` dropped onto a row of its own, and the header took three
+  rows. The header buttons now narrow the same way they do on a phone.
+
+- **A side note right after a failed one no longer hits `btw_busy`.** The block
+  read failed a moment before its slot was freed, so asking again at once could
+  be refused with a side note "already running". The slot is now free before
+  the block changes.
+
+- **A closed session no longer comes back as a tab that can be neither closed nor reopened.** A card update waiting at the close, or a recap paid after it, published the session's row again after its removal, so every browser watching that server, on the server itself or through a link, showed an archived session as an open tab until a reload (#856).
+
+- **Text typed before the first dictated piece no longer moves where dictation lands.** The piece went to the old position, inside what had been typed.
+
 ## [2.17.1] - 2026-10-29
 
 ### Changed

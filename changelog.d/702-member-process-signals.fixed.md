@@ -1,1 +1,0 @@
-- **Stopping a member's session ends its processes.** When Linux denies the server's signal, aegis retries as the process's recorded owner so session close, terminal stop and command cleanup do not leave member work running.
