@@ -575,6 +575,9 @@ export class Settings {
       h("span", { textContent: "Trusted (both ways)" }),
     );
     const add = button("Link", "set-link-add", () => this.link(url.value.trim(), token.value.trim(), trusted.checked), "btn primary");
+    const via = this.doc?.exit_via;
+    const exitLine = h("p", { className: "set-none", id: "set-exit", textContent: via ? `What aegis starts reaches the internet through ${via}.` : "What aegis starts uses this machine's route. A trusted link's row can make it the exit." });
+    exitLine.dataset.key = "exit_via";
     const picker =
       this.links.length > 0 &&
       h(
@@ -593,6 +596,7 @@ export class Settings {
       h("h3", { textContent: "Servers" }),
       h("p", { className: "set-none", textContent: "A linked server's sessions show in the Fleet and the tab bar. Nothing on it can reach this machine, unless the link is trusted: only for a server you alone use." }),
       h("table", { className: "tbl" }, ...rows),
+      exitLine,
       h("div", { className: "set-linkrow" }, url, token, trustBox, add),
       this.linkError && h("p", { className: "err-text", id: "set-link-error", textContent: this.linkError }),
       picker,
