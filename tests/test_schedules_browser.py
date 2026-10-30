@@ -11,7 +11,10 @@ import pytest
 from .test_browser import (  # noqa: F401
     CONFIG,
     Server,
+    beta_session,
     browser,
+    linked,
+    pick,
     new_page,
     page,
     spawn,
@@ -299,6 +302,41 @@ def test_an_agents_schedule_shows_a_card_a_person_unpauses(server, page):  # noq
     page.wait_for_selector(".apcard[data-state=waiting] >> text=run the tests")
     page.click(".apcard[data-state=waiting] button >> text=Unpause")
     page.wait_for_selector(".apcard[data-name=nightly-tests][data-state=running]")
+    assert not page.errors
+
+
+SPEC = {
+    "name": "nightly-tests",
+    "clock": {"every": "1h"},
+    "fire": {"agent": "opus"},
+    "prompt": "run the tests",
+}
+
+
+def test_a_linked_agents_schedule_is_approved_from_this_server(linked, browser, page):  # noqa: F811
+    lid = beta_session(linked, browser, "/mcp schedule_create " + json.dumps(SPEC))
+    page.goto(linked.alpha.url)
+    page.click(f"#tablist .tab[data-id='beta/{lid}']")
+    page.wait_for_selector(".apcard[data-state=waiting] >> text=run the tests")
+    page.click(".apcard[data-state=waiting] button >> text=Unpause")
+    page.wait_for_selector(".apcard[data-name=nightly-tests][data-state=running]")
+    assert not page.errors
+
+
+def test_the_view_picks_a_linked_server_and_acts_there(linked, browser, page):  # noqa: F811
+    """A schedule of beta's, seen and paused from alpha; alpha has none of that
+    name, and the picker goes back to alpha's empty list."""
+    beta_session(linked, browser, "/mcp schedule_create " + json.dumps(SPEC))
+    page.goto(linked.alpha.url)
+    page.click("#schedules-btn")
+    page.wait_for_selector("#a2[data-view=schedules] >> text=No schedules yet.")
+    pick(page, ".sch-server", "beta")
+    row = ".sch-row[data-name=nightly-tests]"
+    page.wait_for_selector(row)
+    page.click(".sch-detail button >> text=Resume")
+    page.wait_for_selector(".sch-detail button >> text=Pause")
+    pick(page, ".sch-server", "alpha")
+    page.wait_for_selector("#a2[data-view=schedules] >> text=No schedules yet.")
     assert not page.errors
 
 

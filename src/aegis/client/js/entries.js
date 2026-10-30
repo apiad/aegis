@@ -146,19 +146,19 @@ export function entryFiles(e) {
 // round from the last file to the first, and a preview is built only when
 // its file is shown. The preview kind was decided at send (files.py); Open
 // hands the set to the viewer, at the file shown.
+function viaFile(f) {
+  // A linked server's file: every link is rebuilt here from a path of the
+  // one shape /via serves, so no URL the far server chose reaches an href
+  // or a frame on this origin (a javascript: download ran with the cookie).
+  const ok = typeof f.url === "string" && /^\/files\/[A-Za-z0-9_-]+\/[^/?#]+$/.test(f.url);
+  f.url = ok ? fileBase + f.url : "about:blank";
+  f.download = ok ? `${f.url}?download=1` : "about:blank";
+  return f;
+}
 function fileCard(files, glyph) {
   const sent = files.map((f) => ({ ...f }));
   const remote = fileBase !== "";
-  if (remote) {
-    // A linked server's card: every link is rebuilt here from a path of the
-    // one shape /via serves, so no URL the far server chose reaches an href
-    // or a frame on this origin (a javascript: download ran with the cookie).
-    for (const f of sent) {
-      const ok = typeof f.url === "string" && /^\/files\/[A-Za-z0-9_-]+\/[^/?#]+$/.test(f.url);
-      f.url = ok ? fileBase + f.url : "about:blank";
-      f.download = ok ? `${f.url}?download=1` : "about:blank";
-    }
-  }
+  if (remote) for (const f of sent) viaFile(f);
   const card = el("div", "fcard");
   const bar = el("div", "fbar");
   const name = el("span", "fn");
@@ -848,8 +848,11 @@ function seeChip(w, r) {
   chip.onclick = async () => {
     try {
       const got = await workflows.call("workflow.see", { run: w.run, node: r.id });
-      const files = got.files.map((f) => (got.fragment ? { ...f, url: `${f.url}#${got.fragment}` } : f));
-      workflows.view(files, got.line);
+      const remote = fileBase !== "";
+      const files = got.files
+        .map((f) => (remote ? viaFile({ ...f }) : f))
+        .map((f) => (got.fragment ? { ...f, url: `${f.url}#${got.fragment}` } : f));
+      workflows.view(files, got.line, remote);
     } catch (err) {
       chip.title = String(err?.message || err);
       chip.classList.add("bad");

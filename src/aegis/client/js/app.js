@@ -731,35 +731,39 @@ for (const id of ["band-quota-link", "s-quota-head"]) $(id).addEventListener("cl
 // paused by errors.
 const schedules = new Schedules(conn, $("schedules"), {
   go,
-  sessions: () => local(),
+  sessions: (server) => (server ? on(server) : local()),
   onCount: (n, red) => {
     $("schedules-n").textContent = n ? String(n) : "";
     $("schedules-n").classList.toggle("err", red);
   },
 });
 setSecrets((op, params) => callFor(shown, op, params));
+// A card asks the server of the session it is shown in: names are per server.
+const shownServer = () => (shown ? forKey(shown).server : null);
 setApprovals({
-  schedule: (name) => schedules.items.get(name) || null,
-  call: (op, params) => conn.call(op, params),
+  schedule: (name) => schedules.on(shownServer()).get(name) || null,
+  call: (op, params) => conn.call(op, params, shownServer()),
 });
-conn.subscribe(
-  "schedules",
+const scheduleHandlers = (server) => [
   (list) => {
-    schedules.onSnapshot(list);
+    schedules.onSnapshot(list, server);
     refreshApprovals();
   },
   (ops) => {
-    schedules.onPatch(ops);
+    schedules.onPatch(ops, server);
     refreshApprovals();
   },
-);
+];
+conn.subscribe("schedules", ...scheduleHandlers(null));
 
 // The workflow runs (workflows.py), for their cards in the transcript and
 // their canvas panes. A running card counts its times up once a second.
 // `workflow-runs` has every run's summary, without the tree and the story a
 // card draws: those were 96% of the bytes (#525). A card's run comes whole
-// from `workflow:<run>`, subscribed while a card of it is in the page.
-const wfRuns = new Map(); // run -> its summary
+// from `workflow:<run>`, subscribed while a card of it is in the page. A linked
+// server's runs come the same way over its link (#489), each with its `server`,
+// and a card's subscribe and calls go there.
+const wfRuns = new Map(); // run -> its summary, with `server`: null for this one
 const wfWhole = new Map(); // run -> {w: the run whole, or null until it lands; unsub}
 function wfGet(run) {
   const summary = wfRuns.get(run);
@@ -768,13 +772,22 @@ function wfGet(run) {
   if (!d) {
     d = { w: null, unsub: null };
     wfWhole.set(run, d);
+    // The run is the one asked for, whatever a far server says: a card's calls
+    // are routed by it, and must not reach a run of this server.
     const land = (w) => {
-      d.w = w;
+      d.w = { ...w, run };
       wfChanged(new Set([run]));
     };
-    d.unsub = conn.subscribe(`workflow:${run}`, land, (ops) => {
-      for (const op of ops) if (op.set) land(op.set);
-    });
+    d.unsub = conn.subscribe(
+      `workflow:${run}`,
+      land,
+      (ops) => {
+        for (const op of ops) if (op.set) land(op.set);
+      },
+      undefined,
+      undefined,
+      summary.server,
+    );
   }
   // Until it lands, the card draws from the summary, with no rows yet.
   return d.w || { ...summary, tree: [], story: [] };
@@ -791,8 +804,8 @@ setInterval(wfForget, 10000);
 setWorkflows({
   get: wfGet,
   summary: (run) => wfRuns.get(run) || null,
-  call: (op, params) => conn.call(op, params),
-  view: (files, line) => viewer.open({ files, at: 0, remote: false, glyph: "file", line }),
+  call: (op, params) => conn.call(op, params, wfRuns.get(params.run)?.server),
+  view: (files, line, remote) => viewer.open({ files, at: 0, remote, glyph: "file", line }),
 });
 const locked = workflowLocked;
 // A patch redraws only the cards of the runs it carries.
@@ -803,27 +816,36 @@ const wfChanged = (runs) => {
   const s = sessions.get(shown);
   if (s?.workflow && (!runs || runs.has(s.workflow.run))) renderMeta(s);
 };
-conn.subscribe(
-  "workflow-runs",
-  (list) => {
-    wfRuns.clear();
-    for (const w of list || []) wfRuns.set(w.run, w);
-    wfChanged();
-  },
-  (ops) => {
-    const runs = new Set();
-    for (const op of ops) {
-      const w = op.upsert || (op.merge && wfRuns.has(op.merge.run) && { ...wfRuns.get(op.merge.run), ...op.merge });
-      if (!w) continue;
-      wfRuns.set(w.run, w);
-      // A whole run that is followed takes the summary's news too.
-      const d = wfWhole.get(w.run);
-      if (d?.w) d.w = { ...d.w, ...w };
-      runs.add(w.run);
-    }
-    wfChanged(runs);
-  },
-);
+// A far server cannot take over a run id already held by another server, and
+// this server's own runs always win: a card's calls go where its row says.
+function wfPut(w, server) {
+  const had = wfRuns.get(w.run);
+  if (server && had && had.server !== server) return false;
+  wfRuns.set(w.run, { ...w, server });
+  return true;
+}
+function wfHandlers(server) {
+  return [
+    (list) => {
+      for (const [run, w] of wfRuns) if (w.server === server) wfRuns.delete(run);
+      for (const w of list || []) wfPut(w, server);
+      wfChanged();
+    },
+    (ops) => {
+      const runs = new Set();
+      for (const op of ops) {
+        const w = op.upsert || (op.merge && wfRuns.has(op.merge.run) && { ...wfRuns.get(op.merge.run), ...op.merge });
+        if (!w || !wfPut(w, server)) continue;
+        // A whole run that is followed takes the summary's news too.
+        const d = wfWhole.get(w.run);
+        if (d?.w) d.w = { ...d.w, ...w };
+        runs.add(w.run);
+      }
+      wfChanged(runs);
+    },
+  ];
+}
+conn.subscribe("workflow-runs", ...wfHandlers(null));
 setInterval(() => {
   if ([...wfRuns.values()].some((w) => w.status === "running")) tickWorkflows();
 }, 1000);
@@ -893,6 +915,7 @@ function onLinks(list) {
   linksArrived();
   settings.onLinks(links, conn.server);
   drawServerPick();
+  schedules.onLinks(links, conn.server);
   const names = new Set(links.map((l) => l.name));
   for (const [name, r] of remote) {
     if (names.has(name)) continue;
@@ -900,6 +923,8 @@ function onLinks(list) {
     r.unsubHost?.();
     remote.delete(name);
     for (const [k, m] of sessions) if (m.server === name) sessions.delete(k);
+    for (const [run, w] of wfRuns) if (w.server === name) wfRuns.delete(run);
+    wfChanged();
   }
   for (const l of links) {
     let r = remote.get(l.name);
@@ -908,6 +933,8 @@ function onLinks(list) {
       remote.set(l.name, r);
       r.unsubs.push(
         conn.subscribe("sessions", ...sessionHandlers(l.name), undefined, undefined, l.name),
+        conn.subscribe("workflow-runs", ...wfHandlers(l.name), undefined, undefined, l.name),
+        conn.subscribe("schedules", ...scheduleHandlers(l.name), undefined, undefined, l.name),
         conn.subscribe(
           "quota",
           (snap) => {

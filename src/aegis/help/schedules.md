@@ -30,6 +30,11 @@ check runs the check once without saving, and Save stays off until the name,
 the clock, the prompt and every percent are valid. Clocks read the server's
 zone, and the view names it.
 
+With a linked server, a chip beside the title picks whose schedules the view
+shows, and everything in it, creating, editing and running included, acts on
+that server. The button's count covers every server. An agent's card in a
+linked session's transcript acts on that session's server.
+
 ## Create a schedule
 
 Call `schedule_create` with:

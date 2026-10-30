@@ -317,6 +317,10 @@ page does. A step's session has no tab while the run lives: its handle on
 the card and on the Fleet's card opens the transcript read-only, and the
 session gets its tab when the step fails or the run ends.
 
+A session on a linked server shows its run's cards too, and Approve and run,
+a gate's answer, a proposed change and a step's `see` chip all act on the
+server the run lives on.
+
 ## Link a step to the plan
 
 ```yaml

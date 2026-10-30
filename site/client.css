@@ -1797,6 +1797,7 @@ body{background:#000}
 .a2 .sch-btn .n.err{color:var(--err)}
 .a2 .schedules .sch-top{display:flex;align-items:baseline;gap:12px;margin-bottom:14px}
 .a2 .schedules .sch-top h2{margin:0;font-family:var(--font-mono);font-weight:500;font-size:15px;color:var(--strong)}
+.a2 .schedules .sch-server{background:none;border:none;font-family:var(--font-mono);font-size:12px;color:var(--accent);cursor:pointer}
 .a2 .schedules .sch-grid{display:grid;grid-template-columns:280px minmax(0,1fr);gap:16px;align-items:start}
 .a2 .schedules .sch-row{border:1px solid var(--rule);border-radius:var(--r);padding:8px 10px;margin-bottom:6px;cursor:pointer;background:var(--surface)}
 .a2 .schedules .sch-row.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
