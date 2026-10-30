@@ -7,7 +7,7 @@ import threading
 from datetime import datetime, timezone
 
 
-from aegis.quota import Quota, cache_dir
+from aegis.quota import Quota, account_hash, cache_dir
 from aegis.quota.core import QuotaError, QuotaProvider, QuotaSnapshot, QuotaWindow
 
 from .conftest import until
@@ -31,7 +31,7 @@ def _at(clocks, seconds_from_now):
     return datetime.fromtimestamp(clocks.wall + seconds_from_now, timezone.utc)
 
 
-def provider(clocks, results, calls, *, token="tok"):
+def provider(clocks, results, calls, *, token="tok", account=None):
     """A Claude-shaped provider. Each entry of `results` is an exception to
     raise, or (percent of the 5-hour window, seconds until it resets)."""
 
@@ -56,17 +56,18 @@ def provider(clocks, results, calls, *, token="tok"):
         bar_windows=(("session", "5 hours"), ("weekly_all", "week")),
         fetch=fetch,
         read_token=token if callable(token) else (lambda path=None: token),
+        account=lambda: account,
         window_spans={"session": H5, "weekly_all": WK},
         poll_s=180.0,
         turn_floor_s=60.0,
     )
 
 
-def make(tmp_path, clocks, results, *, token="tok"):
+def make(tmp_path, clocks, results, *, token="tok", account=None):
     calls, sent = [], []
     q = Quota(
         lambda channel, ops: sent.append((channel, ops)),
-        providers=(provider(clocks, results, calls, token=token),),
+        providers=(provider(clocks, results, calls, token=token, account=account),),
         cache=tmp_path,
         clock=lambda: clocks.mono,
         wall=lambda: clocks.wall,
@@ -92,17 +93,17 @@ async def test_a_reading_goes_on_the_wire_decided(tmp_path):
         "windows": None,
     }
     five, week = claude["windows"]
-    # 71% with 38% of the window gone lands at 187% by the reset.
+    # 71% with 38% of the window gone lands at 156% by the reset.
     assert five == {
         "kind": "session",
         "label": "5 hours",
         "percent": 71.0,
         "severity": "warning",
-        "projected": 187,
+        "projected": 156,
         "starts_at": round(WALL + 11160 - H5),
         "resets_at": round(WALL + 11160),
     }
-    assert week["severity"] == "normal" and week["projected"] == 66
+    assert week["severity"] == "normal" and week["projected"] == 70
     assert sent == [("quota", [{"set": snap}])]
 
 
@@ -115,7 +116,7 @@ async def test_nothing_is_published_until_the_snapshot_changes(tmp_path):
     c.advance(60)  # the projection moves with the clock, without a fetch
     await q.tick()
     assert len(sent) == 2 and len(calls) == 1
-    assert sent[-1][1][0]["set"]["providers"][0]["windows"][0]["projected"] == 185
+    assert sent[-1][1][0]["set"]["providers"][0]["windows"][0]["projected"] == 155
 
 
 async def test_a_failing_fetch_after_a_reading_is_stale_and_unprojected(tmp_path):
@@ -236,3 +237,50 @@ async def test_listeners_hear_every_check_changed_or_not(tmp_path):
     await q.tick()
     assert len(sent) == 1 and len(heard) == 2
     assert heard[0] == q.snapshot()
+
+
+async def test_a_projection_starts_from_what_the_account_usually_spends(tmp_path):
+    c = Clocks()
+    q, _, _ = make(tmp_path, c, [(0.0, H5)], account="acct")
+    asked = []
+
+    def history(billing, kind, span):
+        asked.append((billing, kind, span))
+        return 24.0 if kind == "session" else None
+
+    q.history = history
+    await q.tick()
+    five, week = q.snapshot()["providers"][0]["windows"]
+    assert five["projected"] == 24
+    # No finished window of this kind yet: 47% with 5/7 of the week gone.
+    assert week["projected"] == 70
+    billing = "claude:" + account_hash("acct")
+    assert asked == [(billing, "session", H5), (billing, "weekly_all", WK)]
+
+
+async def test_history_is_read_once_per_window(tmp_path):
+    c = Clocks()
+    q, _, _ = make(tmp_path, c, [(1.0, H5), (2.0, H5 - 181), (3.0, H5)], account="acct")
+    asked = []
+
+    def history(billing, kind, span):
+        asked.append(kind)
+        return 24.0
+
+    q.history = history
+    await q.tick()
+    q.snapshot()
+    assert asked.count("session") == 1
+    c.advance(180)
+    await q.tick()  # a vendor's reset time, a second off: the same window
+    assert asked.count("session") == 1
+    c.advance(H5)
+    await q.tick()  # a new window: read again
+    assert asked.count("session") == 2
+
+
+async def test_a_quota_without_a_journal_asks_nothing_and_uses_the_default(tmp_path):
+    c = Clocks()
+    q, _, _ = make(tmp_path, c, [(0.0, H5)], account="acct")
+    await q.tick()
+    assert q.snapshot()["providers"][0]["windows"][0]["projected"] == 100

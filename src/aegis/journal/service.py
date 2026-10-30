@@ -40,6 +40,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from ..quota.core import PACE_HISTORY_LONG, PACE_HISTORY_SHORT
 from ..transcript.store import read_store
 from ..usage import tables
 from ..usage.context import successor_start
@@ -432,6 +433,21 @@ class Journal:
         """A quota reading (Quota.listeners): kept on the writer thread when
         a window's percent or reset moved."""
         self._q.put(("quota", snapshot))
+
+    def usual_spend(self, billing: str, window: str, span_s: float) -> float | None:
+        """What the last finished windows of this kind spent (tables.usual_spend).
+        None when the file or its table is not there yet, as before a backfill."""
+        keep = PACE_HISTORY_SHORT if span_s < 86400 else PACE_HISTORY_LONG
+        try:
+            con = db.open_read(self.path)
+            try:
+                return tables.usual_spend(
+                    con, billing, window, span_s, time.time(), keep
+                )
+            finally:
+                con.close()
+        except sqlite3.Error:
+            return None
 
     def _usage_changed(self) -> None:
         self._usage_at = time.time()

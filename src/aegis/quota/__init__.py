@@ -32,6 +32,7 @@ from pathlib import Path
 
 from .claude import PROVIDER as CLAUDE, parse_stream
 from .core import (
+    PACE_USUAL_DEFAULT,
     FAILURE_TEXT,
     QuotaProvider,
     QuotaService,
@@ -69,7 +70,12 @@ def account_hash(account: str | None) -> str | None:
 
 
 def provider_wire(
-    provider: QuotaProvider, state: QuotaState, *, now: datetime, wall: float
+    provider: QuotaProvider,
+    state: QuotaState,
+    *,
+    now: datetime,
+    wall: float,
+    usual: Callable[[str, str, float, datetime], float] | None = None,
 ) -> dict | None:
     """One provider on the wire, or None when it has nothing to say: no
     credentials (a rail not in use), or no reading and no failure yet."""
@@ -100,7 +106,11 @@ def provider_wire(
         if w is None:
             continue
         span = None if stale else provider.window_spans.get(kind)
-        projected = window_pace(w, span, now=now)
+        typical = PACE_USUAL_DEFAULT
+        if usual is not None and span and head["account"] and w.resets_at is not None:
+            billing = f"{provider.name}:{head['account']}"
+            typical = usual(billing, kind, span, w.resets_at)
+        projected = window_pace(w, span, now=now, usual=typical)
         resets = None if w.resets_at is None else w.resets_at.timestamp()
         starts = None
         if projected is not None and resets is not None and span:
@@ -110,7 +120,9 @@ def provider_wire(
                 "kind": kind,
                 "label": label,
                 "percent": w.percent,
-                "severity": "normal" if stale else pace_severity(w, span, now=now),
+                "severity": "normal"
+                if stale
+                else pace_severity(w, span, now=now, usual=typical),
                 "projected": None if projected is None else round(projected),
                 "starts_at": starts,
                 "resets_at": None if resets is None else round(resets),
@@ -157,13 +169,39 @@ class Quota:
         # Called with the snapshot after every check, changed or not: the
         # quota gate moves with the clock as pace does (quota_gate.py).
         self.listeners: list[Callable[[dict], None]] = []
+        # Reads what a window's finished windows spent (Journal.usual_spend),
+        # or None without any. Unset until the journal is there.
+        self.history: Callable[[str, str, float], float | None] | None = None
+        self._usual: dict[tuple[str, str], tuple[float, float]] = {}
+
+    def _usual_spend(
+        self, billing: str, kind: str, span: float, resets_at: datetime
+    ) -> float:
+        """What this window usually spends, read once per window: it only
+        changes when one finishes, and a snapshot is taken every minute. A
+        vendor's reset time moves by a second between readings."""
+        resets = resets_at.timestamp()
+        known = self._usual.get((billing, kind))
+        if known is not None and abs(known[0] - resets) < 60:
+            return known[1]
+        got = None if self.history is None else self.history(billing, kind, span)
+        typical = PACE_USUAL_DEFAULT if got is None else got
+        if self.history is not None:
+            self._usual[billing, kind] = (resets, typical)
+        return typical
 
     def snapshot(self) -> dict:
         wall = self._wall()
         now = datetime.fromtimestamp(wall, timezone.utc)
         providers = []
         for p in self._providers:
-            wire = provider_wire(p, self.services[p.name].current(), now=now, wall=wall)
+            wire = provider_wire(
+                p,
+                self.services[p.name].current(),
+                now=now,
+                wall=wall,
+                usual=self._usual_spend,
+            )
             if wire is not None:
                 providers.append(wire)
         return {"providers": providers}

@@ -647,6 +647,7 @@ class App:
         self.resumed: set[str] = set()
         self.quota.listeners.append(self.on_quota)
         self.quota.listeners.append(self.journal.quota)
+        self.quota.history = self.journal.usual_spend
         reg.gate = self.gate
         reg.pause_hold = self.pause_hold
         # Who each session's processes run as, in multi-user mode (users.py).

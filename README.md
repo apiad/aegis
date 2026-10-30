@@ -60,8 +60,8 @@ On top of the three CLIs, aegis adds what none has on its own:
   session.
 - The quota of each subscription: Claude's 5-hour and weekly windows, and OpenCode
   Go's 5-hour, weekly and monthly ones. Each gauge shows how much of the window
-  is spent, how much of its time has gone, and where it will land at the reset
-  at the current pace. A session's panel shows the windows that session spends.
+  is spent, how much of its time has gone, and where it will land at the reset,
+  from its rate so far and what your finished windows usually spend. A session's panel shows the windows that session spends.
 - The Usage page shows what the agents' work cost, live: spend per week by
   purpose, repo, owner, mode or model, agent hours against time waiting on you,
   the cost per merged pull request, and each subscription's fee shared over

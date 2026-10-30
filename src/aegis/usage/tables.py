@@ -285,3 +285,32 @@ def quota(con: sqlite3.Connection, snapshot: dict) -> int:
                 rows,
             )
     return len(rows)
+
+
+def usual_spend(
+    con: sqlite3.Connection,
+    billing: str,
+    window: str,
+    span_s: float,
+    now: float,
+    keep: int,
+) -> float | None:
+    """The mean percent the last ``keep`` finished windows ended on, or None
+    when none has finished. A window's rows share a reset time up to a vendor's
+    jitter, and percent only grows within one, so its last value is its highest."""
+    rows = con.execute(
+        "SELECT resets_at, percent FROM usage_quota WHERE billing = ? AND window = ?"
+        " AND resets_at IS NOT NULL AND resets_at <= ? ORDER BY resets_at DESC",
+        (billing, window, now),
+    )
+    finals: list[float] = []
+    last = None
+    for resets, percent in rows:
+        if last is None or last - resets >= span_s / 2:
+            if len(finals) == keep:
+                break
+            finals.append(percent)
+            last = resets
+        else:
+            finals[-1] = max(finals[-1], percent)
+    return sum(min(f, 100.0) for f in finals) / len(finals) if finals else None
