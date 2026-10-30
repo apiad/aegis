@@ -82,6 +82,10 @@ def configure_exits(
     _exits, _resolve = exits, resolve
 
 
+def exits_in_force() -> Any:
+    return _exits
+
+
 def resolve_via(agent: str | None = None) -> str | None:
     """The link a process started now exits through: the one ``agent`` names,
     or the server's, or None."""

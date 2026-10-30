@@ -1299,6 +1299,8 @@ class App:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._config_task
         await self.exits.shutdown()
+        if launch.exits_in_force() is self.exits:
+            launch.configure_exits(None, None)
         await self.links.shutdown()
         await self.parker.stop()
         await self.nudges.stop()

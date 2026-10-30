@@ -660,3 +660,13 @@ async def test_chromium_reaches_a_page_through_the_exit(trusted, monkeypatch):  
             assert "through the exit" in await page.content()
             await browser.close()
     assert t.hits >= 1
+
+
+async def test_a_stopped_server_leaves_no_exit_behind(tmp_path, fake_claude):
+    """The next App in this process must not inherit it: a child would get a
+    proxy whose listener is gone."""
+    node = await Node(tmp_path / "a", "a", fake_claude).start()
+    assert launch.exits_in_force() is node.app.exits
+    await node.stop()
+    assert launch.exits_in_force() is None
+    assert launch.resolve_via() is None
