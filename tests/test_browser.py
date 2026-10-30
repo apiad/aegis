@@ -1684,10 +1684,11 @@ def test_the_fleet_band_and_the_sidebar_show_quota_and_the_host(quota_server, pa
     page.goto(quota_server.url)
     five = page.locator("#band .gauge[data-kind=session]")
     five.wait_for()
-    # 71% with 38% of the window gone: on pace for about 187%, so a warning.
+    # 71% with 38% of the window gone: 71 spent, then the time left at a rate the
+    # prior pulls below the 1.87 seen so far (#829), for about 156%, so a warning.
     assert "warning" in five.get_attribute("class")
     assert "71%" in five.inner_text()
-    assert re.search(r"18\d%", five.locator(".proj").inner_text())
+    assert re.search(r"15\d%", five.locator(".proj").inner_text())
     assert five.locator(".proj svg.ic").count() == 1
     assert five.locator(".tick").count() == 1
     week = page.locator("#band .gauge[data-kind=weekly_all]")
@@ -1711,7 +1712,7 @@ def test_the_fleet_band_and_the_sidebar_show_quota_and_the_host(quota_server, pa
     five = page.locator("#s-tiles .tile[data-kind=session]")
     five.wait_for()
     assert "warning" in five.get_attribute("class")
-    assert re.search(r"71%18\d", five.inner_text().replace("\n", ""))
+    assert re.search(r"71%15\d", five.inner_text().replace("\n", ""))
     assert five.locator("small svg.ic").count() == 1
     page.wait_for_selector("#s-host-sec:not([hidden]) #s-host-tiles .tile")
     assert "CPU" in page.inner_text("#s-host-tiles")
