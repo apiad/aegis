@@ -6,7 +6,15 @@ import re
 
 import pytest
 
-from .test_browser import CONFIG, Server, browser, page, spawn  # noqa: F401
+from .test_browser import (  # noqa: F401
+    CONFIG,
+    Server,
+    beta_session,
+    browser,
+    linked,
+    page,
+    spawn,
+)
 from .test_workflows_e2e import RESULT, flow
 from .test_workflows_parallel import leaf, report
 from .test_workflows_steps import flow as steps
@@ -34,6 +42,39 @@ def test_a_person_reads_the_plan_approves_it_and_watches_it_finish(server, page)
     page.click(f"{card} button >> text=Approve and run")
     page.wait_for_selector(".wfcard[data-status=done]", timeout=20000)
     page.wait_for_selector(".wfcard .story >> text=Did it, n is 7.")
+    assert not page.errors
+
+
+def test_a_linked_servers_run_is_approved_and_followed_from_this_server(  # noqa: F811
+    linked,  # noqa: F811
+    browser,  # noqa: F811
+    page,  # noqa: F811
+):
+    """The run lives on beta and the person reads its session through alpha:
+    the card shows the plan, Approve and run reaches beta, the run follows."""
+    arm = {"definition": flow(RESULT, RESULT), "args": {}}
+    lid = beta_session(linked, browser, "/mcp workflow_arm " + json.dumps(arm))
+    page.goto(linked.alpha.url)
+    page.click(f"#tablist .tab[data-id='beta/{lid}']")
+    card = ".wfcard[data-status=armed]"
+    page.wait_for_selector(f"{card} >> text=Do the first thing.")
+    page.click(f"{card} button >> text=Approve and run")
+    page.wait_for_selector(".wfcard[data-status=done]", timeout=20000)
+    page.wait_for_selector(".wfcard .story >> text=Did it, n is 7.")
+    assert not page.errors
+
+
+def test_a_linked_servers_gate_is_answered_from_this_server(linked, browser, page):  # noqa: F811
+    """A decision card of a far run: Continue reaches beta and the run goes on."""
+    arm = {"definition": GATED, "args": {}}
+    lid = beta_session(linked, browser, "/mcp workflow_arm " + json.dumps(arm))
+    page.goto(linked.alpha.url)
+    page.click(f"#tablist .tab[data-id='beta/{lid}']")
+    page.click(".wfcard[data-status=armed] button >> text=Approve and run")
+    gate = ".wfdcard[data-what=gate]"
+    page.wait_for_selector(f"{gate} textarea")
+    page.click(f"{gate} button >> text=Continue")
+    page.wait_for_selector(".wfcard[data-status=done]", timeout=20000)
     assert not page.errors
 
 
@@ -784,6 +825,26 @@ def test_a_steps_see_chip_opens_its_part_of_the_plan(server, page, tmp_path):  #
     page.wait_for_selector(f"{chip} >> text=see docs/plan.html#slice-1")
     page.click(chip)
     page.wait_for_selector('#viewer iframe[src$="#slice-1"]')
+    assert not page.errors
+
+
+def test_a_linked_servers_see_chip_opens_its_file_through_via(  # noqa: F811
+    linked,  # noqa: F811
+    browser,  # noqa: F811
+    page,  # noqa: F811
+):
+    from .test_workflows_canvas import SEEN
+
+    (linked.beta.root / "docs").mkdir()
+    (linked.beta.root / "docs" / "plan.html").write_text("<h2 id=slice-1>One</h2>")
+    arm = {"definition": SEEN, "args": {}}
+    lid = beta_session(linked, browser, "/mcp workflow_arm " + json.dumps(arm))
+    page.goto(linked.alpha.url)
+    page.click(f"#tablist .tab[data-id='beta/{lid}']")
+    chip = ".wfcard .wfrow[data-node=one] .see"
+    page.wait_for_selector(f"{chip} >> text=see docs/plan.html#slice-1")
+    page.click(chip)
+    page.wait_for_selector('#viewer iframe[src^="/via/beta/files/"][src$="#slice-1"]')
     assert not page.errors
 
 

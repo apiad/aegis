@@ -835,7 +835,11 @@ for the browser: a linked server's sent file reaches this origin only through
 `/via`, under headers this server decides from the file's name
 (`files.via_headers`), and the client rebuilds every far file link from a path
 of that one shape, since a page or a `javascript:` URL running on this origin
-holds the cookie that drives every agent here. A socket with no `Origin` is a
+holds the cookie that drives every agent here. A far server's workflow run
+reaches the client over its link the same way as its sessions, and the client
+routes a card's calls by the server its row came from, so a far run id can
+never take a row of this server's or another server's run and steer a call
+there. A socket with no `Origin` is a
 program, never a browser, and only such a socket may say it is a link; a link
 socket keys subscriptions by `sid` and is not relayed on. "A link" means any
 holder of the token that says so: per-link credentials come with per-user
