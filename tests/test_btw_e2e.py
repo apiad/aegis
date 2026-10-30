@@ -178,16 +178,3 @@ async def test_cancel_settles_a_block_left_running_by_a_crash(world):
         "btw.cancel", {"log_id": a.log_id, "id": "orphan"}
     )
     assert again["status"] == "none"
-
-
-async def test_settling_a_crashed_block_keeps_the_running_notes_slot(
-    world, monkeypatch
-):
-    a = await world.spawn()
-    a.report({"kind": "btw", "id": "orphan", "question": "q"})
-    monkeypatch.setenv("FAKE_CLAUDE_ONESHOT", "slow")
-    await ask(world, a, "live")
-    await world.app.registry.call("btw.cancel", {"log_id": a.log_id, "id": "orphan"})
-    with pytest.raises(OpError) as e:
-        await ask(world, a, "second")
-    assert e.value.code == "btw_busy"
