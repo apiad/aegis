@@ -92,8 +92,13 @@ do next: `/handoff implement this plan`. Its flags go before the text. `--agent`
 continues on another agent, and `--model`, `--effort`, `--permission` and
 `--cwd` change what the new session runs.
 
+`--agent name@server` continues on a linked server, under the same policy as a
+spawn there. Nothing here hears when its first turn ends, so the old session is
+archived once the far side takes the first message, and a refusal leaves it
+open. An open session it started, or a workflow it owns, refuses this.
+
 An agent does the same with `session_handoff`, passing `msg` and optionally
-`agent`, with at most its own permission. Nobody can write to its session from
+`agent` and `host`, with at most its own permission. Nobody can write to its session from
 that call on, and the new session starts when its turn ends. An agent that asks
 in a turn that then fails, or whose process dies, keeps its session.
 

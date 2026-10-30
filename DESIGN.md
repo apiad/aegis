@@ -157,7 +157,11 @@ name, and a `handoff_off` record says so in the old transcript (#874). An agent'
 `session_handoff` during its turn sets `continued_by` to `pending` with the
 request in `handoff_pending`, both in the meta: the lock starts at the call, and
 `Registry.turn_ended` starts the new session, so its tail holds the turn's last
-message. Boot starts a pending handoff whose turn already ended.
+message. Boot starts a pending handoff whose turn already ended. A handoff across
+a link goes through `_spawn_far` and archives the old session once the far side
+takes the first message, since a plain link says nothing of the far turn; its
+`continued_by` holds `handle@server`. Children and a run cannot follow across a
+link, so they refuse it.
 
 **A restart gives back what it cut.** aegis writes `<state>/server.json` at both ends
 of a clean shutdown, so boot tells a restart from a crash. A turn the server's own

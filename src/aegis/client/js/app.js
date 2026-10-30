@@ -3832,7 +3832,7 @@ function drawReplies(s) {
   const next = s.continued_by && sessions.get(keyOf(s.server, s.continued_by));
   $("handoff-done").hidden = !s.continued_by;
   const who = document.createElement(next ? "a" : "span");
-  who.textContent = next ? next.handle : "a fresh session";
+  who.textContent = next ? next.handle : s.continued_by?.includes("@") ? s.continued_by : "a fresh session";
   if (next) who.href = `#s=${keyOf(s.server, s.continued_by)}`;
   $("handoff-done").replaceChildren(
     ...(!s.continued_by
@@ -4027,7 +4027,11 @@ async function sendLine(text, fromComposer, attachments = [], target = focused()
     if (shown === s.key) transcript.toBottom();
     // /tutorial and /whats-new start a guide in a new session (help.guide):
     // open its tab, on the server that runs it, as a spawn from the new tab does.
-    if (/^\/(tutorial|whats-new|doctor|handoff)(\s|$)/.test(text) && r?.log_id) go(`#s=${keyOf(forKey(s.key).server, r.log_id)}`);
+    if (/^\/(tutorial|whats-new|doctor|handoff)(\s|$)/.test(text) && r?.log_id) {
+      // A handoff across a link answers with the server it went to.
+      const far = r.server && r.server !== conn.server ? r.server : forKey(s.key).server;
+      go(`#s=${keyOf(far, r.log_id)}`);
+    }
   };
   if (fromComposer) {
     sending.add(s.key);

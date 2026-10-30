@@ -741,12 +741,13 @@ class _session:
         *,
         agent: str | None = ...,
         msg: str | None = ...,
+        host: str | None = ...,
         model: str | None = ...,
-        effort: str | None = ...,
-        permission: str | None = ...,
+        effort: Literal["low", "medium", "high", "xhigh", "max"] | None = ...,
+        permission: Literal["read", "write", "full", "auto"] | None = ...,
         cwd: str | None = ...,
     ) -> Any:
-        """Continue your work in a new session and end this one: from this call nobody can write to it. The new session starts when your turn ends, with `msg`, your turn_end brief and your last turns, so end your turn right after this call. Pass `agent` to continue on another agent, with at most your permission. Refused while a monitor, a background task, a queue task or a held message waits for you. A workflow you own follows the new session."""
+        """Continue your work in a new session and end this one: from this call nobody can write to it. The new session starts when your turn ends, with `msg`, your turn_end brief and your last turns, so end your turn right after this call. Pass `agent` to continue on another agent, with at most your permission, and `host` to continue on a linked server. Refused while a monitor, a background task, a queue task or a held message waits for you. A workflow you own follows the new session, except across a link, where it and any open session you started refuse the call."""
     async def interrupt(self, *, log_id: str) -> Any:
         """session.interrupt"""
     async def kills(self, *, log_id: str) -> Any:

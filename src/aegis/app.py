@@ -328,9 +328,12 @@ class HandoffParams(_Strict):
     msg: str | None = Field(
         None, description="What the new session should do, the last thing it reads."
     )
+    host: str | None = Field(
+        None, description="A linked server to continue on; omitted, this one."
+    )
     model: str | None = None
-    effort: str | None = None
-    permission: str | None = None
+    effort: Effort | None = None
+    permission: Permission | None = None
     cwd: str | None = None
 
 
@@ -1876,11 +1879,6 @@ class App:
             )
         if name == "handoff":
             line = commands.parse_handoff(arg)
-            if line.server not in (None, self.server_name):
-                raise OpError(
-                    "not_across_links",
-                    "/handoff to a linked server is not built yet; use /spawn",
-                )
             params = {
                 k: v
                 for k, v in dataclasses.asdict(line).items()
@@ -1888,10 +1886,10 @@ class App:
             }
             r = await self.registry.call(
                 "session.handoff",
-                {"log_id": s.log_id, "msg": line.text, **params},
+                {"log_id": s.log_id, "msg": line.text, "host": line.server, **params},
                 caller,
             )
-            return {**r, "server": self.server_name}
+            return {"server": self.server_name, **r}
         if name == "announce":
             text, level, until = commands.parse_announce(arg)
             params = {"text": text, "level": level, "until": until}
@@ -2049,9 +2047,73 @@ class App:
             )
         return spec
 
-    async def _start_handoff(self, old, p: HandoffParams, capped: bool) -> dict:
+    def _check_far_handoff(self, old, far: str, caller: Caller) -> None:
+        """What refuses a handoff across a link before anything changes.
+        ``_spawn_far`` checks the rest when it starts."""
+        if caller.link is not None:
+            raise OpError("not_relayed", "a link is not relayed to another server")
+        if not self.who(caller).is_admin:
+            raise OpError(
+                "not_for_members",
+                "handing off to a linked server is for an admin of this one",
+            )
+        link = self.links.get(far)
+        if link is None:
+            raise OpError("unknown_server", f"this server links no server named {far}")
+        if link.state != "linked":
+            raise OpError("server_offline", f"{link.describe()}; nothing was started")
+        # They report to their parent, and nothing reaches one across a link.
+        if kids := self.sessions.descendants(old.log_id):
+            names = ", ".join(k.handle for k in kids)
+            raise OpError(
+                "has_children",
+                f"{old.handle} still has {names} open; close them or let them "
+                "finish first",
+            )
+
+    def _far_of(self, p: HandoffParams) -> str | None:
+        """The linked server a handoff goes to, or None for this one."""
+        return None if p.host in (None, self.server_name) else p.host
+
+    async def _start_far_handoff(self, old, p: HandoffParams, far, caller) -> dict:
+        """Start the session that continues ``old`` on a linked server, under
+        the policies a far spawn has. Nothing here hears when its first turn
+        ends, so the old one is archived once the far side has taken the first
+        message; a refusal leaves it open."""
+        report = old.standing.get("report") or {}
+        prompt = handoff_opening(
+            old.handle,
+            report.get("handoff"),
+            spawn_tail(old.entries()),
+            instruction=p.msg,
+            far=True,
+        )
+        name = p.agent or old.spec.agent
+        params = SpawnParams(
+            agent=name,
+            prompt=prompt,
+            model=p.model,
+            effort=p.effort,
+            permission=p.permission,
+            cwd=p.cwd,
+        )
+        old.mark_continued("starting")
+        try:
+            r = await self._spawn_far(params, name, far, old, caller)
+        except BaseException:
+            old.mark_continued(None)
+            raise
+        old.mark_continued(r["handle"])
+        await self.sessions.close(old.log_id)
+        return r
+
+    async def _start_handoff(
+        self, old, p: HandoffParams, capped: bool, caller: Caller
+    ) -> dict:
         """Start the session that continues ``old``, and send its first message.
         The old one is archived when it finishes its first turn."""
+        if (far := self._far_of(p)) is not None:
+            return await self._start_far_handoff(old, p, far, caller)
         reg = self.sessions
         report = old.standing.get("report") or {}
         # The new session takes the old one's place in its group (#641):
@@ -2107,7 +2169,8 @@ class App:
         on an answer here, so a refusal gives the session back and says why."""
         params = HandoffParams(**(old.handoff_pending or {}))
         try:
-            await self._start_handoff(old, params, capped=True)
+            caller = Caller("agent", old.log_id)
+            await self._start_handoff(old, params, capped=True, caller=caller)
         except OpError as e:
             self.sessions.call_off_pending(old, f"did not start: {e.message}")
 
@@ -2516,9 +2579,11 @@ class App:
             call nobody can write to it. The new session starts when your turn
             ends, with `msg`, your turn_end brief and your last turns, so end
             your turn right after this call. Pass `agent` to continue on another
-            agent, with at most your permission. Refused while a monitor, a
-            background task, a queue task or a held message waits for you. A
-            workflow you own follows the new session."""
+            agent, with at most your permission, and `host` to continue on a
+            linked server. Refused while a monitor, a background task, a queue
+            task or a held message waits for you. A workflow you own follows the
+            new session, except across a link, where it and any open session you
+            started refuse the call."""
             if caller.is_agent:
                 if p.log_id not in (None, caller.log_id):
                     raise OpError(
@@ -2536,15 +2601,20 @@ class App:
                 )
             if reg.successor(old) is not None:
                 raise OpError("handed_off", f"{old.handle} is already being continued")
+            far = self._far_of(p)
             # What would wake a session nobody can write to, or lose its result.
-            if wakers := reg.wakers(old, run=False):
+            # A run follows its owner's successor only on this server.
+            if wakers := reg.wakers(old, run=far is not None):
                 raise OpError(
                     "has_wakers",
                     f"{old.handle} still waits on {', '.join(wakers)}; "
                     "cancel them or let them finish first",
                 )
             # Refused now, not when the turn ends and nobody is there to hear it.
-            self._handoff_spec(old, p, capped=caller.is_agent)
+            if far is None:
+                self._handoff_spec(old, p, capped=caller.is_agent)
+            else:
+                self._check_far_handoff(old, far, caller)
             if caller.is_agent and old.in_turn:
                 if old.held:
                     raise OpError(
@@ -2561,7 +2631,9 @@ class App:
                 raise OpError(
                     "busy", f"{old.handle} is working; hand it off when its turn ends"
                 )
-            return await self._start_handoff(old, p, capped=caller.is_agent)
+            return await self._start_handoff(
+                old, p, capped=caller.is_agent, caller=caller
+            )
 
         @r.op("session.send", SendParams, owned="log_id")
         async def send(p: SendParams, caller):
