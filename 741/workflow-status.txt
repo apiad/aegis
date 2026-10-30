@@ -1,0 +1,26 @@
+# aegis serve started on commit 8fb8ecd5 (afk/741-idle-sessions-deadlock), fake agents, limits: {total: 2}
+$ workflow_status run=spent-10cae9
+status: done
+
+items                    map    done
+items.0.item             seq    done
+items.0.impl             agent  done
+items.0.rounds           loop   done
+items.0.rounds.1.fix     agent  done
+items.0.rounds.2.fix     agent  done
+items.0.rounds.3.fix     agent  done
+items.0.review           agent  done
+items.1.item             seq    done
+items.1.impl             agent  done
+items.1.rounds           loop   done
+items.1.rounds.1.fix     agent  done
+items.1.rounds.2.fix     agent  done
+items.1.rounds.3.fix     agent  done
+items.1.review           agent  done
+items.2.item             seq    done
+items.2.impl             agent  done
+items.2.rounds           loop   done
+items.2.rounds.1.fix     agent  done
+items.2.rounds.2.fix     agent  done
+items.2.rounds.3.fix     agent  done
+items.2.review           agent  done
