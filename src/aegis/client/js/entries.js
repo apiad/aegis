@@ -407,9 +407,15 @@ function fillRequest(card, e) {
   const { bar } = secretBar(e, "secret requested", until(d.expires_at));
   const body = el("div", "sbody");
   const form = el("form", "sform");
-  const input = el("input");
-  Object.assign(input, { type: "password", autocomplete: "off", placeholder: "paste the secret", required: true });
+  // A textarea, masked in CSS: an <input> deletes the line breaks of a
+  // pasted private key or .env (#785). Enter adds a line; Ctrl+Enter sends.
+  const input = el("textarea", "masked");
+  Object.assign(input, { rows: 1, autocomplete: "off", spellcheck: false, placeholder: "paste the secret", required: true });
+  input.setAttribute("autocapitalize", "off");
   input.setAttribute("aria-label", "secret");
+  input.onkeydown = (ev) => {
+    if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) form.requestSubmit();
+  };
   input.dataset.lpignore = "true";
   const go = el("button", "btn primary", "Provide");
   go.type = "submit";

@@ -976,6 +976,9 @@ body{background:#000}
 #a2 .scard .sform{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
 #a2 .scard .sform input{flex:1;min-width:0;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:6px 9px;font-family:var(--font-mono);font-size:12px;color:var(--strong)}
 #a2 .scard .sform input:focus{outline:none;border-color:var(--accent)}
+#a2 .scard .sform textarea{flex:1;min-width:0;min-height:30px;max-height:120px;resize:vertical;background:var(--surface);border:1px solid var(--rule);border-radius:var(--r);padding:6px 9px;font-family:var(--font-mono);font-size:12px;color:var(--strong);overflow-wrap:anywhere}
+#a2 .scard .sform textarea:focus{outline:none;border-color:var(--accent)}
+#a2 .scard .sform textarea.masked{-webkit-text-security:disc}
 #a2 .scard.gone .fbar>.ic,#a2 .scard.gone .fn{color:var(--muted)}
 #a2 .lcard .steps{margin:0 0 4px;padding-left:20px;color:var(--ink)}
 #a2 .lcard .steps li{margin:2px 0}
@@ -987,7 +990,7 @@ body{background:#000}
 #a2 .kcard .kbody{color:var(--ink);max-height:240px}
 #a2 .kcard .krow{display:flex;align-items:center;gap:8px;padding:6px 12px;border-top:1px solid var(--rule);background:var(--bg);font-size:13px}
 #a2 .kcard .krow .kwhat{flex:1;min-width:0;overflow-wrap:anywhere}
-@media (pointer:coarse){#a2 .scard .btn,#a2 .scard .sform input{min-height:44px}}
+@media (pointer:coarse){#a2 .scard .btn,#a2 .scard .sform input,#a2 .scard .sform textarea{min-height:44px}}
 #a2 .fcard .stage{border-top:1px solid var(--rule);background:var(--bg)}
 #a2 .fcard .stage.image{display:flex;justify-content:center;padding:12px}
 #a2 .fcard .stage img{max-width:100%;max-height:360px;border-radius:4px;cursor:zoom-in}
