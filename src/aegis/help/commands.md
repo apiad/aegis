@@ -21,7 +21,7 @@ Tab or Enter picks one. Alt+/ opens the same menu over a draft.
 
 After the command, the menu completes every argument that comes from a list:
 the model, effort and permission, the tutorial page, the saved workflow, and
-for `/spawn` the agent, the flags and their values. `/spawn ` lists this
+for `/spawn` and `/handoff` the agent, the flags and their values. `/spawn ` lists this
 server's agents, its default first, then each linked server's that answers
 as `agent@server`; a word that starts with `-` lists the flags it has not
 used, and after `--model`, `--effort` or `--permission` the menu lists their
@@ -48,6 +48,7 @@ that is free, such as a prompt, completes nothing.
 | `/workflow [id] [text]` | run a saved workflow now: the agent makes its args from your text and starts it, with no card to approve. Alone, it opens the menu of saved workflows |
 | `/loop <prompt>` | repeat a prompt in this session until the agent says it is done, at a fixed interval when the prompt gives one ("every 5m") or at the agent's pace; Stop on its card ends it |
 | `/spawn <agent>[@server] [prompt]` | start a session, here or on a linked server; flags `--quiet` (no tab until its turn ends; needs a prompt), `--model`, `--effort`, `--permission` and `--cwd` go before the prompt |
+| `/handoff [text]` | continue this work in a new session that gets `text` as what to do next, and close this one to messages; flags `--agent`, `--model`, `--effort`, `--permission` and `--cwd` go before the text. See handoffs#continue-in-a-fresh-session |
 | `/archive` | archive the session; Reopen in the archive brings it back. The browser asks first unless the session is done |
 | `/close` | alias of `/archive` |
 | `/help` | open the menu listing every command |

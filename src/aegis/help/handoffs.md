@@ -79,10 +79,22 @@ done, what is next, the files, the decisions, what not to retry.
 The reply row then starts with a chip, "continue fresh", and the context
 size. Clicking it starts the
 same agent in the same folder with the brief and the last three turns, and
-opens its tab. The old session is archived when the new one finishes its first
-turn, unless you have written to it since; the new one can still `peer_read`
-it. A cache-expired notice carries the same button, with the last turns alone
-when no brief was written.
+opens its tab. The old session takes no more messages from that moment: its box gives way to
+a link to the new session, a person's message and a `peer_handoff` to it are
+refused, and so is Reopen once it is archived. It is archived when the new one
+finishes its first turn; the new one can still `peer_read` it. If the new
+session fails before it answers, or you close it, the old one opens again and
+its transcript says why. A cache-expired notice carries the same button, with
+the last turns alone when no brief was written.
+
+`/handoff` does the same at any break, with no brief needed, and takes what to
+do next: `/handoff implement this plan`. Its flags go before the text. `--agent`
+continues on another agent, and `--model`, `--effort`, `--permission` and
+`--cwd` change what the new session runs.
+
+Every way in is refused while the session works, and while a monitor, a
+background task or a queue task would wake it. The refusal lists them, so you
+can cancel them or wait. A workflow the session owns follows the new session.
 
 The new session takes the old one's place in its group of tabs: it joins the
 group, and heads it when the old one did. Its first message names the sessions

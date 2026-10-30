@@ -2290,8 +2290,10 @@ function renderMeta(s) {
   $("interrupt").hidden = !working;
   // A member reads another's session and changes nothing in it (tokens.py).
   const theirs = !mine(s);
-  // A workflow's node is the engine's while its run lives.
-  const held = locked(s);
+  // A workflow's node is the engine's while its run lives, and a handed-off
+  // session its successor's (#874).
+  const held = locked(s) || !!s.continued_by;
+  $("composer").hidden = !!s.continued_by;
   $("continue").disabled = working || theirs || held;
   $("restart").disabled = theirs || held || !!s.old;
   $("working").hidden = !working;
@@ -3829,12 +3831,16 @@ function drawReplies(s) {
   $("replies-pills").replaceChildren(...chips);
   const next = s.continued_by && sessions.get(keyOf(s.server, s.continued_by));
   $("handoff-done").hidden = !s.continued_by;
-  const who = next ? next.handle : "a fresh session";
-  $("handoff-done").textContent = !s.continued_by
-    ? ""
-    : s.archived
-      ? `continued in ${who}`
-      : `continued in ${who}; this tab is archived when it finishes its first turn`;
+  const who = document.createElement(next ? "a" : "span");
+  who.textContent = next ? next.handle : "a fresh session";
+  if (next) who.href = `#s=${keyOf(s.server, s.continued_by)}`;
+  $("handoff-done").replaceChildren(
+    ...(!s.continued_by
+      ? []
+      : s.archived
+        ? ["continued in ", who]
+        : ["continued in ", who, "; this tab takes no messages and is archived when it finishes its first turn"]),
+  );
   // Outside the rows the transcript watches for growth: follow the end here.
   if (transcript.following) transcript.toBottom();
 }

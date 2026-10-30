@@ -26,9 +26,7 @@ async def send(world, s, text):
 
 
 def called_off(s) -> str:
-    return " ".join(
-        str(e.get("summary")) for e in s.entries() if e["kind"] == "system"
-    )
+    return " ".join(str(e.get("summary")) for e in s.entries() if e["kind"] == "system")
 
 
 async def test_a_person_cannot_write_to_a_handed_off_session(world):
