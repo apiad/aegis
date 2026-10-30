@@ -101,6 +101,29 @@ async def test_a_broken_call_leaves_a_failed_block_and_frees_the_slot(
     assert (await settled(a, 2))["status"] == "ok"
 
 
+@pytest.mark.parametrize("mode", ["fail", "garbage"])
+async def test_the_slot_is_free_the_moment_the_block_stops_running(
+    world, mode, monkeypatch
+):
+    # #826: a waiter woken between the status and the task's end asked again
+    # before the done callback ran. Asking from inside the write has no such gap.
+    a = await world.spawn()
+    monkeypatch.setenv("FAKE_CLAUDE_ONESHOT", mode)
+    report, again = a.report, []
+
+    def ask_again(record):
+        report(record)
+        if record["kind"] == "btw_answer" and not again:
+            again.append(world.app.side_notes.ask(a, "again"))
+
+    monkeypatch.setattr(a, "report", ask_again)
+    await ask(world, a, "q")
+    assert (await settled(a))["status"] == "failed"
+    await until(lambda: again, what="the second ask")
+    assert again[0]["status"] == "asked"
+    await settled(a, 2)
+
+
 async def test_a_call_past_the_timeout_fails(world, monkeypatch):
     a = await world.spawn()
     monkeypatch.setattr(btw, "TIMEOUT_S", 1)
