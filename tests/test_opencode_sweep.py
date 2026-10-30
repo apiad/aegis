@@ -67,7 +67,7 @@ def test_a_server_from_before_the_owner_tag_is_found_once_orphaned(tmp_path):
 
 
 async def test_sweep_ends_an_orphan(tmp_path):
-    p = await launch.child(["sleep", "60"], user=None)
+    p = await launch.child(["sleep", "60"], via=None, user=None)
     try:
         fake_proc(tmp_path, p.pid, env={OWNER: "404:12"})
         assert sweep(tmp_path) == [p.pid]

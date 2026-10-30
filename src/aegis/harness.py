@@ -83,6 +83,8 @@ class Launch:
     # The owner's knowledge setting is native: the harness starts without its
     # own skills and memory, which aegis's knowledge tools replace.
     knowledge_native: bool = False
+    # The linked server this process reaches the internet through (exit.py).
+    via: str | None = None
 
 
 SESSION_VAR = "AEGIS_SESSION"

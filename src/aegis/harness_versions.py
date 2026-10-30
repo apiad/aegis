@@ -149,6 +149,7 @@ async def _run(exe: str) -> str | None:
             stderr=launch.DEVNULL,
             new_session=True,
             user=None,
+            via=None,
         )
     except OSError:
         return None

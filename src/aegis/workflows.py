@@ -158,6 +158,7 @@ async def run_sh(
         stderr=launch.PIPE,
         new_session=True,
         user=user,
+        via=launch.resolve_via(),
     )
     on_pid(proc.pid)
     try:

@@ -18,7 +18,7 @@ from aegis.harness import OOM_SCORE_ADJ
 
 async def test_child_runs_argv_and_returns_the_process(tmp_path):
     p = await launch.child(
-        ["sh", "-c", "echo hi"], cwd=tmp_path, stdout=launch.PIPE, user=None
+        ["sh", "-c", "echo hi"], cwd=tmp_path, stdout=launch.PIPE, user=None, via=None
     )
     out, _ = await p.communicate()
     assert out == b"hi\n" and p.returncode == 0
@@ -27,20 +27,25 @@ async def test_child_runs_argv_and_returns_the_process(tmp_path):
 async def test_child_without_env_inherits_the_servers(monkeypatch):
     monkeypatch.setenv("AEGIS_LAUNCH_PROBE", "x")
     p = await launch.child(
-        ["sh", "-c", "echo $AEGIS_LAUNCH_PROBE"], stdout=launch.PIPE, user=None
+        ["sh", "-c", "echo $AEGIS_LAUNCH_PROBE"],
+        stdout=launch.PIPE,
+        user=None,
+        via=None,
     )
     assert (await p.communicate())[0] == b"x\n"
 
 
 async def test_child_with_a_missing_binary_raises_file_not_found(tmp_path):
     with pytest.raises(FileNotFoundError):
-        await launch.child(["no-such-binary-aegis"], user=None)
+        await launch.child(["no-such-binary-aegis"], via=None, user=None)
     with pytest.raises(FileNotFoundError):
-        await launch.child(["no-such-binary-aegis"], cgroup=tmp_path, user=None)
+        await launch.child(
+            ["no-such-binary-aegis"], cgroup=tmp_path, via=None, user=None
+        )
 
 
 async def test_child_with_oom_raises_the_score():
-    p = await launch.child(["sleep", "5"], oom=True, user=None)
+    p = await launch.child(["sleep", "5"], oom=True, via=None, user=None)
     try:
         score = Path(f"/proc/{p.pid}/oom_score_adj").read_text().strip()
         assert score == str(OOM_SCORE_ADJ)
@@ -50,7 +55,7 @@ async def test_child_with_oom_raises_the_score():
 
 
 async def test_child_with_new_session_leads_its_own_session():
-    p = await launch.child(["sleep", "5"], new_session=True, user=None)
+    p = await launch.child(["sleep", "5"], new_session=True, via=None, user=None)
     try:
         assert os.getsid(p.pid) == p.pid
     finally:
@@ -67,13 +72,15 @@ async def test_child_with_die_with_parent_ends_when_its_parent_does(tmp_path):
         "from aegis import launch\n"
         "async def main():\n"
         "    p = await launch.child(\n"
-        "        ['sleep', '60'], user=None, stdout=launch.DEVNULL, die_with_parent=True\n"
+        "        ['sleep', '60'], user=None, via=None, stdout=launch.DEVNULL, die_with_parent=True\n"
         "    )\n"
         "    print(p.pid, flush=True)\n"
         "    os._exit(0)\n"
         "asyncio.run(main())\n"
     )
-    p = await launch.child([sys.executable, str(parent)], stdout=launch.PIPE, user=None)
+    p = await launch.child(
+        [sys.executable, str(parent)], stdout=launch.PIPE, via=None, user=None
+    )
     out, _ = await p.communicate()
     pid = int(out)
     deadline = time.monotonic() + 5
@@ -87,7 +94,9 @@ async def test_child_with_die_with_parent_ends_when_its_parent_does(tmp_path):
 
 async def test_child_with_die_with_parent_keeps_a_missing_binary_an_error():
     with pytest.raises(FileNotFoundError):
-        await launch.child(["no-such-binary-aegis"], user=None, die_with_parent=True)
+        await launch.child(
+            ["no-such-binary-aegis"], via=None, user=None, die_with_parent=True
+        )
 
 
 def _alive(pid: int) -> bool:
@@ -102,7 +111,7 @@ async def test_pty_gives_the_child_the_terminal(tmp_path):
     master, slave = os.openpty()
     try:
         p = await launch.pty(
-            ["sh", "-c", "tty"], tty=slave, cwd=tmp_path, env=None, user=None
+            ["sh", "-c", "tty"], tty=slave, cwd=tmp_path, env=None, user=None, via=None
         )
     finally:
         os.close(slave)
@@ -199,7 +208,7 @@ def test_launch_calls_asyncio_through_its_module(monkeypatch):
     monkeypatch.setattr(asyncio, "create_subprocess_exec", spy)
 
     async def go():
-        p = await launch.child(["true"], user=None)
+        p = await launch.child(["true"], via=None, user=None)
         await p.wait()
 
     asyncio.run(go())
@@ -274,12 +283,14 @@ def mode(tmp_path, monkeypatch):
 
 
 async def test_off_the_argv_and_env_are_unchanged(seen):
-    await launch.child(["git"], user="ben", env={"A": "1"})
+    await launch.child(["git"], via=None, user="ben", env={"A": "1"})
     assert seen == [(["git"], {"A": "1"})]
 
 
 async def test_on_a_switched_child_gets_the_prefix_and_the_users_env(seen, mode):
-    await launch.child(["git", "status"], user="ben", env={**os.environ, "A": "1"})
+    await launch.child(
+        ["git", "status"], via=None, user="ben", env={**os.environ, "A": "1"}
+    )
     argv, env = seen[0]
     assert argv == [*users.setpriv_argv(ME, SETPRIV), shutil.which("git"), "status"]
     assert env["HOME"] == ME.pw_dir and env["A"] == "1" and env["K"] == "from-pool"
@@ -287,7 +298,7 @@ async def test_on_a_switched_child_gets_the_prefix_and_the_users_env(seen, mode)
 
 
 async def test_on_a_server_child_drops_caps_and_keeps_its_env(seen, mode):
-    await launch.child(["git"], user=None, env={"A": "1"})
+    await launch.child(["git"], via=None, user=None, env={"A": "1"})
     assert seen == [
         ([*users.setpriv_argv(None, SETPRIV), shutil.which("git")], {"A": "1"})
     ]
@@ -296,11 +307,13 @@ async def test_on_a_server_child_drops_caps_and_keeps_its_env(seen, mode):
 async def test_on_the_cgroup_join_comes_first_and_the_terminal_keeps_setsid(
     seen, mode, tmp_path
 ):
-    await launch.child(["git"], user="ben", cgroup=tmp_path)
+    await launch.child(["git"], via=None, user="ben", cgroup=tmp_path)
     assert seen[0][0] == wrap(
         tmp_path, [*users.setpriv_argv(ME, SETPRIV), shutil.which("git")]
     )
-    await launch.pty(["sh"], user="ben", tty=0, cwd=tmp_path, env=None, cgroup=tmp_path)
+    await launch.pty(
+        ["sh"], via=None, user="ben", tty=0, cwd=tmp_path, env=None, cgroup=tmp_path
+    )
     argv = seen[1][0]
     assert argv[:5] == wrap(tmp_path, ["setsid"])[:5]
     assert argv[argv.index("setsid") + 1 :][:2] == ["--ctty", SETPRIV]
@@ -315,13 +328,13 @@ def test_on_run_is_switched_too(seen, mode):
 
 async def test_on_a_user_that_is_gone_raises_permission_error(seen, mode):
     with pytest.raises(PermissionError, match="aegis-no-such-user"):
-        await launch.child(["git"], user="aegis-no-such-user")
+        await launch.child(["git"], via=None, user="aegis-no-such-user")
     assert seen == []
 
 
 async def test_on_a_missing_binary_still_raises_file_not_found(seen, mode):
     with pytest.raises(FileNotFoundError):
-        await launch.child(["aegis-no-such-binary"], user="ben")
+        await launch.child(["aegis-no-such-binary"], via=None, user="ben")
 
 
 def test_on_detach_and_browser_are_refused(mode, monkeypatch):
@@ -337,7 +350,7 @@ async def test_on_a_switched_child_enters_its_cwd_after_the_switch(
 ):
     """The server may not be able to enter a member's home: the cd happens
     as the member, after setpriv, and the program is exec'd so its pid stays."""
-    await launch.child(["git", "status"], user="ben", cwd=tmp_path)
+    await launch.child(["git", "status"], via=None, user="ben", cwd=tmp_path)
     argv = seen[0][0]
     prefix = users.setpriv_argv(ME, SETPRIV)
     assert seen.cwds == [None]
@@ -346,5 +359,11 @@ async def test_on_a_switched_child_enters_its_cwd_after_the_switch(
         "/bin/sh", "-c", 'cd -- "$0" && exec "$@"', str(tmp_path),
         shutil.which("git"), "status",
     ]  # fmt: skip
-    await launch.child(["git"], user=None, cwd=tmp_path)
+    await launch.child(["git"], via=None, user=None, cwd=tmp_path)
     assert seen.cwds[1] == tmp_path
+
+
+async def test_a_call_without_via_is_refused():
+    """Required like ``user``, so a new call site has to say whether it exits."""
+    with pytest.raises(TypeError, match="via"):
+        await launch.child(["true"], user=None)  # type: ignore[call-arg]

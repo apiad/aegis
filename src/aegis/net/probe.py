@@ -191,11 +191,13 @@ async def trace(
     url: str = TRACE_URL,
     fallback_url: str = TRACE_FALLBACK_URL,
     timeout: float = 5.0,
+    proxy: str | None = None,
 ) -> Trace:
-    """The exit IP, plus the colo and country when the primary answers."""
+    """The exit IP, plus the colo and country when the primary answers;
+    through ``proxy`` when one is named, for an exit's address (exit.py)."""
     import httpx
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with httpx.AsyncClient(timeout=timeout, proxy=proxy) as client:
         try:
             response = await client.get(url)
             response.raise_for_status()

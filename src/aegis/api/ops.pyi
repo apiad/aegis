@@ -482,8 +482,10 @@ class _link:
         self, *, url: str, token: str, name: str | None = ..., trusted: bool = ...
     ) -> Any:
         """Link another aegis server: connect once with its token, take the name it gives itself, and keep the link in links.json."""
+    async def exit(self, *, name: str | None = ...) -> Any:
+        """Make a link this server's exit, or stop exiting: what aegis starts from now on reaches the internet from there (exit.py)."""
     async def incoming(self) -> Any:
-        """The servers that linked this one with trust, so their agents reach this one over their link."""
+        """The servers that linked this one with trust, so their agents reach this one over their link, and what each took as an exit."""
     async def list(self) -> Any:
         """The servers this one links, with their state; never their tokens."""
     async def remove(self, *, name: str) -> Any:

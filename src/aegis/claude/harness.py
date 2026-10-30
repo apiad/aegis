@@ -71,6 +71,7 @@ class ClaudeSession:
             env=login.with_token(env, launch.user),
             cgroup=launch.cgroup,
             user=launch.user,
+            via=launch.via,
         )
 
     @property

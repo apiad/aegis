@@ -209,7 +209,7 @@ class OpenCodeProcess:
             cwd=self._launch.cwd, env=session_env(self._launch, env),
             stdin=launch.DEVNULL, stdout=launch.PIPE, stderr=launch.PIPE,
             cgroup=self._launch.cgroup, oom=True, user=self._launch.user,
-            die_with_parent=True,
+            via=self._launch.via, die_with_parent=True,
         )  # fmt: skip
         try:
             self._keep(self._drain(self._proc.stderr))

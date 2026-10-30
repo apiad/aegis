@@ -86,7 +86,7 @@ from .cascade import Cooling, Fall, classify, pick
 from .cgroups import SessionCgroups
 from .channels import Channels, Throttle
 from .claude.process import PERMISSION_MODE, ControlError
-from .config import Config, Snapshot, accept_version
+from .config import Config, Snapshot, accept_version, write
 from .harness import harness_for
 from .config_ops import register_config_ops
 from .doctor_watch import DoctorWatch
@@ -397,6 +397,10 @@ class LinkTrust(_Strict):
     trusted: bool
 
 
+class LinkExit(_Strict):
+    name: str | None = None
+
+
 class LinkName(_Strict):
     name: str
 
@@ -538,6 +542,7 @@ class App:
             lambda: self.config.current().network,
             watched=lambda: self.channels.subscribers("host") > 0,
             on_change=self.host.check,
+            exit_now=self._exit_now,
         )
         reg = self.sessions
         reg.tokens, reg.monitors, reg.queues, reg.server_name = (
@@ -637,7 +642,15 @@ class App:
             )
         self.links = Links(roots.state_root, server_name, self.user, self.publish)
         self.links.answer = self.answer_link
-        self.exits = Exits(self.links)
+        self.exits = Exits(
+            self.links,
+            lambda: (
+                None
+                if self.multi_user is None
+                else "an exit is off on a multi-user server"
+            ),
+        )
+        launch.configure_exits(self.exits, self._exit_for)
         # Bytes each linked server took through this one as its exit (exit.py).
         self.exit_bytes: dict[str, int] = {}
         self.queues.far_callback = self._far_callback
@@ -717,6 +730,22 @@ class App:
                 "link to trust this one"
             )
         return None
+
+    def _exit_for(self, agent: str | None) -> str | None:
+        """The link a process of ``agent`` exits through; None for direct."""
+        snap = self.config.current()
+        named = next((a.exit for a in snap.agents if a.name == agent), "")
+        if named:
+            return None if named == "off" else named
+        return snap.exit_via
+
+    def _exit_now(self):
+        """The exit the Host rows show: the server's, or the first a profile names."""
+        snap = self.config.current()
+        name = snap.exit_via or next(
+            (a.exit for a in snap.agents if a.exit and a.exit != "off"), None
+        )
+        return None if name is None else self.exits.get(name)
 
     def count_exit(self, server: str, n: int) -> None:
         self.exit_bytes[server] = self.exit_bytes.get(server, 0) + n
@@ -2874,8 +2903,23 @@ class App:
         @r.op("link.incoming")
         async def link_incoming(_, caller):
             """The servers that linked this one with trust, so their agents
-            reach this one over their link."""
-            return self.links.incoming()
+            reach this one over their link, and what each took as an exit."""
+            return [
+                {**row, "exit_bytes": self.exit_bytes.get(row["name"], 0)}
+                for row in self.links.incoming()
+            ]
+
+        @r.op("link.exit", LinkExit, admin=True)
+        async def link_exit(p: LinkExit, caller):
+            """Make a link this server's exit, or stop exiting: what aegis
+            starts from now on reaches the internet from there (exit.py)."""
+            snap = self.config.current()
+            if p.name is not None and self.links.outbound(p.name) is None:
+                raise OpError("not_found", f"no link named {p.name}")
+            doc = snap.doc.model_copy(update={"exit_via": p.name})
+            if problems := write(self.config.path, doc, snap.stamp):
+                raise OpError("bad_config", problems[0].message)
+            return {"exit_via": p.name}
 
         @r.op("server.paused", admin=True)
         async def server_paused(p, caller):
