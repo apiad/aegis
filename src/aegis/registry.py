@@ -918,9 +918,8 @@ class Registry(Host):
         )
         self.sessions[log_id] = s
         self._publish("sessions", [{"upsert": s.wire()}])
-        s.launch_by = launch_by
         try:
-            await s.start()
+            await s.start(launch_by)
         except (OSError, TimeoutError):
             del self.sessions[log_id]
             s.store.close()
@@ -928,8 +927,6 @@ class Registry(Host):
             self.metas.path(log_id).unlink(missing_ok=True)
             self._publish("sessions", [{"remove": log_id}])
             raise
-        finally:
-            s.launch_by = "agent"
         return s
 
     async def close(self, log_id: str) -> None:

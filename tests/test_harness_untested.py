@@ -382,5 +382,38 @@ async def test_a_persons_wake_of_a_slept_session_asks(world, monkeypatch):
         await call("session.warm", {"log_id": s.log_id, "wake": True})
     assert e.value.code == "harness_untested" and not s.running
     await call("session.warm", {"log_id": s.log_id, "wake": True, "untested": "once"})
-    assert s.running and s.launch_by == "agent"  # reset after the launch
+    assert s.running
     assert len(notices(s)) == 1
+
+
+async def test_a_persons_launch_does_not_judge_a_concurrent_wake(world, monkeypatch):
+    """#449: an unattended wake waiting on its version check, and a person's
+    send to the same session meanwhile. The wake that starts the harness is
+    unattended, so its notice says it started without asking."""
+    from aegis import harness_versions
+
+    s = await world.spawn()
+    await s.stop()
+    untested(monkeypatch, world.fake, "99.0.0")
+    real, calls, release = harness_versions.check, [], asyncio.Event()
+
+    async def check(harness, accepted):
+        calls.append(harness)
+        if len(calls) == 1:
+            await release.wait()  # the wake's check, held
+        return await real(harness, accepted)
+
+    monkeypatch.setattr(harness_versions, "check", check)
+    wake = asyncio.create_task(s.deliver("[from agent:x]", "wake up"))
+    await until(lambda: len(calls) == 1, what="the wake's version check")
+    send = asyncio.create_task(
+        world.app.registry.call(
+            "session.send", {"log_id": s.log_id, "text": "hi", "untested": "once"}
+        )
+    )
+    await until(lambda: len(calls) == 2, what="the person's version gate")
+    await asyncio.sleep(0.05)  # the send now waits on the start lock
+    release.set()
+    await asyncio.gather(wake, send)
+    (n,) = notices(s)
+    assert "started without asking" in n["summary"] + "\n" + n["detail"]["tail"]

@@ -1643,15 +1643,15 @@ class App:
         if (why := self.sessions.quota_hold(s)) is not None:
             raise OpError("quota_closed", _held(s.spec.owner or self.user, why))
         not_saved = None
+        launch_by = "agent"
         if not s.running and s.asleep_why != "idle":
             not_saved = await self._version_gate(caller, s.spec.harness, untested, s)
-            s.launch_by = "agent" if caller.is_agent else "person"
-        try:
-            did = await s.deliver(
-                *skill_turn(it.name, it.body, arg, iso_now()), by_person=True
-            )
-        finally:
-            s.launch_by = "agent"
+            launch_by = "agent" if caller.is_agent else "person"
+        did = await s.deliver(
+            *skill_turn(it.name, it.body, arg, iso_now()),
+            by_person=True,
+            launch_by=launch_by,
+        )
         s.load_skill(it.name)
         self.knowledge.usage.add(
             s.spec.owner or self.user, s.log_id, "skill", it.name, "invoked"
@@ -1830,16 +1830,13 @@ class App:
         if (why := self.sessions.quota_hold(s)) is not None:
             raise OpError("quota_closed", _held(s.spec.owner or self.user, why))
         not_saved = await self._version_gate(caller, s.spec.harness, untested, s)
-        s.launch_by = "agent" if caller.is_agent else "person"
         try:
-            await start()
+            await start("agent" if caller.is_agent else "person")
         except FileNotFoundError as e:
             raise OpError(
                 "harness_not_found",
                 f"cannot run {self._bin(s.spec.harness)!r}: {e}",
             ) from e
-        finally:
-            s.launch_by = "agent"
         return {"not_saved": not_saved} if not_saved else s.wire()
 
     async def _version_gate(
@@ -2288,20 +2285,18 @@ class App:
             if (why := reg.quota_hold(s)) is not None:
                 raise OpError("quota_closed", _held(s.spec.owner or self.user, why))
             not_saved = None
+            launch_by = "agent"
             if not s.running and s.asleep_why != "idle":
                 # A person resuming a session that slept; a parked one wakes
                 # unattended (spec §06).
                 not_saved = await self._version_gate(
                     caller, s.spec.harness, p.untested, s
                 )
-                s.launch_by = "agent" if caller.is_agent else "person"
+                launch_by = "agent" if caller.is_agent else "person"
             try:
                 # The harness first: a send that cannot reach the agent leaves
                 # its uploads staged, to send again.
-                try:
-                    await s.ensure_running()
-                finally:
-                    s.launch_by = "agent"
+                await s.ensure_running(launch_by)
                 sent: list[dict] = []
                 if p.attachments:
                     try:
