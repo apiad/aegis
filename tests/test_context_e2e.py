@@ -167,14 +167,13 @@ async def test_the_old_session_is_archived_after_the_new_ones_first_turn(world):
     assert b.log_id in reg.sessions  # a later turn archives nothing else
 
 
-async def test_a_message_to_the_old_session_calls_the_archive_off(world):
+async def test_a_message_to_the_old_session_is_refused(world):
     a, b = await handed(world, "[[slow]] Brief.")  # b's first turn takes 1.5 s
-    await turn(a, "still here")  # the person types into the old tab meanwhile
+    with pytest.raises(OpError) as e:
+        await a.send("still here")  # the person types into the old tab meanwhile
+    assert e.value.code == "handed_off"
     reg = world.app.sessions
-    await until(
-        lambda: a.continued_by is None or a.log_id in reg.archived, 8, "b answered"
-    )
-    assert a.log_id in reg.sessions and a.continued_by is None
+    await until(lambda: a.log_id in reg.archived, 8, "b answered")
 
 
 async def test_the_archive_survives_a_restart_before_the_first_turn(world):
@@ -243,14 +242,15 @@ async def test_a_starting_mark_left_by_a_crash_is_dropped_at_boot(world):
     assert world.session(log_id).continued_by is None
 
 
-async def test_a_reopened_predecessor_is_not_archived_again(world):
+async def test_a_retired_predecessor_cannot_be_reopened(world):
     a, b = await handed(world)
     reg = world.app.sessions
     await until(lambda: a.log_id in reg.archived, 8, "archived")
-    again = reg.reopen(a.log_id)
-    assert again.continued_by is None
+    with pytest.raises(OpError) as e:
+        reg.reopen(a.log_id)
+    assert e.value.code == "handed_off"
     await turn(b, "more")
-    assert a.log_id in reg.sessions
+    assert a.log_id in reg.archived
 
 
 async def test_a_queue_worker_cannot_be_handed_off(world):

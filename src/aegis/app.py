@@ -2288,6 +2288,7 @@ class App:
         async def deliver(p: SendParams, caller):
             s = reg.open(p.log_id)
             s.check_lock()  # before a / command or an upload acts on it
+            s.check_handed_off()
             # A message written offline carries the transcript's revision as the
             # writer saw it: if anything a person reads has happened since, it
             # goes back to ask instead of answering a question no longer asked.

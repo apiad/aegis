@@ -187,6 +187,11 @@ class Host:
         node of a live workflow run, workflows.py), or None."""
         return None
 
+    def successor_name(self, session: "Session") -> str | None:
+        """What continues the session after a handoff, for a refusal to name,
+        or None when nothing does (registry.py)."""
+        return None
+
     def cascade_next(
         self, session: "Session", text: str
     ) -> tuple[str | None, float] | None:
@@ -950,6 +955,16 @@ class Session:
         if (why := self._host.workflow_lock(self)) is not None:
             raise OpError("in_workflow", why)
 
+    def check_handed_off(self) -> None:
+        """Refuse a message to a session a handoff has replaced (#874). Apart
+        from check_lock, which also guards an interrupt and a close: those stay
+        open here. ``through_lock`` passes this too, for the server's own
+        continue after a restart."""
+        if (next_ := self._host.successor_name(self)) is not None:
+            raise OpError(
+                "handed_off", f"{self.handle} was handed off; {next_} continues it"
+            )
+
     async def deliver(
         self,
         header: str,
@@ -971,6 +986,7 @@ class Session:
             raise Archived(self.log_id)
         if not through_lock:
             self.check_lock()
+            self.check_handed_off()
         msg = {"header": header, "body": body, "ts": time.time()}
         if by_person:
             msg["by_person"] = True
@@ -1049,6 +1065,7 @@ class Session:
         person typed it (``person_turn``)."""
         if not through_lock:
             self.check_lock()
+            self.check_handed_off()
         await self._send(text, typed, attached, by_person=by_person)
 
     async def _send(

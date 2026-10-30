@@ -271,20 +271,17 @@ class Registry(Host):
         """After a handoff, archive the old session once the new one has
         answered (#354). Stateless, so a restart in between changes nothing:
         the new session's spec names the old one, the old one's meta names the
-        new. Called off, with continued_by cleared, when the new turn failed or
-        the person has used the old session since the new one started."""
+        new. Called off, with continued_by cleared, when the new turn failed.
+        Nothing else can have used the old session: it refuses messages meanwhile
+        (Session.check_handed_off, #874)."""
         old = self.sessions.get(new.spec.continues or "")
         if old is None or old.continued_by != new.log_id:
             return
         # Only a turn that ended with the model's answer counts: a send that
         # failed reaches here with no Result, so no "ended" at all.
         ended = new.standing.get("ended") or {}
-        if (
-            ended.get("how") not in ("reported", "silent", "command")
-            or old.in_turn
-            or old.last_activity > new.created_at
-        ):
-            old.mark_continued(None)
+        if ended.get("how") not in ("reported", "silent", "command") or old.in_turn:
+            self._call_off_handoff(old, new, "its first turn did not finish")
             return
         # The sessions the old one started report to the new one now (#641).
         for kid in self.sessions.values():
@@ -293,6 +290,14 @@ class Registry(Host):
                 self.metas.write(kid.meta())
         self.refresh_card(new.log_id)
         asyncio.get_running_loop().create_task(self._archive(old))
+
+    def _call_off_handoff(self, old: Session, new: Session, why: str) -> None:
+        """The new session will not take over: the old one opens again and its
+        transcript says so. Safe to call twice for one failure: the first call
+        clears the name the guard reads."""
+        if old.continued_by == new.log_id:
+            old.mark_continued(None)
+            old.report({"kind": "handoff_off", "handle": new.handle, "why": why})
 
     async def _archive(self, s: Session) -> None:
         try:
@@ -394,8 +399,8 @@ class Registry(Host):
         # A handoff whose new session died before answering: the old one stays.
         # One that answered has already archived the old one, so this is a no-op.
         old = self.sessions.get(session.spec.continues or "")
-        if old is not None and old.continued_by == session.log_id:
-            old.mark_continued(None)
+        if old is not None:
+            self._call_off_handoff(old, session, "its process ended")
         # A process that ends on its own failed: whatever its card says, the
         # person should see it (#386). A SIGTERM is most likely the server's
         # own stop under systemd, and the next boot continues the session.
@@ -412,6 +417,13 @@ class Registry(Host):
         if c == "starting":
             return c
         return self.sessions.get(c) if c else None
+
+    def successor_name(self, session: Session) -> str | None:
+        """The handle continuing ``session`` after a handoff, or None."""
+        next_ = self.successor(session)
+        if next_ is None:
+            return None
+        return "a new session" if next_ == "starting" else next_.handle
 
     def workflow_lock(self, session: Session) -> str | None:
         """A node's session is the workflow's while its run is live: nobody
@@ -958,6 +970,8 @@ class Registry(Host):
             except Exception:
                 log.exception("aegis: %s's skill servers did not stop", log_id)
         await s.stop()
+        if (old := self.sessions.get(s.spec.continues or "")) is not None:
+            self._call_off_handoff(old, s, "it was closed")
         if self.secrets is not None:
             # Pads and open requests die with the session, and so do the
             # files people provided to it, unless the agent moved them.
@@ -982,17 +996,22 @@ class Registry(Host):
     def reopen(self, log_id: str) -> Session:
         if log_id in self.sessions:
             raise OpError("not_archived", f"{log_id} is open")
-        meta = self.archived.pop(log_id, None)
+        meta = self.archived.get(log_id)
         if meta is None:
             raise OpError("no_session", f"no session {log_id!r}")
-        # A person reopening a handed-off session is using it again: it must
-        # not be archived a second time when its successor's next turn ends.
+        if (c := meta.get("continued_by")) is not None:
+            # Its work moved on for good; the transcript stays readable (#874).
+            live = self.sessions.get(c)
+            who = live.handle if live else self.archived.get(c, {}).get("handle", c)
+            raise OpError(
+                "handed_off", f"{meta['handle']} was handed off to {who}; open that one"
+            )
+        del self.archived[log_id]
         meta = {
             **meta,
             "archived": False,
             "last_status": "asleep",
             "asleep_why": "slept",
-            "continued_by": None,
             "quiet": False,  # a person reopening it wants to see it (#386)
         }
         # An open session may have taken its handle meanwhile (#673).
