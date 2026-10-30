@@ -272,12 +272,14 @@ export function refreshApprovals() {
 }
 
 function fillApproval(card) {
-  const s = approvals.schedule(card.dataset.name);
+  // Set when the agent made it on another server, across a trusted link.
+  const where = card.dataset.server;
+  const s = approvals.schedule(card.dataset.name, where);
   const bar = el("div", "fbar");
   bar.append(entryIcon(card.dataset.glyph), el("span", "fn", card.dataset.name));
   if (!s) {
     card.dataset.state = "gone";
-    bar.append(el("span", "fs", "deleted"));
+    bar.append(el("span", "fs", where ? `on ${where}: see its Schedules view` : "deleted"));
     card.replaceChildren(bar);
     return;
   }
@@ -300,7 +302,7 @@ function fillApproval(card) {
       go.disabled = true;
       try {
         // A workflow's version goes with it: the server pins what this card showed.
-        await approvals.call("schedule.resume", { name: card.dataset.name, ...(wf?.sha ? { workflow: wf.sha } : {}) });
+        await approvals.call("schedule.resume", { name: card.dataset.name, ...(wf?.sha ? { workflow: wf.sha } : {}) }, where);
       } catch (err) {
         go.disabled = false;
         go.title = String(err?.message || err);
@@ -1833,6 +1835,7 @@ const RENDERERS = {
     const card = el("div", "fcard apcard");
     card.dataset.object = e.detail?.object || "";
     card.dataset.name = e.detail?.name || "";
+    card.dataset.server = e.detail?.server || "";
     card.dataset.glyph = e.glyph || "";
     fillApproval(card);
     body.append(card);
