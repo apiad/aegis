@@ -90,7 +90,9 @@ async def test_a_member_cannot_write_another_home_or_the_state(mu_server):
         mu_server,
         BEN,
         log_id,
-        f"/sh (touch /home/{CARA}/x 2>/dev/null; echo $?; "
+        # The pause keeps the first code alone in the file for a while, so
+        # a wait that returns on one code fails every run, not one in many.
+        f"/sh (touch /home/{CARA}/x 2>/dev/null; echo $?; sleep 1; "
         f"touch {mu_server.state}/x 2>/dev/null; echo $?) > {out}",
     )
     codes = await until(
