@@ -166,11 +166,15 @@ function launchLines(q) {
 }
 
 export class Schedules {
-  // sessions: () => the open sessions' cards; go: navigate to a hash;
-  // onCount: (n, red) for the top bar's button.
+  // sessions: (server) => the open sessions' cards there; go: navigate to a
+  // hash; onCount: (n, red) for the top bar's button. The view shows one server
+  // at a time, picked at its top when there are links (#799).
   constructor(conn, root, { go, sessions, onCount }) {
     Object.assign(this, { conn, root, go, sessions, onCount });
-    this.items = new Map();
+    this.stores = new Map([[null, new Map()]]); // server, null for this one -> name -> schedule
+    this.server = null;
+    this.links = [];
+    this.home = "";
     this.cur = null; // the selected schedule
     this.form = null; // the editor's state, or null
     this.quiet = false;
@@ -183,30 +187,63 @@ export class Schedules {
     this.quotaDefault = {};
   }
 
-  onSnapshot(list) {
-    this.items = new Map((list || []).map((s) => [s.name, s]));
-    this.changed([...this.items.keys()]);
+  // One server's schedules; the view's are `items`.
+  on(server) {
+    return this.stores.get(server) || new Map();
   }
 
-  onPatch(ops) {
+  get items() {
+    return this.on(this.server);
+  }
+
+  onSnapshot(list, server = null) {
+    const store = new Map((list || []).map((s) => [s.name, s]));
+    this.stores.set(server, store);
+    this.changed([...store.keys()], server);
+  }
+
+  onPatch(ops, server = null) {
     const names = [];
+    const store = this.stores.get(server) || new Map();
+    this.stores.set(server, store);
     for (const op of ops) {
       if (op.upsert) {
-        this.items.set(op.upsert.name, op.upsert);
+        store.set(op.upsert.name, op.upsert);
         names.push(op.upsert.name);
       }
       if (op.remove) {
-        this.items.delete(op.remove);
+        store.delete(op.remove);
         names.push(op.remove);
       }
     }
-    this.changed(names);
+    this.changed(names, server);
   }
 
-  changed(names) {
-    const all = [...this.items.values()];
+  // The links changed: forget a server no longer linked, and leave one that
+  // cannot answer.
+  onLinks(links, home) {
+    // Only what the picker shows: a link's round trip changes often.
+    const sig = links.map((l) => `${l.name}:${l.state}`).join(",");
+    const same = sig === this.linksSig;
+    this.linksSig = sig;
+    this.links = links;
+    this.home = home || "";
+    for (const name of this.stores.keys()) if (name && !links.some((l) => l.name === name)) this.stores.delete(name);
+    if (this.server && links.find((l) => l.name === this.server)?.state !== "linked") this.setServer(null);
+    else if (this.visible && !this.form && !same) this.draw();
+    this.changed([], undefined);
+  }
+
+  setServer(server) {
+    if (server === this.server) return;
+    Object.assign(this, { server, cur: null, form: null, runs: null, err: "" });
+    if (this.visible) this.open();
+  }
+
+  changed(names, server) {
+    const all = [...this.stores.values()].flatMap((store) => [...store.values()]);
     this.onCount(all.length, all.some((s) => s.paused?.by === "errors"));
-    if (!this.visible || this.form) return;
+    if (!this.visible || this.form || server !== this.server) return;
     if (this.cur && !this.items.has(this.cur)) this.cur = null;
     if (this.cur && names.includes(this.cur)) this.loadRuns();
     else this.draw();
@@ -215,12 +252,12 @@ export class Schedules {
   async open() {
     this.visible = true;
     try {
-      this.agents = (await this.conn.call("agents.list", {})).agents.map((a) => a.name);
+      this.agents = (await this.conn.call("agents.list", {}, this.server)).agents.map((a) => a.name);
     } catch {
       this.agents = [];
     }
     try {
-      const r = await this.conn.call("schedule.pools", {});
+      const r = await this.conn.call("schedule.pools", {}, this.server);
       this.pools = r.pools;
       this.quotaDefault = r.default;
     } catch {
@@ -238,7 +275,7 @@ export class Schedules {
   async loadRuns() {
     const name = this.cur;
     try {
-      this.runs = await this.conn.call("schedule.runs", { name, quiet: this.quiet, limit: 50 });
+      this.runs = await this.conn.call("schedule.runs", { name, quiet: this.quiet, limit: 50 }, this.server);
     } catch {
       this.runs = null;
     }
@@ -257,7 +294,7 @@ export class Schedules {
   async act(op, name, extra = {}) {
     this.err = "";
     try {
-      await this.conn.call(op, { name, ...extra });
+      await this.conn.call(op, { name, ...extra }, this.server);
     } catch (e) {
       this.err = e.message;
       this.draw();
@@ -284,8 +321,28 @@ export class Schedules {
     grid.append(side, main);
     const tz = [...this.items.values()][0]?.tz;
     const head = el("div", "sch-top");
-    head.append(el("h2", null, "Schedules"), el("span", "cnote", tz ? `times are the server's, ${tz}` : ""));
+    head.append(el("h2", null, "Schedules"));
+    if (this.links.length) head.append(this.serverPick());
+    head.append(el("span", "cnote", tz ? `times are the server's, ${tz}` : ""));
     this.root.replaceChildren(head, grid);
+  }
+
+  serverPick() {
+    const pick = document.createElement("pick-chip");
+    pick.className = "srvpick sch-server";
+    pick.setAttribute("aria-label", "Server");
+    pick.title = "The server these schedules live on";
+    pick.options = [
+      { value: "", label: this.home || "this server" },
+      ...this.links.map((l) => ({
+        value: l.name,
+        label: l.state === "linked" ? l.name : `${l.name} (${l.state})`,
+        disabled: l.state !== "linked",
+      })),
+    ];
+    pick.value = this.server || "";
+    pick.addEventListener("change", () => this.setServer(pick.value || null));
+    return pick;
   }
 
   owner(s) {
@@ -294,7 +351,7 @@ export class Schedules {
   }
 
   sessionName(logId) {
-    return this.sessions().find((m) => m.log_id === logId)?.handle || logId;
+    return this.sessions(this.server).find((m) => m.log_id === logId)?.handle || logId;
   }
 
   row(s) {
@@ -425,7 +482,8 @@ export class Schedules {
     const what = el("td", "what");
     if (r.kind === "fired") {
       const a = el("a", "sess", r.handle || r.log_id);
-      a.href = r.open ? `#s=${r.log_id}` : `#read=${r.log_id}`;
+      const key = this.server ? `${this.server}/${r.log_id}` : r.log_id;
+      a.href = r.open ? `#s=${key}` : `#read=${key}`;
       a.onclick = (e) => {
         e.preventDefault();
         this.go(a.getAttribute("href"));
@@ -530,7 +588,7 @@ export class Schedules {
       this.draw();
     })];
     if (ex) {
-      const open = this.sessions();
+      const open = this.sessions(this.server);
       const now = open.find((m) => m.log_id === E.session || m.handle === E.session);
       const sel = chip("sch-session", "Session", open.map((m) => ({ value: m.log_id, label: m.handle })), now?.log_id, (v) => {
         E.session = v;
@@ -659,7 +717,7 @@ export class Schedules {
     this._preview = setTimeout(async () => {
       let r;
       try {
-        r = await this.conn.call("schedule.test", { clock: { [E.clock]: value } });
+        r = await this.conn.call("schedule.test", { clock: { [E.clock]: value } }, this.server);
       } catch (e) {
         r = { error: e.message };
       }
@@ -698,7 +756,7 @@ export class Schedules {
     if (!E.bash.trim()) E.tested = "write a command first";
     else {
       try {
-        const r = await this.conn.call("schedule.test", p);
+        const r = await this.conn.call("schedule.test", p, this.server);
         const c = r.check;
         E.tested = r.error || `exit ${c.rc ?? "none"} · ${c.would_fire ? "would fire" : "would not fire"}: ${c.why}${c.stdout ? `\n${c.stdout}` : ""}`;
       } catch (e) {
@@ -712,7 +770,7 @@ export class Schedules {
     const E = this.form;
     E.err = "";
     try {
-      await this.conn.call(E.isNew ? "schedule.create" : "schedule.update", definition(E));
+      await this.conn.call(E.isNew ? "schedule.create" : "schedule.update", definition(E), this.server);
     } catch (e) {
       E.err = e.message;
       this.draw();

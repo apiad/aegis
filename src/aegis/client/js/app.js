@@ -731,28 +731,30 @@ for (const id of ["band-quota-link", "s-quota-head"]) $(id).addEventListener("cl
 // paused by errors.
 const schedules = new Schedules(conn, $("schedules"), {
   go,
-  sessions: () => local(),
+  sessions: (server) => (server ? on(server) : local()),
   onCount: (n, red) => {
     $("schedules-n").textContent = n ? String(n) : "";
     $("schedules-n").classList.toggle("err", red);
   },
 });
 setSecrets((op, params) => callFor(shown, op, params));
+// A card asks the server of the session it is shown in: names are per server.
+const shownServer = () => (shown ? forKey(shown).server : null);
 setApprovals({
-  schedule: (name) => schedules.items.get(name) || null,
-  call: (op, params) => conn.call(op, params),
+  schedule: (name) => schedules.on(shownServer()).get(name) || null,
+  call: (op, params) => conn.call(op, params, shownServer()),
 });
-conn.subscribe(
-  "schedules",
+const scheduleHandlers = (server) => [
   (list) => {
-    schedules.onSnapshot(list);
+    schedules.onSnapshot(list, server);
     refreshApprovals();
   },
   (ops) => {
-    schedules.onPatch(ops);
+    schedules.onPatch(ops, server);
     refreshApprovals();
   },
-);
+];
+conn.subscribe("schedules", ...scheduleHandlers(null));
 
 // The workflow runs (workflows.py), for their cards in the transcript and
 // their canvas panes. A running card counts its times up once a second.
@@ -913,6 +915,7 @@ function onLinks(list) {
   linksArrived();
   settings.onLinks(links, conn.server);
   drawServerPick();
+  schedules.onLinks(links, conn.server);
   const names = new Set(links.map((l) => l.name));
   for (const [name, r] of remote) {
     if (names.has(name)) continue;
@@ -931,6 +934,7 @@ function onLinks(list) {
       r.unsubs.push(
         conn.subscribe("sessions", ...sessionHandlers(l.name), undefined, undefined, l.name),
         conn.subscribe("workflow-runs", ...wfHandlers(l.name), undefined, undefined, l.name),
+        conn.subscribe("schedules", ...scheduleHandlers(l.name), undefined, undefined, l.name),
         conn.subscribe(
           "quota",
           (snap) => {
