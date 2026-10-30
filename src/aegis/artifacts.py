@@ -296,7 +296,7 @@ class Board:
         )
 
     def event(self, id: str, name: str, data: Any) -> None:
-        a = self.live(id)
+        self.live(id)
         if not valid_event(name):
             raise ArtifactError(
                 "bad_name",
