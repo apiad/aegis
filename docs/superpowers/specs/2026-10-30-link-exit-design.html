@@ -117,7 +117,7 @@ svg text{font-family:var(--font-mono)}
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · exit through a link</span>
-  <span class="st"><span class="pill acc">approved</span><span class="pill">2026-10-30</span><span class="pill">#862</span></span>
+  <span class="st"><span class="pill acc">built</span><span class="pill">2026-10-30</span><span class="pill">#862</span></span>
 </div>
 
 <div class="wrap">
@@ -134,11 +134,12 @@ svg text{font-family:var(--font-mono)}
   <a href="#delivery">Delivery</a>
   <a href="#testing">Testing</a>
   <a href="#nongoals">Non-goals and open questions</a>
+  <a href="#departs">Where the build departs</a>
 </nav>
 
 <main>
 <h1>Exit through a link: agents reach the internet from a linked server, with no VPN</h1>
-<div class="meta"><span>spec</span><span>·</span><span>status: approved 2026-10-30; built in three PRs, ahead of the 3.0.0 release by the maintainer's call</span><span>·</span><span>issue <a href="https://github.com/syalia-srl/aegis/issues/862">#862</a></span></div>
+<div class="meta"><span>spec</span><span>·</span><span>status: built 2026-10-30, in three PRs, ahead of the 3.0.0 release by the maintainer's call</span><span>·</span><span>issue <a href="https://github.com/syalia-srl/aegis/issues/862">#862</a></span></div>
 <p class="lede">A server names one of its trusted links in <code>.aegis.yaml</code>, and every agent, worker, terminal and monitor it starts afterwards reaches the internet from the far server's address. The rest of the machine keeps its normal routing. This covers every program that honours the standard proxy variables, which a spike measured; a program that ignores them still goes out directly, and section 02 says which ones were measured.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
@@ -272,13 +273,8 @@ svg text{font-family:var(--font-mono)}
 <pre>exit_via: host        # the name of a trusted link; left out, nothing exits
 
 agents:
-  - name: opus        # exits through host, like everything else
-    harness: claude-code
-    model: opus
-  - name: opus-local  # goes out directly
-    harness: claude-code
-    model: opus
-    exit: "off"</pre>
+  opus: {harness: claude-code, model: opus}              # exits through host
+  opus-local: {harness: claude-code, model: opus, exit: "off"}  # goes out directly</pre>
 <p><code>exit:</code> on a profile takes <code>off</code> or a link's name, so the reverse setup also works: leave <code>exit_via</code> out and give one profile <code>exit: host</code>. <code>aegis doctor</code> and the Settings page flag a name that is not a link, or a link that is not trusted, the way they flag a mistaken terminal profile. A process with a named exit whose link is missing fails its connections with 502. It never goes out directly.</p>
 <p>The file reloads within a second, as it does today, but a running process keeps the environment it started with. A change applies to the next process started, and the session's sidebar shows which exit that session has. Settings gets the same field on the Servers row of a trusted link.</p>
 
@@ -340,6 +336,17 @@ agents:
 <li>Not a machine-wide tunnel. The person's own browser stays on its own route.</li>
 <li>Open: is the coverage in section 02 enough to replace the VPN in practice, or does bare <code>ssh</code> and raw-socket traffic need strict mode first? Decided by the maintainer on approval.</li>
 <li>Open: does a corporate proxy that inspects TLS pass the websockets? It depends on the network and can only be tried there.</li>
+</ul>
+<h2 id="departs"><span class="n">13</span>Where the build departs</h2>
+<ul>
+<li><strong>No real network path was measured.</strong> Both servers ran on one machine, so slice 1's "real path" condition is not met, and the cost of a new stream on a slow link is still the estimate in section 02. The first use from a laptop will be the first measurement.</li>
+<li><strong>Measured on the production websocket protocol instead:</strong> a 50 MB download at 211 MB/s through the exit against 257 MB/s direct. With 4 downloads sustaining 137 MB/s for 10 s, the near server's op latency went from p50 2.6 ms, p95 3.9 ms to p50 4.2 ms, p95 17.5 ms, max 35 ms. A slower link costs a small part of that, so the pumps stayed in the server's process and <code>make bench</code> was not run with a transfer under way.</li>
+<li><strong>Codex, OpenCode and Cursor were not run through an exit.</strong> They get the keyword, and Claude Code, <code>git</code> over SSH and Chromium were each exercised for real.</li>
+<li><strong>Settings has a button, not a field:</strong> Exit here and Stop exit on a granted link's row, through a new <code>link.exit</code> op. It needs a clean form, since it writes the file.</li>
+<li><strong>The Via row shows one exit:</strong> <code>exit_via</code>, or else the first profile's. A session's sidebar gives its own. With an IPv6 address the row drops the place, to fit a phone.</li>
+<li><strong><code>all_proxy</code> is replaced too,</strong> so a server's own SOCKS setting cannot take a child around the exit.</li>
+<li><strong>The SSH helper is a file run with <code>python -I</code>,</strong> <code>exit_connect.py</code>, which starts in about 70 ms. <code>git</code> reads <code>GIT_SSH_COMMAND</code>; a person's own value stays and goes direct.</li>
+<li><strong>The websockets library logs handshake headers at DEBUG,</strong> which carried the link's token, so the tunnel's sockets use a logger held at INFO. A test found this.</li>
 </ul>
 </main>
 </div>

@@ -34,9 +34,12 @@ import hmac
 import ipaddress
 import logging
 import secrets
+import shlex
 import socket
+import sys
 import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
@@ -198,6 +201,14 @@ async def relay(
             await ws.close()
 
 
+def _git_ssh() -> str:
+    """``ssh`` for ``git`` alone: only ``git`` reads this variable, so a bare
+    ``ssh`` still goes direct, as the help page says."""
+    helper = Path(__file__).with_name("exit_connect.py")
+    command = f"{shlex.quote(sys.executable)} -I {shlex.quote(str(helper))} %h %p"
+    return f"ssh -o {shlex.quote(f'ProxyCommand={command}')}"
+
+
 def tunnel_url(url: str) -> str:
     u = urlsplit(url)
     scheme = "wss" if u.scheme == "https" else "ws"
@@ -260,7 +271,16 @@ class Exit:
         # aegis's own MCP and a dev server stay on this machine.
         out["no_proxy"] = out["NO_PROXY"] = "localhost,127.0.0.1,::1"
         out["NODE_USE_ENV_PROXY"] = "1"
+        out["GIT_SSH_COMMAND"] = _git_ssh()
         return out
+
+    def playwright_proxy(self) -> dict[str, str]:
+        """The same exit as Chromium takes it. It skips loopback on its own."""
+        return {
+            "server": f"http://127.0.0.1:{self.port}",
+            "username": USER,
+            "password": self.secret,
+        }
 
     def down(self) -> str | None:
         """Why this exit carries nothing now, or None."""
