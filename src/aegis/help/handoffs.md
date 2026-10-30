@@ -83,8 +83,8 @@ opens its tab. The old session takes no more messages from that moment: its box 
 a link to the new session, a person's message and a `peer_handoff` to it are
 refused, and so is Reopen once it is archived. It is archived when the new one
 finishes its first turn; the new one can still `peer_read` it. If the new
-session fails before it answers, or you close it, the old one opens again and
-its transcript says why. A cache-expired notice carries the same button, with
+session fails before it answers, or you close it, the old one opens again with
+a line that says why. A cache-expired notice carries the same button, with
 the last turns alone when no brief was written.
 
 `/handoff` does the same at any break, with no brief needed, and takes what to
