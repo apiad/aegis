@@ -736,8 +736,18 @@ class _session:
         permission: Literal["read", "write", "full", "auto"] | None = ...,
     ) -> Any:
         """session.configure"""
-    async def handoff(self, *, log_id: str) -> Any:
-        """Continue a session's work in a fresh one: the same agent, folder, model and effort, opened with its handoff brief and last turns. The old session is archived when the new one finishes its first turn."""
+    async def handoff(
+        self,
+        *,
+        log_id: str,
+        text: str | None = ...,
+        agent: str | None = ...,
+        model: str | None = ...,
+        effort: str | None = ...,
+        permission: str | None = ...,
+        cwd: str | None = ...,
+    ) -> Any:
+        """Continue a session's work in a fresh one: the same agent, folder, model and effort unless the params say otherwise, opened with its handoff brief, its last turns and the instruction. The old session refuses messages from here on, and is archived when the new one finishes its first turn."""
     async def interrupt(self, *, log_id: str) -> Any:
         """session.interrupt"""
     async def kills(self, *, log_id: str) -> Any:
