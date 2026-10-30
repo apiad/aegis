@@ -396,9 +396,17 @@ async def test_no_secret_or_token_is_logged(trusted, anywhere, caplog):  # noqa:
 
 
 # -- using it: configuration and what a process gets --------------------------------
-def _environ(pid: int) -> dict[str, str]:
+def _read_environ(pid: int) -> dict[str, str]:
     raw = open(f"/proc/{pid}/environ", "rb").read().split(b"\0")
     return dict(e.decode().split("=", 1) for e in raw if b"=" in e)
+
+
+async def _environ(pid: int) -> dict[str, str]:
+    """A process in the middle of ``exec`` reads as an empty environment: the
+    fake claude is a script that execs Python, and a read right after the spawn
+    lands there in most runs. Every child has PATH, so it marks a real read."""
+    await until(lambda: "PATH" in _read_environ(pid), timeout=10, what="its environ")
+    return _read_environ(pid)
 
 
 CONFIG_EXIT = """\
@@ -430,12 +438,12 @@ async def test_a_session_exits_and_a_profile_with_exit_off_does_not(trusted):  #
     url = alpha.app.exits.get("beta").url
     s = await alpha.spawn(agent="opus")
     await until(lambda: s.pid, timeout=10, what="the process")
-    env = _environ(s.pid)
+    env = await _environ(s.pid)
     assert env["HTTPS_PROXY"] == url and "127.0.0.1" in env["NO_PROXY"]
     assert s.wire()["exit"] == "beta"
     d = await alpha.spawn(agent="direct")
     await until(lambda: d.pid, timeout=10, what="the process")
-    assert _environ(d.pid).get("HTTPS_PROXY") != url
+    assert (await _environ(d.pid)).get("HTTPS_PROXY") != url
     assert d.wire()["exit"] is None
 
 
