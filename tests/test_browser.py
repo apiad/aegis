@@ -7594,6 +7594,29 @@ def beta_session(linked, browser, prompt: str = "from beta") -> str:
     return lid
 
 
+def test_a_linked_session_closed_during_a_recap_leaves_no_tab_behind(
+    tmp_path, fake_claude, fake_opencode, browser, page
+):
+    pair = Linked(tmp_path, fake_claude, fake_opencode)
+    (pair.beta.root / ".aegis.yaml").write_text(CONFIG + "recap: {agent: opus}\n")
+    # The one-shot answers nothing usable, and is paid, a while after the close.
+    pair.beta.env |= {"FAKE_CLAUDE_ONESHOT": "empty", "FAKE_CLAUDE_ONESHOT_SLEEP": "2"}
+    pair.start()
+    try:
+        lid = beta_session(pair, browser)
+        page.goto(pair.alpha.url)
+        tab = f"#tablist .tab[data-id='beta/{lid}']"
+        page.click(tab)
+        page.wait_for_selector("#nav-recap")
+        page.click("#nav-recap")
+        close_session(page)
+        page.wait_for_selector(tab, state="detached", timeout=8000)
+        page.wait_for_timeout(3000)  # the one-shot ends and its card change is out
+        assert page.locator(tab).count() == 0
+    finally:
+        pair.stop()
+
+
 def test_a_linked_servers_sessions_show_under_its_band(linked, browser, page):
     lid = beta_session(linked, browser)
     page.goto(linked.alpha.url)
