@@ -461,3 +461,14 @@ def test_codex_bills_its_plan_without_a_quota_provider():
               [(codex_usage("u1", inp=100, cached=0, out=10), []), (None, _result())],
               info=_info("codex"))  # fmt: skip
     assert d.turns[0].billing == "codex"
+
+
+def test_a_quiet_commit_settles_the_edit_by_its_message():
+    r = UseRec()
+    r.spawn(cwd="/w/atlas")
+    t1 = _turn(r, "edit", ("a", "Edit", {"file_path": "/w/atlas/a.py"}, "ok"))
+    _turn(r, "commit", ("b", "Bash", {"command": "git commit -qm 'fix: y'"}, ""))
+    d = run(r, repo_of={"/w/atlas": "atlas"}.get)
+    assert Settle(rec=t1, n=0, purpose="fix") in d.settles
+    commit = [p for p in d.parts if p.activity == "committing"][0]
+    assert commit.purpose == "fix"

@@ -200,3 +200,50 @@ def test_closing_refs_reads_the_body_flag():
     assert shell.closing_refs(cmd) == [7, 9, 11]
     assert shell.closing_refs("gh pr create --fill") == []
     assert shell.closing_refs('gh pr create -b "Part of #3"') == []
+
+
+def test_a_quiet_commit_takes_its_subject_from_the_command():
+    for cmd in (
+        "git commit -q -m 'fix: y'",
+        "git commit -qm 'fix: y'",
+        "git -C /r commit --quiet --message='fix: y'",
+        "git add a && git commit -qam 'fix: y' && git push",
+        "git commit -q -m 'fix: y' -m 'a body'",
+        "# Commit it\ngit commit -q -m 'fix: y\n\na body'",
+    ):
+        assert commits(cmd, "") == [("", "", "fix: y")], cmd
+
+
+def test_a_quiet_commit_reads_a_heredoc_message():
+    assert commits(HEREDOC_COMMIT, "") == [("", "", "feat: y (#1)")]
+    cmd = "cat > n.txt <<'EOF'\nnot this\nEOF\ngit commit -q -F - <<'EOF'\n\nfix: y\n\nbody\nEOF"
+    assert commits(cmd, "") == [("", "", "fix: y")]
+
+
+def test_two_quiet_commits_give_two_subjects_in_order():
+    cmd = "git -C a commit -qm 'fix: x' && git -C b commit -qm 'docs: y'"
+    assert commits(cmd, "") == [("", "", "fix: x"), ("", "", "docs: y")]
+
+
+def test_a_commit_line_wins_over_the_command():
+    out = "[main 1a2b3c4] fix: y"
+    assert commits("git commit -m 'fix: y'", out) == [("main", "1a2b3c4", "fix: y")]
+
+
+def test_no_commit_is_read_from_a_command_that_made_none():
+    assert commits("git commit -qm 'fix: y'", "", is_error=True) == []
+    for out in (
+        "nothing to commit, working tree clean",
+        "no changes added to commit",
+        "nothing added to commit but untracked files present",
+    ):
+        assert commits("git commit -qm 'fix: y' || true", out) == []
+    assert commits("git commit -q --dry-run -m 'fix: y'", "") == []
+    assert commits("echo git commit -qm 'fix: y'", "") == []
+    assert commits("git log -m 'fix: y'", "") == []
+
+
+def test_a_message_the_command_does_not_hold_gives_no_subject():
+    assert commits("git commit -q -F msg.txt", "") == []
+    assert commits('git commit -qm "$msg"', "") == []
+    assert commits("git commit -q --amend --no-edit", "") == []

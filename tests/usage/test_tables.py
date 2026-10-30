@@ -68,7 +68,7 @@ def test_a_version_bump_recreates_only_the_usage_tables(tmp_path, monkeypatch):
     )
     tables.ensure(con)
     tables.insert(con, "s1", _derived())
-    monkeypatch.setattr(tables, "USAGE_VERSION", 2)
+    monkeypatch.setattr(tables, "USAGE_VERSION", tables.USAGE_VERSION + 1)
     assert tables.ensure(con) is True
     assert con.execute("SELECT count(*) FROM usage_turns").fetchone()[0] == 0
     assert con.execute("SELECT count(*) FROM entries").fetchone()[0] == 1

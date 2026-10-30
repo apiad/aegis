@@ -492,7 +492,7 @@ class UsageDeriver:
         if c.tool == "Bash":
             cmd = str(c.inp.get("command") or "")
             cwd = self.cwd or os.sep
-            found = shell.commits(cmd, ev.text)
+            found = shell.commits(cmd, ev.text, ev.is_error)
             for (_, _, subject), d in zip(
                 found, shell.commit_dirs(cmd, cwd, len(found))
             ):

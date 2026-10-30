@@ -21,7 +21,7 @@ from decimal import Decimal
 
 from .turns import Derived
 
-USAGE_VERSION = 1
+USAGE_VERSION = 2
 # Derived from the stores: dropped by a version bump, emptied by a rebuild.
 DERIVED = ("usage_turns", "usage_parts", "usage_waits", "usage_ctx", "usage_whatif")
 # What the import read (importer.py): rows of an imported session, log id

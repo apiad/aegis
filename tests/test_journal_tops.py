@@ -58,6 +58,37 @@ def test_a_commit_entry_stores_its_full_sha_and_top(tmp_path):
     ]
 
 
+def test_a_quiet_commit_entry_finds_its_hash_by_subject(tmp_path):
+    repo, wt = _repo_with_worktree(tmp_path)
+    h = _commit(wt, "c.py")
+    subject = subprocess.run(
+        ["git", "log", "-1", "--format=%s"],
+        cwd=wt,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    j = Journal(tmp_path, None, db_path=tmp_path / "j.db")
+    row = Row(1, 4e9, "commit", f"? {subject}", "h", commit=(str(wt), ""))
+    e = j._entry("log", 0, row)
+    assert (e.repo, e.top, e.sha, e.text) == (
+        str(repo),
+        str(wt),
+        h,
+        f"{h[:7]} {subject}",
+    )
+    assert e.files_unknown is False and [t[2] for t in e.touches] == ["c.py"]
+
+
+def test_a_quiet_commit_no_ref_holds_keeps_its_subject_and_repo(tmp_path):
+    repo, wt = _repo_with_worktree(tmp_path)
+    j = Journal(tmp_path, None, db_path=tmp_path / "j.db")
+    row = Row(1, 4e9, "commit", "? fix: gone", "h", commit=(str(wt), ""))
+    e = j._entry("log", 0, row)
+    assert (e.repo, e.sha, e.text) == (str(repo), None, "? fix: gone")
+    assert e.files_unknown is True
+
+
 def test_a_pr_row_takes_the_repo_of_its_workdir(tmp_path):
     repo, wt = _repo_with_worktree(tmp_path)
     j = Journal(tmp_path, None, db_path=tmp_path / "j.db")
@@ -71,7 +102,7 @@ def test_a_pr_row_takes_the_repo_of_its_workdir(tmp_path):
 
 def test_top_and_sha_are_stored(tmp_path):
     con, fresh = db.connect(tmp_path / "j.db")
-    assert fresh and db.SCHEMA_VERSION == 3
+    assert fresh and db.SCHEMA_VERSION == 4
     e = db.Entry(
         "L",
         1,
