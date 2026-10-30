@@ -30,6 +30,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
+from .launch import exit_proxy, resolve_via
 from .ops import OpError
 
 log = logging.getLogger("aegis.browsers")
@@ -165,6 +166,13 @@ class Browser:
                 continue
         if self.events:
             self.rev = self.events[-1]["rev"]
+
+
+def launch_proxy() -> dict[str, Any]:
+    """Chromium's argument for the exit in force (exit.py), or nothing. A proxy
+    named at launch holds until the browser restarts, like a child's variables."""
+    proxy = exit_proxy(resolve_via())
+    return {} if proxy is None else {"proxy": proxy}
 
 
 class Browsers:
@@ -336,6 +344,7 @@ class Browsers:
                     headless=True,
                     viewport={"width": b.meta["width"], "height": b.meta["height"]},
                     args=["--no-first-run", "--no-default-browser-check"],
+                    **launch_proxy(),
                 )
             except Exception as e:
                 raise OpError("spawn_failed", f"browser {b.meta['name']}: {e}") from e
