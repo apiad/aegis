@@ -389,7 +389,7 @@ SPAWN_TAIL_CHARS = 8000
 
 
 HANDOFF_HEAD = (
-    "You continue the work of session {handle}, whose context had grown large. "
+    "You continue the work of session {handle}. "
     "It is archived once you finish your first turn; peer_read {handle} still "
     "reads it after that, if you need more than what follows."
 )
@@ -410,10 +410,12 @@ def handoff_opening(
     tail: str,
     kids: tuple[str, ...] = (),
     leads: bool = False,
+    instruction: str | None = None,
 ) -> str:
     """A handoff's first message: who it continues, the sessions it started
-    that the new one adopts (#641), the brief when the agent wrote one, and
-    the last turns as /spawn carries them (#354)."""
+    that the new one adopts (#641), the brief when the agent wrote one, the
+    last turns as /spawn carries them (#354), and last, so it is what the agent
+    reads last, the instruction it was handed off with (#874)."""
     parts = [HANDOFF_HEAD.format(handle=handle)]
     if kids:
         line = HANDOFF_KIDS.format(handle=handle, kids=", ".join(kids))
@@ -422,6 +424,8 @@ def handoff_opening(
         parts.append("Its brief for you:\n\n" + brief)
     if tail:
         parts.append("Its last turns:\n\n" + tail)
+    if instruction:
+        parts.append("What to do now:\n\n" + instruction)
     return "\n\n".join(parts)
 
 

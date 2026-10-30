@@ -141,7 +141,7 @@ async def test_commands_list_puts_aegis_first_and_hides_what_it_shadows(app):
     lid = await spawn(app)
     r = await app.registry.call("commands.list", {"log_id": lid})
     names = [c["name"] for c in r["commands"]]
-    assert names[:23] == [
+    assert names[:24] == [
         "model",
         "effort",
         "permission",
@@ -161,6 +161,7 @@ async def test_commands_list_puts_aegis_first_and_hides_what_it_shadows(app):
         "workflow",
         "loop",
         "spawn",
+        "handoff",
         "announce",
         "archive",
         "close",
@@ -387,3 +388,27 @@ async def test_commands_list_survives_a_broken_workflow_store(app, monkeypatch):
     monkeypatch.setattr(app.saved, "listing", broken)
     r = await app.registry.call("commands.list", {"log_id": await spawn(app)})
     assert r["workflows"] == [] and r["commands"]
+
+
+from aegis.commands import parse_handoff  # noqa: E402
+
+
+def test_parse_handoff_keeps_the_first_word_in_the_text():
+    line = parse_handoff("implement this plan")
+    assert line.agent is None and line.text == "implement this plan"
+
+
+def test_parse_handoff_alone_has_no_text():
+    assert parse_handoff("").text is None
+
+
+def test_parse_handoff_takes_flags_then_the_text_verbatim():
+    line = parse_handoff("--agent sonnet@far --effort high go  on --model x")
+    assert (line.agent, line.server, line.effort) == ("sonnet", "far", "high")
+    assert line.text == "go  on --model x"
+
+
+def test_parse_handoff_refuses_quiet():
+    with pytest.raises(OpError) as e:
+        parse_handoff("--quiet go")
+    assert "--quiet" in str(e.value)

@@ -317,6 +317,18 @@ class LogParams(_Strict):
     log_id: str
 
 
+class HandoffParams(LogParams):
+    """A handoff's instruction, and what the new session runs when it is not
+    what the old one ran (#874)."""
+
+    text: str | None = None
+    agent: str | None = None
+    model: str | None = None
+    effort: str | None = None
+    permission: str | None = None
+    cwd: str | None = None
+
+
 class PreviewParams(_Strict):
     harness: str
     cwd: str | None = None
@@ -1850,6 +1862,22 @@ class App:
             return await self._spawn_line(
                 commands.parse_spawn(arg), caller, s, untested
             )
+        if name == "handoff":
+            line = commands.parse_handoff(arg)
+            if line.server not in (None, self.server_name):
+                raise OpError(
+                    "not_across_links",
+                    "/handoff to a linked server is not built yet; use /spawn",
+                )
+            params = {
+                k: v
+                for k, v in dataclasses.asdict(line).items()
+                if v is not None and k != "server"
+            }
+            r = await self.registry.call(
+                "session.handoff", {"log_id": s.log_id, **params}, caller
+            )
+            return {**r, "server": self.server_name}
         if name == "announce":
             text, level, until = commands.parse_announce(arg)
             params = {"text": text, "level": level, "until": until}
@@ -2371,11 +2399,13 @@ class App:
             except (BrokenPipeError, ConnectionResetError) as e:
                 raise _dead(e) from e
 
-        @r.op("session.handoff", LogParams, owned="log_id")
-        async def handoff(p: LogParams, caller):
+        @r.op("session.handoff", HandoffParams, owned="log_id")
+        async def handoff(p: HandoffParams, caller):
             """Continue a session's work in a fresh one: the same agent, folder,
-            model and effort, opened with its handoff brief and last turns. The
-            old session is archived when the new one finishes its first turn."""
+            model and effort unless the params say otherwise, opened with its
+            handoff brief, its last turns and the instruction. The old session
+            refuses messages from here on, and is archived when the new one
+            finishes its first turn."""
             old = reg.open(p.log_id)
             old.check_lock()
             if old.worker:
@@ -2387,6 +2417,13 @@ class App:
             if old.in_turn:
                 raise OpError(
                     "busy", f"{old.handle} is working; hand it off when its turn ends"
+                )
+            # What would wake a session nobody can write to, or lose its result.
+            if wakers := reg.wakers(old):
+                raise OpError(
+                    "has_wakers",
+                    f"{old.handle} still waits on {', '.join(wakers)}; "
+                    "cancel them or let them finish first",
                 )
             report = old.standing.get("report") or {}
             # The new session takes the old one's place in its group (#641):
@@ -2404,9 +2441,38 @@ class App:
                 spawn_tail(old.entries()),
                 kids=kids,
                 leads=leads and bool(kids),
+                instruction=p.text,
             )
+            spec = old.spec
+            if p.agent:
+                agents, default = self._agents()
+                spec = resolve(
+                    agents,
+                    default,
+                    p.agent,
+                    {
+                        "harness": None,
+                        "model": p.model,
+                        "effort": p.effort,
+                        "permission": p.permission,
+                    },
+                    spec.cwd,
+                    spawned_by=spec.spawned_by,
+                    owner=spec.owner,
+                )
+            else:
+                # No agent named: only what a flag names changes, so a model
+                # chosen by hand stays.
+                changes = {"model": p.model, "effort": p.effort, "permission": p.permission}
+                spec = dataclasses.replace(
+                    spec, **{k: v for k, v in changes.items() if v is not None}
+                )
+            if p.cwd:
+                spec = dataclasses.replace(
+                    spec, cwd=self._resolve_cwd(p.cwd, old.spec.cwd)
+                )
             spec = dataclasses.replace(
-                old.spec,
+                spec,
                 continues=old.log_id,
                 spawned_from=None,
                 group=old.group_key(),
