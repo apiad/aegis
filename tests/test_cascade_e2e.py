@@ -296,15 +296,47 @@ async def test_shutdown_during_fallback_continues_the_worker_at_boot(
     monkeypatch.setattr(Registry, "continue_after_boot", continuing)
     await world.start()
     assert loaded == [True]
-    # Continued, not failed. Whether it completes still races the held flush
-    # with the instant fake model (#536).
-    assert world.app.queues.tasks[t.id].status in ("running", "completed")
+    # Continued, then completed, though the instant fake ends the turn the
+    # held flush started before its send returns (#536).
+    await until(
+        lambda: world.app.queues.tasks[t.id].status == "completed",
+        what="the task to complete",
+    )
     sends = [
         r.get("text", "")
         for r in read_store(world.app.sessions.store_path(t.worker))[0]
         if r.get("kind") == "send"
     ]
     assert any(x.startswith("> from aegis:restart") for x in sends), sends
+
+
+async def test_a_task_completes_when_the_flushed_turn_ends_before_its_send_returns(
+    world, monkeypatch
+):
+    # #536: the turn a held flush starts ends while _flush_held still awaits
+    # its send, so the turn's end finds the worker busy; the task completes
+    # once the flush clears.
+    from aegis.session import Session
+
+    send, held, flushed = Session._send, [], []
+
+    async def slow(self, text, *a, **kw):
+        if self.worker and not held:
+            # The prompt's turn ends with a message held: _turn_over flushes it.
+            held.append(text)
+            self._hold({"header": "from test", "body": "held", "ts": 0.0})
+        await send(self, text, *a, **kw)
+        if self._flushing and "from test" in text and not flushed:
+            flushed.append(text)
+            await until(lambda: self.status == "idle", what="the flushed turn")
+
+    monkeypatch.setattr(Session, "_send", slow)
+    q = world.app.queues
+    t = await asyncio.wait_for(
+        q.enqueue("general", "hello", False, None, str(world.root)), 3
+    )
+    await until(lambda: bool(flushed), what="the held flush")
+    await until(lambda: t.status == "completed", what="the task to complete")
 
 
 async def test_a_continue_that_fails_to_send_ends_the_turn_once(world, monkeypatch):
