@@ -1077,6 +1077,13 @@ machine. Anything a theme draws over the whole window, such as Phosphor's
 scanlines, is positioned against `#a2` and never the viewport, because the
 landing page applies the same rules to a window that sits inside a page.
 
+**A quota projection reads history once per window.** `quota.core.window_pace`
+keeps what is spent and runs the time left at the posterior mean of a rate with
+a Gamma prior, centred on what finished windows of that kind spent.
+`Quota._usual_spend` reads that from `usage_quota` through
+`Journal.usual_spend` when a window's reset time changes, and keeps it, because
+a snapshot is taken every minute. No finished window yet means a usual of 100%.
+
 **The session panel is rows that open cards.** Each section of the panel is a
 compact row (`.prow`) that holds its own card (`.pcard`) in the markup, so the
 code that fills a row fills its card, and an open card stays current.

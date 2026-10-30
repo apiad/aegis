@@ -84,3 +84,35 @@ def test_the_backfill_mark_completes_only_for_its_own_token(tmp_path):
     assert not tables.is_complete(con)
     tables.complete_if(con, 9)
     assert tables.is_complete(con)
+
+
+def _windows(con, *rows):
+    con.executemany(
+        "INSERT INTO usage_quota VALUES('claude:a', 'session', ?, ?, ?)", rows
+    )
+
+
+def test_usual_spend_averages_the_last_finished_windows(tmp_path):
+    con, _ = db.connect(tmp_path / "journal.db")
+    tables.ensure(con)
+    # Jitter of a second and a last row above the first: one window that ended on 30.
+    _windows(
+        con,
+        (10.0, 5.0, 1000.0),
+        (11.0, 30.0, 1001.0),
+        (20.0, 50.0, 2000.0),
+        (30.0, 150.0, 3000.0),  # a vendor overshoot counts as the limit
+        (40.0, 90.0, 4000.0),  # still running
+    )
+    span = 1000.0
+    assert tables.usual_spend(con, "claude:a", "session", span, 3500.0, 20) == 60.0
+    assert tables.usual_spend(con, "claude:a", "session", span, 3500.0, 2) == 75.0
+
+
+def test_usual_spend_with_no_finished_window_is_none(tmp_path):
+    con, _ = db.connect(tmp_path / "journal.db")
+    tables.ensure(con)
+    _windows(con, (10.0, 5.0, 1000.0), (11.0, 7.0, None))
+    assert tables.usual_spend(con, "claude:a", "session", 1000.0, 500.0, 20) is None
+    assert tables.usual_spend(con, "claude:b", "session", 1000.0, 5000.0, 20) is None
+    assert tables.usual_spend(con, "claude:a", "weekly_all", 1000.0, 5000.0, 20) is None

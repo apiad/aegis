@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from aegis.journal import db
 from aegis.journal.service import Journal
 from aegis.usage import tables
 
@@ -143,3 +144,15 @@ async def test_a_quota_reading_is_kept_only_when_it_changed(tmp_path):
         ("claude:a1b2", "weekly_all", 10.0),
         ("claude:a1b2", "weekly_all", 12.5),
     ]
+
+
+def test_the_journal_reads_what_finished_windows_spent(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir()
+    j = Journal(state, None)
+    assert j.usual_spend("claude:a", "session", 18000.0) is None  # no file yet
+    con, _ = db.connect(j.path)
+    tables.ensure(con)
+    con.execute("INSERT INTO usage_quota VALUES('claude:a', 'session', 1.0, 40.0, 2.0)")
+    con.close()
+    assert j.usual_spend("claude:a", "session", 18000.0) == 40.0

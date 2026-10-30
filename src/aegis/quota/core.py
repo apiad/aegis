@@ -35,11 +35,20 @@ PACE_WARN_AT = 100.0
 # Over pace with less than this spent is not yet a warning: early in a window
 # the projection rests on a thin slice, and there is room left to slow down.
 PACE_WARN_MIN = 50.0
-# No projection is trusted from a thinner slice of the window than this. Without
-# it, one turn six minutes into a five-hour window projects to 250% and every
-# window opens red. It is a clamp on the denominator, not on the answer: red
-# still needs more than 15% of the quota spent, whenever it is spent.
-PACE_FLOOR = 0.15
+# How much of a window has to pass before its own rate weighs as much as the
+# rate of the windows before it. Spend comes in bursts and one day's rate says
+# little about the next, so a rate from a thin slice is mostly noise. Backtested
+# on 73 five-hour windows the error is flat from 0.3 to 1.2. Three weeks that all
+# ended near the limit cannot place it, and 0.5 also holds when they are scaled
+# to half or one and a half times their spend.
+PACE_PRIOR_WEIGHT = 0.5
+# What a window usually spends when no window of its kind has finished yet: a
+# window that spends exactly its quota by the reset.
+PACE_USUAL_DEFAULT = 100.0
+# How many finished windows make up "usually": short ones vary more and pass
+# quickly, and four weeks or months already reach far back.
+PACE_HISTORY_SHORT = 20
+PACE_HISTORY_LONG = 4
 # A reset time further out than the span means the clock is off or our span for
 # that kind is wrong. This much is ordinary clock skew; past it we stop
 # projecting rather than invent a number from a bad span.
@@ -162,12 +171,21 @@ async def cancel_and_wait(task: asyncio.Task | None) -> None:
         pass
 
 
-def window_pace(window: QuotaWindow, span_s, *, now: datetime) -> float | None:
+def window_pace(
+    window: QuotaWindow,
+    span_s,
+    *,
+    now: datetime,
+    usual: float = PACE_USUAL_DEFAULT,
+) -> float | None:
     """Where this window's spend lands at reset, as a percent of the quota.
 
-    The average rate across the window is ``percent / elapsed_fraction``, which
-    is the right rate for "will what is left survive the period": it answers the
-    question with the whole window's evidence rather than the last few turns'.
+    What is spent is known, so only the time left is projected, at the posterior
+    mean of a rate with a Gamma prior: ``(b * usual + percent) / (b + elapsed)``,
+    where ``usual`` is what a finished window spends. That is the window's own
+    rate and the usual one averaged with weight ``elapsed / (b + elapsed)``, so a
+    new window reads ``usual``, a finished one reads what it spent, and nothing
+    between them divides by a thin slice or moves in a step.
 
     ``None`` means we decline to answer, and every caller then falls back to the
     level verdict. That happens when the window carries no reset time, when we
@@ -179,11 +197,18 @@ def window_pace(window: QuotaWindow, span_s, *, now: datetime) -> float | None:
     remaining = (window.resets_at - now).total_seconds()
     if remaining > span_s + PACE_SKEW_GRACE_S:
         return None
-    elapsed = span_s - max(0.0, min(remaining, span_s))
-    return window.percent / max(elapsed / span_s, PACE_FLOOR)
+    elapsed = (span_s - max(0.0, min(remaining, span_s))) / span_s
+    rate = (PACE_PRIOR_WEIGHT * usual + window.percent) / (PACE_PRIOR_WEIGHT + elapsed)
+    return window.percent + (1 - elapsed) * rate
 
 
-def pace_severity(window: QuotaWindow, span_s, *, now: datetime) -> str:
+def pace_severity(
+    window: QuotaWindow,
+    span_s,
+    *,
+    now: datetime,
+    usual: float = PACE_USUAL_DEFAULT,
+) -> str:
     """The window's colour, from its pace when it has one.
 
     Critical is level: CRITICAL_AT spent, or the vendor's own critical, so a
@@ -194,7 +219,7 @@ def pace_severity(window: QuotaWindow, span_s, *, now: datetime) -> str:
     absorbs needs no one to slow down. A window with no projection keeps its
     level verdict.
     """
-    projected = window_pace(window, span_s, now=now)
+    projected = window_pace(window, span_s, now=now, usual=usual)
     if projected is None:
         return window.severity
     if window.severity == "critical" or window.percent >= CRITICAL_AT:
