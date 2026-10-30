@@ -29,8 +29,9 @@ HOST_ONLY = {"multi_user.env_file"}
 # A file that sets every key, none to its default.
 FULL = """\
 default_agent: opus
+exit_via: far
 agents:
-  opus: {harness: claude-code, model: opus, effort: high, permission: full, priming: Be brief., keep_harness_tools: [Agent]}
+  opus: {exit: "off", harness: claude-code, model: opus, effort: high, permission: full, priming: Be brief., keep_harness_tools: [Agent]}
   quick: {harness: claude-code, models: [haiku, sonnet], effort: low, permission: read}
 queues:
   general: {agent: opus, max_parallel: 3, quiet: false}
@@ -99,7 +100,7 @@ def reader_keys() -> list[str]:
         "btw": ["agent"],
         "multi_user": ["env_file"],
     }
-    scalars = {"default_agent", "session_memory_max", "terminal_memory_max"}
+    scalars = {"default_agent", "exit_via", "session_memory_max", "terminal_memory_max"}
     out = []
     for top in config.TOP_KEYS:
         if top in scalars:

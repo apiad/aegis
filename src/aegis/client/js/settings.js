@@ -518,6 +518,11 @@ export class Settings {
 
   // The servers: this one, each link with its state, and a form to add one.
   servers() {
+    const exitButton = (...args) => {
+      const b = button(...args);
+      b.dataset.key = "exit_via";
+      return b;
+    };
     const since = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     const trust = (l) => (!l.trusted || l.state !== "linked" ? "" : l.granted ? " · trusted, both ways" : l.trust_error ? ` · trust refused: ${l.trust_error}` : "");
     const state = (l) =>
@@ -546,7 +551,7 @@ export class Settings {
           h("td", {}, h("b", { textContent: l.name })),
           h("td", { className: "m", textContent: l.url }),
           h("td", {}, h("span", { className: `set-pill ${l.state === "linked" ? "ok" : "bad"}`, textContent: state(l) })),
-          h("td", {}, !this.server && l.trusted && l.granted ? button(l.name === this.doc?.exit_via ? "Stop exit" : "Exit here", null, () => this.exitVia(l.name === this.doc?.exit_via ? null : l.name)) : null, button("Remove", null, () => this.unlink(l.name))),
+          h("td", {}, !this.server && l.trusted && l.granted ? exitButton(l.name === this.doc?.exit_via ? "Stop exit" : "Exit here", null, () => this.exitVia(l.name === this.doc?.exit_via ? null : l.name)) : null, button("Remove", null, () => this.unlink(l.name))),
         ),
       ),
       ...this.incoming.map((l) =>
@@ -1413,7 +1418,7 @@ export class Settings {
       this.draw();
     }, "link danger");
     const fold = h("details", { className: "set-priming", open: !!a.priming }, h("summary", { textContent: a.priming ? "Priming" : "Add a priming" }), priming);
-    card.append(name, h("div", { className: "picks" }, harness, effort, permission), casc, h("div", { className: "set-card-foot" }, fold, this.keepFold(a), star, del));
+    card.append(name, h("div", { className: "picks" }, harness, effort, permission), casc, h("div", { className: "set-card-foot" }, fold, this.keepFold(a), this.exitFold(a), star, del));
     if (isDefault) card.classList.add("is-default");
     return card;
   }
@@ -1441,6 +1446,18 @@ export class Settings {
     });
     const fold = h("details", { className: "set-priming set-keep", open: keep.length > 0 }, summary, h("p", { className: "set-none", textContent: "Claude Code sessions start without these, since aegis has its own; an agent whose work needs one keeps it." }), h("div", { className: "set-tools" }, ...toggles));
     fold.dataset.key = "agents.*.keep_harness_tools";
+    return fold;
+  }
+
+  // The link this agent exits through (exit.py), or "off"; blank is the server's.
+  exitFold(a) {
+    const input = h("input", { className: "set-in", value: a.exit || "", spellcheck: false, placeholder: "the server's exit, or a link's name, or off" });
+    input.addEventListener("input", () => {
+      a.exit = input.value.trim();
+      this.touch();
+    });
+    const fold = h("details", { className: "set-priming set-exit", open: !!a.exit }, h("summary", { textContent: a.exit ? `Exits through ${a.exit}` : "Exit through a link" }), input);
+    fold.dataset.key = "agents.*.exit";
     return fold;
   }
 
