@@ -5,9 +5,19 @@
 // The theme reaches a frame as CSS variables, read from #a2, where the themes
 // declare them.
 //
+// aegis.dictate and aegis.upload end here too. A page's origin is opaque, so
+// the microphone and the Cache Storage dictation needs refuse it, and the 64 KB
+// of a state or an event would not carry a file: the host runs both for the page
+// (DESIGN.md, "Audio never leaves the browser"). The microphone starts only
+// inside a click in the page, and the bar that says it is on is drawn here, in
+// this document, where no page can reach it.
+//
 // aegis/point (pagepoint.js) is taken from any frame under #a2, a sent page's
 // or a Files page's as well as an artifact's: it only proposes a menu or a
 // bar, which app.js draws in this document (setup's `point`).
+
+import { stageFile } from "./attach.js";
+import { icon } from "./glyphs.js";
 
 const VARS = ["--bg", "--ink", "--accent", "--accent-soft", "--on-accent", "--surface", "--raised",
   "--rule", "--muted", "--faint", "--strong", "--fill", "--ok", "--warn", "--err", "--err-bg",
@@ -15,6 +25,7 @@ const VARS = ["--bg", "--ink", "--accent", "--accent-soft", "--on-accent", "--su
   "--prose-size", "--r", "--r-lg"];
 const PROBE_GRACE_MS = 250; // an error right after ui/initialize (a throwing ready) still fails the probe
 const PROBE_TIMEOUT_MS = 3000;
+const SAYS = { loading: "Loading dictation", listening: "Listening for this page", finishing: "Finishing dictation" };
 const MAX_HEIGHT = () => Math.round(window.innerHeight * 0.7);
 
 let call = async () => {};
@@ -34,11 +45,112 @@ function inOrder(id, fn) {
 
 let keyNow = () => null; // the session on screen, read when a message arrives
 let point = () => {}; // (frame, params): a page's gesture, for the host to draw
+let dictationOf = () => null; // app.js's Dictation
+let toast = () => {};
+let waitOnline = async () => {};
+let local = () => true; // the key's session is on this server, not a linked one
 export function setup(opts) {
+  dictationOf = opts.dictation ?? dictationOf;
+  toast = opts.toast ?? toast;
+  waitOnline = opts.waitOnline ?? waitOnline;
+  local = opts.local ?? local;
   call = opts.call; // (op, params, key) -> Promise; key names the session
   entryOf = opts.entry;
   keyNow = opts.key;
   point = opts.point ?? point;
+}
+
+// -- aegis.dictate ----------------------------------------------------------
+let speaking = null; // {frame, n} while a page's recording is not idle
+const shims = new WeakMap(); // frame -> Map(n -> what Dictation sees as the field)
+const spoken = new Set(); // artifact ids with dictated text since their last answer
+
+function drawBar(frame, state) {
+  const stage = frame.parentElement;
+  let bar = stage?.querySelector(":scope > .dictbar");
+  if (state === "idle" || !stage) return bar?.remove();
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.className = "dictbar";
+    bar.setAttribute("role", "status");
+    const stop = document.createElement("button");
+    stop.className = "btn";
+    stop.type = "button";
+    stop.textContent = "Stop";
+    stop.addEventListener("click", () => dictationOf()?.stop("button"));
+    bar.append(icon("mic"), document.createElement("span"), stop);
+    stage.prepend(bar); // first, so it can stick to the top while the page scrolls
+  }
+  bar.dataset.state = state;
+  bar.querySelector("span").textContent = SAYS[state];
+}
+
+async function startDictation(frame, id, params) {
+  const d = dictationOf();
+  if (!d) return;
+  const { n, value, at } = params;
+  const idle = () => notify(frame, "aegis/dictation", { n, state: "idle" });
+  // Not while the page is on its own: a click in it activates this document too.
+  if (!navigator.userActivation?.isActive) {
+    toast("Dictation starts from a click in the page");
+    return idle();
+  }
+  await d.stop(); // says idle or finishing to the recording it stops, not this one
+  if (speaking) {
+    notify(speaking.frame, "aegis/dictation", { n: speaking.n, state: "idle" });
+    drawBar(speaking.frame, "idle");
+  }
+  const el = {
+    value: String(value ?? ""),
+    selectionStart: at,
+    dispatchEvent: () => notify(frame, "aegis/dictated", { n, value: el.value }),
+  };
+  if (!shims.has(frame)) shims.set(frame, new Map());
+  shims.get(frame).set(n, el);
+  speaking = { frame, n };
+  d.start({ el, key: null, current: () => null, heard: () => spoken.add(id) });
+}
+
+// What app.js's Dictation says, for the page that is recording.
+export function dictationState(state) {
+  if (!speaking) return;
+  notify(speaking.frame, "aegis/dictation", { n: speaking.n, state });
+  drawBar(speaking.frame, state);
+  if (state === "idle") speaking = null;
+}
+
+// Called with every block of audio: a page that left the screen stops the
+// microphone, whatever took it away (a tab switch, a close, a redrawn card).
+export function dictationCheck() {
+  if (speaking && !speaking.frame.isConnected) dictationOf()?.stop("tab");
+}
+
+function stopFor(frame) {
+  if (speaking?.frame === frame) dictationOf()?.stop("button");
+}
+
+// -- aegis.upload -----------------------------------------------------------
+async function upload(frame, id, key, m) {
+  const reply = (body) => send(frame, { jsonrpc: "2.0", id: m.id, ...body });
+  try {
+    const file = m.params?.file;
+    if (!(file instanceof Blob)) throw new Error("aegis.upload takes a File or a Blob");
+    const uid = await stageFile(
+      (op, params) => call(op, params, key),
+      waitOnline,
+      file,
+      file.name || "upload",
+      (sent, size) => notify(frame, "aegis/upload-progress", { id: m.id, sent, size }),
+    );
+    try {
+      reply({ result: await inOrder(id, () => call("artifact.upload", { upload_id: uid, artifact_id: id }, key)) });
+    } catch (e) {
+      call("attachment.drop", { upload_id: uid }, key).catch(() => {});
+      throw e;
+    }
+  } catch (e) {
+    reply({ error: { code: e.code || "error", message: e.message } });
+  }
 }
 
 // A message to a frame from the pointing host: aegis/point-open and -closed.
@@ -120,7 +232,28 @@ window.addEventListener("message", async (ev) => {
   const key = keyNow(); // captured now: a tab switch while the call waits must not reroute it
   const status = frame.dataset.status || e?.status || "live";
   if (m.method === "ui/initialize") {
+    stopFor(frame); // the page reloaded, so the field it was dictating into is gone
     send(frame, { jsonrpc: "2.0", id: m.id, result: { artifact: id, state: e?.detail?.state ?? {}, theme: themeVars(), status } });
+    return;
+  }
+  if (m.method === "aegis/dictate") {
+    if (status === "live") startDictation(frame, id, m.params || {});
+    return;
+  }
+  if (m.method === "aegis/dictate-stop") return stopFor(frame);
+  if (m.method === "aegis/dictate-edit") {
+    const el = shims.get(frame)?.get(m.params?.n);
+    if (el) el.value = String(m.params.value ?? "");
+    return;
+  }
+  if (m.method === "aegis/upload") return upload(frame, id, key, m);
+  if (m.method === "aegis/submit" && speaking?.frame === frame) {
+    // Its data was read before the last words landed. Nothing is lost by asking
+    // again, as the box's own send waits; a page cannot wait for words it cannot see.
+    stopFor(frame);
+    const refused = { code: "dictating", message: "dictation was still going. Send again once the text is in." };
+    showRefused(frame, refused);
+    notify(frame, "aegis/status", { status: "live", refused });
     return;
   }
   if (m.method === "aegis/size") {
@@ -138,8 +271,11 @@ window.addEventListener("message", async (ev) => {
     frame.dataset.errored = "1";
   }
   try {
+    // A linked server may predate the mark, so it is only sent to this one.
+    const said = (m.method === "aegis/emit" || m.method === "aegis/submit") && spoken.has(id) && local(key);
     // The frame's id last, so a page that sends its own artifact_id cannot name another.
-    await inOrder(id, () => call(op, { ...(m.params || {}), artifact_id: id }, key));
+    await inOrder(id, () => call(op, { ...(m.params || {}), ...(said && { dictated: true }), artifact_id: id }, key));
+    if (said) spoken.delete(id);
     if (m.id !== undefined) send(frame, { jsonrpc: "2.0", id: m.id, result: "ok" });
     if (m.method === "aegis/submit") {
       showRefused(frame, null);

@@ -44,8 +44,9 @@ STACK_LINES = 5
 
 SCRIPT_SRC = "/static/js/artifact.js"
 STYLE_HREF = "/static/css/artifact.css"
-ANSWERS = ("aegis.submit(", "aegis.emit(", "aegis.state(")
-RESERVED = frozenset({"submit", "error", "close"})
+ANSWERS = ("aegis.submit(", "aegis.emit(", "aegis.state(", "aegis.upload(")
+# ``upload`` is the server's own event: it says a file reached the inbox.
+RESERVED = frozenset({"submit", "error", "close", "upload"})
 _EVENT = re.compile(r"[a-z][a-z0-9_-]{0,31}")
 
 SKELETON = """\
@@ -117,7 +118,8 @@ def check(text: str) -> None:
         raise ArtifactError(
             "no_answer",
             "the page never answers: call aegis.submit(data, label), "
-            "aegis.emit(name, data) or aegis.state(data) somewhere",
+            "aegis.emit(name, data), aegis.state(data) or aegis.upload(file) "
+            "somewhere",
         )
 
 
@@ -298,8 +300,14 @@ class Board:
         if not valid_event(name):
             raise ArtifactError(
                 "bad_name",
-                f"{name!r}: one word, [a-z][a-z0-9_-]*, not submit/error/close",
+                f"{name!r}: one word, [a-z][a-z0-9_-]*, not submit/error/close/upload",
             )
+        self.rate(id)
+        self.record_event(id, name, data)
+
+    def rate(self, id: str) -> None:
+        """Count one event against the page's limit, or refuse it."""
+        a = self.live(id)
         now = time.monotonic()
         while a.emit_times and now - a.emit_times[0] > 60:
             a.emit_times.popleft()
@@ -308,6 +316,9 @@ class Board:
                 "rate_limited", f"{EMITS_PER_MINUTE} events a minute at most"
             )
         a.emit_times.append(now)
+
+    def record_event(self, id: str, name: str, data: Any) -> None:
+        a = self.live(id)
         self.flush(id)
         a.events = (a.events + [{"name": name, "data": data, "ts": time.time()}])[
             -EVENTS_KEPT:

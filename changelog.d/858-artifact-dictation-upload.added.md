@@ -1,0 +1,2 @@
+- **Artifacts can take dictation and files.** `aegis.dictate(field, fn)` dictates into a field of a page, one per question, and `aegis.upload(file)` sends a file of up to 100 MB to the session's inbox and wakes the agent with its path. The microphone and the engine stay in aegis's page, the microphone starts only from a click in the page, and aegis draws the bar that says it is on.
+help: artifacts#take-dictation-or-a-file

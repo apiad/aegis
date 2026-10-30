@@ -35,6 +35,35 @@ function el(tag, cls, text) {
   return n;
 }
 
+// One file whole, for a caller with no chip (an artifact's aegis.upload): its
+// upload id once every byte is staged. `call(op, params)`; `onSent(bytes, size)`.
+export async function stageFile(call, waitOnline, file, name, onSent = () => {}) {
+  // The same 0-size read as Attachments.upload (#697).
+  let data = file;
+  if (!file.size) {
+    const buf = await file.arrayBuffer();
+    if (buf.byteLength) data = new Blob([buf]);
+  }
+  const { upload_id } = await call("attachment.begin", { name, size: data.size });
+  try {
+    let sent = 0;
+    while (sent < data.size) {
+      const chunk = base64(await data.slice(sent, sent + CHUNK).arrayBuffer());
+      try {
+        sent = (await call("attachment.put", { upload_id, offset: sent, data: chunk })).size;
+      } catch (e) {
+        if (e.code !== "offline") throw e;
+        await waitOnline(); // then the same chunk again
+      }
+      onSent(sent, data.size);
+    }
+  } catch (e) {
+    call("attachment.drop", { upload_id }).catch(() => {});
+    throw e;
+  }
+  return upload_id;
+}
+
 export class Attachments {
   // call(key, op, params) runs an operation on the server holding the
   // session keyed `key`; waitOnline() resolves once the socket is open again.

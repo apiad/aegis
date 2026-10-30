@@ -16,7 +16,10 @@
   let raf = 0;
 
   const post = (m) => host && host.postMessage(m, "*");
-  const request = (method, params) => post({ jsonrpc: "2.0", id: ++seq, method, params });
+  const request = (method, params) => {
+    post({ jsonrpc: "2.0", id: ++seq, method, params });
+    return seq;
+  };
   const notify = (method, params) => post({ jsonrpc: "2.0", method, params });
   const warn = (what) => console.warn(`aegis.${what}: this artifact is ${status}`);
 
@@ -55,7 +58,27 @@
     if (host && ev.source !== host) return;
     const m = ev.data;
     if (!m || m.jsonrpc !== "2.0") return;
-    if (m.id !== undefined && m.result && m.result.artifact !== undefined) {
+    const up = uploads.get(m.id);
+    if (up && m.id !== undefined) {
+      uploads.delete(m.id);
+      if (m.error) up.reject(Object.assign(new Error(m.error.message), { code: m.error.code }));
+      else up.resolve(m.result);
+    } else if (m.method === "aegis/upload-progress") {
+      uploads.get(m.params?.id)?.onProgress?.(m.params.sent, m.params.size);
+    } else if (m.method === "aegis/dictated") {
+      const d = speech.get(m.params?.n);
+      if (!d) return;
+      d.el.value = m.params.value;
+      writing = true; // the page hears the text as input; the host already has it
+      d.el.dispatchEvent(new Event("input", { bubbles: true }));
+      writing = false;
+    } else if (m.method === "aegis/dictation") {
+      const d = speech.get(m.params?.n);
+      if (!d) return;
+      d.state = m.params.state;
+      d.el.dataset.dictation = d.state;
+      d.fn?.(d.state);
+    } else if (m.id !== undefined && m.result && m.result.artifact !== undefined) {
       setStatus(m.result.status === "probe" ? "live" : m.result.status);
       fire(m.result.state ?? {}, m.result.theme || {});
     } else if (m.id !== undefined && m.error) {
@@ -71,6 +94,22 @@
       for (const fn of statusFns) fn({ status, refused });
     }
   });
+
+  // Dictation runs in the host (the microphone and Cache Storage refuse this
+  // opaque origin), which sends the whole text of a field back as it grows.
+  // Each aegis.dictate is numbered, so a late piece finds its own field.
+  const speech = new Map(); // n -> {el, fn, state}
+  let speaking = 0; // the latest n
+  let writing = false;
+  document.addEventListener("input", (ev) => {
+    if (writing) return;
+    for (const [n, d] of speech) {
+      if (d.el === ev.target && d.state !== "idle") notify("aegis/dictate-edit", { n, value: d.el.value });
+    }
+  });
+
+  // Uploads wait for their answer by request id (aegis.upload).
+  const uploads = new Map(); // id -> {resolve, reject, onProgress}
 
   // A state write waits for the next frame; an emit or submit that follows
   // it must not overtake it, so both post the pending state first.
@@ -107,6 +146,27 @@
       if (status !== "live") return warn("submit");
       flushState();
       request("aegis/submit", { data: data ?? null, label: labelOf(label) });
+    },
+    // Dictate into a textarea or text input, from a click in the page; called
+    // again for the same field, stop. `fn` hears loading, listening, finishing
+    // and idle, also on the field's data-dictation.
+    dictate(el, fn) {
+      if (status !== "live") return warn("dictate");
+      const now = speech.get(speaking);
+      if (now?.el === el && (now.state === "loading" || now.state === "listening")) {
+        notify("aegis/dictate-stop", {});
+        return;
+      }
+      speech.set(++speaking, { el, fn, state: "loading" });
+      request("aegis/dictate", { n: speaking, value: el.value, at: el.selectionStart ?? el.value.length });
+    },
+    // A File or Blob into the session's inbox: resolves to {name, path, mime,
+    // size}, and the agent is woken with the path. `onProgress(sent, size)`.
+    upload(file, onProgress) {
+      if (status !== "live") return Promise.reject(new Error(`this artifact is ${status}`));
+      return new Promise((resolve, reject) => {
+        uploads.set(request("aegis/upload", { file }), { resolve, reject, onProgress });
+      });
     },
   };
 

@@ -1425,7 +1425,11 @@ the model toward names it knows (`dictation.py`). The page keeps the files in
 Cache Storage under that pin and fills it once for both workers, because a
 phone's HTTP cache evicts 17.8 MB long before a year is up. Nothing carries samples, so
 dictation works through any proxy that serves the page, and the server pays
-nothing per word. A send from a box that got dictated text says so
+nothing per word. An artifact's frame has an opaque origin, so the microphone and
+Cache Storage refuse it even with `allow="microphone"`; `aegis.dictate` keeps both in
+the host page and hands the frame text over `postMessage` (`js/artifacts.js`). It
+starts only while `navigator.userActivation` says the person just clicked, and the
+bar that says it is on is the host's, out of the page's reach. A send from a box that got dictated text says so
 (`dictated`), and the server adds `dictation.NOTE` after the text for the
 agent; the fold strips that exact line off the person's row and marks it
 `detail.dictated`, so the transcript and the harness keep the same text.

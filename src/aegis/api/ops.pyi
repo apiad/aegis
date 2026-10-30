@@ -122,9 +122,15 @@ class _artifact:
     async def create(
         self, *, title: str, caption: str | None = ..., state: Any = ...
     ) -> Any:
-        """Start an interactive page for the person: a decision to make, values to tune, a form, a visualization to play with. Writes a working skeleton and returns its path and text; edit that file with your Edit tool, then artifact_send. The page talks to aegis through `window.aegis`: `aegis.ready((state, theme) => ...)` runs once the host has handed over the state and the theme's CSS variables; `aegis.state(obj)` keeps state silently for you to artifact_read; `aegis.emit(name, obj)` wakes you and leaves the page live; `aegis.submit(obj, label)` wakes you with the answer and closes the page, the card collapsing to `label`; `aegis.onState(fn)` hears your artifact_update; `aegis.onStatus(fn)` hears `{status, refused}`, where `refused` is `{code, message}` when the server refused the last submit (the card shows the person the message), also on `<html data-refused>`. Answers reach you as a user turn headed `> from artifact:<id> · submit|<event>|error · …` with the JSON in a code block. Rules the checks cannot catch: an event name is one word, `[a-z][a-z0-9_-]{0,31}`, never `submit`, `error` or `close`; state, event data and the submit's data are at most 64 KB each; at most 20 emits a minute; a submit's label is one line of at most 140 characters. Keep the skeleton's script tag and stylesheet link, or drop the stylesheet for your own look."""
+        """Start an interactive page for the person: a decision to make, values to tune, a form, a visualization to play with. Writes a working skeleton and returns its path and text; edit that file with your Edit tool, then artifact_send. The page talks to aegis through `window.aegis`: `aegis.ready((state, theme) => ...)` runs once the host has handed over the state and the theme's CSS variables; `aegis.state(obj)` keeps state silently for you to artifact_read; `aegis.emit(name, obj)` wakes you and leaves the page live; `aegis.submit(obj, label)` wakes you with the answer and closes the page, the card collapsing to `label`; `aegis.onState(fn)` hears your artifact_update; `aegis.onStatus(fn)` hears `{status, refused}`, where `refused` is `{code, message}` when the server refused the last submit (the card shows the person the message), also on `<html data-refused>`; `aegis.dictate(field, fn)` inside a click dictates into a textarea, `fn` hearing loading, listening, finishing and idle; `aegis.upload(file, onProgress)` puts a file of up to 100 MB in your inbox, wakes you with its path and resolves to `{name, path, mime, size}` (help_read artifacts, "Take dictation or a file"). Answers reach you as a user turn headed `> from artifact:<id> · submit|<event>|upload|error · …` with the JSON in a code block. Rules the checks cannot catch: an event name is one word, `[a-z][a-z0-9_-]{0,31}`, never `submit`, `error`, `close` or `upload`; state, event data and the submit's data are at most 64 KB each; at most 20 emits a minute; a submit's label is one line of at most 140 characters. Keep the skeleton's script tag and stylesheet link, or drop the stylesheet for your own look."""
     async def emit(
-        self, *, log_id: str, artifact_id: str, name: str, data: Any = ...
+        self,
+        *,
+        log_id: str,
+        artifact_id: str,
+        name: str,
+        data: Any = ...,
+        dictated: bool = ...,
     ) -> Any:
         """artifact.emit"""
     async def error(
@@ -148,7 +154,13 @@ class _artifact:
     async def state(self, *, log_id: str, artifact_id: str, state: Any = ...) -> Any:
         """artifact.state"""
     async def submit(
-        self, *, log_id: str, artifact_id: str, data: Any = ..., label: str
+        self,
+        *,
+        log_id: str,
+        artifact_id: str,
+        data: Any = ...,
+        label: str,
+        dictated: bool = ...,
     ) -> Any:
         """artifact.submit"""
     async def update(
@@ -160,6 +172,8 @@ class _artifact:
         resend: bool = ...,
     ) -> Any:
         """Change a live page: push `state` into it, change its caption, or with `resend` snapshot the edited draft again and swap the page (the state carries over unless `state` is also given)."""
+    async def upload(self, *, log_id: str, artifact_id: str, upload_id: str) -> Any:
+        """Move a file the page uploaded (attachment.begin and .put) into the session's inbox and wake the agent with its path. It counts as an event, and the count comes first, so a refused file stays staged and reaches nobody. The page gets the record, for the person to see."""
 
 class _attachment:
     async def begin(self, *, log_id: str, name: str, size: int) -> Any:

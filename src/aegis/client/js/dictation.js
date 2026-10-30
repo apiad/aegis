@@ -352,13 +352,17 @@ export class Dictation {
       items: [], // in order, awaiting insertion
       pending: [], // provisional items since the last final
       placed: [], // inserted items whose ranges a final may still replace
-      known: "", // the text as this recording last wrote it, and where
+      known: "", // the text as this recording last saw it, and where
       knownKind: null,
       emitted: 0,
       keywords: "",
       stopped: false,
       stopCapture: null,
     };
+    // From the text it starts on, so what is typed before the first piece lands
+    // carries the insertion point along too.
+    rec.known = doc(rec).get();
+    rec.knownKind = doc(rec).kind;
     rec.chunker = new Chunker((p) => this.enqueue(rec, p));
     this.rec = rec;
     this.target = target;

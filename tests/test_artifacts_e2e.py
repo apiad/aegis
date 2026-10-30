@@ -3,11 +3,12 @@ the person's side is called through the registry as the browser would."""
 
 import asyncio
 import json
+from pathlib import Path
 
 import httpx
 import pytest
 
-from aegis import artifacts
+from aegis import artifacts, dictation
 from aegis.ops import Caller, OpError
 from aegis.web import inject_point
 
@@ -287,6 +288,81 @@ async def test_an_emit_wakes_the_agent_and_leaves_the_page_live(world, tmp_path)
     assert (
         ok(await turn(a, mcp("artifact_read", id=aid)))["events"][0]["name"] == "hover"
     )
+
+
+async def test_a_dictated_answer_carries_the_note(world, tmp_path):
+    a, aid = await landed(world, tmp_path)
+    await world.app.registry.call(
+        "artifact.submit",
+        {
+            "log_id": a.log_id,
+            "artifact_id": aid,
+            "data": {"q": "said"},
+            "label": "Done",
+            "dictated": True,
+        },
+    )
+    await until(lambda: inbox(a) and a.status == "idle", what="the wake")
+    assert dictation.NOTE in inbox(a)[0]["md"]
+
+
+async def test_an_upload_lands_in_the_inbox_as_an_event_and_wakes_the_agent(
+    world, tmp_path
+):
+    a, aid = await landed(world, tmp_path)
+    reg = world.app.registry
+    uid = (
+        await reg.call(
+            "attachment.begin", {"log_id": a.log_id, "name": "a.txt", "size": 2}
+        )
+    )["upload_id"]
+    await reg.call(
+        "attachment.put",
+        {"log_id": a.log_id, "upload_id": uid, "offset": 0, "data": "aGk="},
+    )
+    sent = await reg.call(
+        "artifact.upload", {"log_id": a.log_id, "artifact_id": aid, "upload_id": uid}
+    )
+    assert Path(sent["path"]).read_text() == "hi"
+    await until(lambda: inbox(a) and a.status == "idle", what="the wake")
+    (m,) = inbox(a)
+    assert m["title"].startswith(f"artifact:{aid} · upload")
+    assert sent["path"] in m["md"]
+    assert arts(a)[0]["status"] == "live"
+    read = ok(await turn(a, mcp("artifact_read", id=aid)))
+    assert read["events"][0]["name"] == "upload"
+    assert read["events"][0]["data"]["path"] == sent["path"]
+
+
+async def test_a_page_cannot_emit_the_upload_event_itself(world, tmp_path):
+    a, aid = await landed(world, tmp_path)
+    with pytest.raises(OpError) as e:
+        await world.app.registry.call(
+            "artifact.emit",
+            {"log_id": a.log_id, "artifact_id": aid, "name": "upload", "data": {}},
+        )
+    assert e.value.code == "bad_name"
+
+
+async def test_an_upload_over_the_rate_stays_staged_and_wakes_nobody(
+    world, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(artifacts, "EMITS_PER_MINUTE", 0)
+    a, aid = await landed(world, tmp_path)
+    reg = world.app.registry
+    uid = (
+        await reg.call(
+            "attachment.begin", {"log_id": a.log_id, "name": "a.txt", "size": 0}
+        )
+    )["upload_id"]
+    with pytest.raises(OpError) as e:
+        await reg.call(
+            "artifact.upload",
+            {"log_id": a.log_id, "artifact_id": aid, "upload_id": uid},
+        )
+    assert e.value.code == "rate_limited"
+    assert inbox(a) == []
+    await reg.call("attachment.drop", {"log_id": a.log_id, "upload_id": uid})
 
 
 async def test_caps_are_enforced_before_anything_reaches_the_agent(

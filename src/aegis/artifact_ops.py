@@ -1,21 +1,23 @@
-"""The artifact operations: five for agents, five for the page's bridge.
+"""The artifact operations: five for agents, six for the page's bridge.
 
 An agent creates a draft, edits it with its own tools, and sends it; the send
 runs the static checks, snapshots the draft like ``file.send`` does, asks the
 browsers on the transcript to run it hidden (``Board.probe``), and records the
 artifact only when the page started or nobody was there to try. The page's
-side is five person operations the bridge (``client/js/artifacts.js``) calls
+side is six person operations the bridge (``client/js/artifacts.js``) calls
 with the artifact id the host holds, never one the page sent.
 """
 
 from __future__ import annotations
 
+import asyncio
 import shutil
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field, field_validator
 
-from . import artifacts, files
+from . import artifacts, dictation, files
+from . import attachments as att
 from . import layout as canvas
 from .artifacts import ArtifactError
 from .ops import Caller, OpError
@@ -80,11 +82,19 @@ class PageState(PageRef):
 class PageEmit(PageRef):
     name: str
     data: Any = None
+    # The page got dictated text since its last answer: the agent reads the
+    # answer with dictation.NOTE after it. The bridge sets it, not the page.
+    dictated: bool = False
 
 
 class PageSubmit(PageRef):
     data: Any = None
     label: str = Label
+    dictated: bool = False
+
+
+class PageUpload(PageRef):
+    upload_id: str
 
 
 class _CutError(BaseModel):
@@ -184,10 +194,15 @@ def register_artifact_ops(app: App) -> None:
         artifact_update; `aegis.onStatus(fn)` hears `{status, refused}`, where
         `refused` is `{code, message}` when the server refused the last submit
         (the card shows the person the message), also on
-        `<html data-refused>`. Answers reach you as a user turn headed
-        `> from artifact:<id> · submit|<event>|error · …` with the JSON in a
+        `<html data-refused>`; `aegis.dictate(field, fn)` inside a click
+        dictates into a textarea, `fn` hearing loading, listening, finishing
+        and idle; `aegis.upload(file, onProgress)` puts a file of up to 100 MB
+        in your inbox, wakes you with its path and resolves to `{name, path,
+        mime, size}` (help_read artifacts, "Take dictation or a file").
+        Answers reach you as a user turn headed
+        `> from artifact:<id> · submit|<event>|upload|error · …` with the JSON in a
         code block. Rules the checks cannot catch: an event name is one word,
-        `[a-z][a-z0-9_-]{0,31}`, never `submit`, `error` or `close`; state,
+        `[a-z][a-z0-9_-]{0,31}`, never `submit`, `error`, `close` or `upload`; state,
         event data and the submit's data are at most 64 KB each; at most 20
         emits a minute; a submit's label is one line of at most 140
         characters. Keep the skeleton's script tag and stylesheet link, or
@@ -333,7 +348,11 @@ def register_artifact_ops(app: App) -> None:
             s.artifacts.event(p.artifact_id, p.name, p.data)
         except ArtifactError as e:
             raise _err(e) from e
-        await s.deliver(artifacts.header(p.artifact_id, p.name), artifacts.body(p.data))
+        text = artifacts.body(p.data)
+        await s.deliver(
+            artifacts.header(p.artifact_id, p.name),
+            dictation.with_note(text) if p.dictated else text,
+        )
         return "ok"
 
     @r.op("artifact.submit", PageSubmit, owned="log_id")
@@ -347,12 +366,47 @@ def register_artifact_ops(app: App) -> None:
             raise _err(e) from e
         # The person's own answer: the turn it begins is theirs, as /setup's
         # apply is (Session.person_turn).
+        text = artifacts.body(p.data, p.label)
         await s.deliver(
             artifacts.header(p.artifact_id, "submit"),
-            artifacts.body(p.data, p.label),
+            dictation.with_note(text) if p.dictated else text,
             by_person=not caller.is_agent,
         )
         return "ok"
+
+    @r.op("artifact.upload", PageUpload, owned="log_id")
+    async def upload(p: PageUpload, caller):
+        """Move a file the page uploaded (attachment.begin and .put) into the
+        session's inbox and wake the agent with its path. It counts as an
+        event, and the count comes first, so a refused file stays staged and
+        reaches nobody. The page gets the record, for the person to see."""
+        s = page(p)
+        s.check_lock()  # a person does not steer a workflow's node
+        try:
+            s.artifacts.rate(p.artifact_id)
+        except ArtifactError as e:
+            raise _err(e) from e
+        try:
+            (rec,) = await asyncio.to_thread(
+                att.commit,
+                app.roots.state_root,
+                p.log_id,
+                [p.upload_id],
+                deliver=app._deliver(s),
+            )
+        except files.FileError as e:
+            raise OpError(e.code, e.message) from e
+        sent = {k: rec[k] for k in ("name", "path", "mime", "size")}
+        try:
+            s.artifacts.record_event(p.artifact_id, "upload", sent)
+        except ArtifactError:
+            pass  # closed while the file moved: the agent is still told where it is
+        await s.deliver(
+            artifacts.header(p.artifact_id, "upload"),
+            att.message("", [rec]),
+            by_person=not caller.is_agent,
+        )
+        return sent
 
     @r.op("artifact.error", PageError, owned="log_id")
     async def error(p: PageError, caller):
