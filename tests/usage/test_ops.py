@@ -9,7 +9,7 @@ import pytest
 
 from aegis.app import App
 from aegis.journal import db
-from aegis.mcp_tools import _schema
+from aegis.mcp import _schema
 from aegis.ops import Caller, OpError, Principal, Registry
 from aegis.usage import ops, tables
 from aegis.usage.ops import register_usage_ops
