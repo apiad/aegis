@@ -1035,6 +1035,10 @@ body{background:#000}
 .a2 .stage.phone>iframe[data-artifact]{width:390px;max-width:100%;flex:none;border-inline:1px solid var(--rule)}
 .a2 .btn.phone[aria-pressed=true]{color:var(--accent);background:var(--accent-soft)}
 @media (max-width:480px){.a2 .btn.phone{display:none}}
+.a2 .stage>.dictbar{position:sticky;top:6px;z-index:2;display:flex;align-items:center;gap:8px;width:fit-content;max-width:calc(100% - 12px);margin:6px 6px -44px auto;padding:4px 6px 4px 10px;background:var(--raised);color:var(--ink);border:1px solid var(--accent);border-radius:var(--r);font-family:var(--font-chrome);font-size:12.5px;box-shadow:0 1px 6px rgba(0,0,0,.2)}
+.a2 .stage.phone:has(>.dictbar){flex-wrap:wrap}
+.a2 .dictbar .ic{color:var(--accent);flex:none}
+.a2 .dictbar[data-state=listening] .ic{color:var(--err)}
 .a2 .acard .done{padding:10px 12px;color:var(--muted);font-family:var(--font-chrome);font-size:12.5px;border-top:1px solid var(--rule)}
 .a2 :is(.acard,.docked,.viewer) .refused{padding:8px 12px;color:var(--err);background:var(--err-bg);font-family:var(--font-chrome);font-size:12.5px;border-top:1px solid var(--rule);overflow-wrap:anywhere}
 .a2 .acard[data-status=submitted] .fbar>.ic{color:var(--ok)}
