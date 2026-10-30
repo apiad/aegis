@@ -1,0 +1,9 @@
+$ # BEFORE: the old bounding_box() reads, under the same redraws
+$ pytest tests/test_probe_774.py -q
+E           TypeError: 'NoneType' object is not subscriptable
+FAILED tests/test_probe_774.py::test_old_measure_under_redraws - TypeError: '...
+1 failed in 6.54s
+
+$ # AFTER: the test as committed
+$ pytest tests/test_browser.py -k test_a_phone_fits_the_archive -q
+1 passed, 314 deselected in 7.54s
