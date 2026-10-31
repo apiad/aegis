@@ -269,7 +269,8 @@ def test_on_a_phone_the_more_button_always_shows_and_opens_the_switcher(
     a = spawn(pg)
     pg.goto(server.url.split("#")[0] + "#fleet")
     pg.wait_for_selector("#tab-more:visible")
-    assert pg.inner_text("#tab-more").strip() == "1"
+    # The button shows before the session's event reaches the page.
+    pg.wait_for_function("document.getElementById('tab-more').innerText.trim() === '1'")
     pg.tap("#tab-more")
     pg.wait_for_selector("#switcher", state="visible")
     assert pg.evaluate("document.activeElement.id") != "switcher-q"
