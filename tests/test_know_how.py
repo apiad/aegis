@@ -63,9 +63,9 @@ def test_a_menu_names_paths_the_agent_can_open_and_says_what_it_left_out():
     docs = [("a.md", "when a")]
     near = block("/w/quill", "/w/quill", "/w", docs, 1)
     assert near.startswith(NOTICE_HEADER + "know-how · quill\n")
-    assert "\nquill/know-how/a.md: when a" in near
+    assert "\n- quill/know-how/a.md: when a" in near
     far = block("/w/quill", "/w/quill", "/elsewhere", docs, 3)
-    assert "\n/w/quill/know-how/a.md: when a" in far
+    assert "\n- /w/quill/know-how/a.md: when a" in far
     assert far.endswith("… and 2 more in know-how/")
 
 

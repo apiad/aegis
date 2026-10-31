@@ -235,7 +235,8 @@ in the repository or when a tool call names a path in it:
 ```text
 > from aegis:notice · know-how · quill
 This repository's procedure docs. Read those that match your task before you act:
-know-how/releasing.md: bumping the version and cutting a release
+
+- know-how/releasing.md: bumping the version and cutting a release
 ```
 
 It reaches the agent as a notice does (help_read sessions notices): on
