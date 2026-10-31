@@ -34,6 +34,8 @@ body{background:#000}
 #a2 .tab.on{background:var(--bg);color:var(--strong);box-shadow:inset 0 2px 0 var(--accent)}
 #a2 .tabs .gap{flex:1}
 #a2 .tabs{min-width:0}
+/* Only the tab list gives way when the tabs outgrow the row: it scrolls. */
+#a2 .tabs>:not(.tablist,.gap){flex-shrink:0}
 #a2 .tablist{display:flex;gap:2px;flex:0 1 auto;min-width:0;overflow-x:auto;scrollbar-width:none}
 #a2 .tablist::-webkit-scrollbar{display:none}
 #a2 .tab-more{flex:none;align-self:center;margin:0 4px 6px;padding:2px 8px;font:12px var(--font-chrome);color:var(--muted);background:none;border:1px solid transparent;border-radius:var(--r);cursor:pointer}
