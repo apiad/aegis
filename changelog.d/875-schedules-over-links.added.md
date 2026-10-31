@@ -1,2 +1,0 @@
-- **An agent's schedule tools reach a server linked with trust.** Every `schedule_*` tool takes `name@server`, as `queue_enqueue` takes `queue@server`, and `schedule_list` adds each trusted server's schedules. The schedule lives and ticks on that server and its runs start there, so the clock keeps going while the near machine sleeps. It waits for a person as at home: the card shows under the agent's call, Unpause acts on the far server, and no agent can unpause or fire one that is waiting. A plain link stays refused.
-help: schedules#an-agent-s-schedule-waits-for-you

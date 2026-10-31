@@ -4,7 +4,7 @@
 [claude-code]
 package = "@anthropic-ai/claude-code"
 min = "2.1.296"
-max = "2.1.311"
+max = "2.1.316"
 
 [codex]
 package = "@openai/codex"

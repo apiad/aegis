@@ -5,6 +5,40 @@ The format follows Keep a Changelog; this project uses SemVer (0.x).
 
 ## [Unreleased]
 
+## [2.21.0] - 2026-10-31
+
+### Added
+
+- **A click on a monitor goes to the tool call it waits on.** `monitor_start` takes a required, nullable `source`: text from the call that started the work, which aegis resolves to that call's row. The monitor's card has the same link under Waits on, for a phone and for the keyboard. A monitor with no linked call opens its card, as before.
+  help: monitors#link-the-call-you-wait-on
+
+- **A handoff can continue on a linked server.** `/handoff --agent name@server` and `session_handoff` with `host` start the new session there, under the same policy as a spawn, and archive the old one once the far side has its first message.
+  help: handoffs#continue-in-a-fresh-session
+
+- **An agent can hand off its own session.** `session_handoff` closes the session to messages at once, and starts a new one when the agent's turn ends, on the same agent or another, with `msg` as what to do next.
+  help: handoffs#continue-in-a-fresh-session
+
+- **`/handoff` continues your work in a new session and closes this one to messages.** Type `/handoff implement this plan` at any break: a new session starts with that text, the brief if there is one and the last turns, optionally on another agent with `--agent`.
+  help: handoffs#continue-in-a-fresh-session
+
+- **An agent's schedule tools reach a server linked with trust.** Every `schedule_*` tool takes `name@server`, as `queue_enqueue` takes `queue@server`, and `schedule_list` adds each trusted server's schedules. The schedule lives and ticks on that server and its runs start there, so the clock keeps going while the near machine sleeps. It waits for a person as at home: the card shows under the agent's call, Unpause acts on the far server, and no agent can unpause or fire one that is waiting. A plain link stays refused.
+  help: schedules#an-agent-s-schedule-waits-for-you
+
+- **A session is told about a repository's `know-how/` docs when it first touches it.** It gets each doc's `when:` line once, on Claude Code right after the tool call that reached the repository, so a rule telling agents to print that menu by hand is no longer needed there, and `/setup` offers to remove it. `/setup` no longer offers to import such docs as skills.
+  help: knowledge#know-how-in-a-repository
+
+### Changed
+
+- **A session that was continued in a new one no longer takes messages.** Writing to it used to cancel its archive, so two sessions could carry one task. Its box now links to the new session, messages are refused, and an archived one cannot be reopened; a new session that fails before it answers gives the old one back. "Continue fresh" is also refused while a monitor, a background task or a queue task would wake the session, where the archive used to cancel them.
+  help: handoffs#continue-in-a-fresh-session
+
+- **On Claude Code, a notice reaches the agent at its next tool call of any kind.** It used to wait for the next prompt or aegis tool result, and aegis tools were about one call in nine. The write joins the turn's next model request, so it adds no request and no measurable time. Other harnesses keep the old route for now.
+  help: sessions#notices
+
+### Fixed
+
+- **A `git commit -q` now counts as a commit in the journal and in usage.** aegis read a commit only from the line git prints for it, which `-q` removes, so of 1,027 commits agents made, 8 were read: the rest were missing from the journal, and their work counted as `build` whatever their type. A commit that printed no line now takes its subject from the command's `-m` or heredoc and its hash from the repository. The journal and the usage rows rebuild once on upgrade, so history is corrected too.
+
 ## [2.20.0] - 2026-10-30
 
 ### Fixed

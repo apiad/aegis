@@ -1,2 +1,0 @@
-- **A session that was continued in a new one no longer takes messages.** Writing to it used to cancel its archive, so two sessions could carry one task. Its box now links to the new session, messages are refused, and an archived one cannot be reopened; a new session that fails before it answers gives the old one back. "Continue fresh" is also refused while a monitor, a background task or a queue task would wake the session, where the archive used to cancel them.
-help: handoffs#continue-in-a-fresh-session

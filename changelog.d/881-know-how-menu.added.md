@@ -1,2 +1,0 @@
-- **A session is told about a repository's `know-how/` docs when it first touches it.** It gets each doc's `when:` line once, on Claude Code right after the tool call that reached the repository, so a rule telling agents to print that menu by hand is no longer needed there, and `/setup` offers to remove it. `/setup` no longer offers to import such docs as skills.
-help: knowledge#know-how-in-a-repository
