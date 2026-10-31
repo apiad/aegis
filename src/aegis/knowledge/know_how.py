@@ -95,19 +95,21 @@ def read_docs(top: str, user: str | None) -> tuple[list[tuple[str, str]], int]:
 
 def block(main: str, top: str, cwd: str, docs: list[tuple[str, str]], n: int) -> str:
     """The menu an agent reads: paths it can open from where it runs."""
-    lines = [
-        f"{NOTICE_HEADER}{FOLDER} · {os.path.basename(main)}",
+    # A list, so the transcript's Markdown keeps one doc to a line.
+    head = (
+        f"{NOTICE_HEADER}{FOLDER} · {os.path.basename(main)}\n"
         "This repository's procedure docs. Read those that match your task "
-        "before you act:",
-    ]
+        "before you act:\n\n"
+    )
+    lines = []
     for name, description in docs:
         path = os.path.join(top, FOLDER, name)
         near = os.path.relpath(path, cwd)
         path = path if near.startswith("..") else near
-        lines.append(f"{path}: {description}" if description else path)
+        lines.append(f"- {path}: {description}" if description else f"- {path}")
     if n > len(docs):
-        lines.append(f"… and {n - len(docs)} more in {FOLDER}/")
-    return "\n".join(lines)
+        lines.append(f"- … and {n - len(docs)} more in {FOLDER}/")
+    return head + "\n".join(lines)
 
 
 def candidates(tool_input: dict, cwd: str) -> list[str]:
