@@ -880,7 +880,14 @@ async def test_a_message_held_mid_turn_is_announced_on_the_next_tool_result(worl
     await a.deliver("> from agent:peer · 2026-10-22T12:00:00Z", "the spec changed")
     assert [m["body"] for m in a.held] == ["the spec changed"]
     await busy
-    await until(lambda: not a.held and a.status == "idle", timeout=5, what="the flush")
+    # Its first prompt: that send reads the session's know-how before it records.
+    await until(
+        lambda: (
+            not a.held and a.status == "idle" and len(sent(world.app, a.log_id)) == 2
+        ),
+        timeout=5,
+        what="the flush",
+    )
     records, _ = read_store(world.app.sessions.store_path(a.log_id))
     store = json.dumps(records)
     assert "aegis:notice" in store and "held:m" in store

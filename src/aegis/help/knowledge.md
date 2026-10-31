@@ -219,7 +219,7 @@ A repository can keep its own procedures as Markdown files in a `know-how/`
 folder at its root. They stay there: they go through review with the code,
 reach everyone who clones it, and differ by branch, so aegis keeps no copy and
 they are not in the Knowledge view. To be told when to read a doc, an agent
-needs one line from it, tried in this order:
+needs a line from it, tried in this order:
 
 ```yaml
 ---
