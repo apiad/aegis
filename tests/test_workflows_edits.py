@@ -317,6 +317,9 @@ async def test_finished_steps_never_expire_after_an_edit(world):
 async def test_arming_again_with_a_command_needs_full_permission(world):
     waits = (
         "id: ed\ntitle: Edit\nsay: Edit.\nroot:\n  seq:\n"
+        # The edits touch only the step after: a stop can land before or after
+        # the run's first step has started, and a started step cannot change.
+        "    - {wait: 30s, id: first, say: First.}\n"
         "    - {wait: 30s, id: build, say: Build.}\n"
         "  say: One.\n"
     )
@@ -331,7 +334,7 @@ async def test_arming_again_with_a_command_needs_full_permission(world):
         wf.arm(main, shelled, {}, run=run)
     assert e.value.code == "not_allowed" and "full permission" in e.value.message
     # A change the session may make is armed with its diff on the story line.
-    later = waits.replace("wait: 30s", "wait: 1s")
+    later = waits.replace("wait: 30s, id: build", "wait: 1s, id: build")
     wf.arm(main, later, {}, run=run)
     line = wf.runs[run].story[-1]
     assert line["text"].startswith("Armed again")
