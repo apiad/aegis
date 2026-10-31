@@ -2335,6 +2335,73 @@ async def test_real_claude_takes_a_notice_at_its_next_tool_call(tmp_path: Path):
         await asyncio.wait_for(task, 30)
 
 
+async def test_real_claude_follows_know_how_it_was_told_about_mid_turn(tmp_path: Path):
+    """No instruction names know-how. A real Sonnet started outside a repository
+    touches it, gets its menu, and follows a rule only the doc states (#881)."""
+    import asyncio
+    import subprocess
+
+    import uvicorn
+
+    from aegis.app import App
+    from aegis.roots import make_roots
+    from aegis.web import build_web
+
+    from .test_agents import _free_port
+
+    claude = shutil.which("claude")
+    assert claude, "claude is not on PATH"
+    quill = tmp_path / "repos" / "quill"
+    (quill / "know-how").mkdir(parents=True)
+    (quill / "widget.py").write_text("print('hello')\n")
+    (quill / "know-how" / "landing-a-change.md").write_text(
+        "---\nwhen: committing any change in this repository\n---\n\n"
+        "The commit subject must start with `WID:`. CI rejects anything else.\n"
+    )
+    git = ["git", "-C", str(quill), "-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run(["git", "init", "-q", str(quill)], check=True)
+    subprocess.run([*git, "add", "."], check=True)
+    subprocess.run([*git, "commit", "-qm", "init"], check=True)
+    subprocess.run(["git", "-C", str(quill), "config", "user.name", "t"], check=True)
+    subprocess.run(["git", "-C", str(quill), "config", "user.email", "t@t"], check=True)
+    (tmp_path / ".aegis.yaml").write_text(
+        f"agents:\n  sonnet: {{harness: claude-code, model: {SONNET}, effort: low, permission: full}}\n"
+    )
+    port = _free_port()
+    app = App(
+        make_roots(tmp_path, None),
+        claude_bin=claude,
+        base_url=f"http://127.0.0.1:{port}",
+    )
+    server = uvicorn.Server(
+        uvicorn.Config(
+            build_web(app, "t", {f"127.0.0.1:{port}"}), port=port, log_level="warning"
+        )
+    )
+    task = asyncio.create_task(server.serve())
+    await until(lambda: server.started, timeout=10, what="uvicorn")
+    try:
+        r = await app.registry.call("session.spawn", {"agent": "sonnet"})
+        s = app.sessions.sessions[r["log_id"]]
+        await s.send(
+            "In repos/quill, change the greeting in widget.py to 'hola' and commit it."
+        )
+        await until(lambda: s.status == "working", timeout=60, what="the turn")
+        await until(lambda: s.status == "idle", timeout=240, what="its end")
+        subject = subprocess.run(
+            ["git", "-C", str(quill), "log", "-1", "--format=%s"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        rows = [e["title"] for e in s.entries() if e["kind"] == "inbox"]
+        assert [t for t in rows if "· know-how · quill" in t], rows
+        assert subject.startswith("WID:"), subject
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 30)
+
+
 async def test_real_claude_runs_setup_asks_first_and_proposes_from_a_project(
     tmp_path: Path, monkeypatch
 ):

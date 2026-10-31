@@ -140,6 +140,7 @@ class Registry(Host):
         # knowledge.Knowledge, and whose knowledge a session's sends are
         # hinted from (its owner, else the admin); both set by App.
         self.knowledge = None
+        self.know_how = None  # knowledge.know_how.KnowHow, set by App
         self.skill_servers = None  # skill_mcp.SkillServers, set by App
         self._hint_failures: set[str] = set()  # causes already logged
         self.principal_of: Callable[[Session], str] = lambda s: s.spec.owner or ""
@@ -466,7 +467,21 @@ class Registry(Host):
         return None if self.cascade is None else self.cascade(session, text)
 
     def notice_blocks(self, session: Session, at: str) -> str:
-        return "" if self.notices is None else self.notices.pending(session, at)
+        blocks = "" if self.notices is None else self.notices.pending(session, at)
+        menus = "" if self.know_how is None else self.know_how.pending(session)
+        return "\n\n".join(b for b in (blocks, menus) if b)
+
+    def know_how_touched(self, session: Session, tool_input: dict) -> None:
+        if self.know_how is not None:
+            self.know_how.touched(session, tool_input)
+
+    async def know_how_ready(self, session: Session) -> None:
+        # An extra, as the hint is: whatever breaks in it, the send still goes.
+        if self.know_how is not None:
+            try:
+                await self.know_how.ready(session)
+            except Exception:
+                log.exception("know-how failed for %s", session.handle)
 
     def knowledge_native(self, owner: str | None) -> bool:
         return self.native_of(owner)
@@ -489,6 +504,8 @@ class Registry(Host):
     def compacted(self, session: Session) -> None:
         if self.notices is not None:
             self.notices.forget(session.log_id)
+        if self.know_how is not None:
+            self.know_how.reset(session)
 
     def sign_in_failed(self, session: Session) -> None:
         if self.sign_in is not None:
@@ -748,6 +765,7 @@ class Registry(Host):
             restart_continues=meta.get("restart_continues") or 0,
             quota_paused=meta.get("quota_paused"),
             notices_sent=meta.get("notices_sent"),
+            know_how_sent=meta.get("know_how_sent"),
             items_sent=meta.get("items_sent"),
             skills=meta.get("skills"),
             skill_runs=meta.get("skill_runs"),
@@ -994,6 +1012,8 @@ class Registry(Host):
             self.side_notes.drop(log_id)
         if self.knowledge is not None:
             self.knowledge.forget(log_id)
+        if self.know_how is not None:
+            self.know_how.drop(log_id)
         if self.skill_servers is not None:
             try:
                 await self.skill_servers.stop_session(log_id)

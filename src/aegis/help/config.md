@@ -501,6 +501,10 @@ is read when aegis starts, so a change needs a restart. Without the extra,
 
 Settings → Search embeddings edits it.
 
+`knowledge.know_how`, true by default, tells a session about a repository's
+`know-how/` docs when it reaches that repository (help_read knowledge). Set it to
+false to turn that off. It is read when aegis starts.
+
 ## Exit through a link
 
 `exit_via:` names a trusted link: what aegis starts reaches the internet from

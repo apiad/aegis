@@ -213,6 +213,37 @@ harness's own commands is offered as `/skill:<name>`, and the other
 command keeps its name. Set `command: false` in a skill's `aegis:` block to keep it
 out of the menu.
 
+## Know-how in a repository
+
+A repository can keep its own procedures as Markdown files in a `know-how/`
+folder at its root. They stay there: they go through review with the code,
+reach everyone who clones it, and differ by branch, so aegis keeps no copy and
+they are not in the Knowledge view. To be told when to read a doc, an agent
+needs one line from it, tried in this order:
+
+```yaml
+---
+when: bumping the version and cutting a release
+---
+```
+
+a line starting `**When to reach for this:**`, or the doc's opening heading.
+
+A session gets those lines once, up to 50 docs, as a notice, when it starts
+in the repository or when a tool call names a path in it:
+
+```text
+> from aegis:notice · know-how · quill
+This repository's procedure docs. Read those that match your task before you act:
+know-how/releasing.md: bumping the version and cutting a release
+```
+
+It reaches the agent as a notice does (help_read sessions notices): on
+Claude Code right after that tool call, elsewhere on the next message or
+aegis tool result. A worktree counts as its main checkout, and after a
+compaction a session is told again. To turn it off, set `knowledge.know_how:
+false` (help_read config search embeddings).
+
 ## Tools for agents
 
 - `memory_search` ranks your memories against a query in the agent's own
