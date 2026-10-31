@@ -130,8 +130,9 @@ async def test_a_message_to_a_stopped_session_waits_for_the_gate(world):
     ]
     seed(world, session=40)
     await until(lambda: not s.held and s.running, what="the held message sent")
+    # Its first prompt: that send reads the session's know-how before it records.
+    await until(lambda: "please look" in json.dumps(s.entries()), what="the record")
     await until(lambda: s.status == "idle", what="its turn")
-    assert "please look" in json.dumps(s.entries())
 
 
 async def test_a_person_cannot_restart_a_gated_session_by_typing(world):
