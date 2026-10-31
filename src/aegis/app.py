@@ -110,6 +110,7 @@ from .push import register_push_ops
 from .queues import Queues
 from .journal.ops import register_journal_ops
 from .journal.service import Journal
+from .knowledge.know_how import KnowHow
 from .knowledge.service import Knowledge
 from .knowledge.items import NAME_RE, Item
 from .skill_mcp import SkillServers
@@ -596,6 +597,9 @@ class App:
             roots.state_root, self.config.current().knowledge["embeddings"]
         )
         reg.knowledge = self.knowledge
+        # knowledge.know_how too.
+        if self.config.current().knowledge["know_how"]:
+            reg.know_how = KnowHow(self._linux_user_of_session)
         self.skill_servers = SkillServers()
         reg.skill_servers = self.skill_servers
         reg.principal_of = lambda s: s.spec.owner or self.user

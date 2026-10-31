@@ -515,6 +515,15 @@ neither repeats a notice nor forgets its clear; the episodes and the one
 asker per kind and owner live in memory. A 30 s loop turns the episodes so a
 notice at critical toasts while nobody is talking to anyone.
 
+**A repository's know-how stays in its tree and is told once per session.**
+`knowledge/know_how.py` lists `know-how/*.md` at the git root a session first
+touches, read from the session's working directory and the paths its tool
+calls name, and owes it one block of each doc's `when:` line. The block rides
+with the notices (`Registry.notice_blocks`), and `Session.know_how_sent` keeps
+the main checkouts told. It is not the store below: a repository's docs are
+reviewed, shared and differ by branch. It ranks nothing, because the message a
+turn starts with predicts the doc read no better than chance.
+
 **Knowledge is per principal, on the server, found per message.** Each
 principal's skills and memories are Markdown files under
 `<state>/knowledge/<principal>/`, a git repository in which every change

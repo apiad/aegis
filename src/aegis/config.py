@@ -310,21 +310,31 @@ def workflows_from(raw: object) -> dict:
 NUDGES_DEFAULTS: dict = {"silent_s": 2, "plan_min": 15}
 
 
-KNOWLEDGE_DEFAULTS = {"embeddings": "off"}
+KNOWLEDGE_DEFAULTS: dict = {"embeddings": "off", "know_how": True}
 
 
 def knowledge_from(raw: object) -> dict:
     """The ``knowledge:`` block over its defaults: ``embeddings``, off or a
-    fastembed model's name (knowledge/embed.py). A wrong block keeps the
-    defaults and carries ``error`` for aegis doctor."""
+    fastembed model's name (knowledge/embed.py), and ``know_how``, whether a
+    session is told about a repository's docs (knowledge/know_how.py). A wrong
+    block keeps the defaults and carries ``error`` for aegis doctor."""
     out = dict(KNOWLEDGE_DEFAULTS)
     if raw is None:
         return out
     if not isinstance(raw, dict):
-        return out | {"error": "knowledge must be a mapping with embeddings"}
+        return out | {
+            "error": "knowledge must be a mapping with embeddings and know_how"
+        }
     for k, v in raw.items():
         if k not in KNOWLEDGE_DEFAULTS:
-            return out | {"error": f"knowledge has no key {k!r}; it takes embeddings"}
+            return out | {
+                "error": f"knowledge has no key {k!r}; it takes embeddings and know_how"
+            }
+        if k == "know_how":
+            if not isinstance(v, bool):
+                return out | {"error": f"knowledge.know_how {v!r} is not true or false"}
+            out["know_how"] = v
+            continue
         if v is False:
             v = "off"
         if not isinstance(v, str) or not v.strip():
@@ -553,6 +563,7 @@ def fields() -> list[dict]:
         else:
             add("network", f"network.{k}", "bool" if k == "enabled" else "number", v)
     add("embeddings", "knowledge.embeddings", "text", KNOWLEDGE_DEFAULTS["embeddings"])
+    add("embeddings", "knowledge.know_how", "bool", KNOWLEDGE_DEFAULTS["know_how"])
     for k, v in host_from(None)[0].items():
         add("host", f"host.{k}", "list", v)
     return out

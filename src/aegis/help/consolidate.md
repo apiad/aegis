@@ -29,6 +29,11 @@ Change nothing in this step. Call `knowledge_stats` once with
   invoked (`flag=never_recalled` lists only those);
 - likely duplicates: the `duplicates` pairs, each with its score.
 
+Also list the docs in the `know-how/` folders of the repositories you worked
+in that have no `when:` line (`grep -L '^when:' know-how/*.md`): aegis falls
+back to their heading, which says little about when to read them. Name
+them in your summary, as work for those repositories; there is no row for them.
+
 Read the items a row will be about (`memory_read`, `skill_read`) before
 you propose it: the score only says two items look alike. While you read,
 note every `[[name]]` link to a name `knowledge_stats` does not list: a

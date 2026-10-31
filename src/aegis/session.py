@@ -206,6 +206,12 @@ class Host:
         ``at`` is "send" for a prompt, "tool" for a tool result."""
         return ""
 
+    def know_how_touched(self, session: "Session", tool_input: dict) -> None:
+        """A tool call of the session's own named these paths."""
+
+    async def know_how_ready(self, session: "Session") -> None:
+        """Before a send: a first one waits for its directory's know-how."""
+
     def knowledge_hint(self, session: "Session", text: str) -> str:
         """The skills and memories that may matter to a send of ``text``
         (knowledge/hint.py), or ""."""
@@ -399,6 +405,7 @@ class Session:
         restart_continues: int = 0,
         quota_paused: str | None = None,
         notices_sent: dict[str, str] | None = None,
+        know_how_sent: list[str] | None = None,
         items_sent: dict[str, str] | None = None,
         skills: list[str] | None = None,
         skill_runs: dict[str, int] | None = None,
@@ -507,6 +514,8 @@ class Session:
         # {"disk": "warn", "announce:<id>": "warn"}. In the meta, so a restart
         # neither repeats a notice nor forgets a clear.
         self.notices_sent: dict[str, str] = dict(notices_sent or {})
+        # The main checkouts whose menu it was told (knowledge/know_how.py).
+        self.know_how_sent: list[str] = list(know_how_sent or [])
         # What per-session notice sources told it, apart from the host kinds
         # (notices.py): their restore reads every key in notices_sent.
         self.items_sent: dict[str, str] = dict(items_sent or {})
@@ -599,6 +608,7 @@ class Session:
             "restart_continues": self.restart_continues,
             "quota_paused": self.quota_paused,
             "notices_sent": self.notices_sent,
+            "know_how_sent": self.know_how_sent,
             "items_sent": self.items_sent,
             "skills": self.skills,
             "skill_runs": self.skill_runs,
@@ -1094,6 +1104,7 @@ class Session:
         if self.cascade_exhausted:
             self.cascade_exhausted = False  # a new turn starts
         if not text.startswith("/"):
+            await self._host.know_how_ready(self)
             # The hint first, then the notices. The record and the harness get
             # the same text, so the fold pairs them; the fold splits the
             # blocks off into their own rows.
@@ -1425,6 +1436,7 @@ class Session:
             if isinstance(ev, ToolCall) and ev.parent is None:
                 tools += 1
                 changes["tool_calls"] = tools
+                self._host.know_how_touched(self, ev.input)
                 self._steer_owed()
             if isinstance(ev, ToolCall) and ev.name in TIMER_TOOLS:
                 self.timers.add(ev.name)

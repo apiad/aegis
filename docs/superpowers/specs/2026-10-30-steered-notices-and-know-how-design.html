@@ -97,7 +97,7 @@ pre{font-family:var(--font-mono);font-size:12px;line-height:1.55;background:var(
 <div class="chrome">
   <span>aegis</span>
   <span class="tab">spec · steered notices and know-how</span>
-  <span class="st"><span class="pill acc">in progress</span><span class="pill">2026-10-30</span><span class="pill">#880 #881</span></span>
+  <span class="st"><span class="pill acc">implemented</span><span class="pill">2026-10-30</span><span class="pill">#880 #881</span></span>
 </div>
 <div class="wrap">
 <nav class="toc" id="toc">
@@ -116,7 +116,7 @@ pre{font-family:var(--font-mono);font-size:12px;line-height:1.55;background:var(
 </nav>
 <main>
 <h1>Notices at the next tool call, and each repository's know-how once</h1>
-<div class="meta"><span>docs/superpowers/specs/2026-10-30-steered-notices-and-know-how-design.html</span><span>·</span><span>in progress</span><span>·</span><span>issues #880, #881</span></div>
+<div class="meta"><span>docs/superpowers/specs/2026-10-30-steered-notices-and-know-how-design.html</span><span>·</span><span>implemented</span><span>·</span><span>issues #880, #881</span></div>
 <p class="lede">A notice waits for the agent's next prompt or next aegis tool call, and most calls are not aegis's. This spec writes what is owed into the running turn when aegis sees a tool call, on the harness measured to read it there. The same path carries a new item: the first time a session touches a git repository with a <code>know-how/</code> folder, it gets that folder's menu once, so no instruction file has to tell it to print one.</p>
 
 <h2 id="delivers"><span class="n">01</span>What this delivers</h2>
@@ -129,7 +129,7 @@ pre{font-family:var(--font-mono);font-size:12px;line-height:1.55;background:var(
 </div>
 <ul>
   <li>On Claude Code, a warning, a clear or a menu reaches the model on the request after the next tool call. The tool-result route is off for that harness.</li>
-  <li>Codex, OpenCode and Cursor keep the tool-result route for notices, and get menus with the next message.</li>
+  <li>Codex, OpenCode and Cursor keep the tool-result route, for notices and menus alike.</li>
   <li>A repository's know-how stays in its git tree. aegis reads it and keeps no copy.</li>
   <li><code>/setup</code> offers to remove the rule that tells agents to print the menu by hand, and stops importing a repository's docs as skills.</li>
 </ul>
@@ -185,7 +185,7 @@ pre{font-family:var(--font-mono);font-size:12px;line-height:1.55;background:var(
 <h2 id="menu"><span class="n">06</span>The know-how menu</h2>
 <p>A new module, <code>knowledge/know_how.py</code>, lists <code>know-how/*.md</code> at a git root and builds one block. Each line is a path relative to the root and a description taken from, in order, the frontmatter's <code>when:</code>, a <code>**When to reach for this:**</code> line, or the first heading. Of 189 docs measured, 99 have the first, 19 the second and 71 only the third.</p>
 <ul>
-  <li>Each description is flattened to one line, cut at 200 characters and escaped with <code>escape_headers</code>, since a cloned repository's text reaches the agent with no approval. A menu holds at most 50 docs and says how many it left out.</li>
+  <li>Each description is flattened to one line, cut at 200 characters and placed after the doc's path, so it can never look like a message header, since a cloned repository's text reaches the agent with no approval. A menu holds at most 50 docs and says how many it left out.</li>
   <li>A session gets a repository's menu once. The record is keyed by the main checkout, in the session's meta as <code>know_how_sent</code>, so a worktree and its main checkout count as one.</li>
   <li>After a compaction the record resets, through the same <code>Host.compacted</code> that makes notices repeat, because the menu may have left the context.</li>
   <li>Files are read as the session's Linux user with <code>launch.run</code>, off the event loop.</li>
@@ -194,7 +194,7 @@ pre{font-family:var(--font-mono);font-size:12px;line-height:1.55;background:var(
 
 <h2 id="reach"><span class="n">07</span>Finding the repository</h2>
 <p>On each <code>ToolCall</code>, the session takes candidate paths from <code>file_path</code>, <code>notebook_path</code> and <code>path</code>, from the words of a Bash command that contain a <code>/</code>, and from the Bash working directory it follows with <code>journal.shell.leading_cd</code>. A session also starts with its spawn directory as a candidate, so a session spawned inside a repository has its menu on the first message.</p>
-<p>A thread resolves candidates it has not seen with <code>journal.paths.place</code>, whose result is cached per directory. A root with no docs, or one already told, costs nothing further. A menu that is ready while the turn runs is steered on the next tool call that passes the guards. Otherwise it rides on the next message, which is also the route for every harness with <code>steers_notices</code> false.</p>
+<p>A thread resolves candidates it has not seen with <code>journal.paths.place</code>, whose result is cached per directory. A root with no docs, or one already told, costs nothing further. A menu that is ready while the turn runs is steered at once if the guards pass. Otherwise it is owed like a notice, and rides on the next tool call, message or, for a harness with <code>steers_notices</code> false, aegis tool result.</p>
 
 <h2 id="seen"><span class="n">08</span>What people and agents see</h2>
 <div class="notice"><span class="lbl">The agent reads, mid-turn, as a user message</span>&gt; from aegis:notice · know-how · repos/quill<br>This repository's procedure docs. Read those that match your task before you act:<br>know-how/releasing.md: bumping the version and cutting a release<br>know-how/landing-a-change.md: starting any non-trivial change here</div>
@@ -229,7 +229,7 @@ pre{font-family:var(--font-mono);font-size:12px;line-height:1.55;background:var(
   <li>Not here: steering on Codex or OpenCode. Each needs a run with a real model, and flipping <code>steers_notices</code> is then the change.</li>
   <li>Not here: the vault-style shared folder. A menu of about 1,500 tokens on every session's first touch needs a decision of its own.</li>
   <li>Not here: telling the agent while a long tool runs. A notice set during a tool waits for the next tool call. This is still earlier than before: request 2 of 5 where the old route gave request 4.</li>
-  <li>Open: an execution host. A session on an SSH host has its files out of the server's reach, so the first version resolves nothing for it.</li>
+  <li>Open: an execution host. A session on an SSH host has its files out of the server's reach, so it may get no menu. This was not tested.</li>
 </ul>
 </main>
 </div>

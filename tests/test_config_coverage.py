@@ -60,7 +60,7 @@ usage:
   subscriptions: {a1b2: {name: claude-max, fee: 200, renews: 14}}
 harness_versions: {person: warn, agent: "off", startup: "off", accepted: {opencode: ["2.0.33"]}}
 nudges: {silent_s: false, plan_min: 20}
-knowledge: {embeddings: minishlab/potion-multilingual-128M}
+knowledge: {embeddings: minishlab/potion-multilingual-128M, know_how: false}
 notices:
   disk: {on: 80, critical: 95, clear: 70}
   memory: {on: 85, critical: 92, clear: 80, psi_full: 10}

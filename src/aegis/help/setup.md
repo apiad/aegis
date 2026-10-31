@@ -34,7 +34,7 @@ an earlier run, read transcripts newer than the time it read up to only.
 | OpenCode sessions | OpenCode's data directory, `~/.local/share/opencode/` | the same |
 | skills and commands | `~/.claude/skills`, `~/.claude/commands`, plugins, each project's `.claude/`, Codex's and OpenCode's skill folders | procedures, and which ones sleep, poll or fan out to subagents; what to move into aegis (knowledge) |
 | auto-memory | `~/.claude/projects/*/memory/` | facts Claude Code saved, to move into aegis (knowledge) |
-| procedure docs | Markdown files whose frontmatter has a `when:` line, such as a `know-how/` folder | procedures to move into aegis as skills (knowledge) |
+| procedure docs | Markdown files whose frontmatter has a `when:` line, outside a repository's `know-how/` folder, which aegis already reads where it is (knowledge) | procedures to move into aegis as skills |
 | instruction files | `CLAUDE.md` and `AGENTS.md` in the home and the projects, and notebooks about working with agents | rules aegis now carries out for them; settled patterns that become memories |
 | clocks | `crontab -l`, `systemctl --user list-timers` | jobs that start a harness |
 | aegis | `.aegis.yaml`, `workflow_list`, `schedule_list` | what exists already |
@@ -85,7 +85,10 @@ Look in these places, as the person's own user:
   `~/.config/opencode/skills/` and a project's `.opencode/skills/`;
 - Claude Code's auto-memory: `~/.claude/projects/*/memory/`, one file per
   fact (its `MEMORY.md` is an index; leave it out);
-- procedure docs: Markdown files with a `when:` line in their frontmatter;
+- procedure docs: Markdown files with a `when:` line in their frontmatter,
+  leaving out any in a git repository's root `know-how/` folder: aegis tells a
+  session about those where they are (knowledge), and importing one would lose
+  its branch and its reviewers;
 - instruction files (`CLAUDE.md`, `AGENTS.md`) and notebooks the person
   keeps about how they work with agents.
 
@@ -98,6 +101,7 @@ Propose a row per item, with its path as evidence. Each found thing becomes:
 | an auto-memory file | an aegis memory, approved, permanent unless it names a date | `knowledge:memory:<name>` |
 | a notebook or a rule section about working together | memories, one per settled pattern, which you draft | `knowledge:memory:<name>` |
 | a rule telling agents to do by hand what aegis does (keep a journal file, poll, keep a todo list) | the rule removed, naming the aegis feature that replaces it | `remove:<path>` |
+| a rule telling agents to print a repository's know-how menu by hand, when the person's sessions run on Claude Code | the rule removed, naming aegis's know-how notice; on other harnesses the notice waits for the next message, so keep the rule | `remove:<path>` |
 | an original that has been imported | removed, or a one-line pointer saying it now lives in aegis | `remove:<path>` |
 
 Every original to remove is a row of its own, ticked or not, so nothing
