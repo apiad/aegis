@@ -680,6 +680,26 @@ async def test_a_wait_with_bounds_is_clamped_into_them(world):
     assert "2s" in st.nodes["pause"].summary
 
 
+def answer_in_the_deadline_pass(wf, st, inst: str, deadline_of: str) -> list:
+    """Leave probe ``inst``'s answer in the pass that finds ``deadline_of``
+    passed. A pass before that takes it as on time, which is right, and any
+    session event runs one. The list it returns fills when the answer is left."""
+    left = []
+    advance = wf._advance_run
+
+    async def advance_late(run: str) -> None:
+        if run == st.run and not left:
+            d = wf.defs[run]
+            end = wf._end_at(st, d, d.by_key[deadline_of], deadline_of)
+            if end and time.time() >= end[0]:
+                wf._probed[(run, inst, "")] = {"pass": True, "why": "exit 0"}
+                left.append(inst)
+        await advance(run)
+
+    wf._advance_run = advance_late
+    return left
+
+
 @pytest.mark.slow
 async def test_a_probe_answer_left_by_an_attempt_past_its_deadline_is_not_reused(
     world,
@@ -694,9 +714,9 @@ async def test_a_probe_answer_left_by_an_attempt_past_its_deadline_is_not_reused
     )
     wf = world.app.workflows
     st = wf.runs[run_id]
-    await until(lambda: (run_id, "c") in wf._tasks, timeout=10)
-    wf._probed[(run_id, "c", "")] = {"pass": True, "why": "exit 0"}  # too late
+    left = answer_in_the_deadline_pass(wf, st, "c", "c")
     await until(lambda: "c" in st.open, timeout=10)
+    assert left and (run_id, "c", "") not in wf._probed
     owner = wf.owner(st)
     await world.app.registry.call(
         "workflow.answer",
@@ -719,10 +739,9 @@ async def test_a_probe_answer_inside_a_group_past_its_deadline_is_not_reused(wor
     )
     wf = world.app.workflows
     st = wf.runs[run_id]
-    await until(lambda: (run_id, "c") in wf._tasks, timeout=10)
-    wf._probed[(run_id, "c", "")] = {"pass": True, "why": "exit 0"}  # too late
+    left = answer_in_the_deadline_pass(wf, st, "c", "g")
     await until(lambda: "g" in st.open, timeout=10)
-    assert (run_id, "c", "") not in wf._probed
+    assert left and (run_id, "c", "") not in wf._probed
     owner = wf.owner(st)
     await world.app.registry.call(
         "workflow.answer",

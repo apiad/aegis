@@ -733,11 +733,13 @@ async def test_a_turn_that_ends_without_turn_end_is_not_finished(world):
         timeout=3,
         what="b read as idle",
     )
+    # a's own silent turn draws a nudge once b's turns outlast silent_s.
+    wakes = lambda: [e for e in inbox(a) if "aegis:nudge" not in e["title"]]  # noqa: E731
     (m,) = a.wire()["monitors"]
-    assert m["sessions"][0]["state"] == "running" and inbox(a) == []
+    assert m["sessions"][0]["state"] == "running" and wakes() == []
     await turn(b, mcp("turn_end", attention="done", line="Shipped."))
-    await until(lambda: inbox(a), timeout=5, what="the wake")
-    assert " · ok · " in inbox(a)[0]["title"]
+    await until(wakes, timeout=5, what="the wake")
+    assert " · ok · " in wakes()[0]["title"]
 
 
 async def test_a_session_silent_past_the_grace_ends_the_wait_blocked(
